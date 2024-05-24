@@ -1,0 +1,17 @@
+ __        __    _       _      __       _ 
+ \ \      / /_ _| |_ ___| |__  / _|_   _| |
+  \ \ /\ / / _` | __/ __| '_ \| |_| | | | |
+   \ V  V / (_| | || (__| | | |  _| |_| | |
+    \_/\_/ \__,_|\__\___|_| |_|_|  \__,_|_|
+                                           
+:: Spring Boot Version  :: ${spring-boot.version}
+:: Application Name     :: ${spring.application.name}
+:: Java Version         :: ${java.version}
+:: JVM Vendor           :: ${java.vendor}
+:: JVM Version          :: ${java.vm.version}
+:: OS Name              :: ${os.name}
+:: OS Version           :: ${os.version}
+:: OS Architecture      :: ${os.arch}
+:: User Name            :: ${user.name}
+:: User Home            :: ${user.home}
+:: User Directory       :: ${user.dir}
