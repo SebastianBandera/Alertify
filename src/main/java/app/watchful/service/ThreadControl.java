@@ -38,11 +38,8 @@ import lombok.extern.slf4j.Slf4j;
 public class ThreadControl {
 
 	private final BlockingQueue<TaskRequest> queue;
-	
 	private final Thread thread;
-	
 	private final ScheduledExecutorService executorService;
-	
 	private final List<TaskContext> scheduledFutureList;
 	
 	private boolean active;
