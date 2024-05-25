@@ -3,6 +3,7 @@ package app.watchful.entity;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 
 import javax.annotation.ManagedBean;
 import javax.persistence.Column;
@@ -60,5 +61,18 @@ public class Alert {
 				log.error("error getParametrosMap()", e);
 				return new HashMap<>();
 			}
+	  }
+	  
+	  @Override
+	  public boolean equals(Object o) {
+	      if (this == o) return true;
+	      if (o == null || getClass() != o.getClass()) return false;
+	      Alert myEntity = (Alert) o;
+	      return id != null && id.equals(myEntity.id);
+	  }
+
+	  @Override
+	  public int hashCode() {
+	      return Objects.hash(id);
 	  }
 }

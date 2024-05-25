@@ -81,7 +81,7 @@ public class StartupProcess {
 		threadControl.startThreadControl();
 	}
 	
-	private void registerAlert(Alert alert) {
+	public void registerAlert(Alert alert) {
 		String controlString = alert.getControl();
 		
 		Duration interval = alert.getPeriodicity();
