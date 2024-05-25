@@ -15,6 +15,7 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.util.Pair;
@@ -72,6 +73,10 @@ public class ThreadControl {
 	
 	public void registerAlertTask(Alert alert, Control control, Map<String, Object> mapParams) {
 		queue.add(TaskRequest.builder().alert(alert).control(control).mapParams(mapParams).build());
+	}
+	
+	public List<Alert> getRegistredAlerts() {
+		return scheduledFutureList.stream().map(taskContext -> taskContext.getTask().getTaskRequest().getAlert()).collect(Collectors.toList());
 	}
 	
 	public void startThreadControl() {
