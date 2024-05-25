@@ -1,0 +1,28 @@
+spring:
+  application:
+    name: Watchful
+  datasource:
+    url: 
+    username: 
+    password: 
+    driverClassName: 
+  jpa:
+    open-in-view: true
+    
+datasources:
+  config:
+    - datasource:
+        name: 
+        readonly: true
+        url: 
+        username: 
+        password: 
+        driverClassName: 
+    - datasource:
+        name: 
+        readonly: true
+        url: 
+        username: 
+        password: 
+        driverClassName: 
+
