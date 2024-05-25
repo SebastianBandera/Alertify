@@ -7,20 +7,23 @@ import javax.annotation.PostConstruct;
 import javax.sql.DataSource;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.stereotype.Service;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 
 import app.watchful.databases.DataSourceProperties.DataSourceConfig;
+import lombok.extern.slf4j.Slf4j;
 
 @Service
+@Slf4j
 public class DataSources {
 
 	@Autowired
 	private DataSourceProperties dataSourceProperties;
 	
-	private Map<String, DataSource> dataSources = new HashMap<>();
+	private Map<String, CloseableDataSource> dataSources = new HashMap<>();
 	
 	@PostConstruct
 	private void init() {
@@ -34,7 +37,8 @@ public class DataSources {
 		dataSources.put(dataSourceConfig.getName(), createDataSource(dataSourceConfig));
 	}
 	
-	private DataSource createDataSource(DataSourceConfig config) {
+	@SuppressWarnings("resource")
+	private CloseableDataSource createDataSource(DataSourceConfig config) {		
 		//DriverManagerDataSource
 		HikariConfig hikariConfig = new HikariConfig();
 		
@@ -47,8 +51,8 @@ public class DataSources {
 		hikariConfig.setUsername(config.getUsername());
 		hikariConfig.setPassword(config.getPassword());
 		
-        DataSource dataSource = new HikariDataSource(hikariConfig);
-        
+		HikariDataSource dataSource = new HikariDataSource(hikariConfig);
+		
         try {
         	if(!dataSource.getConnection().isValid(2)) {
         		throw new RuntimeException(config.getName() + " no valid connection!");
@@ -58,11 +62,23 @@ public class DataSources {
 			throw new RuntimeException(config.getName() + " error with connection!");
 		}
         
-        return dataSource;
+        return new CloseableDataSource(dataSource);
     }
 
 	public DataSource getDataSource(String key) {
 		if(key == null) return null;
 		return dataSources.get(key);
+	}
+	
+	public void close() {
+		dataSources.values().forEach(this::fancyClose);
+	}
+	
+	private void fancyClose(CloseableDataSource dataSource) {
+		try {
+			dataSource.close();
+		} catch (Exception e) {
+			log.error("Error closing connection " + dataSource, e);
+		}
 	}
 }
