@@ -6,6 +6,6 @@ import org.springframework.stereotype.Repository;
 import app.watchful.entity.Alert;
 
 @Repository
-public interface RepositorioAlert extends JpaRepository<Alert, Long> {
+public interface AlertRepository extends JpaRepository<Alert, Long> {
 
 }

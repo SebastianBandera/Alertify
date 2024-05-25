@@ -52,6 +52,8 @@ public class SQLThreshold implements Control {
 		} else {
 			throw new RuntimeException("thresholdType: " + thresholdType + " no recognized");
 		}
+
+		result.put("count", count);
 		
 		return Pair.of(result, ControlResultStatus.parse(success));
 	}

@@ -23,7 +23,7 @@ import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 
 @Entity(name = "Alert")
-@Table(schema = "alert", name = "alert")
+@Table(schema = "alert", name = "alerts")
 @TypeDef(
 	    typeClass = PostgreSQLIntervalType.class,
 	    defaultForType = Duration.class
@@ -37,7 +37,7 @@ import lombok.extern.slf4j.Slf4j;
 public class Alert {
 
 	  @Id
-	  @GeneratedValue(strategy=GenerationType.AUTO)
+	  @GeneratedValue(strategy=GenerationType.IDENTITY)
 	  private Long id;
 	  
 	  @Column(name="name", nullable = false)

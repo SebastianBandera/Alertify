@@ -1,9 +1,6 @@
 package app.watchful.startup;
 
-import java.io.File;
-import java.net.URL;
-import java.util.ArrayList;
-import java.util.Enumeration;
+import java.time.Duration;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -13,17 +10,15 @@ import javax.sql.DataSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringApplication;
 import org.springframework.context.ApplicationContext;
-import org.springframework.data.util.Pair;
 import org.springframework.stereotype.Service;
 
-import app.watchful.WatchfulApplication;
 import app.watchful.control.Control;
-import app.watchful.control.ControlResultStatus;
-import app.watchful.control.generic.SQLThreshold;
 import app.watchful.databases.DataSources;
 import app.watchful.entity.Alert;
-import app.watchful.entity.repositories.RepositorioAlert;
+import app.watchful.entity.repositories.AlertRepository;
 import app.watchful.service.GlobalStatus;
+import app.watchful.service.ThreadControl;
+import common.string.StringUtils;
 import lombok.extern.slf4j.Slf4j;
 
 @Service
@@ -40,7 +35,10 @@ public class StartupProcess {
 	private DataSources dataSources;
 	
 	@Autowired
-	private RepositorioAlert repositorioAlert	;
+	private AlertRepository repositorioAlert;
+	
+	@Autowired
+	private ThreadControl threadControl;
 	
     public void runnable() {
     	log.info("Startup");
@@ -80,14 +78,33 @@ public class StartupProcess {
 
 	private void reloadAlerts() {
 		repositorioAlert.findAll().forEach(this::registerAlert);
+		threadControl.startThreadControl();
 	}
 	
 	private void registerAlert(Alert alert) {
 		String controlString = alert.getControl();
 		
-		Control control = context.getBean(alert.getControl(), Control.class);
+		Duration interval = alert.getPeriodicity();
 		
-		Map<String, Object> mapParams = alert.getParametrosMap();
+		if(nullOrZero(interval)) {
+			log.info(StringUtils.concat("control ", controlString, " omitted for null or zero interval"));
+			return;
+		}
+		
+		Control control = null;
+		
+		try {
+			control = context.getBean(alert.getControl(), Control.class);
+		} catch (Exception e) {
+			log.warn(StringUtils.concat("control ", controlString, " not found"), e);
+		}
+		
+		Map<String, Object> mapParams = parse(alert.getParametrosMap());
+		
+		threadControl.registerAlertTask(alert, control, mapParams);
+	}
+
+	private Map<String, Object> parse(Map<String, Object> mapParams) {
 		Iterator<String> iterKeys = mapParams.keySet().iterator();
 		while (iterKeys.hasNext()) {
 			try {
@@ -116,10 +133,11 @@ public class StartupProcess {
 			}
 		}
 		
-		log.info("execute control: " + controlString);
-		Pair<Map<String, Object>, ControlResultStatus> result = control.execute(mapParams);
-		log.info("execute control ends: " + controlString + ". Result: " + result.getSecond().toString() + ", " + result.getFirst());
-		
+		return mapParams;
+	}
+
+	private boolean nullOrZero(Duration interval) {
+		return interval == null || interval.getSeconds() == 0;
 	}
 	
 }
