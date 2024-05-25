@@ -15,13 +15,13 @@ import org.springframework.web.client.RestTemplate;
 import app.watchful.control.ControlResultStatus;
 import app.watchful.control.generic.SQLThreshold;
 import app.watchful.databases.DataSourceProperties;
-import app.watchful.entity.Alert;
+import app.watchful.entity.Alerta;
 
 @RestController
 public class MainController {
 
 	@Autowired
-	private Alert alert;
+	private Alerta alert;
 	
 	@Autowired
 	private DataSourceProperties dataSourceProperties;
