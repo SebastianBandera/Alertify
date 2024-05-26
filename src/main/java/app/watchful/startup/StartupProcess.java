@@ -84,6 +84,8 @@ public class StartupProcess {
 	public void registerAlert(Alert alert) {
 		String controlString = alert.getControl();
 		
+		log.info("Registering init: " + controlString);
+		
 		Duration interval = alert.getPeriodicity();
 		
 		if(nullOrZero(interval)) {

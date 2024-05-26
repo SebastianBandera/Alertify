@@ -13,6 +13,7 @@ import javax.persistence.GenerationType;
 import javax.persistence.Id;
 import javax.persistence.Table;
 
+import org.hibernate.annotations.Type;
 import org.hibernate.annotations.TypeDef;
 import org.hibernate.annotations.TypeDefs;
 
@@ -47,6 +48,7 @@ public class Alert {
 	  @Column(name="control", nullable = false)
 	  private String control;
 
+	  @Type(type = "jsonb")
 	  @Column(name="params")
 	  private String params;
 

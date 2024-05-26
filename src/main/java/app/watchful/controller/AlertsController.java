@@ -19,6 +19,7 @@ public class AlertsController {
 	@Autowired
 	private AlertRepository alertRepository;
 	
+	@SuppressWarnings("unused")
 	@Autowired
 	private ThreadControl threadControl;
 	
@@ -28,13 +29,10 @@ public class AlertsController {
 	@GetMapping("/alerts/reload")
 	public ResponseEntity<String> reload() {
 		List<Alert> dbAlerts = alertRepository.findAll();
-		List<Alert> registredAlerts = threadControl.getRegistredAlerts();
-		
-		dbAlerts.removeAll(registredAlerts);
 		
 		dbAlerts.forEach(startupProcess::registerAlert);
 		
-		return ResponseEntity.ok(StringUtils.concat(String.valueOf(dbAlerts.size()), " alerts added"));
+		return ResponseEntity.ok(StringUtils.concat(String.valueOf(dbAlerts.size()), " alerts processed"));
 	}
 	
 }

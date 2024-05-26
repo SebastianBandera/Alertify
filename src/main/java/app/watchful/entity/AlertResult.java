@@ -51,7 +51,13 @@ public class AlertResult {
 	  private CodStatus status_result;
 
 	  @Type(type = "jsonb")
+	  @Column(name="params")
+	  private String params;
+	  
+	  @Type(type = "jsonb")
 	  @Column(name="result")
 	  private String result;
 
+	  @Column(name="needs_review", nullable = false)
+	  private boolean needs_review;
 }
