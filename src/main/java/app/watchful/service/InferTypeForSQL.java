@@ -1,4 +1,4 @@
-package app.watchful.control.generic;
+package app.watchful.service;
 
 import java.sql.Types;
 

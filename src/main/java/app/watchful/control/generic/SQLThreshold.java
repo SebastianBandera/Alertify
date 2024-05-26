@@ -13,6 +13,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 import app.watchful.control.Control;
 import app.watchful.control.ControlResultStatus;
+import app.watchful.service.InferTypeForSQL;
 
 public class SQLThreshold implements Control {
 
