@@ -14,6 +14,7 @@ import org.springframework.web.client.RestTemplate;
 
 import app.watchful.control.ControlResultStatus;
 import app.watchful.control.generic.SQLThreshold;
+import app.watchful.control.generic.SQLThreshold.Params;
 import app.watchful.databases.DataSourceProperties;
 import app.watchful.entity.Alert;
 
@@ -64,6 +65,7 @@ public class MainController {
 		Map<String, Object> map = new HashMap<>();
 		map.put(SQLThreshold.Params.DATA_SOURCE.toString(), new SingleConnectionDataSource("jdbc:postgresql://localhost:54321/postgres", "postgres", "postgres", false));
 		map.put(SQLThreshold.Params.PARAMS_SQL.toString(), new Object[] {1, "txt"});
+		map.put(SQLThreshold.Params.THRESHOLD_TYPE.toString(), "warn_if_bigger");
 		map.put(SQLThreshold.Params.SQL.toString(), "select 80 where 1 = ? and 'txt' = ?");
 		map.put(SQLThreshold.Params.THRESHOLD.toString(), 20);
 		

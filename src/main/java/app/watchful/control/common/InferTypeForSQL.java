@@ -1,10 +1,7 @@
-package app.watchful.service;
+package app.watchful.control.common;
 
 import java.sql.Types;
 
-import org.springframework.stereotype.Service;
-
-@Service
 public class InferTypeForSQL {
 
 	public int infer(Object object) {

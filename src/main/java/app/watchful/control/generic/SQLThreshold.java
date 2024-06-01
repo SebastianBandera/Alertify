@@ -7,18 +7,16 @@ import java.util.function.Supplier;
 
 import javax.sql.DataSource;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.util.Pair;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import app.watchful.control.Control;
 import app.watchful.control.ControlResultStatus;
-import app.watchful.service.InferTypeForSQL;
+import app.watchful.control.common.InferTypeForSQL;
 
 public class SQLThreshold implements Control {
 
-	@Autowired
-	private InferTypeForSQL inferTypeForSQL;
+	private InferTypeForSQL inferTypeForSQL = new InferTypeForSQL();
 	
 	public SQLThreshold() {
 		
