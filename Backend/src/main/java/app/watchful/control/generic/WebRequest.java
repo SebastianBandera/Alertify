@@ -42,6 +42,10 @@ public class WebRequest implements Control {
 		
 		success = responseEntity != null && responseEntity.getStatusCodeValue() == 200;
 		
+		if (responseEntity!=null) {
+			result.put("statusCode", responseEntity.getStatusCodeValue());
+		}
+		
 		return Pair.of(result, ControlResultStatus.parse(success));
 	}
 	
