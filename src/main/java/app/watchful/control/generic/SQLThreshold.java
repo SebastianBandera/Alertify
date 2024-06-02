@@ -3,7 +3,6 @@ package app.watchful.control.generic;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
-import java.util.function.Supplier;
 
 import javax.sql.DataSource;
 
@@ -13,6 +12,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import app.watchful.control.Control;
 import app.watchful.control.ControlResultStatus;
 import app.watchful.control.common.InferTypeForSQL;
+import app.watchful.control.common.ObjectsUtils;
 
 public class SQLThreshold implements Control {
 
@@ -26,9 +26,9 @@ public class SQLThreshold implements Control {
 	public Pair<Map<String, Object>, ControlResultStatus> execute(Map<String, Object> params) {
 		Objects.requireNonNull(params, "needs args to execute");
 		int threshold         = (Integer)params.get(Params.THRESHOLD.getValue());
-		String thresholdType  = noNull((String)params.get(Params.THRESHOLD_TYPE.getValue()), "").toLowerCase();
-		String sql            = noNull((String)params.get(Params.SQL.getValue()), "");
-		Object[] paramsSQL    = tryGet(() -> (Object[])params.get(Params.PARAMS_SQL.getValue()), () -> new Object[] {});
+		String thresholdType  = ObjectsUtils.noNull((String)params.get(Params.THRESHOLD_TYPE.getValue()), "").toLowerCase();
+		String sql            = ObjectsUtils.noNull((String)params.get(Params.SQL.getValue()), "");
+		Object[] paramsSQL    = ObjectsUtils.tryGet(() -> (Object[])params.get(Params.PARAMS_SQL.getValue()), () -> new Object[] {});
 		DataSource dataSource = (DataSource)params.get(Params.DATA_SOURCE.getValue());
 		
 		Map<String, Object> result = new HashMap<>();
@@ -55,18 +55,6 @@ public class SQLThreshold implements Control {
 		result.put("count", count);
 		
 		return Pair.of(result, ControlResultStatus.parse(success));
-	}
-	
-	private <T> T noNull(T value, T defaultValue) {
-		return value == null ? defaultValue : value;
-	}
-
-	private <T> T tryGet(Supplier<T> supplier, Supplier<T> defaultSupplier) {
-		try {
-			return supplier.get();
-		} catch (Exception e) {
-			return defaultSupplier.get();
-		}
 	}
 
 	private int[] generate(Object[] paramsSQL) {
