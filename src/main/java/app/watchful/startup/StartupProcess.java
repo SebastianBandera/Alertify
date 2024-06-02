@@ -13,12 +13,12 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Service;
 
 import app.watchful.control.Control;
+import app.watchful.control.common.StringUtils;
 import app.watchful.databases.DataSources;
 import app.watchful.entity.Alert;
 import app.watchful.entity.repositories.AlertRepository;
 import app.watchful.service.GlobalStatus;
 import app.watchful.service.ThreadControl;
-import common.string.StringUtils;
 import lombok.extern.slf4j.Slf4j;
 
 @Service

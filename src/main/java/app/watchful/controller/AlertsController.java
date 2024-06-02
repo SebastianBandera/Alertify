@@ -7,11 +7,11 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import app.watchful.control.common.StringUtils;
 import app.watchful.entity.Alert;
 import app.watchful.entity.repositories.AlertRepository;
 import app.watchful.service.ThreadControl;
 import app.watchful.startup.StartupProcess;
-import common.string.StringUtils;
 
 @RestController
 public class AlertsController {

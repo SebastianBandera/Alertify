@@ -1,4 +1,4 @@
-package common.string;
+package app.watchful.control.common;
 
 import java.util.Objects;
 

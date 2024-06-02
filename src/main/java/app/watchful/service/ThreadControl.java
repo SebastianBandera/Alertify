@@ -26,11 +26,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import app.watchful.control.Control;
 import app.watchful.control.ControlResultStatus;
+import app.watchful.control.common.StringUtils;
 import app.watchful.entity.Alert;
 import app.watchful.entity.AlertResult;
-import app.watchful.entity.CodStatus;
 import app.watchful.entity.repositories.AlertResultRepository;
-import common.string.StringUtils;
 import lombok.Builder;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
