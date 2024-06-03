@@ -5,6 +5,8 @@ import java.util.Map;
 import java.util.Objects;
 
 import org.springframework.data.util.Pair;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.client.RestTemplate;
@@ -24,6 +26,7 @@ public class WebRequest implements Control {
 		Objects.requireNonNull(params, "needs args to execute");
 		String url    = ObjectsUtils.noNull((String)params.get(Params.URL.getValue()), "").toLowerCase();
 		String method = ObjectsUtils.noNull((String)params.get(Params.METHOD.getValue()), "").toLowerCase();
+		Object[] headers = ObjectsUtils.tryGet(() -> (Object[])params.get(Params.HEADERS.getValue()), () -> new Object[] {});
 		
 		Map<String, Object> result = new HashMap<>();
 		boolean success = false;
@@ -33,9 +36,26 @@ public class WebRequest implements Control {
 		HttpMethod httpMethod = parse(method);
 		
 		ResponseEntity<String> responseEntity = null;
-		
+
 		try {
-			responseEntity = rt.exchange(url, httpMethod, null, String.class);
+			HttpHeaders httpHeaders = new HttpHeaders();
+			if (headers != null) {
+				for (int i = 0; i < headers.length; i++) {
+					try {
+						String data = (String)headers[i];
+						int index = data.indexOf(":");
+						String name = data.substring(0, index).trim();
+						String value = data.substring(index+1).trim();
+						httpHeaders.add(name, value);
+					} catch (Exception e) {
+						e.printStackTrace();
+					}
+				}
+			}
+			
+			HttpEntity<String> entity = new HttpEntity<>(null, httpHeaders);
+			
+			responseEntity = rt.exchange(url, httpMethod, entity, String.class);
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
@@ -90,6 +110,7 @@ public class WebRequest implements Control {
 
 	public enum Params {
 		URL("url"),
+		HEADERS("headers"),
 		METHOD("method");
 
 		private String value;
