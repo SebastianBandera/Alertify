@@ -15,4 +15,17 @@ public class InferTypeForSQL {
 		
 		return Types.NULL;
 	}
+	
+	public String toTableType(int type) {
+		switch (type) {
+		case Types.INTEGER: return "int";
+		case Types.DOUBLE: return "double precision";
+		case Types.FLOAT: return "float4";
+		case Types.VARCHAR: return "varchar";
+		case Types.TIMESTAMP_WITH_TIMEZONE: return "time without time zone";
+		case Types.BOOLEAN: return "bool";
+		}
+		
+		return "null";
+	}
 }
