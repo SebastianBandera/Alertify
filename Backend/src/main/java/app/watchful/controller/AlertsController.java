@@ -4,7 +4,7 @@ import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import app.watchful.control.common.StringUtils;
@@ -26,7 +26,7 @@ public class AlertsController {
 	@Autowired
 	private StartupProcess startupProcess;
 	
-	@GetMapping("/alerts/reload")
+	@PostMapping("/alerts/reload")
 	public ResponseEntity<String> reload() {
 		List<Alert> dbAlerts = alertRepository.findAll();
 		
