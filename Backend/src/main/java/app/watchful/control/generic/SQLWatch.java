@@ -1,7 +1,6 @@
 package app.watchful.control.generic;
 
 import java.sql.Types;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -11,7 +10,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
-import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 import javax.sql.DataSource;
@@ -25,7 +23,6 @@ import app.watchful.control.common.InferTypeForSQL;
 import app.watchful.control.common.ListMerger;
 import app.watchful.control.common.ObjectsUtils;
 import app.watchful.control.common.StringUtils;
-import app.watchful.control.common.ListMerger.MergeResults;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
