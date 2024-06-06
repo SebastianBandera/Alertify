@@ -65,8 +65,8 @@ public class WebRequest implements Control {
 		if (responseEntity!=null) {
 			result.put("statusCode", responseEntity.getStatusCodeValue());
 		} else {
-                        result.put("statusCode", -1);
-                }
+            result.put("statusCode", -1);
+        }
 		
 		return Pair.of(result, ControlResultStatus.parse(success));
 	}
