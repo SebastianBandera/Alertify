@@ -24,8 +24,8 @@ public class WebRequest implements Control {
 	@Override
 	public Pair<Map<String, Object>, ControlResultStatus> execute(Map<String, Object> params) {
 		Objects.requireNonNull(params, "needs args to execute");
-		String url    = ObjectsUtils.noNull((String)params.get(Params.URL.getValue()), "").toLowerCase();
-		String method = ObjectsUtils.noNull((String)params.get(Params.METHOD.getValue()), "").toLowerCase();
+		String url    = ObjectsUtils.noNull((String)params.get(Params.URL.getValue()), "");
+		String method = ObjectsUtils.noNull((String)params.get(Params.METHOD.getValue()), "");
 		Object[] headers = ObjectsUtils.tryGet(() -> (Object[])params.get(Params.HEADERS.getValue()), () -> new Object[] {});
 		
 		Map<String, Object> result = new HashMap<>();
@@ -64,7 +64,9 @@ public class WebRequest implements Control {
 		
 		if (responseEntity!=null) {
 			result.put("statusCode", responseEntity.getStatusCodeValue());
-		}
+		} else {
+                        result.put("statusCode", -1);
+                }
 		
 		return Pair.of(result, ControlResultStatus.parse(success));
 	}
