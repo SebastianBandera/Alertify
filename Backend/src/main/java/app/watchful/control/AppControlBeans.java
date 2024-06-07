@@ -10,6 +10,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 import app.watchful.control.generic.SQLThreshold;
 import app.watchful.control.generic.SQLWatch;
+import app.watchful.control.generic.TestConnection;
 import app.watchful.control.generic.WebRequest;
 
 @Configuration
@@ -35,5 +36,11 @@ public class AppControlBeans {
     public SQLWatch SQLWatch() {
 		JdbcTemplate localJdbc = new JdbcTemplate(localDataSource);
         return new SQLWatch(localJdbc);
+    }
+
+	@Bean(name = "test_connection")
+	@Scope("prototype")
+    public TestConnection TestConnection() {
+        return new TestConnection();
     }
 }
