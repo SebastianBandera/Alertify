@@ -12,6 +12,7 @@ import app.watchful.control.generic.SQLThreshold;
 import app.watchful.control.generic.SQLWatch;
 import app.watchful.control.generic.TestConnection;
 import app.watchful.control.generic.WebRequest;
+import app.watchful.control.generic.WebWatch;
 
 @Configuration
 public class AppControlBeans {
@@ -42,5 +43,12 @@ public class AppControlBeans {
 	@Scope("prototype")
     public TestConnection TestConnection() {
         return new TestConnection();
+    }
+
+	@Bean(name = "web_watch")
+	@Scope("prototype")
+    public WebWatch WebWatch() {
+		JdbcTemplate localJdbc = new JdbcTemplate(localDataSource);
+        return new WebWatch(localJdbc);
     }
 }
