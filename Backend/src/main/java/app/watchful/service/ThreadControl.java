@@ -149,20 +149,20 @@ public class ThreadControl {
 				date_fin = new Date();
 				log.info(StringUtils.concat("execute control ends: ", taskRequest.getAlert().getControl(), ", alert: ", taskRequest.getAlert().getName(), ". Result: ", result.getSecond().toString(), ", ", result.getFirst().toString()));
 				
-				ar.setId_alert(taskRequest.getAlert());
-				ar.setDate_ini(date_ini);
-				ar.setDate_end(date_fin);
+				ar.setIdAlert(taskRequest.getAlert());
+				ar.setDateIni(date_ini);
+				ar.setDateEnd(date_fin);
 				ar.setParams(taskRequest.getAlert().getParams());
-				ar.setStatus_result(codStatusService.getCodStatus(result.getSecond()));
+				ar.setStatusResult(codStatusService.getCodStatus(result.getSecond()));
 				ar.setNeeds_review(result.getSecond().equals(ControlResultStatus.WARN) || result.getSecond().equals(ControlResultStatus.ERROR));
 				ar.setResult(new ObjectMapper().writeValueAsString(result.getFirst()));
 			} catch (Exception e) {
 				e.printStackTrace();
-				ar.setId_alert(taskRequest.getAlert());
-				ar.setDate_ini(date_ini);
-				ar.setDate_end(date_fin);
+				ar.setIdAlert(taskRequest.getAlert());
+				ar.setDateIni(date_ini);
+				ar.setDateEnd(date_fin);
 				ar.setParams(taskRequest.getAlert().getParams());
-				ar.setStatus_result(codStatusService.getCodStatus(ControlResultStatus.ERROR));
+				ar.setStatusResult(codStatusService.getCodStatus(ControlResultStatus.ERROR));
 				ar.setNeeds_review(true);
 				Map<String, Object> mapError = new HashMap<>();
 				mapError.put("exception", throwableToString(e));

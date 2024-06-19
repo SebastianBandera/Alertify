@@ -36,19 +36,19 @@ public class AlertResult {
 	  
 	  @ManyToOne
 	  @JoinColumn(name = "id_alert", nullable = false)
-	  private Alert id_alert;
+	  private Alert idAlert;
 
 	  @Temporal(TemporalType.TIMESTAMP)
 	  @Column(name = "date_ini", nullable = false)
-	  private Date date_ini;
+	  private Date dateIni;
 	  
 	  @Temporal(TemporalType.TIMESTAMP)
 	  @Column(name = "date_end")
-	  private Date date_end;
+	  private Date dateEnd;
 
 	  @ManyToOne
 	  @JoinColumn(name = "status_result", nullable = false)
-	  private CodStatus status_result;
+	  private CodStatus statusResult;
 
 	  @Type(type = "jsonb")
 	  @Column(name="params")
@@ -58,6 +58,6 @@ public class AlertResult {
 	  @Column(name="result")
 	  private String result;
 
-	  @Column(name="needs_review", nullable = false)
+	  @Column(name="needsReview", nullable = false)
 	  private boolean needs_review;
 }
