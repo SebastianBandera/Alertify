@@ -18,14 +18,14 @@ import org.springframework.web.bind.annotation.RestController;
 import app.watchful.control.common.StringUtils;
 import app.watchful.controller.dto.AlertDto;
 import app.watchful.controller.dto.AlertResultDto;
-import app.watchful.controller.dto.CodStatusDto;
+import app.watchful.controller.dto.GUIAlertGroupDto;
+import app.watchful.controller.dto.MapperConfig;
 import app.watchful.controller.dto.SimpleMapper;
-import app.watchful.controller.dto.SimpleMapperTypeRelationsBuilder;
 import app.watchful.entity.Alert;
 import app.watchful.entity.AlertResult;
-import app.watchful.entity.CodStatus;
 import app.watchful.entity.repositories.AlertRepository;
 import app.watchful.entity.repositories.AlertResultRepository;
+import app.watchful.entity.repositories.GUIAlertGroupRepository;
 import app.watchful.service.ThreadControl;
 import app.watchful.startup.StartupProcess;
 
@@ -40,6 +40,9 @@ public class AlertsController {
 
 	@Autowired
 	private AlertResultRepository alertResultsRepository;
+
+	@Autowired
+	private GUIAlertGroupRepository guiAlertGroupRepository;
 	
 	@SuppressWarnings("unused")
 	@Autowired
@@ -50,6 +53,9 @@ public class AlertsController {
 	
 	@Autowired
 	private SimpleMapper simpleMapper;
+	
+	@Autowired
+	private MapperConfig mapperConfig;
 	
 	@PostMapping("alerts/reload")
 	public ResponseEntity<String> reload() {
@@ -66,10 +72,16 @@ public class AlertsController {
 		return ResponseEntity.ok(alertRepository.findAll(PageRequest.of(page, pageSize, Sort.by(Sort.Order.desc("id")))).map(in -> simpleMapper.map(in, AlertDto.class)));
 	}
 
+	@GetMapping("/alerts/groups")
+	public ResponseEntity<Page<GUIAlertGroupDto>> allGroups(@RequestParam(defaultValue = "0") int page) {
+		if (page < 0) return ResponseEntity.badRequest().build();
+		return ResponseEntity.ok(guiAlertGroupRepository.findAll(PageRequest.of(page, pageSize, Sort.by(Sort.Order.desc("id")))).map(in -> simpleMapper.map(in, GUIAlertGroupDto.class, mapperConfig.getMapping())));
+	}
+
 	@GetMapping("/alerts/results")
 	public ResponseEntity<Page<AlertResultDto>> allResults(@RequestParam(defaultValue = "0") int page) {
 		if (page < 0) return ResponseEntity.badRequest().build();
-		return ResponseEntity.ok(alertResultsRepository.findAll(PageRequest.of(page, pageSize, Sort.by(Sort.Order.desc("id")))).map(in -> simpleMapper.map(in, AlertResultDto.class, SimpleMapperTypeRelationsBuilder.newInstance().add(Alert.class, AlertDto.class).add(CodStatus.class, CodStatusDto.class).build())));
+		return ResponseEntity.ok(alertResultsRepository.findAll(PageRequest.of(page, pageSize, Sort.by(Sort.Order.desc("id")))).map(in -> simpleMapper.map(in, AlertResultDto.class, mapperConfig.getMapping())));
 	}
 	
 	@GetMapping("/alerts/results/{id}/resolve")
