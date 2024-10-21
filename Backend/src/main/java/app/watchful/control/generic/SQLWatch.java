@@ -49,7 +49,7 @@ public class SQLWatch implements Control {
 		DataSource dataSource = (DataSource)params.get(Params.DATA_SOURCE.getValue());
 		
 		log.info("control_id: " + control_id);
-		
+                
 		Map<String, Object> result = new HashMap<>();
 		boolean success = false;
 		
@@ -93,7 +93,7 @@ public class SQLWatch implements Control {
 				return Pair.of(result, ControlResultStatus.ERROR);
 			}
 			
-			if (result.containsKey("repBackupData") || result.containsKey("repNewData") || (int)result.get("newRowsSize")>0 || (int)result.get("remRowsSize")>0 || (int)result.get("modRowsSize")>0) {
+			if (result.containsKey("repBackupData") || result.containsKey("repNewData") || (int)result.get("a_newRowsSize")>0 || (int)result.get("a_remRowsSize")>0 || (int)result.get("a_modRowsSize")>0) {
 				return Pair.of(result, ControlResultStatus.WARN);
 			}
 			
@@ -111,8 +111,8 @@ public class SQLWatch implements Control {
 		
 		if (backupData.size() != newData.size()) {
 			log.info("size mismatch");
-			compareResult.put("sizeBackup", backupData.size());
-			compareResult.put("sizeNewData", newData.size());
+			compareResult.put("a_sizeBackup", backupData.size());
+			compareResult.put("a_sizeNewData", newData.size());
 		}
 		
 		Set<String> names = new HashSet<>(backupData.get(0).keySet());
@@ -145,9 +145,9 @@ public class SQLWatch implements Control {
 
         ListMerger<Map<String, Object>>.MergeResults mergeResults = merger.merge(backupData, newData);
         
-        compareResult.put("newRowsSize", mergeResults.getNewItems().size());
-        compareResult.put("remRowsSize", mergeResults.getRemovedItems().size());
-        compareResult.put("modRowsSize", mergeResults.getChangedItems().size());
+        compareResult.put("a_newRowsSize", mergeResults.getNewItems().size());
+        compareResult.put("a_remRowsSize", mergeResults.getRemovedItems().size());
+        compareResult.put("a_modRowsSize", mergeResults.getChangedItems().size());
 		
         if (!mergeResults.getNewItems().isEmpty()) {
         	compareResult.put("newRows", mergeResults.getNewItems());
