@@ -58,6 +58,7 @@ public class DataSources {
             }
 		} catch (Exception e) {
 			e.printStackTrace();
+			log.error("Error", e);
 			throw new RuntimeException(config.getName() + " error with connection!");
 		}
         
@@ -77,6 +78,7 @@ public class DataSources {
 		try {
 			dataSource.close();
 		} catch (Exception e) {
+			e.printStackTrace();
 			log.error("Error closing connection " + dataSource, e);
 		}
 	}

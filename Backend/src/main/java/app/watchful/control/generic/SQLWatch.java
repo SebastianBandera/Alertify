@@ -89,6 +89,7 @@ public class SQLWatch implements Control {
 				Map<String, Object> compareResult = compare(backupData, data, keysSQL);
 				result.putAll(compareResult);
 			} catch (Exception e) {
+				log.error("Error", e);
 				e.printStackTrace();
 				return Pair.of(result, ControlResultStatus.ERROR);
 			}

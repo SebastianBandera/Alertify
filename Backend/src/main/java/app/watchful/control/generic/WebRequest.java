@@ -26,6 +26,7 @@ public class WebRequest implements Control {
 		Objects.requireNonNull(params, "needs args to execute");
 		String url    = ObjectsUtils.noNull((String)params.get(Params.URL.getValue()), "");
 		String method = ObjectsUtils.noNull((String)params.get(Params.METHOD.getValue()), "");
+		String body   = (String)params.get(Params.BODY.getValue());
 		Object[] headers = ObjectsUtils.tryGet(() -> (Object[])params.get(Params.HEADERS.getValue()), () -> new Object[] {});
 		
 		Map<String, Object> result = new HashMap<>();
@@ -53,7 +54,7 @@ public class WebRequest implements Control {
 				}
 			}
 			
-			HttpEntity<String> entity = new HttpEntity<>(null, httpHeaders);
+			HttpEntity<String> entity = new HttpEntity<>(body, httpHeaders);
 			
 			responseEntity = rt.exchange(url, httpMethod, entity, String.class);
 		} catch (Exception e) {
@@ -65,8 +66,8 @@ public class WebRequest implements Control {
 		if (responseEntity!=null) {
 			result.put("statusCode", responseEntity.getStatusCodeValue());
 		} else {
-                        result.put("statusCode", -1);
-                }
+            result.put("statusCode", -1);
+        }
 		
 		return Pair.of(result, ControlResultStatus.parse(success));
 	}
@@ -113,6 +114,7 @@ public class WebRequest implements Control {
 	public enum Params {
 		URL("url"),
 		HEADERS("headers"),
+		BODY("body"),
 		METHOD("method");
 
 		private String value;
