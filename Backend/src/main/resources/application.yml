@@ -1,28 +1,37 @@
+server:
+  port: ${SERVER_PORT}
+
+pageSize: 10
+
 spring:
   application:
     name: Watchful
   datasource:
-    url: 
-    username: 
-    password: 
-    driverClassName: 
+    url: ${DB_URL}
+    username: ${DB_USER}
+    password: ${DB_PASS}
+    driverClassName: org.postgresql.Driver
   jpa:
-    open-in-view: true
+    open-in-view: false
+    show-sql: true
+    properties:
+      hibernate:
+        #format_sql: true
     
 datasources:
   config:
     - datasource:
-        name: 
+        name: base1
         readonly: true
-        url: 
-        username: 
-        password: 
-        driverClassName: 
+        url: jdbc:postgresql://localhost:54321/base1
+        username: postgres
+        password: postgres
+        driverClassName: org.postgresql.Driver
     - datasource:
-        name: 
+        name: base2
         readonly: true
-        url: 
-        username: 
-        password: 
-        driverClassName: 
+        url: jdbc:postgresql://localhost:54321/base2
+        username: postgres
+        password: postgres
+        driverClassName: org.postgresql.Driver
 
