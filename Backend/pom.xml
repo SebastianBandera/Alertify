@@ -3,21 +3,21 @@
 	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
 	<modelVersion>4.0.0</modelVersion>
-	<groupId>app.watchful</groupId>
-	<artifactId>WatchfulApplicationArtifact</artifactId>
-	<version>0.0.1-SNAPSHOT</version>
-	<name>WatchfulApplication</name>
+	<groupId>app.alertify</groupId>
+	<artifactId>AlertifyArtifact</artifactId>
+	<version>0.0.2-SNAPSHOT</version>
+	<name>Alertify</name>
 	<description>Custom Monitor</description>
 	<packaging>jar</packaging>
 	<parent>
 		<groupId>org.springframework.boot</groupId>
 		<artifactId>spring-boot-starter-parent</artifactId>
 		<version>2.7.18</version>
-		<relativePath /> <!-- lookup parent from repository -->
+		<relativePath />
 	</parent>
 	<properties>
 		<java.version>1.8</java.version>
-		<application.title>Watc</application.title>
+		<application.title>Alertify</application.title>
 		<application.version>1.8</application.version>
 	</properties>
 	<dependencies>
@@ -38,25 +38,19 @@
 		    <artifactId>hypersistence-utils-hibernate-55</artifactId>
 		    <version>3.7.5</version>
 		</dependency>
-<!--		<dependency>-->
-<!--			<groupId>com.h2database</groupId>-->
-<!--			<artifactId>h2</artifactId>-->
-<!--			<scope>runtime</scope>-->
-<!--		</dependency>-->
 		<dependency>
 		    <groupId>org.postgresql</groupId>
 		    <artifactId>postgresql</artifactId>
 		</dependency>
 		<dependency>
-                    <groupId>mysql</groupId>
-                    <artifactId>mysql-connector-java</artifactId>
-                    <version>8.0.33</version>
-                </dependency>
-                <dependency>
-                    <groupId>com.microsoft.sqlserver</groupId>
-                    <artifactId>mssql-jdbc</artifactId>
-                    <version>10.2.0.jre8</version>
-                </dependency>
+            <groupId>mysql</groupId>
+            <artifactId>mysql-connector-java</artifactId>
+            <version>8.0.33</version>
+        </dependency>
+        <dependency>
+            <groupId>com.microsoft.sqlserver</groupId>
+            <artifactId>mssql-jdbc</artifactId>
+        </dependency>
 		<dependency>
 			<groupId>org.projectlombok</groupId>
 			<artifactId>lombok</artifactId>
