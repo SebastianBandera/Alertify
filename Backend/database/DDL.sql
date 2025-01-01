@@ -1,3 +1,5 @@
+CREATE SCHEMA alert;
+
 CREATE TABLE alert.alerts (
 	id serial NOT NULL,
 	name text NOT NULL,
@@ -36,3 +38,39 @@ CREATE TABLE alert.alerts_result (
 INSERT INTO alert.cod_status("name") VALUES('success');
 INSERT INTO alert.cod_status("name") VALUES('warn');
 INSERT INTO alert.cod_status("name") VALUES('error');
+
+
+
+CREATE SCHEMA gui;
+
+CREATE TABLE gui.alert_group (
+	id serial NOT NULL,
+	"name" text NOT NULL,
+	id_alert int NOT NULL,
+	active bool NULL,
+	CONSTRAINT alert_group_pk PRIMARY KEY (id),
+	CONSTRAINT alert_group_alerts_fk FOREIGN KEY (id_alert) REFERENCES alert.alerts(id)
+);
+
+
+
+
+
+CREATE SCHEMA conn;
+
+CREATE TABLE conn.dbsources (
+	"name" varchar(100) NOT NULL,
+	readonly bool NOT NULL,
+	url text NOT NULL,
+	driverclassname text NOT NULL,
+	username text NOT NULL,
+	passwordstatus int NOT NULL,
+	"password" text NOT NULL,
+	CONSTRAINT dbsources_pk PRIMARY KEY ("name")
+);
+
+
+
+
+CREATE SCHEMA config;
+
