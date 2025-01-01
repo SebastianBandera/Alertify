@@ -4,13 +4,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.stereotype.Component;
-
-import lombok.Data;
-
-@Component
-@ConfigurationProperties(prefix = "datasources")
 public class DataSourceProperties {
 
     private List<DataSourceConfig> datasources;
@@ -29,12 +22,18 @@ public class DataSourceProperties {
 		datasources = result;
 	}
 	
-	@Data
     public static class DataSourceBase {
         private DataSourceConfig datasource;
+
+		public DataSourceConfig getDatasource() {
+			return datasource;
+		}
+
+		public void setDatasource(DataSourceConfig datasource) {
+			this.datasource = datasource;
+		}
     }
 
-	@Data
     public static class DataSourceConfig {
         private String name;
         private Boolean readonly;
@@ -42,5 +41,43 @@ public class DataSourceProperties {
         private String username;
         private String password;
         private String driverClassName;
+		public String getName() {
+			return name;
+		}
+		public void setName(String name) {
+			this.name = name;
+		}
+		public Boolean getReadonly() {
+			return readonly;
+		}
+		public void setReadonly(Boolean readonly) {
+			this.readonly = readonly;
+		}
+		public String getUrl() {
+			return url;
+		}
+		public void setUrl(String url) {
+			this.url = url;
+		}
+		public String getUsername() {
+			return username;
+		}
+		public void setUsername(String username) {
+			this.username = username;
+		}
+		public String getPassword() {
+			return password;
+		}
+		public void setPassword(String password) {
+			this.password = password;
+		}
+		public String getDriverClassName() {
+			return driverClassName;
+		}
+		public void setDriverClassName(String driverClassName) {
+			this.driverClassName = driverClassName;
+		}
+        
+        
     }
 }

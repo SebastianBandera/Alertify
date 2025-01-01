@@ -8,6 +8,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
 import org.springframework.data.util.Pair;
 import org.springframework.http.HttpEntity;
@@ -24,10 +26,10 @@ import com.github.difflib.text.DiffRowGenerator;
 import app.alertify.control.Control;
 import app.alertify.control.ControlResultStatus;
 import app.alertify.control.common.ObjectsUtils;
-import lombok.extern.slf4j.Slf4j;
 
-@Slf4j
 public class WebWatch implements Control {
+	
+	private static final Logger log = LoggerFactory.getLogger(WebWatch.class);
 	
 	private final static String SCHEMA = "webwatch";
 	private final static String TABLE = "webwatch_history_v1";

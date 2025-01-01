@@ -2,31 +2,27 @@ package app.alertify.entity;
 
 import java.time.Duration;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
 import javax.annotation.ManagedBean;
-import javax.persistence.CascadeType;
 import javax.persistence.Column;
 import javax.persistence.Entity;
-import javax.persistence.FetchType;
 import javax.persistence.GeneratedValue;
 import javax.persistence.GenerationType;
 import javax.persistence.Id;
-import javax.persistence.OneToMany;
 import javax.persistence.Table;
 
 import org.hibernate.annotations.Type;
 import org.hibernate.annotations.TypeDef;
 import org.hibernate.annotations.TypeDefs;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import io.hypersistence.utils.hibernate.type.interval.PostgreSQLIntervalType;
 import io.hypersistence.utils.hibernate.type.json.JsonBinaryType;
-import lombok.Data;
-import lombok.extern.slf4j.Slf4j;
 
 @Entity(name = "Alert")
 @Table(schema = "alert", name = "alerts")
@@ -37,10 +33,10 @@ import lombok.extern.slf4j.Slf4j;
 @TypeDefs({
     @TypeDef(name = "jsonb", typeClass = JsonBinaryType.class)
 })
-@Data
-@Slf4j
 @ManagedBean
 public class Alert {
+	
+	private static final Logger log = LoggerFactory.getLogger(Alert.class);
 
 	  @Id
 	  @GeneratedValue(strategy=GenerationType.IDENTITY)
@@ -88,4 +84,52 @@ public class Alert {
 	  public int hashCode() {
 	      return Objects.hash(id);
 	  }
+
+	public Long getId() {
+		return id;
+	}
+
+	public void setId(Long id) {
+		this.id = id;
+	}
+
+	public String getName() {
+		return name;
+	}
+
+	public void setName(String name) {
+		this.name = name;
+	}
+
+	public String getControl() {
+		return control;
+	}
+
+	public void setControl(String control) {
+		this.control = control;
+	}
+
+	public String getParams() {
+		return params;
+	}
+
+	public void setParams(String params) {
+		this.params = params;
+	}
+
+	public Duration getPeriodicity() {
+		return periodicity;
+	}
+
+	public void setPeriodicity(Duration periodicity) {
+		this.periodicity = periodicity;
+	}
+
+	public boolean isActive() {
+		return active;
+	}
+
+	public void setActive(boolean active) {
+		this.active = active;
+	}
 }

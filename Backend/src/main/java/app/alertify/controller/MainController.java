@@ -48,8 +48,6 @@ public class MainController {
 			e.printStackTrace();
 		}
 		  
-		
-		
 	    return "OK GET 1 " + alert.toString() + ": " + alert.getId() + " result:" + result;
 	}
 	

@@ -23,10 +23,11 @@ import app.alertify.control.common.InferTypeForSQL;
 import app.alertify.control.common.ListMerger;
 import app.alertify.control.common.ObjectsUtils;
 import app.alertify.control.common.StringUtils;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-@Slf4j
 public class SQLWatch implements Control {
+    private static final Logger log = LoggerFactory.getLogger(SQLWatch.class);
 
 	private final static String SCHEMA = "sqlwatch";
 	

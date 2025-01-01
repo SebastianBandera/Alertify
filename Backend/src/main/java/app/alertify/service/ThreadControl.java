@@ -18,6 +18,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.util.Pair;
 import org.springframework.stereotype.Service;
@@ -30,13 +32,11 @@ import app.alertify.control.common.StringUtils;
 import app.alertify.entity.Alert;
 import app.alertify.entity.AlertResult;
 import app.alertify.entity.repositories.AlertResultRepository;
-import lombok.Builder;
-import lombok.Data;
-import lombok.extern.slf4j.Slf4j;
 
 @Service
-@Slf4j
 public class ThreadControl {
+	
+	private static final Logger log = LoggerFactory.getLogger(ThreadControl.class);
 
 	private final BlockingQueue<TaskRequest> queue;
 	private final Thread thread;
@@ -70,7 +70,11 @@ public class ThreadControl {
 	}
 	
 	public void registerAlertTask(Alert alert, Control control, Map<String, Object> mapParams) {
-		queue.add(TaskRequest.builder().alert(alert).control(control).mapParams(mapParams).build());
+		TaskRequest tr = new TaskRequest();
+		tr.setAlert(alert);
+		tr.setControl(control);
+		tr.setMapParams(mapParams);
+		queue.add(tr);
 	}
 	
 	public List<Alert> getRegistredAlerts() {
@@ -113,25 +117,49 @@ public class ThreadControl {
 		
 		long delay = taskRequest.getAlert().getPeriodicity().getSeconds();
 		
-		Task task = Task.builder().taskRequest(taskRequest).nextExecutionTime(delay).alertResultRepository(alertResultRepository).codStatusService(codStatusService).build();
+		Task task = new Task();
+		task.setAlertResultRepository(alertResultRepository);
+		task.setCodStatusService(codStatusService);
+		task.setNextExecutionTime(delay);
+		task.setTaskRequest(taskRequest);
 		
 		ScheduledFuture<?> scheduledFuture = executorService.scheduleAtFixedRate(task::run, 0, delay, TimeUnit.SECONDS);
 		
-		scheduledFutureList.add(TaskContext.builder().task(task).scheduledFuture(scheduledFuture).build());
+		TaskContext taskContext = new TaskContext();
+		taskContext.setScheduledFuture(scheduledFuture);
+		taskContext.setTask(task);
+		
+		scheduledFutureList.add(taskContext);
 	}
 	
-	@Data
-	@Builder
 	private static class TaskRequest {
 		private Alert alert;
 		private Control control;
 		private Map<String, Object> mapParams;
+		public Alert getAlert() {
+			return alert;
+		}
+		public void setAlert(Alert alert) {
+			this.alert = alert;
+		}
+		public Control getControl() {
+			return control;
+		}
+		public void setControl(Control control) {
+			this.control = control;
+		}
+		public Map<String, Object> getMapParams() {
+			return mapParams;
+		}
+		public void setMapParams(Map<String, Object> mapParams) {
+			this.mapParams = mapParams;
+		}
 	}
 	
-	@Data
-	@Builder
-	@Slf4j
 	private static class Task implements Runnable {
+		
+		private static final Logger log = LoggerFactory.getLogger(Task.class);
+		
 		private TaskRequest taskRequest;
 		private long nextExecutionTime;
 		private AlertResultRepository alertResultRepository;
@@ -183,12 +211,55 @@ public class ThreadControl {
             throwable.printStackTrace(printStream);
             return outputStream.toString();
 		}
+
+		public TaskRequest getTaskRequest() {
+			return taskRequest;
+		}
+
+		public void setTaskRequest(TaskRequest taskRequest) {
+			this.taskRequest = taskRequest;
+		}
+
+		public long getNextExecutionTime() {
+			return nextExecutionTime;
+		}
+
+		public void setNextExecutionTime(long nextExecutionTime) {
+			this.nextExecutionTime = nextExecutionTime;
+		}
+
+		public AlertResultRepository getAlertResultRepository() {
+			return alertResultRepository;
+		}
+
+		public void setAlertResultRepository(AlertResultRepository alertResultRepository) {
+			this.alertResultRepository = alertResultRepository;
+		}
+
+		public CodStatusService getCodStatusService() {
+			return codStatusService;
+		}
+
+		public void setCodStatusService(CodStatusService codStatusService) {
+			this.codStatusService = codStatusService;
+		}
 	}
 	
-	@Data
-	@Builder
 	private static class TaskContext {
 		private Task task;
 		private ScheduledFuture<?> scheduledFuture;
+		
+		public Task getTask() {
+			return task;
+		}
+		public void setTask(Task task) {
+			this.task = task;
+		}
+		public ScheduledFuture<?> getScheduledFuture() {
+			return scheduledFuture;
+		}
+		public void setScheduledFuture(ScheduledFuture<?> scheduledFuture) {
+			this.scheduledFuture = scheduledFuture;
+		}
 	}
 }

@@ -7,6 +7,8 @@ import java.util.Map;
 
 import javax.sql.DataSource;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringApplication;
 import org.springframework.context.ApplicationContext;
@@ -19,11 +21,11 @@ import app.alertify.entity.Alert;
 import app.alertify.entity.repositories.AlertRepository;
 import app.alertify.service.GlobalStatus;
 import app.alertify.service.ThreadControl;
-import lombok.extern.slf4j.Slf4j;
 
 @Service
-@Slf4j
 public class StartupProcess {
+	
+	private static final Logger log = LoggerFactory.getLogger(StartupProcess.class);
 
 	@Autowired
     private ApplicationContext context;
