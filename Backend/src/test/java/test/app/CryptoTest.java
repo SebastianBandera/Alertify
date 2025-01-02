@@ -5,11 +5,11 @@ import java.nio.charset.StandardCharsets;
 
 import org.junit.jupiter.api.Test;
 
-import app.crypto.AES;
-import app.crypto.Crypto;
-import app.crypto.CryptoMessage;
-import app.crypto.RandomGenerator;
-import app.crypto.SHA256;
+import app.alertify.crypto.AES;
+import app.alertify.crypto.Crypto;
+import app.alertify.crypto.CryptoMessage;
+import app.alertify.crypto.RandomGenerator;
+import app.alertify.crypto.SHA256;
 
 public class CryptoTest {
 

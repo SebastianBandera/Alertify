@@ -1,4 +1,4 @@
-package app.crypto;
+package app.alertify.crypto;
 
 import java.security.SecureRandom;
 import java.util.Base64;

@@ -12,8 +12,9 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
+import app.alertify.crypto.KeyProvider;
 import app.alertify.entity.repositories.ConfigRepositoryGlobal;
-import app.crypto.KeyProvider;
+
 import org.springframework.test.util.ReflectionTestUtils;
 
 class KeyProviderTest {

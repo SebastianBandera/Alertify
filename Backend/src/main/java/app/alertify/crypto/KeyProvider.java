@@ -1,4 +1,4 @@
-package app.crypto;
+package app.alertify.crypto;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -17,6 +17,10 @@ public class KeyProvider {
 	
 	@Autowired
 	private ConfigRepositoryGlobal config;
+	
+	public KeyProvider() {
+		int debug = -1;
+	}
 	
 	public String getAESKey() {
 		String keyPartDatabase = config.getString(KEY_PART_DATABASE_KEY);

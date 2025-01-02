@@ -1,4 +1,4 @@
-package app.crypto;
+package app.alertify.crypto;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
