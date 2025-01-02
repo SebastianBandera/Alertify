@@ -14,7 +14,7 @@ public class ConfigText {
     @Column(name = "name", length = 100)
     private String name;
 
-    @Column(name = "config_int")
+    @Column(name = "config_text")
     private String configText;
 
     public String getName() {

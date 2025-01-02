@@ -6,7 +6,7 @@ import javax.persistence.Id;
 import javax.persistence.Table;
 
 @Entity(name = "DbSource")
-@Table(schema = "alert", name = "dbsources")
+@Table(schema = "conn", name = "dbsources")
 public class DbSource {
 	
 	public static final int PASSWORD_STATUS_PLAIN = 0;
