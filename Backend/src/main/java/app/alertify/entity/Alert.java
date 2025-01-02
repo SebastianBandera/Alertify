@@ -5,7 +5,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 
-import javax.annotation.ManagedBean;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.GeneratedValue;
@@ -33,7 +32,6 @@ import io.hypersistence.utils.hibernate.type.json.JsonBinaryType;
 @TypeDefs({
     @TypeDef(name = "jsonb", typeClass = JsonBinaryType.class)
 })
-@ManagedBean
 public class Alert {
 	
 	private static final Logger log = LoggerFactory.getLogger(Alert.class);

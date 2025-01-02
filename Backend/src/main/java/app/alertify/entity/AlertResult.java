@@ -3,7 +3,6 @@ package app.alertify.entity;
 import java.util.Date;
 import java.util.Objects;
 
-import javax.annotation.ManagedBean;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.GeneratedValue;
@@ -28,7 +27,6 @@ import io.hypersistence.utils.hibernate.type.json.JsonBinaryType;
 @TypeDefs({
     @TypeDef(name = "jsonb", typeClass = JsonBinaryType.class)
 })
-@ManagedBean
 public class AlertResult {
 	
 	private static final Logger log = LoggerFactory.getLogger(AlertResult.class);

@@ -2,7 +2,6 @@ package app.alertify.entity;
 
 import java.util.Objects;
 
-import javax.annotation.ManagedBean;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.FetchType;
@@ -15,7 +14,6 @@ import javax.persistence.Table;
 
 @Entity(name = "GUIAlertGroup")
 @Table(schema = "gui", name = "alert_group")
-@ManagedBean
 public class GUIAlertGroup {
 
 	  @Id
