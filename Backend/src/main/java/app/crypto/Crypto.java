@@ -1,6 +1,7 @@
 package app.crypto;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Objects;
 
 public class Crypto {
 
@@ -31,6 +32,46 @@ public class Crypto {
 		String desencriptado = AES.desencriptarAES(texto, clavehashtext, iv);
 		
 		return desencriptado;
+	}
+	
+	public static String desencriptar(String textoConIv, String claveTexto) throws Exception {
+		String[] temp = textoConIv.split("\\$");
+		
+		String iv = temp[0];
+		String texto;
+		if (temp.length > 1) {
+			texto = temp[1];
+		} else {
+			throw new Exception("Input sin $, no esperado");
+		}
+		
+		return desencriptar(texto, claveTexto, iv);
+	}
+	
+	public static String empaquetarIV(String texto, String iv) throws Exception {
+		Objects.nonNull(iv);
+		Objects.nonNull(texto);
+		
+		if(iv.length() != 16) {
+			throw new Exception("Se esperaba una cantidad de caracteres de 16 exactos para el iv");
+		}
+		
+		String newBody = iv + "$" + texto;
+		
+		return newBody;
+	}
+	
+	public static CryptoMessage desempaquetarIV(String texto) throws Exception {
+		Objects.nonNull(texto);
+		
+		if(texto.length() < 16) {
+			throw new Exception("Se esperaba una cantidad de caracteres mayor");
+		}
+		
+		String iv = texto.substring(0, 16);
+		String mensaje = texto.substring(17);
+		
+		return new CryptoMessage(mensaje, iv);
 	}
 	
 }
