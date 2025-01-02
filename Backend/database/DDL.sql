@@ -2,10 +2,11 @@ CREATE SCHEMA alert;
 
 CREATE TABLE alert.alerts (
 	id serial NOT NULL,
-	name text NOT NULL,
+	"name" text NOT NULL,
 	"control" text NULL,
 	params jsonb NULL,
 	periodicity interval NULL,
+	active bool NOT NULL,
 	CONSTRAINT alerts_pk PRIMARY KEY (id),
 	CONSTRAINT alerts_unique UNIQUE (name)
 );
