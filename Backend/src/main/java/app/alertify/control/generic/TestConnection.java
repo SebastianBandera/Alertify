@@ -13,6 +13,9 @@ import org.springframework.data.util.Pair;
 import app.alertify.control.Control;
 import app.alertify.control.ControlResultStatus;
 
+/**
+ * Prueba que un DataSource sea valido según 'isValid'
+ */
 public class TestConnection implements Control {
 
     private static final Logger log = LoggerFactory.getLogger(TestConnection.class);
@@ -25,11 +28,10 @@ public class TestConnection implements Control {
 	public Pair<Map<String, Object>, ControlResultStatus> execute(Map<String, Object> params) {
 		Objects.requireNonNull(params, "needs args to execute");
 		DataSource dataSource = (DataSource)params.get(Params.DATA_SOURCE.getValue());
+		Integer timeout = (Integer)params.get(Params.TIMEOUT_SECONDS.getValue());
 		
 		Map<String, Object> result = new HashMap<>();
 		boolean success = false;
-		
-		int timeout = 5;
 		
 		try {
 			if (dataSource.getConnection().isValid(timeout)) {
@@ -48,7 +50,8 @@ public class TestConnection implements Control {
 	}
 	
 	public enum Params {
-		DATA_SOURCE("data_source");
+		DATA_SOURCE("data_source"),
+		TIMEOUT_SECONDS("timeout_seconds");
 
 		private String value;
 		

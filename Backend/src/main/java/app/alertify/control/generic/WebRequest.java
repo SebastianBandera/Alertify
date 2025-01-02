@@ -17,6 +17,9 @@ import app.alertify.control.Control;
 import app.alertify.control.ControlResultStatus;
 import app.alertify.control.common.ObjectsUtils;
 
+/**
+ * Dada una URL, método, body y headers(Array donde cada item tiene separacion con :), prueba si el response code es el esperado.
+ */
 public class WebRequest implements Control {
 
 	private static final Logger log = LoggerFactory.getLogger(WebRequest.class);
@@ -32,6 +35,7 @@ public class WebRequest implements Control {
 		String method = ObjectsUtils.noNull((String)params.get(Params.METHOD.getValue()), "");
 		String body   = (String)params.get(Params.BODY.getValue());
 		Object[] headers = ObjectsUtils.tryGet(() -> (Object[])params.get(Params.HEADERS.getValue()), () -> new Object[] {});
+		Integer resposeExpected = (Integer)params.get(Params.RESPONSE_CODE_EXPECTED.getValue());
 		
 		Map<String, Object> result = new HashMap<>();
 		boolean success = false;
@@ -65,7 +69,7 @@ public class WebRequest implements Control {
 			log.error("error with exchange", e);
 		}
 		
-		success = responseEntity != null && responseEntity.getStatusCodeValue() == 200;
+		success = responseEntity != null && responseEntity.getStatusCodeValue() == resposeExpected;
 		
 		if (responseEntity!=null) {
 			result.put("statusCode", responseEntity.getStatusCodeValue());
@@ -119,7 +123,8 @@ public class WebRequest implements Control {
 		URL("url"),
 		HEADERS("headers"),
 		BODY("body"),
-		METHOD("method");
+		METHOD("method"),
+		RESPONSE_CODE_EXPECTED("response_code_expected");
 
 		private String value;
 		

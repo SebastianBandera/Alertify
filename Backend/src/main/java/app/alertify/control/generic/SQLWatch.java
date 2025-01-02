@@ -104,7 +104,6 @@ public class SQLWatch implements Control {
 		return Pair.of(result, ControlResultStatus.parse(success));
 	}
 	
-	//Ver en herramientas ETL SDP si ya está esto hecho
 	private Map<String, Object> compare(List<Map<String, Object>> backupData, List<Map<String, Object>> newData, Object[] keysSQL) throws Exception {
 		log.info("Comparing data... " + backupData.size() + "x" + newData.size());
 		

@@ -14,6 +14,10 @@ import app.alertify.control.ControlResultStatus;
 import app.alertify.control.common.InferTypeForSQL;
 import app.alertify.control.common.ObjectsUtils;
 
+/**
+ * Ejecuta una SQL sobre una base de datos y envia una alerta si se cumple una condición simple:
+ * warn_if_bigger, warn_if_lower, warn_if_equal, warn_if_distinct
+ */
 public class SQLThreshold implements Control {
 
 	private InferTypeForSQL inferTypeForSQL = new InferTypeForSQL();
