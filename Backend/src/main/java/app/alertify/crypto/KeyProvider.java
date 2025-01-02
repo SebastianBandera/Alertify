@@ -18,10 +18,6 @@ public class KeyProvider {
 	@Autowired
 	private ConfigRepositoryGlobal config;
 	
-	public KeyProvider() {
-		int debug = -1;
-	}
-	
 	public String getAESKey() {
 		String keyPartDatabase = config.getString(KEY_PART_DATABASE_KEY);
 		
