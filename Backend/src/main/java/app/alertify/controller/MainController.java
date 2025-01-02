@@ -28,7 +28,6 @@ public class MainController {
 
     private static final Logger log = LoggerFactory.getLogger(MainController.class);
     
-	@Autowired
 	private Alert alert;
 	
 	private DataSourceProperties dataSourceProperties;
