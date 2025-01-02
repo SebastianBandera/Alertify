@@ -5,6 +5,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.util.Pair;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
@@ -24,10 +26,11 @@ import app.alertify.entity.Alert;
 @RestController
 public class MainController {
 
+    private static final Logger log = LoggerFactory.getLogger(MainController.class);
+    
 	@Autowired
 	private Alert alert;
 	
-	@Autowired
 	private DataSourceProperties dataSourceProperties;
 	
 	@GetMapping("/")
@@ -45,7 +48,7 @@ public class MainController {
 		try {
 			result = restTemplate.getForObject(GET_URL, String.class, params);;
 		} catch (RestClientException e) {
-			e.printStackTrace();
+			log.error("error with getForObject", e);
 		}
 		  
 	    return "OK GET 1 " + alert.toString() + ": " + alert.getId() + " result:" + result;

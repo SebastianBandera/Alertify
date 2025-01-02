@@ -4,6 +4,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.util.Pair;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -16,7 +18,9 @@ import app.alertify.control.ControlResultStatus;
 import app.alertify.control.common.ObjectsUtils;
 
 public class WebRequest implements Control {
-	
+
+	private static final Logger log = LoggerFactory.getLogger(WebRequest.class);
+    
 	public WebRequest() {
 		
 	}
@@ -49,7 +53,7 @@ public class WebRequest implements Control {
 						String value = data.substring(index+1).trim();
 						httpHeaders.add(name, value);
 					} catch (Exception e) {
-						e.printStackTrace();
+						log.error("error with headers", e);
 					}
 				}
 			}
@@ -58,7 +62,7 @@ public class WebRequest implements Control {
 			
 			responseEntity = rt.exchange(url, httpMethod, entity, String.class);
 		} catch (Exception e) {
-			e.printStackTrace();
+			log.error("error with exchange", e);
 		}
 		
 		success = responseEntity != null && responseEntity.getStatusCodeValue() == 200;

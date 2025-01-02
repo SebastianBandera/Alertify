@@ -64,7 +64,6 @@ public class Alert {
 			try {
 				return new ObjectMapper().readValue(params, HashMap.class);
 			} catch (Exception e) {
-				e.printStackTrace();
 				log.error("error getParametrosMap()", e);
 				return new HashMap<>();
 			}

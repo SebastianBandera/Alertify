@@ -70,7 +70,7 @@ public class WebWatch implements Control {
 						String value = data.substring(index+1).trim();
 						httpHeaders.add(name, value);
 					} catch (Exception e) {
-						e.printStackTrace();
+						log.error("error with headers", e);
 					}
 				}
 			}
@@ -79,7 +79,7 @@ public class WebWatch implements Control {
 			
 			responseEntity = rt.exchange(url, httpMethod, entity, String.class);
 		} catch (Exception e) {
-			e.printStackTrace();
+			log.error("error with exchange", e);
 		}
 		
 		success = responseEntity != null && responseEntity.getStatusCodeValue() == 200;

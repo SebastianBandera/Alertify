@@ -91,7 +91,6 @@ public class SQLWatch implements Control {
 				result.putAll(compareResult);
 			} catch (Exception e) {
 				log.error("Error", e);
-				e.printStackTrace();
 				return Pair.of(result, ControlResultStatus.ERROR);
 			}
 			

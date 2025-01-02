@@ -5,10 +5,14 @@ import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 @Service
 public class SimpleMapper {
+
+	private static final Logger log = LoggerFactory.getLogger(SimpleMapper.class);
 	
 	public SimpleMapper() {
 		
@@ -22,7 +26,7 @@ public class SimpleMapper {
 		try {
 			return tryMap(input, classOutput, typeRelations);
 		} catch (InstantiationException | IllegalAccessException | SecurityException | InvocationTargetException e) {
-			e.printStackTrace();
+			log.error("error with tryMap", e);
 			return null;
 		}
 	}

@@ -185,7 +185,8 @@ public class ThreadControl {
 				ar.setNeeds_review(result.getSecond().equals(ControlResultStatus.WARN) || result.getSecond().equals(ControlResultStatus.ERROR));
 				ar.setResult(new ObjectMapper().writeValueAsString(result.getFirst()));
 			} catch (Exception e) {
-				e.printStackTrace();
+				log.error("error execute control", e);
+				
 				ar.setAlert(taskRequest.getAlert());
 				ar.setDateIni(date_ini);
 				ar.setDateEnd(date_fin);
@@ -197,8 +198,7 @@ public class ThreadControl {
 				try {
 					ar.setResult(new ObjectMapper().writeValueAsString(mapError));
 				} catch (Exception e2) {
-					e.printStackTrace();
-					log.error("error with map to jsonb", e);
+					log.error("error with map to jsonb", e2);
 				}
 			}
 			

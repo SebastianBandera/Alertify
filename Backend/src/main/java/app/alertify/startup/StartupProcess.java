@@ -67,7 +67,6 @@ public class StartupProcess {
 			_init();
 			return true;
 		} catch (Exception e) {
-			e.printStackTrace();
 			log.error("error init()", e);
 		}
     	
@@ -101,7 +100,6 @@ public class StartupProcess {
 		try {
 			control = context.getBean(alert.getControl(), Control.class);
 		} catch (Exception e) {
-			e.printStackTrace();
 			log.warn(StringUtils.concat("control ", controlString, " not found"), e);
 		}
 		
@@ -135,7 +133,6 @@ public class StartupProcess {
 					}
 				}
 			} catch (Exception e) {
-				e.printStackTrace();
 				log.error("error process params", e);
 			}
 		}

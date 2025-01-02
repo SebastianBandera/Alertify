@@ -6,12 +6,16 @@ import java.util.Objects;
 
 import javax.sql.DataSource;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.util.Pair;
 
 import app.alertify.control.Control;
 import app.alertify.control.ControlResultStatus;
 
 public class TestConnection implements Control {
+
+    private static final Logger log = LoggerFactory.getLogger(TestConnection.class);
 	
 	public TestConnection() {
 		
@@ -37,7 +41,7 @@ public class TestConnection implements Control {
 		} catch (Exception e) {
 			success = false;
 			result.put("msg", "Error");
-			e.printStackTrace();
+			log.error("error testing connection", e);
 		}
 		
 		return Pair.of(result, ControlResultStatus.parse(success));
