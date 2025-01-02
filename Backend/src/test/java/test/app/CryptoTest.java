@@ -168,6 +168,47 @@ public class CryptoTest {
 	}
 	
 	@Test
+	void testCrypto2() throws Exception {
+		String msg = RandomGenerator.generarTextoAleatorio(15);
+		String clave = RandomGenerator.generarTextoAleatorio(32);
+		
+		CryptoMessage cm = Crypto.encriptar(msg, clave);
+		
+		assertNotNull(cm);
+		assertNotNull(cm.getMessage());
+		assertNotNull(cm.getIv());
+		assertFalse(cm.getMessage().trim().isEmpty());
+		assertFalse(cm.getIv().trim().isEmpty());
+		
+		String textoEnDB = cm.getIv() + "$" + cm.getMessage();
+		
+		String desencriptado = Crypto.desencriptar(textoEnDB, clave);
+		
+		assertNotNull(desencriptado);
+		assertFalse(desencriptado.trim().isEmpty());
+		
+		assertEquals(msg, desencriptado);
+	}
+	
+	@Test
+	void testCrypto3() throws Exception {
+		String msg = RandomGenerator.generarTextoAleatorio(15);
+		String clave = RandomGenerator.generarTextoAleatorio(32);
+		
+		CryptoMessage cm = Crypto.encriptar(msg, clave);
+		
+		assertNotNull(cm);
+		assertNotNull(cm.getMessage());
+		assertNotNull(cm.getIv());
+		assertFalse(cm.getMessage().trim().isEmpty());
+		assertFalse(cm.getIv().trim().isEmpty());
+		
+		String textoEnDB = cm.getIv();
+		
+		assertThrows(Exception.class, () -> Crypto.desencriptar(textoEnDB, clave), "Se esperaba una excepción por no tener separador $");
+	}
+	
+	@Test
 	void testCryptoNotEqual() throws Exception {
 		String msg = RandomGenerator.generarTextoAleatorio(15);
 		String clave = RandomGenerator.generarTextoAleatorio(32);
@@ -231,5 +272,37 @@ public class CryptoTest {
 
 		assertEquals(cm1, cm5);
 		assertEquals(cm1, cm1);
+	}
+	
+	@Test
+	void testEmpaquetarIV() throws Exception {
+		String texto = "abc";
+		String iv = "1234567890123456";
+		
+		String empaquetado = Crypto.empaquetarIV(texto, iv);
+
+		assertNotNull(empaquetado);
+		
+		CryptoMessage cm = Crypto.desempaquetarIV(empaquetado);
+
+		assertEquals(cm.getMessage(), texto);
+		assertEquals(cm.getIv(), iv);
+	}
+	
+	@Test
+	void testEmpaquetarIVFail() throws Exception {
+		String texto = "abc";
+		String iv1 = "1234567890";
+		String iv2 = "123456789098574984679456655";
+
+		assertThrows(Exception.class, () -> Crypto.empaquetarIV(texto, iv1), "Se esperaba una excepción al utilizar un iv de tamaño incorrecto.");
+		assertThrows(Exception.class, () -> Crypto.empaquetarIV(texto, iv2), "Se esperaba una excepción al utilizar un iv de tamaño incorrecto.");
+	}
+	
+	@Test
+	void testDesempaquetarIVFail() throws Exception {
+		String texto = "abc";
+
+		assertThrows(Exception.class, () -> Crypto.desempaquetarIV(texto), "Se esperaba una excepción al utilizar un texto de tamaño incorrecto.");
 	}
 }
