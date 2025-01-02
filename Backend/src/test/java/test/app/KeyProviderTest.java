@@ -30,8 +30,8 @@ class KeyProviderTest {
     @BeforeEach
     void setUp() throws NoSuchFieldException, SecurityException, IllegalArgumentException, IllegalAccessException {
         MockitoAnnotations.openMocks(this);
-
-        ReflectionTestUtils.setField(keyProvider, "KEY_PART_ENVIRONMENT", "EnvPart");
+        
+        ReflectionTestUtils.setField(keyProvider, "KEY_PART_ENVIRONMENT", "EnvPart", String.class);
         
     	KeyProvider instance = new KeyProvider();
     	Field field = KeyProvider.class.getDeclaredField("KEY_PART_CODE");
