@@ -1,40 +1,34 @@
 package app.alertify.databases;
 
-import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.LinkedList;
 import java.util.List;
-import java.util.Map;
+import java.util.Objects;
 
 public class DataSourceProperties {
 
     private List<DataSourceConfig> datasources;
+    
+    public DataSourceProperties() {
+    	datasources = new LinkedList<DataSourceProperties.DataSourceConfig>();
+    }
 
-    public List<DataSourceConfig> getDatasources() {
+	public List<DataSourceConfig> getDatasources() {
         return datasources;
     }
-    
-    public void setConfig(Map<String, DataSourceBase> config) {
-    	List<DataSourceConfig> result = new ArrayList<>();
-    	
-		if (config != null) {
-			config.forEach((key, dsb) -> result.add(dsb.getDatasource()));
-		}
-		
-		datasources = result;
-	}
 	
-    public static class DataSourceBase {
-        private DataSourceConfig datasource;
-
-		public DataSourceConfig getDatasource() {
-			return datasource;
+	public void removeByName(String name) {
+		Iterator<DataSourceConfig> iter = datasources.iterator();
+		while(iter.hasNext()) {
+			DataSourceConfig data = iter.next();
+			
+			if (data != null && data.getName() != null && data.getName().equals(name)) {
+				iter.remove();
+			}
 		}
+	}
 
-		public void setDatasource(DataSourceConfig datasource) {
-			this.datasource = datasource;
-		}
-    }
-
-    public static class DataSourceConfig {
+	public static class DataSourceConfig {
         private String name;
         private Boolean readonly;
         private String url;
@@ -77,7 +71,27 @@ public class DataSourceProperties {
 		public void setDriverClassName(String driverClassName) {
 			this.driverClassName = driverClassName;
 		}
-        
-        
+		
+		@Override
+		public int hashCode() {
+			return Objects.hash(driverClassName, name, password, readonly, url, username);
+		}
+		@Override
+		public boolean equals(Object obj) {
+			if (this == obj)
+				return true;
+			if (obj == null)
+				return false;
+			if (getClass() != obj.getClass())
+				return false;
+			DataSourceConfig other = (DataSourceConfig) obj;
+			return Objects.equals(driverClassName, other.driverClassName) && Objects.equals(name, other.name)
+					&& Objects.equals(password, other.password) && Objects.equals(readonly, other.readonly)
+					&& Objects.equals(url, other.url) && Objects.equals(username, other.username);
+		}
+		@Override
+		public String toString() {
+			return "DataSourceConfig [name=" + name + ", readonly=" + readonly + ", url=" + url + ", driverClassName=" + driverClassName + "]";
+		}
     }
 }
