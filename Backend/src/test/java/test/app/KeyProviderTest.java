@@ -48,7 +48,7 @@ class KeyProviderTest {
 
         String aesKey = keyProvider.getAESKey();
 
-        String expectedKey = key + "EnvPart" + "DatabasePart";
+        String expectedKey = "DatabasePart" + key + "EnvPart";
         assertEquals(expectedKey, aesKey, "La clave AES generada no es la esperada");
     }
 }
