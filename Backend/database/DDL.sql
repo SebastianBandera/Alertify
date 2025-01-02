@@ -74,3 +74,23 @@ CREATE TABLE conn.dbsources (
 
 CREATE SCHEMA config;
 
+CREATE TABLE config.config_int (
+	"name" varchar(100) NOT NULL,
+	config_int int4 NULL,
+	CONSTRAINT config_int_unique UNIQUE (name)
+);
+
+CREATE TABLE config.config_timestamp (
+	"name" varchar(100) NOT NULL,
+	config_timestamp timestamp without time zone NULL,
+	CONSTRAINT config_timestamp_unique UNIQUE (name)
+);
+
+CREATE TABLE config.config_text (
+	"name" varchar(100) NOT NULL,
+	config_text text NULL,
+	CONSTRAINT config_text_unique UNIQUE (name)
+);
+
+INSERT INTO config.config_text ("name", config_text) VALUES('KEY_PART', 'AS/HG9f8dgyh(FDJDFBGI6HFD');
+
