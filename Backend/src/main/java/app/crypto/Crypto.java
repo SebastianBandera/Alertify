@@ -35,15 +35,10 @@ public class Crypto {
 	}
 	
 	public static String desencriptar(String textoConIv, String claveTexto) throws Exception {
-		String[] temp = textoConIv.split("\\$");
+		CryptoMessage desempaquetadoIV = desempaquetarIV(textoConIv);
 		
-		String iv = temp[0];
-		String texto;
-		if (temp.length > 1) {
-			texto = temp[1];
-		} else {
-			throw new Exception("Input sin $, no esperado");
-		}
+		String iv = desempaquetadoIV.getIv();
+		String texto = desempaquetadoIV.getMessage();
 		
 		return desencriptar(texto, claveTexto, iv);
 	}
