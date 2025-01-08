@@ -17,8 +17,6 @@ import javax.persistence.TemporalType;
 import org.hibernate.annotations.Type;
 import org.hibernate.annotations.TypeDef;
 import org.hibernate.annotations.TypeDefs;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import io.hypersistence.utils.hibernate.type.json.JsonBinaryType;
 
@@ -28,8 +26,6 @@ import io.hypersistence.utils.hibernate.type.json.JsonBinaryType;
     @TypeDef(name = "jsonb", typeClass = JsonBinaryType.class)
 })
 public class AlertResult {
-	
-	private static final Logger log = LoggerFactory.getLogger(AlertResult.class);
 
 	  @Id
 	  @GeneratedValue(strategy=GenerationType.IDENTITY)
