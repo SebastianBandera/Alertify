@@ -67,7 +67,7 @@ public class AlertsController {
 	@GetMapping("/alerts")
 	public ResponseEntity<Page<AlertDto>> all(@RequestParam(defaultValue = "0") int page) {
 		if (page < 0) return ResponseEntity.badRequest().build();
-		return ResponseEntity.ok(alertRepository.findAll(PageRequest.of(page, pageSize, Sort.by(Sort.Order.desc("id")))).map(in -> simpleMapper.map(in, AlertDto.class)));
+		return ResponseEntity.ok(alertRepository.findByActiveTrue(PageRequest.of(page, pageSize, Sort.by(Sort.Order.desc("id")))).map(in -> simpleMapper.map(in, AlertDto.class)));
 	}
 	
 	@GetMapping("/alerts/summary/v1")
@@ -78,7 +78,7 @@ public class AlertsController {
 	@GetMapping("/alerts/groups")
 	public ResponseEntity<Page<GUIAlertGroupDto>> allGroups(@RequestParam(defaultValue = "0") int page) {
 		if (page < 0) return ResponseEntity.badRequest().build();
-		return ResponseEntity.ok(guiAlertGroupRepository.findAll(PageRequest.of(page, pageSize, Sort.by(Sort.Order.desc("id")))).map(in -> simpleMapper.map(in, GUIAlertGroupDto.class, mapperConfig.getMapping())));
+		return ResponseEntity.ok(guiAlertGroupRepository.findByActiveTrue(PageRequest.of(page, pageSize, Sort.by(Sort.Order.desc("id")))).map(in -> simpleMapper.map(in, GUIAlertGroupDto.class, mapperConfig.getMapping())));
 	}
 
 	@GetMapping("/alerts/results")
