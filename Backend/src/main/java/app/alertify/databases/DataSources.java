@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+import com.zaxxer.hikari.pool.HikariPool.PoolInitializationException;
 
 import app.alertify.crypto.Crypto;
 import app.alertify.crypto.CryptoMessage;
@@ -184,16 +185,13 @@ public class DataSources {
 		} catch (Exception e) {
 			log.error("Error al desencriptar la contraseña", e);
 		}
-				
-		HikariDataSource dataSource = new HikariDataSource(hikariConfig);
 		
-        try {
-        	if(!dataSource.getConnection().isValid(2)) {
-        		throw new RuntimeException(config.getName() + " no valid connection!");
-            }
-		} catch (Exception e) {
-			log.error("Error", e);
-			throw new RuntimeException(config.getName() + " error with connection!");
+		HikariDataSource dataSource = null;
+		
+		try {
+			dataSource = new HikariDataSource(hikariConfig);
+		} catch (PoolInitializationException e) {
+			dataSource = new RecoverableHikiariDataSource(config.getName(), () -> new HikariDataSource(hikariConfig));
 		}
         
         return new CloseableDataSource(dataSource);
