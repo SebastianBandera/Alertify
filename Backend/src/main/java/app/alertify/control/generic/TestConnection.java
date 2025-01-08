@@ -28,17 +28,17 @@ public class TestConnection implements Control {
 	public Pair<Map<String, Object>, ControlResultStatus> execute(Map<String, Object> params) {
 		Objects.requireNonNull(params, "needs args to execute");
 		DataSource dataSource = (DataSource)params.get(Params.DATA_SOURCE.getValue());
-		Integer timeout = (Integer)params.get(Params.TIMEOUT_SECONDS.getValue());
+		Objects.requireNonNull(dataSource, "needs a datasource");
 		
 		Map<String, Object> result = new HashMap<>();
 		boolean success = false;
 		
 		try {
-			if (dataSource.getConnection().isValid(timeout)) {
+			if (dataSource.getConnection().isValid(5)) {
 				success = true;
 			} else {
 				success = false;
-				result.put("msg", "Test connection failed (" + timeout + " seconds)");
+				result.put("msg", "Test connection failed");
 			}
 		} catch (Exception e) {
 			success = false;
@@ -50,8 +50,7 @@ public class TestConnection implements Control {
 	}
 	
 	public enum Params {
-		DATA_SOURCE("data_source"),
-		TIMEOUT_SECONDS("timeout_seconds");
+		DATA_SOURCE("data_source");
 
 		private String value;
 		
