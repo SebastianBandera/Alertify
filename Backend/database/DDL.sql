@@ -29,10 +29,16 @@ CREATE TABLE alert.alerts_result (
 	params jsonb NULL,
 	result jsonb NULL,
 	needs_review bool not null,
+	active bool NOT NULL,
 	CONSTRAINT record_alert_pk PRIMARY KEY (id),
 	CONSTRAINT record_alert_alerts_fk FOREIGN KEY (id_alert) REFERENCES alert.alerts(id),
 	CONSTRAINT record_alert_cod_status_fk FOREIGN KEY (status_result) REFERENCES alert.cod_status(id)
 );
+
+CREATE INDEX alerts_result_id_alert_idx ON alert.alerts_result (id_alert);
+CREATE INDEX alerts_result_date_ini_idx ON alert.alerts_result (date_ini);
+CREATE INDEX alerts_result_date_end_idx ON alert.alerts_result (date_end);
+
 
 
 
