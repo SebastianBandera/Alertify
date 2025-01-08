@@ -168,6 +168,7 @@ public class ThreadControl {
 		@Override
 		public void run() {
 			AlertResult ar = new AlertResult();
+			ar.setActive(true);
 			Date date_ini = null;
 			Date date_fin = null;
 			try {
