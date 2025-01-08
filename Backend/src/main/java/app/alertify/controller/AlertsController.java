@@ -52,10 +52,7 @@ public class AlertsController {
 	@SuppressWarnings("unused")
 	@Autowired
 	private ThreadControl threadControl;
-	
-	@Autowired
-	private StartupProcess startupProcess;
-	
+
 	@Autowired
 	private SimpleMapper simpleMapper;
 	
@@ -64,11 +61,7 @@ public class AlertsController {
 	
 	@PostMapping("alerts/reload")
 	public ResponseEntity<String> reload() {
-		List<Alert> dbAlerts = alertRepository.findAll();
-		
-		dbAlerts.forEach(startupProcess::registerAlert);
-		
-		return ResponseEntity.ok(StringUtils.concat(String.valueOf(dbAlerts.size()), " alerts processed"));
+		return ResponseEntity.ok(alertService.reload());
 	}
 
 	@GetMapping("/alerts")
@@ -91,7 +84,7 @@ public class AlertsController {
 	@GetMapping("/alerts/results")
 	public ResponseEntity<Page<AlertResultDto>> allResults(@RequestParam(defaultValue = "0") int page) {
 		if (page < 0) return ResponseEntity.badRequest().build();
-		return ResponseEntity.ok(alertResultsRepository.findAll(PageRequest.of(page, pageSize, Sort.by(Sort.Order.desc("id")))).map(in -> simpleMapper.map(in, AlertResultDto.class, mapperConfig.getMapping())));
+		return ResponseEntity.ok(alertResultsRepository.findByActiveTrue(PageRequest.of(page, pageSize, Sort.by(Sort.Order.desc("id")))).map(in -> simpleMapper.map(in, AlertResultDto.class, mapperConfig.getMapping())));
 	}
 	
 	@PostMapping("/alerts/results/{id}/resolve")
