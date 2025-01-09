@@ -8,7 +8,7 @@ public class GUIAlertGroupDto {
 
 	  private String name;
 	  
-	  private AlertDto idAlert;
+	  private AlertDto alert;
 
 	public Long getId() {
 		return id;
@@ -25,13 +25,13 @@ public class GUIAlertGroupDto {
 	public void setName(String name) {
 		this.name = name;
 	}
-
-	public AlertDto getIdAlert() {
-		return idAlert;
+	
+	public AlertDto getAlert() {
+		return alert;
 	}
 
-	public void setIdAlert(AlertDto idAlert) {
-		this.idAlert = idAlert;
+	public void setAlert(AlertDto alert) {
+		this.alert = alert;
 	}
 
 	@Override
@@ -53,6 +53,6 @@ public class GUIAlertGroupDto {
 
 	@Override
 	public String toString() {
-		return "GUIAlertGroupDto [id=" + id + ", name=" + name + ", idAlert=" + idAlert + "]";
+		return "GUIAlertGroupDto [id=" + id + ", name=" + name + ", idAlert=" + alert + "]";
 	}
 }

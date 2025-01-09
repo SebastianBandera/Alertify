@@ -1,6 +1,5 @@
 package app.alertify.controller;
 
-import java.util.List;
 import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,21 +14,18 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import app.alertify.control.common.StringUtils;
 import app.alertify.controller.dto.AlertDto;
 import app.alertify.controller.dto.AlertResultDto;
 import app.alertify.controller.dto.GUIAlertGroupDto;
 import app.alertify.controller.dto.MapperConfig;
 import app.alertify.controller.dto.SimpleMapper;
 import app.alertify.controller.dto.summary.v1.CheckGroups;
-import app.alertify.entity.Alert;
 import app.alertify.entity.AlertResult;
 import app.alertify.entity.repositories.AlertRepository;
 import app.alertify.entity.repositories.AlertResultRepository;
 import app.alertify.entity.repositories.GUIAlertGroupRepository;
 import app.alertify.service.AlertService;
 import app.alertify.service.ThreadControl;
-import app.alertify.startup.StartupProcess;
 
 @RestController
 public class AlertsController {
@@ -79,6 +75,12 @@ public class AlertsController {
 	public ResponseEntity<Page<GUIAlertGroupDto>> allGroups(@RequestParam(defaultValue = "0") int page) {
 		if (page < 0) return ResponseEntity.badRequest().build();
 		return ResponseEntity.ok(guiAlertGroupRepository.findByActiveTrue(PageRequest.of(page, pageSize, Sort.by(Sort.Order.desc("id")))).map(in -> simpleMapper.map(in, GUIAlertGroupDto.class, mapperConfig.getMapping())));
+	}
+
+	@GetMapping("/alerts/nogroups")
+	public ResponseEntity<Page<AlertDto>> noGroups(@RequestParam(defaultValue = "0") int page) {
+		if (page < 0) return ResponseEntity.badRequest().build();
+		return ResponseEntity.ok(alertRepository.findAlertsNotInAnyGroup(PageRequest.of(page, pageSize, Sort.by(Sort.Order.desc("id")))).map(in -> simpleMapper.map(in, AlertDto.class, mapperConfig.getMapping())));
 	}
 
 	@GetMapping("/alerts/results")

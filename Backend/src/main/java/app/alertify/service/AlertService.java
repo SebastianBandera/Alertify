@@ -55,7 +55,7 @@ public class AlertService {
 	public CheckGroups summaryV1() {
 		List<CheckGroup> checkGroupsList = new LinkedList<>();
 		
-		List<GUIAlertGroup> groups = guiAlertGroupRepository.findByActiveTrueEager();
+		List<GUIAlertGroup> groups = guiAlertGroupRepository.findByActiveTrue(PageRequest.of(0, 1000000, Sort.by(Sort.Order.desc("id")))).getContent();
 		
 		//N+1 ??
 		groups.forEach(alertGroupGUI -> {
