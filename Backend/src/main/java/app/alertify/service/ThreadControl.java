@@ -24,6 +24,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.util.Pair;
 import org.springframework.stereotype.Service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import app.alertify.control.Control;
@@ -185,7 +186,7 @@ public class ThreadControl {
 				ar.setStatusResult(codStatusService.getCodStatus(result.getSecond()));
 				ar.setNeeds_review(result.getSecond().equals(ControlResultStatus.WARN) || result.getSecond().equals(ControlResultStatus.ERROR));
 				ar.setResult(new ObjectMapper().writeValueAsString(result.getFirst()));
-			} catch (Exception e) {
+			} catch (RuntimeException | JsonProcessingException e) {
 				log.error("error execute control", e);
 				
 				ar.setAlert(taskRequest.getAlert());
