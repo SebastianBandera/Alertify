@@ -7,7 +7,7 @@ public class AlertResultDto {
 
 	  private Long id;
 	  
-	  private AlertDto idAlert;
+	  private AlertDto alert;
 
 	  private Date dateIni;
 	  
@@ -26,13 +26,13 @@ public class AlertResultDto {
 	public void setId(Long id) {
 		this.id = id;
 	}
-
-	public AlertDto getIdAlert() {
-		return idAlert;
+	
+	public AlertDto getAlert() {
+		return alert;
 	}
 
-	public void setIdAlert(AlertDto idAlert) {
-		this.idAlert = idAlert;
+	public void setAlert(AlertDto alert) {
+		this.alert = alert;
 	}
 
 	public Date getDateIni() {
@@ -94,7 +94,7 @@ public class AlertResultDto {
 
 	@Override
 	public String toString() {
-		return "AlertResultDto [id=" + id + ", idAlert=" + idAlert + ", dateIni=" + dateIni + ", dateEnd=" + dateEnd
+		return "AlertResultDto [id=" + id + ", alert=" + alert + ", dateIni=" + dateIni + ", dateEnd=" + dateEnd
 				+ ", statusResult=" + statusResult + ", result=" + result + ", needsReview=" + needsReview + "]";
 	}
 	  
