@@ -3,7 +3,6 @@ package app.alertify.controller;
 import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -29,9 +28,6 @@ import app.alertify.service.ThreadControl;
 
 @RestController
 public class AlertsController {
-	
-	@Value("${pageSize:#{10}}")
-	private int pageSize;
 
 	@Autowired
 	private AlertRepository alertRepository;
@@ -63,7 +59,7 @@ public class AlertsController {
 	@GetMapping("/alerts")
 	public ResponseEntity<Page<AlertDto>> all(@RequestParam(defaultValue = "0") int page) {
 		if (page < 0) return ResponseEntity.badRequest().build();
-		return ResponseEntity.ok(alertRepository.findByActiveTrue(PageRequest.of(page, pageSize, Sort.by(Sort.Order.desc("id")))).map(in -> simpleMapper.map(in, AlertDto.class)));
+		return ResponseEntity.ok(alertRepository.findByActiveTrue(PageRequest.of(page, alertService.getPageSize(), Sort.by(Sort.Order.desc("id")))).map(in -> simpleMapper.map(in, AlertDto.class)));
 	}
 	
 	@GetMapping("/alerts/summary/v1")
@@ -74,19 +70,19 @@ public class AlertsController {
 	@GetMapping("/alerts/groups")
 	public ResponseEntity<Page<GUIAlertGroupDto>> allGroups(@RequestParam(defaultValue = "0") int page) {
 		if (page < 0) return ResponseEntity.badRequest().build();
-		return ResponseEntity.ok(guiAlertGroupRepository.findByActiveTrue(PageRequest.of(page, pageSize, Sort.by(Sort.Order.desc("id")))).map(in -> simpleMapper.map(in, GUIAlertGroupDto.class, mapperConfig.getMapping())));
+		return ResponseEntity.ok(guiAlertGroupRepository.findByActiveTrue(PageRequest.of(page, alertService.getPageSize(), Sort.by(Sort.Order.desc("id")))).map(in -> simpleMapper.map(in, GUIAlertGroupDto.class, mapperConfig.getMapping())));
 	}
 
 	@GetMapping("/alerts/nogroups")
 	public ResponseEntity<Page<AlertDto>> noGroups(@RequestParam(defaultValue = "0") int page) {
 		if (page < 0) return ResponseEntity.badRequest().build();
-		return ResponseEntity.ok(alertRepository.findAlertsNotInAnyGroup(PageRequest.of(page, pageSize, Sort.by(Sort.Order.desc("id")))).map(in -> simpleMapper.map(in, AlertDto.class, mapperConfig.getMapping())));
+		return ResponseEntity.ok(alertRepository.findAlertsNotInAnyGroup(PageRequest.of(page, alertService.getPageSize(), Sort.by(Sort.Order.desc("id")))).map(in -> simpleMapper.map(in, AlertDto.class, mapperConfig.getMapping())));
 	}
 
 	@GetMapping("/alerts/results")
 	public ResponseEntity<Page<AlertResultDto>> allResults(@RequestParam(defaultValue = "0") int page) {
 		if (page < 0) return ResponseEntity.badRequest().build();
-		return ResponseEntity.ok(alertResultsRepository.findByActiveTrue(PageRequest.of(page, pageSize, Sort.by(Sort.Order.desc("id")))).map(in -> simpleMapper.map(in, AlertResultDto.class, mapperConfig.getMapping())));
+		return ResponseEntity.ok(alertResultsRepository.findByActiveTrue(PageRequest.of(page, alertService.getPageSize(), Sort.by(Sort.Order.desc("id")))).map(in -> simpleMapper.map(in, AlertResultDto.class, mapperConfig.getMapping())));
 	}
 	
 	@PostMapping("/alerts/results/{id}/resolve")

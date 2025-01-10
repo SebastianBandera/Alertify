@@ -7,6 +7,7 @@ import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.domain.Sort.Order;
@@ -22,6 +23,7 @@ import app.alertify.entity.AlertResult;
 import app.alertify.entity.GUIAlertGroup;
 import app.alertify.entity.repositories.AlertRepository;
 import app.alertify.entity.repositories.AlertResultRepository;
+import app.alertify.entity.repositories.ConfigRepositoryGlobal;
 import app.alertify.entity.repositories.GUIAlertGroupRepository;
 import app.alertify.startup.StartupProcess;
 
@@ -30,6 +32,9 @@ public class AlertService {
 
     private static final Logger log = LoggerFactory.getLogger(AlertService.class);
 	
+	@Autowired
+	private ConfigRepositoryGlobal configRepositoryGlobal;
+    
 	@Autowired
 	private AlertResultRepository alertResultsRepository;
 
@@ -95,6 +100,18 @@ public class AlertService {
 		checkGroups.setCheckGroups(checkGroupsList);
 		
 		return checkGroups;
+	}
+
+	@Cacheable(value = "pageSizeCache", key = "'PAGE_SIZE'")
+	public int getPageSize() {
+		Integer pageSize = configRepositoryGlobal.getInt("PAGE_SIZE");
+		 
+		if(pageSize == null) {
+			log.error("PAGE_SIZE integer parameter is missing!");
+			pageSize = 1;
+		}
+		
+		return pageSize;
 	}
 	
 	
