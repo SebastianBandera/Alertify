@@ -43,8 +43,10 @@ public class SimpleMapper {
 		for (int i = 0; i < methods.length; i++) {
 			Method mtd = methods[i];
 			String mtdName = mtd.getName();
-			String mtdNameSuffix = mtdName.length() > 3 ? mtdName.substring(3) : mtdName;
-			if (mtdName.startsWith("get")) {
+			if (mtdName.startsWith("get") || mtdName.startsWith("is")) {
+				int prefixLen = mtdName.startsWith("get") ? 3 : 2;
+				String mtdNameSuffix = mtdName.length() > prefixLen ? mtdName.substring(prefixLen) : mtdName;
+				
 				try {
 					Method setter = findSet(methods, mtdNameSuffix);
 					if (setter == null) {
@@ -75,7 +77,7 @@ public class SimpleMapper {
 		Method mtdresult = null;
 		
 		for (Method mtd : methods) {
-			if (mtd.getName().equals("set" + mtdNameSuffix)) {
+			if (mtd.getName().equals("set" + mtdNameSuffix) || mtd.getName().equals("is" + mtdNameSuffix)) {
 				mtdresult = mtd;
 				break;
 			}
