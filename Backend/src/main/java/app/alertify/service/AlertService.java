@@ -64,7 +64,7 @@ public class AlertService {
 		
 		//N+1 ??
 		groups.forEach(alertGroupGUI -> {
-			List<AlertResult> alertResultsReview = alertResultsRepository.getAlertsResultByAlert(alertGroupGUI.getAlert(), true, PageRequest.of(0, Integer.MAX_VALUE).withSort(Sort.by(Order.desc("dateEnd"))));
+			List<AlertResult> alertResultsReview = alertResultsRepository.getAlertsResultByAlert(alertGroupGUI.getAlert(), true, PageRequest.of(0, Integer.MAX_VALUE).withSort(Sort.by(Order.desc("dateEnd")))).getContent();
 			Date lastSuccess = alertResultsRepository.getAlertsResultByAlert(alertGroupGUI.getAlert(), false, PageRequest.of(0, 1).withSort(Sort.by(Order.desc("dateEnd")))).stream().map(item -> item.getDateEnd()).findFirst().orElse(null);
 			
 			List<Check> checks = new LinkedList<>();

@@ -56,7 +56,7 @@ public class AlertResult {
 	  private String result;
 
 	  @Column(name="needsReview", nullable = false)
-	  private boolean needs_review;
+	  private boolean needsReview;
 	  
 	  @Column(name="active")
 	  private boolean active;
@@ -117,12 +117,12 @@ public class AlertResult {
 		this.result = result;
 	}
 
-	public boolean isNeeds_review() {
-		return needs_review;
+	public boolean isNeedsReview() {
+		return needsReview;
 	}
 
-	public void setNeeds_review(boolean needs_review) {
-		this.needs_review = needs_review;
+	public void setNeedsReview(boolean needsReview) {
+		this.needsReview = needsReview;
 	}
 
 	public boolean isActive() {
@@ -135,7 +135,7 @@ public class AlertResult {
 
 	@Override
 	public int hashCode() {
-		return Objects.hash(active, alert, dateEnd, dateIni, id, needs_review, params, result, statusResult);
+		return Objects.hash(active, alert, dateEnd, dateIni, id, needsReview, params, result, statusResult);
 	}
 
 	@Override
@@ -149,15 +149,15 @@ public class AlertResult {
 		AlertResult other = (AlertResult) obj;
 		return active == other.active && Objects.equals(alert, other.alert) && Objects.equals(dateEnd, other.dateEnd)
 				&& Objects.equals(dateIni, other.dateIni) && Objects.equals(id, other.id)
-				&& needs_review == other.needs_review && Objects.equals(params, other.params)
+				&& needsReview == other.needsReview && Objects.equals(params, other.params)
 				&& Objects.equals(result, other.result) && Objects.equals(statusResult, other.statusResult);
 	}
 
 	@Override
 	public String toString() {
 		return "AlertResult [id=" + id + ", alert=" + alert + ", dateIni=" + dateIni + ", dateEnd=" + dateEnd
-				+ ", statusResult=" + statusResult + ", params=" + params + ", result=" + result + ", needs_review="
-				+ needs_review + ", active=" + active + "]";
+				+ ", statusResult=" + statusResult + ", params=" + params + ", result=" + result + ", needsReview="
+				+ needsReview + ", active=" + active + "]";
 	}
 	  
 	  

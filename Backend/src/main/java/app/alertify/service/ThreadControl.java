@@ -184,7 +184,7 @@ public class ThreadControl {
 				ar.setDateEnd(date_fin);
 				ar.setParams(taskRequest.getAlert().getParams());
 				ar.setStatusResult(codStatusService.getCodStatus(result.getSecond()));
-				ar.setNeeds_review(result.getSecond().equals(ControlResultStatus.WARN) || result.getSecond().equals(ControlResultStatus.ERROR));
+				ar.setNeedsReview(result.getSecond().equals(ControlResultStatus.WARN) || result.getSecond().equals(ControlResultStatus.ERROR));
 				ar.setResult(new ObjectMapper().writeValueAsString(result.getFirst()));
 			} catch (RuntimeException | JsonProcessingException e) {
 				log.error("error execute control", e);
@@ -194,7 +194,7 @@ public class ThreadControl {
 				ar.setDateEnd(date_fin);
 				ar.setParams(taskRequest.getAlert().getParams());
 				ar.setStatusResult(codStatusService.getCodStatus(ControlResultStatus.ERROR));
-				ar.setNeeds_review(true);
+				ar.setNeedsReview(true);
 				Map<String, Object> mapError = new HashMap<>();
 				mapError.put("exception", throwableToString(e));
 				try {

@@ -7,6 +7,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -21,7 +22,7 @@ import app.alertify.controller.dto.SimpleMapper;
 import app.alertify.controller.dto.summary.v1.CheckGroups;
 import app.alertify.entity.AlertResult;
 import app.alertify.entity.repositories.AlertRepository;
-import app.alertify.entity.repositories.AlertResultRepository;
+import app.alertify.entity.repositories.AlertResultRepositoryExtended;
 import app.alertify.entity.repositories.GUIAlertGroupRepository;
 import app.alertify.service.AlertService;
 import app.alertify.service.ThreadControl;
@@ -33,7 +34,7 @@ public class AlertsController {
 	private AlertRepository alertRepository;
 
 	@Autowired
-	private AlertResultRepository alertResultsRepository;
+	private AlertResultRepositoryExtended alertResultRepositoryExtended;
 
 	@Autowired
 	private GUIAlertGroupRepository guiAlertGroupRepository;
@@ -80,20 +81,20 @@ public class AlertsController {
 	}
 
 	@GetMapping("/alerts/results")
-	public ResponseEntity<Page<AlertResultDto>> allResults(@RequestParam(defaultValue = "0") int page) {
+	public ResponseEntity<Page<AlertResultDto>> allResults(@RequestParam(defaultValue = "0") int page, @RequestParam MultiValueMap<String, String> params) {
 		if (page < 0) return ResponseEntity.badRequest().build();
-		return ResponseEntity.ok(alertResultsRepository.findByActiveTrue(PageRequest.of(page, alertService.getPageSize(), Sort.by(Sort.Order.desc("id")))).map(in -> simpleMapper.map(in, AlertResultDto.class, mapperConfig.getMapping())));
+		return ResponseEntity.ok(alertResultRepositoryExtended.customSearch(PageRequest.of(page, alertService.getPageSize(), Sort.by(Sort.Order.desc("id"))), params, AlertResult.class).map(in -> simpleMapper.map(in, AlertResultDto.class, mapperConfig.getMapping())));
 	}
 	
 	@PostMapping("/alerts/results/{id}/resolve")
 	public ResponseEntity<Object> resolveResult(@PathVariable Long id) {
 		if (id == null || id < 0) return ResponseEntity.badRequest().build();
-		Optional<AlertResult> r = alertResultsRepository.findById(id);
+		Optional<AlertResult> r = alertResultRepositoryExtended.findById(id);
 		if (r.isPresent()) {
 			AlertResult alertResult = r.get();
-			if (alertResult.isNeeds_review()) {
-				alertResult.setNeeds_review(false);
-				alertResultsRepository.saveAndFlush(alertResult);
+			if (alertResult.isNeedsReview()) {
+				alertResult.setNeedsReview(false);
+				alertResultRepositoryExtended.saveAndFlush(alertResult);
 			}
 			return ResponseEntity.ok().build();
 		} else {
