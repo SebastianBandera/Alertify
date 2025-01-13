@@ -83,6 +83,7 @@ public class AlertsController {
 	@GetMapping("/alerts/results")
 	public ResponseEntity<Page<AlertResultDto>> allResults(@RequestParam(defaultValue = "0") int page, @RequestParam MultiValueMap<String, String> params) {
 		if (page < 0) return ResponseEntity.badRequest().build();
+		params.remove("page");
 		return ResponseEntity.ok(alertResultRepositoryExtended.customSearch(PageRequest.of(page, alertService.getPageSize(), Sort.by(Sort.Order.desc("id"))), params, AlertResult.class).map(in -> simpleMapper.map(in, AlertResultDto.class, mapperConfig.getMapping())));
 	}
 	

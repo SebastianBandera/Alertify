@@ -16,7 +16,6 @@ public class DynamicSearchAlertResult implements DynamicSearch<AlertResult> {
 	
 	@Override
 	public Page<AlertResult> customSearch(Pageable pageable, MultiValueMap<String, String> params, Class<AlertResult> type) {
-		params.remove("page");
 		return dynamic.customSearch(pageable, params, type);
 	}
 
