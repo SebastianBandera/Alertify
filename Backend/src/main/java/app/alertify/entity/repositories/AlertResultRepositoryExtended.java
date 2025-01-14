@@ -15,8 +15,8 @@ import org.springframework.util.MultiValueMap;
 
 import app.alertify.entity.Alert;
 import app.alertify.entity.AlertResult;
-import app.alertify.entity.repositories.custom.DynamicSearchAlertResult;
 import app.alertify.entity.repositories.custom.DynamicSearchResult;
+import app.alertify.entity.repositories.custom.instances.DynamicSearchAlertResult;
 
 @Repository
 public class AlertResultRepositoryExtended implements AlertResultRepository {
