@@ -16,6 +16,7 @@ import org.springframework.util.MultiValueMap;
 import app.alertify.entity.Alert;
 import app.alertify.entity.AlertResult;
 import app.alertify.entity.repositories.custom.DynamicSearchAlertResult;
+import app.alertify.entity.repositories.custom.DynamicSearchResult;
 
 @Repository
 public class AlertResultRepositoryExtended implements AlertResultRepository {
@@ -161,7 +162,7 @@ public class AlertResultRepositoryExtended implements AlertResultRepository {
 		return alertResultsRepository.findAll(example, sort);
 	}
 
-	public Page<AlertResult> customSearch(Pageable pageable, MultiValueMap<String, String> params, Class<AlertResult> type) {
+	public DynamicSearchResult<AlertResult> customSearch(Pageable pageable, MultiValueMap<String, String> params, Class<AlertResult> type) {
 		return dynamicSearchAlertResult.customSearch(pageable, params, type);
 	}
 }
