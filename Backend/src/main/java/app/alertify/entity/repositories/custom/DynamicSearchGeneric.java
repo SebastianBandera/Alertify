@@ -18,6 +18,7 @@ import javax.management.AttributeNotFoundException;
 import javax.persistence.EntityManager;
 import javax.persistence.PersistenceContext;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Repository;
@@ -35,6 +36,9 @@ public class DynamicSearchGeneric<T> implements DynamicSearch<T> {
 
     @PersistenceContext
     private EntityManager entityManager;
+    
+	@Value("${timezoneSecondsOffset:0}")
+    private long timezoneSecondsOffset;
     
     private final List<CriteriaCondition> OP_LIST;
     
@@ -70,6 +74,7 @@ public class DynamicSearchGeneric<T> implements DynamicSearch<T> {
         List<Exception> errors = new LinkedList<Exception>();
         params.forEach((key, values) -> {
         	if(values == null) return;
+        	
         	Class<?> associatedFieldType = dbFieldsTypes.get(key);
         	if (associatedFieldType == null) {
 				errors.add(new AttributeNotFoundException(key));
@@ -92,92 +97,9 @@ public class DynamicSearchGeneric<T> implements DynamicSearch<T> {
 		                    errors.add(new Exception("no multivalue a boolean"));
 		                }
 					} else if (associatedFieldType.equals(Date.class)) {
-						processGeneric(values, errors, value -> {
-							List<SimpleDateFormat> formatters = Arrays.asList(
-						            new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS"),
-						            new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss"),
-						            new SimpleDateFormat("yyyy-MM-dd'T'HH:mm"),
-						            new SimpleDateFormat("yyyy-MM-dd'T'HH"),
-						            new SimpleDateFormat("yyyy-MM-dd")
-						        );
-							        
-								Date date = null;
-				            	for (SimpleDateFormat formatter : formatters) {
-				                    try {
-				                    	date = formatter.parse(value);
-				                        break;
-				                    } catch (ParseException ignored) {}
-				                }
-				            	
-				            	if (date==null) {
-				                    errors.add(new ParseException("Unparseable date: " + value, 0));
-				                }
-				            	
-				            	return date;
-							}, cb, root, predicates, key);
-						
-						
-						/*List<DynamicSearchCriteria<Date>> valuesParsed = parseGeneric(values, errors, value -> {
-							List<SimpleDateFormat> formatters = Arrays.asList(
-					            new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS"),
-					            new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss"),
-					            new SimpleDateFormat("yyyy-MM-dd'T'HH:mm"),
-					            new SimpleDateFormat("yyyy-MM-dd'T'HH"),
-					            new SimpleDateFormat("yyyy-MM-dd")
-					        );
-						        
-							Date date = null;
-			            	for (SimpleDateFormat formatter : formatters) {
-			                    try {
-			                    	date = formatter.parse(value);
-			                        break;
-			                    } catch (ParseException ignored) {}
-			                }
-			            	
-			            	if (date==null) {
-			                    errors.add(new ParseException("Unparseable date: " + value, 0));
-			                }
-			            	
-			            	return date;
-						});
-						if(!valuesParsed.isEmpty()) {
-				            if (valuesParsed.size() == 1) {
-				                predicates.add(cb.equal(root.get(key), valuesParsed.get(0)));
-				            } else {
-				                predicates.add(root.get(key).in(valuesParsed));
-				            }
-			            }*/
+						processDate(values, errors, cb, root, predicates, key);
 					} else if (associatedFieldType.equals(java.sql.Date.class)) {
-						List<DynamicSearchCriteria<java.sql.Date>> valuesParsed = parseGeneric(values, errors, value -> {
-							List<SimpleDateFormat> formatters = Arrays.asList(
-					            new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS"),
-					            new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss"),
-					            new SimpleDateFormat("yyyy-MM-dd'T'HH:mm"),
-					            new SimpleDateFormat("yyyy-MM-dd'T'HH"),
-					            new SimpleDateFormat("yyyy-MM-dd")
-					        );
-						        
-							java.sql.Date date = null;
-			            	for (SimpleDateFormat formatter : formatters) {
-			                    try {
-			                    	date = new java.sql.Date(formatter.parse(value).getTime());
-			                        break;
-			                    } catch (ParseException ignored) {}
-			                }
-			            	
-			            	if (date==null) {
-			                    errors.add(new ParseException("Unparseable date: " + value, 0));
-			                }
-			            	
-			            	return date;
-						});
-						if(!valuesParsed.isEmpty()) {
-				            if (valuesParsed.size() == 1) {
-				                predicates.add(cb.equal(root.get(key), valuesParsed.get(0)));
-				            } else {
-				                predicates.add(root.get(key).in(valuesParsed));
-				            }
-			            }
+						processSqlDate(values, errors, cb, root, predicates, key);
 					} else {
 					    throw new Exception("Type not recognized.");
 					}
@@ -212,8 +134,6 @@ public class DynamicSearchGeneric<T> implements DynamicSearch<T> {
 
         return new DynamicSearchResult<T>(new PageImpl<>(results, pageable, total), errors);
 	}
-	
-
     
 	private <K extends Comparable<K>> void processGeneric(List<String> values, List<Exception> errors, Function<String, K> convert, CriteriaBuilder cb, Root<T> root, List<Predicate> predicates, String key) {
 		List<DynamicSearchCriteria<K>> valuesParsed = parseGeneric(values, errors, convert);
@@ -251,6 +171,62 @@ public class DynamicSearchGeneric<T> implements DynamicSearch<T> {
                 predicates.add(root.get(key).in(valuesParsed.stream().map(item -> item.getValue()).collect(Collectors.toList())));
             }
 		}
+	}
+	
+	private void processDate(List<String> values, List<Exception> errors, CriteriaBuilder cb, Root<T> root, List<Predicate> predicates, String key) {
+		processGeneric(values, errors, value -> {
+			List<SimpleDateFormat> formatters = Arrays.asList(
+		            new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS"),
+		            new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss"),
+		            new SimpleDateFormat("yyyy-MM-dd'T'HH:mm"),
+		            new SimpleDateFormat("yyyy-MM-dd'T'HH"),
+		            new SimpleDateFormat("yyyy-MM-dd")
+		        );
+			        
+				Date date = null;
+            	for (SimpleDateFormat formatter : formatters) {
+                    try {
+						Date searchDate = formatter.parse(value);
+						Date utcDate = new Date(searchDate.getTime() + timezoneSecondsOffset);
+						date = utcDate;
+                        break;
+                    } catch (ParseException ignored) {}
+                }
+            	
+            	if (date==null) {
+                    errors.add(new ParseException("Unparseable date: " + value, 0));
+                }
+            	
+            	return date;
+			}, cb, root, predicates, key);
+	}
+	
+	private void processSqlDate(List<String> values, List<Exception> errors, CriteriaBuilder cb, Root<T> root, List<Predicate> predicates, String key) {
+		processGeneric(values, errors, value -> {
+			List<SimpleDateFormat> formatters = Arrays.asList(
+		            new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS"),
+		            new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss"),
+		            new SimpleDateFormat("yyyy-MM-dd'T'HH:mm"),
+		            new SimpleDateFormat("yyyy-MM-dd'T'HH"),
+		            new SimpleDateFormat("yyyy-MM-dd")
+		        );
+			        
+				java.sql.Date date = null;
+            	for (SimpleDateFormat formatter : formatters) {
+                    try {
+                    	java.sql.Date searchDate = new java.sql.Date(formatter.parse(value).getTime());
+                    	java.sql.Date utcDate = new java.sql.Date(searchDate.getTime() + timezoneSecondsOffset);
+						date = utcDate;
+                        break;
+                    } catch (ParseException ignored) {}
+                }
+            	
+            	if (date==null) {
+                    errors.add(new ParseException("Unparseable date: " + value, 0));
+                }
+            	
+            	return date;
+			}, cb, root, predicates, key);
 	}
 	
 	private void processString(List<String> values, CriteriaBuilder cb, Root<T> root, String key, List<Predicate> predicates) {
