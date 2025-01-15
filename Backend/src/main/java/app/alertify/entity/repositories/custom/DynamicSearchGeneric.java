@@ -12,6 +12,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import javax.management.AttributeNotFoundException;
@@ -42,6 +43,8 @@ public class DynamicSearchGeneric<T> implements DynamicSearch<T> {
     
     private final List<CriteriaCondition> OP_LIST;
     
+    private final Map<Class<T>, Map<String, Class<?>>> dbFieldsTypesCache;
+    
     public DynamicSearchGeneric() {
     	CriteriaCondition equal = new CriteriaCondition("=", Criteria.EQUAL);
     	CriteriaCondition distinct = new CriteriaCondition("!=", Criteria.DISTINCT);
@@ -59,6 +62,20 @@ public class DynamicSearchGeneric<T> implements DynamicSearch<T> {
 			greater,
 			less
 		);
+		
+		this.dbFieldsTypesCache = new HashMap<Class<T>, Map<String,Class<?>>>();
+    }
+    
+    private <Key, Item> Item simpleCacheable(Map<Key, Item> cache, Key key, Supplier<Item> supplier) {
+    	Item item;
+        if(cache.containsKey(key)) {
+        	item = cache.get(key);
+        } else {
+        	item = supplier.get();
+        	cache.put(key, item);
+        }
+        
+        return item;
     }
     
 	@Override
@@ -69,7 +86,8 @@ public class DynamicSearchGeneric<T> implements DynamicSearch<T> {
         
         List<Predicate> predicates = new ArrayList<>();
         
-        Map<String, Class<?>> dbFieldsTypes = getColumnFields(type);
+        //It does not matter if due to concurrency problems it is generated twice unnecessarily, the result to be saved will be the same
+        Map<String, Class<?>> dbFieldsTypes = simpleCacheable(dbFieldsTypesCache, type, () -> getColumnFields(type));
         
         List<Exception> errors = new LinkedList<Exception>();
         params.forEach((key, values) -> {
@@ -126,7 +144,7 @@ public class DynamicSearchGeneric<T> implements DynamicSearch<T> {
                 .setFirstResult((int) pageable.getOffset())
                 .setMaxResults(pageable.getPageSize())
                 .getResultList();
-
+        
         CriteriaQuery<Long> countQuery = cb.createQuery(Long.class);
         countQuery.select(cb.count(countQuery.from(type)));
         countQuery.where(cb.and(predicates.toArray(new Predicate[0])));
