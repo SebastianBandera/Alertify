@@ -1,5 +1,7 @@
 package app.alertify.entity.repositories;
 
+import java.util.Date;
+
 import org.springframework.context.annotation.Primary;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -19,4 +21,7 @@ public interface AlertResultRepository extends JpaRepository<AlertResult, Long> 
 	
     @Query("SELECT ar FROM AlertResult ar WHERE ar.alert = :alert AND ar.active = true and ar.needsReview = :needsReview")
     Page<AlertResult> getAlertsResultByAlert(@Param("alert") Alert alert, @Param("needsReview") boolean needsReview, Pageable pageable);
+    
+    @Query("SELECT MAX(ar.dateIni) FROM AlertResult ar WHERE ar.active = true and ar.alert = :alert")
+    Date findLastDateAlertResultByAlert(@Param("alert") Alert alert);
 }

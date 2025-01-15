@@ -116,15 +116,22 @@ public class ThreadControl {
 			scheduledFutureList.remove(tc);
 		}
 		
-		long delay = taskRequest.getAlert().getPeriodicity().getSeconds();
+		long period = taskRequest.getAlert().getPeriodicity().getSeconds();
 		
 		Task task = new Task();
 		task.setAlertResultRepository(alertResultRepository);
 		task.setCodStatusService(codStatusService);
-		task.setNextExecutionTime(delay);
+		task.setNextExecutionTime(period);
 		task.setTaskRequest(taskRequest);
 		
-		ScheduledFuture<?> scheduledFuture = executorService.scheduleAtFixedRate(task::run, 0, delay, TimeUnit.SECONDS);
+		Date now = new Date();
+		Date lastAlertResult = alertResultRepository.findLastDateAlertResultByAlert(taskRequest.getAlert());
+		lastAlertResult = lastAlertResult == null ? now : lastAlertResult;
+
+		long lastEventInSeconds = Math.abs(lastAlertResult.getTime() - now.getTime()) / 1000;
+		long delay = lastEventInSeconds < period ? period - lastEventInSeconds : 0;
+		
+		ScheduledFuture<?> scheduledFuture = executorService.scheduleAtFixedRate(task::run, delay, period, TimeUnit.SECONDS);
 		
 		TaskContext taskContext = new TaskContext();
 		taskContext.setScheduledFuture(scheduledFuture);

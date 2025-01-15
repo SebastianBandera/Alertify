@@ -1,5 +1,6 @@
 package app.alertify.entity.repositories;
 
+import java.util.Date;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
@@ -164,5 +165,10 @@ public class AlertResultRepositoryExtended implements AlertResultRepository {
 
 	public DynamicSearchResult<AlertResult> customSearch(Pageable pageable, MultiValueMap<String, String> params, Class<AlertResult> type) {
 		return dynamicSearchAlertResult.customSearch(pageable, params, type);
+	}
+
+	@Override
+	public Date findLastDateAlertResultByAlert(Alert alert) {
+		return alertResultsRepository.findLastDateAlertResultByAlert(alert);
 	}
 }
