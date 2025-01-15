@@ -175,13 +175,7 @@ public class DynamicSearchGeneric<T> implements DynamicSearch<T> {
 	
 	private void processDate(List<String> values, List<Exception> errors, CriteriaBuilder cb, Root<T> root, List<Predicate> predicates, String key) {
 		processGeneric(values, errors, value -> {
-			List<SimpleDateFormat> formatters = Arrays.asList(
-		            new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS"),
-		            new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss"),
-		            new SimpleDateFormat("yyyy-MM-dd'T'HH:mm"),
-		            new SimpleDateFormat("yyyy-MM-dd'T'HH"),
-		            new SimpleDateFormat("yyyy-MM-dd")
-		        );
+				List<SimpleDateFormat> formatters = getFormatters();
 			        
 				Date date = null;
             	for (SimpleDateFormat formatter : formatters) {
@@ -203,13 +197,7 @@ public class DynamicSearchGeneric<T> implements DynamicSearch<T> {
 	
 	private void processSqlDate(List<String> values, List<Exception> errors, CriteriaBuilder cb, Root<T> root, List<Predicate> predicates, String key) {
 		processGeneric(values, errors, value -> {
-			List<SimpleDateFormat> formatters = Arrays.asList(
-		            new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS"),
-		            new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss"),
-		            new SimpleDateFormat("yyyy-MM-dd'T'HH:mm"),
-		            new SimpleDateFormat("yyyy-MM-dd'T'HH"),
-		            new SimpleDateFormat("yyyy-MM-dd")
-		        );
+				List<SimpleDateFormat> formatters = getFormatters();
 			        
 				java.sql.Date date = null;
             	for (SimpleDateFormat formatter : formatters) {
@@ -227,6 +215,16 @@ public class DynamicSearchGeneric<T> implements DynamicSearch<T> {
             	
             	return date;
 			}, cb, root, predicates, key);
+	}
+	
+	private List<SimpleDateFormat> getFormatters() {
+		return Arrays.asList(
+	            new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS"),
+	            new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss"),
+	            new SimpleDateFormat("yyyy-MM-dd'T'HH:mm"),
+	            new SimpleDateFormat("yyyy-MM-dd'T'HH"),
+	            new SimpleDateFormat("yyyy-MM-dd")
+	        );
 	}
 	
 	private void processString(List<String> values, CriteriaBuilder cb, Root<T> root, String key, List<Predicate> predicates) {
