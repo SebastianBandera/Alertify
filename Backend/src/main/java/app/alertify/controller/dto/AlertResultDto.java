@@ -3,14 +3,18 @@ package app.alertify.controller.dto;
 import java.util.Date;
 import java.util.Objects;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+
 public class AlertResultDto {
 
 	  private Long id;
 	  
 	  private AlertDto alert;
 
+	  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS")
 	  private Date dateIni;
-	  
+
+	  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS")
 	  private Date dateEnd;
 
 	  private CodStatusDto statusResult;

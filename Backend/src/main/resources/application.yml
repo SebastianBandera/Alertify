@@ -15,7 +15,7 @@ spring:
     properties:
       hibernate:
         jdbc:
-          time_zone: UTC
+          time_zone: ${TIME_ZONE}
         format_sql: false
   cache:
     type: caffeine
