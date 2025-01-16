@@ -101,7 +101,11 @@ public class ThreadControl {
 				active = false;
 			}
 			if(task != null) {
-				processTaskRequest(task);
+				try {
+					processTaskRequest(task);
+				} catch (Exception e) {
+					log.error("ERROR: processTaskRequest with " + (task.getAlert() != null ? task.getAlert().getName() : "null"), e);
+				}
 			}
 		} while (active);
 	}
@@ -126,9 +130,13 @@ public class ThreadControl {
 		
 		Date now = new Date();
 		Date lastAlertResult = alertResultRepository.findLastDateAlertResultByAlert(taskRequest.getAlert());
-		lastAlertResult = lastAlertResult == null ? now : lastAlertResult;
 
-		long lastEventInSeconds = Math.abs(lastAlertResult.getTime() - now.getTime()) / 1000;
+		long lastEventInSeconds;
+		if (lastAlertResult == null) {
+			lastEventInSeconds = Long.MAX_VALUE;
+		} else {
+			lastEventInSeconds = Math.abs(lastAlertResult.getTime() - now.getTime()) / 1000;
+		}
 		long delay = lastEventInSeconds < period ? period - lastEventInSeconds : 0;
 		
 		ScheduledFuture<?> scheduledFuture = executorService.scheduleAtFixedRate(task::run, delay, period, TimeUnit.SECONDS);
