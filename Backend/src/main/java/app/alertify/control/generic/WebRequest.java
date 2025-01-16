@@ -3,6 +3,8 @@ package app.alertify.control.generic;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,6 +38,7 @@ public class WebRequest implements Control {
 		String body   = (String)params.get(Params.BODY.getValue());
 		Object[] headers = ObjectsUtils.tryGet(() -> (Object[])params.get(Params.HEADERS.getValue()), () -> new Object[] {});
 		Integer resposeExpected = (Integer)params.get(Params.RESPONSE_CODE_EXPECTED.getValue());
+		Object[] regex_check = ObjectsUtils.tryGet(() -> (Object[])params.get(Params.REGEX_EXTRA_CHECK.getValue()), () -> new Object[] {});
 		
 		Map<String, Object> result = new HashMap<>();
 		boolean success = false;
@@ -76,6 +79,25 @@ public class WebRequest implements Control {
 		} else {
             result.put("statusCode", -1);
         }
+		
+		if(responseEntity != null && regex_check!=null && regex_check.length > 0) {
+			String bodyStr = responseEntity.getBody();
+			for (int i = 0; i < regex_check.length; i++) {
+				String regex = (String)regex_check[i];
+				
+				Pattern pattern = Pattern.compile(regex, Pattern.DOTALL);
+				Matcher matcher = pattern.matcher(bodyStr);
+				boolean isValid = matcher.find();
+				
+				result.put("regex_result_isvalid", isValid);
+				
+				if(!isValid) {
+					success = false;
+					result.put("regex_result_no_valid_index", i);
+					break;
+				}
+			}
+		}
 		
 		return Pair.of(result, ControlResultStatus.parse(success));
 	}
@@ -124,7 +146,8 @@ public class WebRequest implements Control {
 		HEADERS("headers"),
 		BODY("body"),
 		METHOD("method"),
-		RESPONSE_CODE_EXPECTED("response_code_expected");
+		RESPONSE_CODE_EXPECTED("response_code_expected"),
+		REGEX_EXTRA_CHECK("regex_extra_check");
 
 		private String value;
 		
