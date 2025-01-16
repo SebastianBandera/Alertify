@@ -1,0 +1,23 @@
+@font-face {
+    font-family:geistSansFont;
+    src:url(/_next/static/media/e11418ac562b8ac1.p.woff2) format("woff2");
+    font-display:swap
+  }
+  .__className_deb525 {
+    font-family:geistSansFont,arial
+  }
+  .__variable_deb525 {
+    --font-sans:"geistSansFont",arial
+  }
+  @font-face {
+    font-family:geistMonoFont;
+    src:url(/_next/static/media/66f30814ff6d7cdf.p.woff2) format("woff2");
+    font-display:block
+  }
+  .__className_cd6509 {
+    font-family:geistMonoFont,ui-monospace,SFMono-Regular,Roboto Mono,Menlo,Monaco,Liberation Mono,DejaVu Sans Mono,Courier New,monospace
+  }
+  .__variable_cd6509 {
+    --font-mono:"geistMonoFont",ui-monospace,SFMono-Regular,Roboto Mono,Menlo,Monaco,Liberation Mono,DejaVu Sans Mono,Courier New,monospace
+  }
+  

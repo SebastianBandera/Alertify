@@ -1,0 +1,213 @@
+<button (click)="onButtonClick()">Test</button>
+
+<div class="bg-background !opacity-100 transition-opacity duration-300" style="opacity:0">
+    <div class="!visible transition-opacity duration-150 bg-background text-foreground !opacity-100" id="v0-container" style="visibility:hidden;opacity:0">
+        <div class="container mx-auto p-4" >
+            <div class="mb-8" >
+                <h2 class="text-xl font-semibold mb-2" >{{data[0].name}}</h2>
+                <div class="relative w-full overflow-auto">
+                    <table class="w-full caption-bottom text-sm" >
+                        <thead class="[&amp;_tr]:border-b" >
+                            <tr class="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted">
+                                <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&amp;:has([role=checkbox])]:pr-0 w-[50px]"></th>
+                                <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&amp;:has([role=checkbox])]:pr-0">Event Name</th>
+                                <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&amp;:has([role=checkbox])]:pr-0">Status</th>
+                                <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&amp;:has([role=checkbox])]:pr-0">Last Error</th>
+                            </tr>
+                        </thead>
+                        <tbody class="[&amp;_tr:last-child]:border-0" >
+                            <ng-container *ngFor="let check of test">
+                                <tr class="border-b transition-colors data-[state=selected]:bg-muted cursor-pointer hover:bg-muted/50">
+                                    <td class="p-4 align-middle [&amp;:has([role=checkbox])]:pr-0" >
+                                        <ng-template *ngIf="false"    [ngTemplateOutlet]="boton_down"></ng-template>
+                                        <ng-template *ngIf="false"    [ngTemplateOutlet]="boton_up"></ng-template>
+                                    </td>
+                                    <td class="p-4 align-middle [&amp;:has([role=checkbox])]:pr-0" >{{check.name}}</td>
+                                    <td class="p-4 align-middle [&amp;:has([role=checkbox])]:pr-0" >
+                                        <ng-template *ngIf="check.status === Status.OK"    [ngTemplateOutlet]="status_ok"></ng-template>
+                                        <ng-template *ngIf="check.status === Status.WARN"  [ngTemplateOutlet]="status_warn"></ng-template>
+                                        <ng-template *ngIf="check.status === Status.ERROR" [ngTemplateOutlet]="status_error"></ng-template>
+                                    </td>
+                                    <td class="p-4 align-middle [&amp;:has([role=checkbox])]:pr-0" >{{false}}</td>
+                                </tr>
+                            </ng-container>
+
+                            <tr class="border-b transition-colors data-[state=selected]:bg-muted cursor-pointer hover:bg-muted/50">
+                                <td class="p-4 align-middle [&amp;:has([role=checkbox])]:pr-0" >
+                                    <button
+                                        class="inline-flex items-center justify-center whitespace-nowrap text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-9 rounded-md px-3"><svg
+                                            xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+                                            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                            stroke-linecap="round" stroke-linejoin="round"
+                                            class="lucide lucide-chevron-down h-4 w-4" >
+                                            <path d="m6 9 6 6 6-6"></path>
+                                        </svg></button></td>
+                                <td class="p-4 align-middle [&amp;:has([role=checkbox])]:pr-0" >Credit Card Validation</td>
+                                <td class="p-4 align-middle [&amp;:has([role=checkbox])]:pr-0" >
+                                    <div class="w-fit whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 flex items-center gap-1"
+                                         data-v0-t="badge"><svg xmlns="http://www.w3.org/2000/svg" width="24"
+                                            height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                                            class="lucide lucide-circle-check-big h-4 w-4" >
+                                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                                            <path d="m9 11 3 3L22 4"></path>
+                                        </svg>OK</div>
+                                </td>
+                                <td class="p-4 align-middle [&amp;:has([role=checkbox])]:pr-0" >No errors</td>
+                            </tr>
+                            <tr class="border-b transition-colors data-[state=selected]:bg-muted cursor-pointer hover:bg-muted/50">
+                                <td class="p-4 align-middle [&amp;:has([role=checkbox])]:pr-0" >
+                                    <button
+                                        class="inline-flex items-center justify-center whitespace-nowrap text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-9 rounded-md px-3"
+                                        ><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+                                            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                            stroke-linecap="round" stroke-linejoin="round"
+                                            class="lucide lucide-chevron-up h-4 w-4" >
+                                            <path d="m18 15-6-6-6 6"></path>
+                                        </svg></button></td>
+                                <td class="p-4 align-middle [&amp;:has([role=checkbox])]:pr-0" >Payment Gateway Connection</td>
+                                <td class="p-4 align-middle [&amp;:has([role=checkbox])]:pr-0" >
+                                    <div class="w-fit whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/80 flex items-center gap-1"
+                                         data-v0-t="badge"><svg xmlns="http://www.w3.org/2000/svg" width="24"
+                                            height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                                            class="lucide lucide-circle-alert h-4 w-4" >
+                                            <circle cx="12" cy="12" r="10"></circle>
+                                            <line x1="12" x2="12" y1="8" y2="12"></line>
+                                            <line x1="12" x2="12.01" y1="16" y2="16"></line>
+                                        </svg>ERROR</div>
+                                </td>
+                                <td class="p-4 align-middle [&amp;:has([role=checkbox])]:pr-0" >2 active
+                                    error(s)</td>
+                            </tr>
+                            <tr class="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted"
+                                >
+                                <td class="p-4 align-middle [&amp;:has([role=checkbox])]:pr-0 bg-muted/50" colspan="4"
+                                    >
+                                    <div class="p-4 space-y-4" >
+                                        <div ><strong >Last Success:</strong> 14/6/2023, 06:15:00
+                                        </div>
+                                        <div class="w-full"  data-orientation="vertical">
+                                            <div data-state="open" data-orientation="vertical" class="border-b"
+                                                >
+                                                <h3 data-orientation="vertical" data-state="open" class="flex"><button
+                                                        type="button" aria-controls="radix-:r1:" aria-expanded="true"
+                                                        data-state="open" data-orientation="vertical" id="radix-:r0:"
+                                                        class="flex flex-1 items-center justify-between py-4 font-medium transition-all hover:underline [&amp;[data-state=open]>svg]:rotate-180"
+                                                         data-radix-collection-item="">View Errors (3)<svg
+                                                            xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+                                                            viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                                                            class="lucide lucide-chevron-down h-4 w-4 shrink-0 transition-transform duration-200">
+                                                            <path d="m6 9 6 6 6-6"></path>
+                                                        </svg></button></h3>
+                                                <div data-state="open" id="radix-:r1:" role="region"
+                                                    aria-labelledby="radix-:r0:" data-orientation="vertical"
+                                                    class="overflow-hidden text-sm transition-all data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down"
+                                                    
+                                                    style="--radix-accordion-content-height: var(--radix-collapsible-content-height); --radix-accordion-content-width: var(--radix-collapsible-content-width); --radix-collapsible-content-height: 278px; --radix-collapsible-content-width: 818px;">
+                                                    <div class="pb-4 pt-0">
+                                                        <div class="p-2 bg-muted/30" >
+                                                            <div ><strong >Time:</strong> 15/6/2023,
+                                                                08:45:00</div>
+                                                            <div ><strong >Message:</strong> Timeout
+                                                                connecting to payment gateway</div>
+                                                            <div class="flex items-center gap-2" ><strong
+                                                                    >Status:</strong><button
+                                                                    class="inline-flex items-center justify-center whitespace-nowrap text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-9 rounded-md px-3"
+                                                                    >Mark as Resolved</button></div>
+                                                        </div>
+                                                        <div class="p-2 " >
+                                                            <div ><strong >Time:</strong> 15/6/2023,
+                                                                07:30:00</div>
+                                                            <div ><strong >Message:</strong> Invalid
+                                                                API key</div>
+                                                            <div class="flex items-center gap-2" ><strong
+                                                                    >Status:</strong>
+                                                                <div class="w-fit whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 text-foreground flex items-center gap-1"
+                                                                     data-v0-t="badge"><svg
+                                                                        xmlns="http://www.w3.org/2000/svg" width="24"
+                                                                        height="24" viewBox="0 0 24 24" fill="none"
+                                                                        stroke="currentColor" stroke-width="2"
+                                                                        stroke-linecap="round" stroke-linejoin="round"
+                                                                        class="lucide lucide-circle-check-big h-4 w-4"
+                                                                        >
+                                                                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                                                                        <path d="m9 11 3 3L22 4"></path>
+                                                                    </svg>Resolved</div>
+                                                            </div>
+                                                        </div>
+                                                        <div class="p-2 bg-muted/30" >
+                                                            <div ><strong >Time:</strong> 14/6/2023,
+                                                                11:20:00</div>
+                                                            <div ><strong >Message:</strong> Network
+                                                                connection lost</div>
+                                                            <div class="flex items-center gap-2" ><strong
+                                                                    >Status:</strong><button
+                                                                    class="inline-flex items-center justify-center whitespace-nowrap text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-9 rounded-md px-3"
+                                                                    >Mark as Resolved</button></div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<ng-template #status_ok>
+    <div class="w-fit whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 flex items-center gap-1"
+    data-v0-t="badge"><svg xmlns="http://www.w3.org/2000/svg" width="24"
+    height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+    class="lucide lucide-circle-check-big h-4 w-4" >
+    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+    <path d="m9 11 3 3L22 4"></path>
+    </svg>OK</div>
+</ng-template>
+
+<ng-template #status_warn>
+    WARN
+</ng-template>
+
+<ng-template #status_error>
+    <div style="background-color: red;" class="w-fit whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/80 flex items-center gap-1"
+    data-v0-t="badge"><svg xmlns="http://www.w3.org/2000/svg" width="24"
+    height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+    class="lucide lucide-circle-alert h-4 w-4" >
+    <circle cx="12" cy="12" r="10"></circle>
+    <line x1="12" x2="12" y1="8" y2="12"></line>
+    <line x1="12" x2="12.01" y1="16" y2="16"></line>
+    </svg>ERROR</div>
+</ng-template>
+
+<ng-template #boton_down>
+    <button class="inline-flex items-center justify-center whitespace-nowrap text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-9 rounded-md px-3">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round"
+            class="lucide lucide-chevron-down h-4 w-4" >
+            <path d="m6 9 6 6 6-6"></path>
+        </svg>
+    </button>
+</ng-template>
+
+<ng-template #boton_up>
+    <button class="inline-flex items-center justify-center whitespace-nowrap text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-9 rounded-md px-3">
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+        viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round"
+        class="lucide lucide-chevron-up h-4 w-4" >
+        <path d="m18 15-6-6-6 6"></path>
+    </svg>
+    </button>
+</ng-template>
