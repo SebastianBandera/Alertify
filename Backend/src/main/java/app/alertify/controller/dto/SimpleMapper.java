@@ -77,7 +77,7 @@ public class SimpleMapper {
 		Method mtdresult = null;
 		
 		for (Method mtd : methods) {
-			if (mtd.getName().equals("set" + mtdNameSuffix) || mtd.getName().equals("is" + mtdNameSuffix)) {
+			if (mtd.getName().equals("set" + mtdNameSuffix)) {
 				mtdresult = mtd;
 				break;
 			}
