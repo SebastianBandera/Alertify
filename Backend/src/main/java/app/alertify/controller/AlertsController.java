@@ -24,12 +24,14 @@ import app.alertify.controller.dto.GUIAlertGroupDto;
 import app.alertify.controller.dto.MapperConfig;
 import app.alertify.controller.dto.SimpleMapper;
 import app.alertify.controller.dto.summary.v1.CheckGroups;
+import app.alertify.entity.Alert;
 import app.alertify.entity.AlertResult;
-import app.alertify.entity.repositories.AlertRepository;
-import app.alertify.entity.repositories.AlertResultRepositoryExtended;
-import app.alertify.entity.repositories.GUIAlertGroupRepository;
+import app.alertify.entity.GUIAlertGroup;
 import app.alertify.entity.repositories.custom.DynamicSearchResult;
 import app.alertify.entity.repositories.custom.DynamicSearchResultDto;
+import app.alertify.entity.repositories.extended.AlertRepositoryExtended;
+import app.alertify.entity.repositories.extended.AlertResultRepositoryExtended;
+import app.alertify.entity.repositories.extended.GUIAlertGroupRepositoryExtended;
 import app.alertify.service.AlertService;
 import app.alertify.service.ThreadControl;
 
@@ -37,13 +39,13 @@ import app.alertify.service.ThreadControl;
 public class AlertsController {
 
 	@Autowired
-	private AlertRepository alertRepository;
-
+	private AlertRepositoryExtended alertRepositoryExtended;
+	
 	@Autowired
 	private AlertResultRepositoryExtended alertResultRepositoryExtended;
 
 	@Autowired
-	private GUIAlertGroupRepository guiAlertGroupRepository;
+	private GUIAlertGroupRepositoryExtended guiAlertGroupRepositoryExtended;
 	
 	@Autowired
 	private AlertService alertService;
@@ -64,9 +66,21 @@ public class AlertsController {
 	}
 
 	@GetMapping("/alerts")
-	public ResponseEntity<Page<AlertDto>> all(@RequestParam(defaultValue = "0") int page) {
+	public ResponseEntity<DynamicSearchResultDto<AlertDto>> all(@RequestParam(defaultValue = "0") int page, @RequestParam MultiValueMap<String, String> params) {
 		if (page < 0) return ResponseEntity.badRequest().build();
-		return ResponseEntity.ok(alertRepository.findByActiveTrue(PageRequest.of(page, alertService.getPageSize(), Sort.by(Sort.Order.desc("id")))).map(in -> simpleMapper.map(in, AlertDto.class)));
+		
+		params.remove("page");
+
+		DynamicSearchResult<Alert> results = alertRepositoryExtended.customSearch(PageRequest.of(page, alertService.getPageSize(), Sort.by(Sort.Order.desc("id"))), params, Alert.class);
+		
+		Page<AlertDto> pageResult = results.getPage().map(in -> simpleMapper.map(in, AlertDto.class, mapperConfig.getMapping()));
+		List<String> messages = parseMessages(results.getExceptions());
+		
+		if (results.getExceptions() == null || results.getExceptions().isEmpty()) {
+			return ResponseEntity.ok(new DynamicSearchResultDto<AlertDto>(pageResult, messages));
+		} else {
+			return ResponseEntity.badRequest().body(new DynamicSearchResultDto<AlertDto>(Page.empty(), messages));
+		}
 	}
 	
 	@GetMapping("/alerts/summary/v1")
@@ -75,15 +89,39 @@ public class AlertsController {
 	}
 
 	@GetMapping("/alerts/groups")
-	public ResponseEntity<Page<GUIAlertGroupDto>> allGroups(@RequestParam(defaultValue = "0") int page) {
+	public ResponseEntity<DynamicSearchResultDto<GUIAlertGroupDto>> allGroups(@RequestParam(defaultValue = "0") int page, @RequestParam MultiValueMap<String, String> params) {
 		if (page < 0) return ResponseEntity.badRequest().build();
-		return ResponseEntity.ok(guiAlertGroupRepository.findByActiveTrue(PageRequest.of(page, alertService.getPageSize(), Sort.by(Sort.Order.desc("id")))).map(in -> simpleMapper.map(in, GUIAlertGroupDto.class, mapperConfig.getMapping())));
+		
+		params.remove("page");
+
+		DynamicSearchResult<GUIAlertGroup> results = guiAlertGroupRepositoryExtended.customSearch(PageRequest.of(page, alertService.getPageSize(), Sort.by(Sort.Order.desc("id"))), params, GUIAlertGroup.class);
+		
+		Page<GUIAlertGroupDto> pageResult = results.getPage().map(in -> simpleMapper.map(in, GUIAlertGroupDto.class, mapperConfig.getMapping()));
+		List<String> messages = parseMessages(results.getExceptions());
+		
+		if (results.getExceptions() == null || results.getExceptions().isEmpty()) {
+			return ResponseEntity.ok(new DynamicSearchResultDto<GUIAlertGroupDto>(pageResult, messages));	
+		} else {
+			return ResponseEntity.badRequest().body(new DynamicSearchResultDto<GUIAlertGroupDto>(Page.empty(), messages));
+		}
 	}
 
 	@GetMapping("/alerts/nogroups")
-	public ResponseEntity<Page<AlertDto>> noGroups(@RequestParam(defaultValue = "0") int page) {
+	public ResponseEntity<DynamicSearchResultDto<AlertDto>> noGroups(@RequestParam(defaultValue = "0") int page, @RequestParam MultiValueMap<String, String> params) {
 		if (page < 0) return ResponseEntity.badRequest().build();
-		return ResponseEntity.ok(alertRepository.findAlertsNotInAnyGroup(PageRequest.of(page, alertService.getPageSize(), Sort.by(Sort.Order.desc("id")))).map(in -> simpleMapper.map(in, AlertDto.class, mapperConfig.getMapping())));
+		
+		params.remove("page");
+
+		DynamicSearchResult<Alert> results = alertRepositoryExtended.customSearch(PageRequest.of(page, alertService.getPageSize(), Sort.by(Sort.Order.desc("id"))), params, Alert.class);
+		
+		Page<AlertDto> pageResult = results.getPage().map(in -> simpleMapper.map(in, AlertDto.class, mapperConfig.getMapping()));
+		List<String> messages = parseMessages(results.getExceptions());
+		
+		if (results.getExceptions() == null || results.getExceptions().isEmpty()) {
+			return ResponseEntity.ok(new DynamicSearchResultDto<AlertDto>(pageResult, messages));	
+		} else {
+			return ResponseEntity.badRequest().body(new DynamicSearchResultDto<AlertDto>(Page.empty(), messages));
+		}
 	}
 
 	@GetMapping("/alerts/results")

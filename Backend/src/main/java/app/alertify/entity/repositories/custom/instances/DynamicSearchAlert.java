@@ -5,19 +5,19 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Repository;
 import org.springframework.util.MultiValueMap;
 
-import app.alertify.entity.AlertResult;
+import app.alertify.entity.Alert;
 import app.alertify.entity.repositories.custom.DynamicSearch;
 import app.alertify.entity.repositories.custom.DynamicSearchGeneric;
 import app.alertify.entity.repositories.custom.DynamicSearchResult;
 
-@Repository("DynamicSearchAlertResult")
-public class DynamicSearchAlertResult implements DynamicSearch<AlertResult> {
+@Repository("DynamicSearchAlert")
+public class DynamicSearchAlert implements DynamicSearch<Alert> {
 
 	@Autowired
-	private DynamicSearchGeneric<AlertResult> dynamic;
+	private DynamicSearchGeneric<Alert> dynamic;
 	
 	@Override
-	public DynamicSearchResult<AlertResult> customSearch(Pageable pageable, MultiValueMap<String, String> params, Class<AlertResult> type) {
+	public DynamicSearchResult<Alert> customSearch(Pageable pageable, MultiValueMap<String, String> params, Class<Alert> type) {
 		return dynamic.customSearch(pageable, params, type);
 	}
 
