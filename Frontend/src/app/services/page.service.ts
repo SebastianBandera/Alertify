@@ -1,29 +1,29 @@
 import { Injectable } from '@angular/core';
 import { firstValueFrom, Observable } from 'rxjs';
-import { PagedResponse } from '../data/basic.dto';
+import { ApiPagedResponse, PagedResponse } from '../data/basic.dto';
 
 @Injectable({
     providedIn: 'root',
 })
 export class PageService {
 
-    getAllPages<T>(singlePageFunction: (page: number) => Observable<PagedResponse<T>>): Observable<T[]> {
+    getAllPages<T>(singlePageFunction: (page: number) => Observable<ApiPagedResponse<T>>): Observable<ApiPagedResponse<T>> {
         return this.getAllPagesImpl1(singlePageFunction);
     }
 
-    private getAllPagesImpl1<T>(singlePageFunction: (page: number) => Observable<PagedResponse<T>>): Observable<T[]> {
-        return new Observable<T[]>((observer) => {
+    private getAllPagesImpl1<T>(singlePageFunction: (page: number) => Observable<ApiPagedResponse<T>>): Observable<ApiPagedResponse<T>> {
+        return new Observable<ApiPagedResponse<T>>((observer) => {
             (async () => {
                 let currentPage: number = 0;
                 let totalPages: number | null = null;
                 try {
                     do {
-                        const page: PagedResponse<T> = await firstValueFrom(singlePageFunction(currentPage));
+                        const response: ApiPagedResponse<T> = await firstValueFrom(singlePageFunction(currentPage));
 
-                        observer.next(page.content);
+                        observer.next(response);
 
                         if (totalPages == null) {
-                            totalPages = page.totalPages;
+                            totalPages = response.page.totalPages;
                         }
 
                         currentPage++;

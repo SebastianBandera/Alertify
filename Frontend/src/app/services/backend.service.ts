@@ -6,7 +6,7 @@ import { Status } from '../data/status';
 import { ErrorCheck } from '../data/error-check';
 import { Period } from '../data/period';
 import { ApiService } from './api.service';
-import { Alert, Group, PagedResponse } from '../data/basic.dto';
+import { Alert, AlertResult, ApiPagedResponse, Group, PagedResponse } from '../data/basic.dto';
 import { PageService } from './page.service';
 import { HttpClient } from '@angular/common/http';
 
@@ -37,28 +37,36 @@ export class BackendService extends ApiService {
     return of(data);
   }
 
-  getAlerts(page: number): Observable<PagedResponse<Alert>> {
-    return super.getData<PagedResponse<Alert>>("alerts", { page: page });
+  getAlerts(page: number): Observable<ApiPagedResponse<Alert>> {
+    return super.getData<ApiPagedResponse<Alert>>("alerts", { page: page });
   }
 
-  getGroups(page: number): Observable<PagedResponse<Group>> {
-    return super.getData<PagedResponse<Group>>("alerts/groups", { page: page });
+  getGroups(page: number): Observable<ApiPagedResponse<Group>> {
+    return super.getData<ApiPagedResponse<Group>>("alerts/groups", { page: page });
   }
 
-  getNoGroups(page: number): Observable<PagedResponse<Alert>> {
-    return super.getData<PagedResponse<Alert>>("alerts/nogroups", { page: page });
+  getNoGroups(page: number): Observable<ApiPagedResponse<Alert>> {
+    return super.getData<ApiPagedResponse<Alert>>("alerts/nogroups", { page: page });
   }
 
-  getAllAlerts(): Observable<Alert[]> {
+  getAlertResult(page: number): Observable<ApiPagedResponse<AlertResult>> {
+    return super.getData<ApiPagedResponse<AlertResult>>("alerts/results", { page: page });
+  }
+
+  getAllAlerts(): Observable<ApiPagedResponse<Alert>> {
     return this.pageService.getAllPages<Alert>(this.getAlerts.bind(this));
   }
 
-  getAllGroups(): Observable<Group[]> {
+  getAllGroups(): Observable<ApiPagedResponse<Group>> {
     return this.pageService.getAllPages<Group>(this.getGroups.bind(this));
   }
 
-  getAllNoGroups(): Observable<Alert[]> {
+  getAllNoGroups(): Observable<ApiPagedResponse<Alert>> {
     return this.pageService.getAllPages<Alert>(this.getNoGroups.bind(this));
+  }
+
+  getAllAlertResult(): Observable<ApiPagedResponse<AlertResult>> {
+    return this.pageService.getAllPages<AlertResult>(this.getAlertResult.bind(this));
   }
 
   

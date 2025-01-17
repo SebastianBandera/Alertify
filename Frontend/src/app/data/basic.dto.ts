@@ -18,11 +18,31 @@ export interface PagedResponse<T> {
     size: number;
     number: number;
     sort: {
-      empty: boolean;
-      sorted: boolean;
-      unsorted: boolean;
+        empty: boolean;
+        sorted: boolean;
+        unsorted: boolean;
     };
     numberOfElements: number;
     first: boolean;
     empty: boolean;
+}
+
+export interface StatusResult {
+    id: number;
+    name: string;
+}
+
+export interface AlertResult {
+    id: number;
+    alert: Alert;
+    dateIni: string;
+    dateEnd: string;
+    statusResult: StatusResult;
+    result: string;
+    needsReview: boolean;
+}
+
+export interface ApiPagedResponse<T> {
+    page: PagedResponse<T>;
+    errorMessages: string[];
 }
