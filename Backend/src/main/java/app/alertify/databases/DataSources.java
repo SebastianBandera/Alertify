@@ -167,7 +167,6 @@ public class DataSources {
 		dataSources.put(dataSourceConfig.getName(), createDataSource(dataSourceConfig));
 	}
 	
-	@SuppressWarnings("resource")
 	private CloseableDataSource createDataSource(DataSourceConfig config) {		
 		//DriverManagerDataSource
 		HikariConfig hikariConfig = new HikariConfig();
