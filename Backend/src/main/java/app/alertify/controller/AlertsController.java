@@ -1,6 +1,7 @@
 package app.alertify.controller;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
@@ -70,6 +71,7 @@ public class AlertsController {
 		if (page < 0) return ResponseEntity.badRequest().build();
 		
 		params.remove("page");
+		params.put("active", Arrays.asList("true"));
 
 		DynamicSearchResult<Alert> results = alertRepositoryExtended.customSearch(PageRequest.of(page, alertService.getPageSize(), Sort.by(Sort.Order.desc("id"))), params, Alert.class);
 		
@@ -93,6 +95,7 @@ public class AlertsController {
 		if (page < 0) return ResponseEntity.badRequest().build();
 		
 		params.remove("page");
+		params.put("active", Arrays.asList("true"));
 
 		DynamicSearchResult<GUIAlertGroup> results = guiAlertGroupRepositoryExtended.customSearch(PageRequest.of(page, alertService.getPageSize(), Sort.by(Sort.Order.desc("id"))), params, GUIAlertGroup.class);
 		
@@ -111,6 +114,7 @@ public class AlertsController {
 		if (page < 0) return ResponseEntity.badRequest().build();
 		
 		params.remove("page");
+		params.put("active", Arrays.asList("true"));
 
 		DynamicSearchResult<Alert> results = alertRepositoryExtended.customSearch(PageRequest.of(page, alertService.getPageSize(), Sort.by(Sort.Order.desc("id"))), params, Alert.class);
 		
@@ -129,6 +133,7 @@ public class AlertsController {
 		if (page < 0) return ResponseEntity.badRequest().build();
 		
 		params.remove("page");
+		params.put("active", Arrays.asList("true"));
 		
 		DynamicSearchResult<AlertResult> results = alertResultRepositoryExtended.customSearch(PageRequest.of(page, alertService.getPageSize(), Sort.by(Sort.Order.desc("id"))), params, AlertResult.class);
 		
