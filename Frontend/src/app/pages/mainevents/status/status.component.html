@@ -1,0 +1,29 @@
+<ng-container *ngTemplateOutlet="getTemplate()"></ng-container>
+
+
+<ng-template #status_ok>
+    <div class="w-fit whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 flex items-center gap-1"
+    data-v0-t="badge"><svg xmlns="http://www.w3.org/2000/svg" width="24"
+    height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+    class="lucide lucide-circle-check-big h-4 w-4" >
+    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+    <path d="m9 11 3 3L22 4"></path>
+    </svg>OK</div>
+</ng-template>
+
+<ng-template #status_warn>
+    WARN
+</ng-template>
+
+<ng-template #status_error>
+    <div style="background-color: red;" class="w-fit whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/80 flex items-center gap-1"
+    data-v0-t="badge"><svg xmlns="http://www.w3.org/2000/svg" width="24"
+    height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+    class="lucide lucide-circle-alert h-4 w-4" >
+    <circle cx="12" cy="12" r="10"></circle>
+    <line x1="12" x2="12" y1="8" y2="12"></line>
+    <line x1="12" x2="12.01" y1="16" y2="16"></line>
+    </svg>ERROR</div>
+</ng-template>
