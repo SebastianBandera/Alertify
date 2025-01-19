@@ -7,35 +7,36 @@ import { Status } from '../../data/status';
 import { NotificationService } from '../../services/notification.service';
 import { LoggerService } from '../../services/logger.service';
 import { NotificationDto } from '../../data/notification.dto';
+import { TestBoxComponent } from '../../comp/test-box/test-box.component';
+import { StatusComponent } from './status/status.component';
+import { ButtonUpDownComponent } from './button-up-down/button-up-down.component';
+import { GroupComponent } from './group/group.component';
+import { LogicService } from '../../services/logic.service';
 
 @Component({
     selector: 'app-mainevents',
-    imports: [CommonModule],
+    imports: [CommonModule, TestBoxComponent, GroupComponent],
     templateUrl: './mainevents.component.html',
     styleUrls: ['./mainevents.component.css', './c1.css', './c2.css', './main.css'],
     encapsulation: ViewEncapsulation.None
 })
 export class MaineventsComponent {
-  data: CheckGroup[] = [];
 
-  Status = Status;
-
-  test: Check[] = [];
-
-  constructor(private backend:BackendService, private notification:NotificationService, private logger: LoggerService) {
+  constructor(private backend:BackendService, 
+    private logicService: LogicService,
+    private notification:NotificationService, 
+    private logger: LoggerService) {
 
   }
 
   ngOnInit(): void {
-    this.backend.getInfo().subscribe({
-      next: (response) => {
-        this.data = response;
-        this.logger.log(response);
-        this.test = [this.data[0].checks[2]];
+    this.logicService.principalSearch().subscribe({
+      next: (value) => {
+        this.logger.log(value);
       },
-      error: (e) => this.logger.error(e),
-      complete: () => this.logger.info('Load completed')
-    });
+      error: this.logger.error,
+      complete: () => this.logger.log("Load complete!")
+    })    
   }
 
   onButtonClick(): void {
