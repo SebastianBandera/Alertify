@@ -10,6 +10,11 @@ export interface Group {
     alert: Alert;
 }
 
+export interface GroupList {
+    name: string;
+    alerts: Alert[];
+}
+
 export interface PagedResponse<T> {
     content: T[];
     last: boolean;
