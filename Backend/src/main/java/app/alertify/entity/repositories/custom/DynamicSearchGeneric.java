@@ -29,6 +29,7 @@ import app.alertify.entity.repositories.custom.DynamicSearchCriteria.Criteria;
 
 import javax.persistence.criteria.CriteriaBuilder;
 import javax.persistence.criteria.CriteriaQuery;
+import javax.persistence.criteria.Path;
 import javax.persistence.criteria.Predicate;
 import javax.persistence.criteria.Root;
 
@@ -77,6 +78,20 @@ public class DynamicSearchGeneric<T> implements DynamicSearch<T> {
         
         return item;
     }
+	
+	private Class<?> getType(Class<T> type, String[] keys) {
+		Class<?> result = null;
+		for (int i = 0; i < keys.length; i++) {
+			String key = keys[i];
+
+	        //It does not matter if due to concurrency problems it is generated twice unnecessarily, the result to be saved will be the same
+			Map<String, Class<?>> dbFieldsTypes = simpleCacheable(dbFieldsTypesCache, type, () -> getColumnFields(type));
+			
+			result = dbFieldsTypes.get(key);
+		}
+
+		return result;
+	}
     
 	@Override
 	public DynamicSearchResult<T> customSearch(Pageable pageable, MultiValueMap<String, String> params, Class<T> type) {
@@ -86,28 +101,26 @@ public class DynamicSearchGeneric<T> implements DynamicSearch<T> {
         
         List<Predicate> predicates = new ArrayList<>();
         
-        //It does not matter if due to concurrency problems it is generated twice unnecessarily, the result to be saved will be the same
-        Map<String, Class<?>> dbFieldsTypes = simpleCacheable(dbFieldsTypesCache, type, () -> getColumnFields(type));
-        
         List<Exception> errors = new LinkedList<Exception>();
         params.forEach((key, values) -> {
         	if(values == null) return;
-        	
-        	Class<?> associatedFieldType = dbFieldsTypes.get(key);
+
+			String[] keys = key.split("\\.");
+        	Class<?> associatedFieldType = getType(type, keys);
         	if (associatedFieldType == null) {
-				errors.add(new AttributeNotFoundException(key));
+        		errors.add(new AttributeNotFoundException(key));
 			} else {
 				try {
 					if (associatedFieldType.equals(String.class)) {
-						processString(values, cb, root, key, predicates);
+						processString(values, keys, cb, root, key, predicates);
 					} else if (associatedFieldType.equals(Integer.class) || associatedFieldType.equals(int.class)) {
-						processGeneric(values, errors, value -> Integer.parseInt(value), cb, root, predicates, key);
+						processGeneric(values, keys, errors, value -> Integer.parseInt(value), cb, root, predicates, key);
 					} else if (associatedFieldType.equals(Float.class) || associatedFieldType.equals(float.class)) {
-						processGeneric(values, errors, value -> Float.parseFloat(value), cb, root, predicates, key);
+						processGeneric(values, keys, errors, value -> Float.parseFloat(value), cb, root, predicates, key);
 					} else if (associatedFieldType.equals(Double.class) || associatedFieldType.equals(double.class)) {
-						processGeneric(values, errors, value -> Double.parseDouble(value), cb, root, predicates, key);
+						processGeneric(values, keys, errors, value -> Double.parseDouble(value), cb, root, predicates, key);
 					} else if (associatedFieldType.equals(Long.class) || associatedFieldType.equals(Long.class)) {
-						processGeneric(values, errors, value -> Long.parseLong(value), cb, root, predicates, key);
+						processGeneric(values, keys, errors, value -> Long.parseLong(value), cb, root, predicates, key);
 					} else if (associatedFieldType.equals(Boolean.class) || associatedFieldType.equals(boolean.class)) {
 						if (values.size() == 1) {
 		                    predicates.add(cb.equal(root.get(key), Boolean.parseBoolean(values.get(0))));
@@ -115,9 +128,9 @@ public class DynamicSearchGeneric<T> implements DynamicSearch<T> {
 		                    errors.add(new Exception("no multivalue a boolean"));
 		                }
 					} else if (associatedFieldType.equals(Date.class)) {
-						processDate(values, errors, cb, root, predicates, key);
+						processDate(values, keys, errors, cb, root, predicates, key);
 					} else if (associatedFieldType.equals(java.sql.Date.class)) {
-						processSqlDate(values, errors, cb, root, predicates, key);
+						processSqlDate(values, keys, errors, cb, root, predicates, key);
 					} else {
 					    throw new Exception("Type not recognized.");
 					}
@@ -152,8 +165,21 @@ public class DynamicSearchGeneric<T> implements DynamicSearch<T> {
 
         return new DynamicSearchResult<T>(new PageImpl<>(results, pageable, total), errors);
 	}
+
+	private <K> Path<K> path(Root<T> root, String[] keys) {
+		Path<K> path = null;
+		for (int i = 0; i < keys.length; i++) {
+			String key = keys[i];
+			if (i == 0) {
+				path = root.get(key);
+			} else {
+				path = path.get(key);
+			}
+		}
+		return path;
+	}
     
-	private <K extends Comparable<K>> void processGeneric(List<String> values, List<Exception> errors, Function<String, K> convert, CriteriaBuilder cb, Root<T> root, List<Predicate> predicates, String key) {
+	private <K extends Comparable<K>> void processGeneric(List<String> values, String[] keys, List<Exception> errors, Function<String, K> convert, CriteriaBuilder cb, Root<T> root, List<Predicate> predicates, String key) {
 		List<DynamicSearchCriteria<K>> valuesParsed = parseGeneric(values, errors, convert);
 		
 		if(!valuesParsed.isEmpty()) {
@@ -162,25 +188,25 @@ public class DynamicSearchGeneric<T> implements DynamicSearch<T> {
 		    		Predicate predicate;
 			    	switch (search.getCriteria()) {
 					case EQUAL:
-						predicate = cb.equal(root.get(key), search.getValue());
+						predicate = cb.equal(path(root, keys), search.getValue());
 						break;
 					case DISTINCT:
-						predicate = cb.not(cb.equal(root.get(key), search.getValue()));
+						predicate = cb.not(cb.equal(path(root, keys), search.getValue()));
 						break;
 					case GREATER:
-						predicate = cb.greaterThan(root.get(key), search.getValue());
+						predicate = cb.greaterThan(path(root, keys), search.getValue());
 						break;
 					case GREATER_EQUAL:
-						predicate = cb.greaterThanOrEqualTo(root.get(key), search.getValue());
+						predicate = cb.greaterThanOrEqualTo(path(root, keys), search.getValue());
 						break;
 					case LESS:
-						predicate = cb.lessThan(root.get(key), search.getValue());
+						predicate = cb.lessThan(path(root, keys), search.getValue());
 						break;
 					case LESS_EQUAL:
-						predicate = cb.lessThanOrEqualTo(root.get(key), search.getValue());
+						predicate = cb.lessThanOrEqualTo(path(root, keys), search.getValue());
 						break;
 					default:
-						predicate = cb.equal(root.get(key), search.getValue());
+						predicate = cb.equal(path(root, keys), search.getValue());
 					}
 			    	
 			    	predicates.add(predicate);
@@ -191,8 +217,8 @@ public class DynamicSearchGeneric<T> implements DynamicSearch<T> {
 		}
 	}
 	
-	private void processDate(List<String> values, List<Exception> errors, CriteriaBuilder cb, Root<T> root, List<Predicate> predicates, String key) {
-		processGeneric(values, errors, value -> {
+	private void processDate(List<String> values, String[] keys, List<Exception> errors, CriteriaBuilder cb, Root<T> root, List<Predicate> predicates, String key) {
+		processGeneric(values, keys, errors, value -> {
 				List<SimpleDateFormat> formatters = getFormatters();
 			        
 				Date date = null;
@@ -213,8 +239,8 @@ public class DynamicSearchGeneric<T> implements DynamicSearch<T> {
 			}, cb, root, predicates, key);
 	}
 	
-	private void processSqlDate(List<String> values, List<Exception> errors, CriteriaBuilder cb, Root<T> root, List<Predicate> predicates, String key) {
-		processGeneric(values, errors, value -> {
+	private void processSqlDate(List<String> values, String[] keys, List<Exception> errors, CriteriaBuilder cb, Root<T> root, List<Predicate> predicates, String key) {
+		processGeneric(values, keys, errors, value -> {
 				List<SimpleDateFormat> formatters = getFormatters();
 			        
 				java.sql.Date date = null;
@@ -245,17 +271,17 @@ public class DynamicSearchGeneric<T> implements DynamicSearch<T> {
 	        );
 	}
 	
-	private void processString(List<String> values, CriteriaBuilder cb, Root<T> root, String key, List<Predicate> predicates) {
+	private void processString(List<String> values, String[] keys, CriteriaBuilder cb, Root<T> root, String key, List<Predicate> predicates) {
 		if(!values.isEmpty()) {
 			if (values.size() == 1) {
 				String value = values.get(0);
 				if(value.contains("%") || value.contains("_")) {
-					predicates.add(cb.like(root.get(key), value, '\\'));
+					predicates.add(cb.like(path(root, keys), value, '\\'));
 				} else {
-					predicates.add(cb.equal(root.get(key), value));
+					predicates.add(cb.equal(path(root, keys), value));
 				}
             } else {
-                predicates.add(root.get(key).in(values));
+                predicates.add(path(root, keys).in(values));
             }
 		}
 	}
@@ -318,13 +344,20 @@ public class DynamicSearchGeneric<T> implements DynamicSearch<T> {
 			Annotation annotations[] = field.getAnnotationsByType(javax.persistence.Column.class);
 			if(annotations != null && annotations.length > 0) {
 				dbFields.put(field.getName(), field.getType());
+				continue;
 			}
 
 			Annotation annotationsId[] = field.getAnnotationsByType(javax.persistence.Id.class);
 			if(annotationsId != null && annotationsId.length > 0) {
 				dbFields.put(field.getName(), field.getType());
+				continue;
 			}
 			
+			Annotation annotationsJoinColumn[] = field.getAnnotationsByType(javax.persistence.JoinColumn.class);
+			if(annotationsJoinColumn != null && annotationsJoinColumn.length > 0) {
+				dbFields.put(field.getName(), field.getType());
+				continue;
+			}
 		}
 		
 		return dbFields;
