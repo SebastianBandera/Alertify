@@ -26,41 +26,21 @@ export class MaineventsComponent {
 
   groups: GroupWithAlerts[] = [];
 
-  constructor(private backend: BackendService,
+  constructor(
     private logicService: LogicService,
-    private notification: NotificationService,
     private logger: LoggerService) {
   }
 
   ngOnInit(): void {
+    this.groups = this.logicService.getLoadedGroups().data;
+
     this.logicService.principalSearch().subscribe({
       next: (value: Task) => {
         this.logger.log(value);
-        if (value != null) {
-          switch (value.type) {
-            case TaskType.ALERTS:
-
-              break;
-            case TaskType.ALERT_RESULTS:
-
-              break;
-            case TaskType.ALERT_RESULTSEXTRA_DATA:
-
-              break;
-            case TaskType.GROUPS:
-              this.groups = this.logicService.getLoadedGroups().data;
-              break;
-            case TaskType.NO_GROUPS:
-
-              break;
-            default:
-              break;
-          }
-        }
       },
       error: this.logger.error,
       complete: () => this.logger.log("Load complete!")
-    })
+    });
   }
 
   onButtonClick(): void {
