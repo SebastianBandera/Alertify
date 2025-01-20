@@ -1,9 +1,9 @@
-import { Alert, AlertResult, Group } from "./basic.dto";
+import { Alert, AlertExtradata, AlertResult, Group } from "./basic.dto";
 
 export interface Task {
     type: TaskType;
     msg: string;
-    data: Group[] | Alert[] | AlertResult[];
+    data: Group[] | Alert[] | AlertResult[] | AlertExtradata;
 }
 
 export enum TaskType {
@@ -12,4 +12,5 @@ export enum TaskType {
     NO_GROUPS,
     ALERTS,
     ALERT_RESULTS,
+    ALERT_RESULTSEXTRA_DATA,
 }

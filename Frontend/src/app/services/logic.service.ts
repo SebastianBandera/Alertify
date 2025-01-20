@@ -1,8 +1,8 @@
 import { Injectable } from '@angular/core';
 import { LoggerService } from './logger.service';
 import { BackendService } from './backend.service';
-import { Alert, AlertExtradata, AlertResult, ApiPagedResponse, Group, GroupWithAlerts } from '../data/basic.dto';
-import { Observable, Subscriber, Subscription } from 'rxjs';
+import { Alert, AlertExtradata, AlertResult, ApiPagedResponse, DateResponse, Group, GroupWithAlerts } from '../data/basic.dto';
+import { Observable, Subscriber } from 'rxjs';
 import { Task, TaskType } from '../data/task';
 import { IndexedData } from '../data/index.data.dto';
 
@@ -16,8 +16,6 @@ export class LogicService {
   private nogroups: IndexedData<number, Alert>;
   private alertsResults: IndexedData<number, AlertResult>;
   private alertsExtradata: IndexedData<number, AlertExtradata>;
-
-  private repeat!: Subscription;
 
   items!: GroupWithAlerts[];
 
@@ -56,15 +54,25 @@ export class LogicService {
   public principalSearch(): Observable<Task> {
     return new Observable<Task>((observer) => {
       (async () => {
-        await this.syncProcessAllGroups(observer);
-
-        await this.syncProcessAllNoGroups(observer);
-
-        await this.syncProcessAllAlertResults(observer);
-        
-        observer.complete();
+        while (true) {
+          await this.syncProcess(observer);
+          
+          await this.wait(60000);
+        }
       })();
     });
+  }
+
+  private wait(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  private async syncProcess(observer: Subscriber<Task>): Promise<void> {
+    await this.syncProcessAllGroups(observer);
+
+    await this.syncProcessAllNoGroups(observer);
+
+    await this.syncProcessAllAlertResults(observer);
   }
 
   private setIndexed<K, V>(item: V, keyGetter: (arg: V) => K, indexedData: IndexedData<K, V>): void {
@@ -152,27 +160,9 @@ export class LogicService {
     while (!result.done) {
       const key: number = result.value;
 
-      let { promise: promise, resolve: resolve } = this.createControlledPromise<string>();
+      this.syncProcessAllAlertResultExtradataByAlertId(key, promises, observer);
 
-      promises.push(promise);
-
-      this.bckService.getAllAlertResultByAlertId(key).subscribe({
-        next: (value: ApiPagedResponse<AlertResult>) => {
-          const alertResultPart: AlertResult[] = value.page.content;
-  
-          alertResultPart.forEach(item => {
-            this.setIndexed(item, ar => ar.id, this.alertsResults);
-          });
-  
-          observer.next({
-            type: TaskType.ALERT_RESULTS,
-            msg: "page alert results",
-            data: alertResultPart
-          })
-        },
-        error: this.log.error,
-        complete: () => resolve('getAllAlertResultByAlertId complete')
-      });
+      this.syncProcessAllAlertResultByAlertId(key, promises, observer);
 
       result = keysAlerts.next();
     }
@@ -182,6 +172,54 @@ export class LogicService {
     } catch (error) {
       this.log.error("Error syncProcessAllAlertResults", error);
     }
+  }
+
+  private syncProcessAllAlertResultExtradataByAlertId(key: number, promises: Promise<string>[], observer: Subscriber<Task>): void {
+    let { promise: promise, resolve: resolve } = this.createControlledPromise<string>();
+
+    promises.push(promise);
+
+    this.bckService.getLastSuccess(key).subscribe({
+      next: (value: DateResponse) => {
+        const alertResultDateResponse: DateResponse = value;
+
+        const alertExtradata: AlertExtradata = {alertId: key, lastSucess: alertResultDateResponse}
+
+        this.setIndexed(alertExtradata, a => a.alertId, this.alertsExtradata);
+
+        observer.next({
+          type: TaskType.ALERT_RESULTSEXTRA_DATA,
+          msg: "page alert results extra data",
+          data: alertExtradata
+        })
+      },
+      error: this.log.error,
+      complete: () => resolve('getLastSuccess complete')
+    });
+  }
+
+  private syncProcessAllAlertResultByAlertId(key: number, promises: Promise<string>[], observer: Subscriber<Task>): void {
+    let { promise: promise, resolve: resolve } = this.createControlledPromise<string>();
+
+    promises.push(promise);
+
+    this.bckService.getAllAlertResultByAlertId(key).subscribe({
+      next: (value: ApiPagedResponse<AlertResult>) => {
+        const alertResultPart: AlertResult[] = value.page.content;
+
+        alertResultPart.forEach(item => {
+          this.setIndexed(item, ar => ar.id, this.alertsResults);
+        });
+
+        observer.next({
+          type: TaskType.ALERT_RESULTS,
+          msg: "page alert results",
+          data: alertResultPart
+        })
+      },
+      error: this.log.error,
+      complete: () => resolve('getAllAlertResultByAlertId complete')
+    });
   }
 
   private createControlledPromise<T>() {

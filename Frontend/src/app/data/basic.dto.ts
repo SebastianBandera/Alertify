@@ -20,6 +20,7 @@ export interface DateResponse {
 }
 
 export interface AlertExtradata {
+    alertId: number,
     lastSucess: DateResponse;
 }
 
