@@ -10,9 +10,17 @@ export interface Group {
     alert: Alert;
 }
 
-export interface GroupList {
+export interface GroupWithAlerts {
     name: string;
     alerts: Alert[];
+}
+
+export interface DateResponse {
+    date: string;
+}
+
+export interface AlertExtradata {
+    lastSucess: DateResponse;
 }
 
 export interface PagedResponse<T> {
