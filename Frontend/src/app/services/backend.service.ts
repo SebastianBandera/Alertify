@@ -6,7 +6,7 @@ import { Status } from '../data/status';
 import { ErrorCheck } from '../data/error-check';
 import { Period } from '../data/period';
 import { ApiService } from './api.service';
-import { Alert, AlertResult, ApiPagedResponse, Group, PagedResponse } from '../data/basic.dto';
+import { Alert, AlertResult, ApiPagedResponse, DateResponse, Group, PagedResponse } from '../data/basic.dto';
 import { PageService } from './page.service';
 import { HttpClient } from '@angular/common/http';
 
@@ -49,8 +49,8 @@ export class BackendService extends ApiService {
     return super.getData<ApiPagedResponse<Alert>>("alerts/nogroups", { page: page });
   }
 
-  getAlertResult(page: number): Observable<ApiPagedResponse<AlertResult>> {
-    return super.getData<ApiPagedResponse<AlertResult>>("alerts/results", { page: page });
+  getAlertResult(page: number, alertId: number): Observable<ApiPagedResponse<AlertResult>> {
+    return super.getData<ApiPagedResponse<AlertResult>>("alerts/results", { page: page, needsReview: "true", 'alert.id': alertId });
   }
 
   getAllAlerts(): Observable<ApiPagedResponse<Alert>> {
@@ -65,9 +65,14 @@ export class BackendService extends ApiService {
     return this.pageService.getAllPages<Alert>(this.getNoGroups.bind(this));
   }
 
-  getAllAlertResult(): Observable<ApiPagedResponse<AlertResult>> {
-    return this.pageService.getAllPages<AlertResult>(this.getAlertResult.bind(this));
+  getAllAlertResultByAlertId(alertId: number): Observable<ApiPagedResponse<AlertResult>> {
+    return this.pageService.getAllPages<AlertResult>((page: number) =>
+      this.getAlertResult(page, alertId)
+    );
   }
 
+  getLastSuccess(alertId: number): Observable<DateResponse> {
+    return super.getData<DateResponse>("alerts/results/lastSuccess", {alertId: alertId});
+  }
   
 }
