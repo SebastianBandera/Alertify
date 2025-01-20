@@ -7,7 +7,7 @@
 
 <div class="bg-background !opacity-100 transition-opacity duration-300" style="opacity:0">
     <div class="!visible transition-opacity duration-150 bg-background text-foreground !opacity-100" id="v0-container" style="visibility:hidden;opacity:0">
-        <ng-container *ngFor="let item of get()">
+        <ng-container *ngFor="let item of groups">
             <app-group [group]="item"></app-group>
         </ng-container>
     </div>

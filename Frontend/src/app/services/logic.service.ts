@@ -110,8 +110,11 @@ export class LogicService {
             const groupList: GroupWithAlerts | undefined = this.groups.index.get(idGroup);
             this.upsertItem(groupList?.alerts!, group.alert);
           } else {
-            this.groups.index.set(idGroup, { name: group.name, alerts: [group.alert] });
+            const groupList: GroupWithAlerts = { name: group.name, alerts: [group.alert] };
+            this.groups.index.set(idGroup, groupList);
+            this.groups.data.push(groupList);
           }
+
         });
 
         observer.next({
