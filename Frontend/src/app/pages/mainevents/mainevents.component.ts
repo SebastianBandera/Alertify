@@ -12,6 +12,8 @@ import { StatusComponent } from './status/status.component';
 import { ButtonUpDownComponent } from './button-up-down/button-up-down.component';
 import { GroupComponent } from './group/group.component';
 import { LogicService } from '../../services/logic.service';
+import { Task } from '../../data/task';
+import { Alert, GroupWithAlerts } from '../../data/basic.dto';
 
 @Component({
     selector: 'app-mainevents',
@@ -26,12 +28,15 @@ export class MaineventsComponent {
     private logicService: LogicService,
     private notification:NotificationService, 
     private logger: LoggerService) {
+  }
 
+  get(): GroupWithAlerts[] {
+    return this.logicService.get();
   }
 
   ngOnInit(): void {
     this.logicService.principalSearch().subscribe({
-      next: (value) => {
+      next: (value: Task) => {
         this.logger.log(value);
       },
       error: this.logger.error,
@@ -42,6 +47,6 @@ export class MaineventsComponent {
   onButtonClick(): void {
     this.logger.log('El botón ha sido clickeado');
 
-    this.notification.sendNotification(new NotificationDto("name", "text", Status.WARN));
+    //this.notification.sendNotification(new NotificationDto("name", "text", Status.WARN));
   }
 }
