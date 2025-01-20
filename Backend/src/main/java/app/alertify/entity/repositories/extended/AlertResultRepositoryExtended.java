@@ -172,4 +172,10 @@ public class AlertResultRepositoryExtended implements AlertResultRepository {
 	public Date findLastDateAlertResultByAlert(Alert alert) {
 		return alertResultsRepository.findLastDateAlertResultByAlert(alert);
 	}
+
+	public Date findLastDateAlertResultByAlertId(Long alertId) {
+		Alert alert = new Alert();
+		alert.setId(alertId);
+		return alertResultsRepository.findLastDateAlertResultByAlert(alert);
+	}
 }

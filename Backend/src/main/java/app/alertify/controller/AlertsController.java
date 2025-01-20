@@ -2,6 +2,7 @@ package app.alertify.controller;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Date;
 import java.util.List;
 import java.util.Optional;
 
@@ -21,6 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import app.alertify.controller.dto.AlertDto;
 import app.alertify.controller.dto.AlertResultDto;
+import app.alertify.controller.dto.DateDto;
 import app.alertify.controller.dto.GUIAlertGroupDto;
 import app.alertify.controller.dto.MapperConfig;
 import app.alertify.controller.dto.SimpleMapper;
@@ -144,6 +146,17 @@ public class AlertsController {
 			return ResponseEntity.ok(new DynamicSearchResultDto<AlertResultDto>(pageResult, messages));	
 		} else {
 			return ResponseEntity.badRequest().body(new DynamicSearchResultDto<AlertResultDto>(Page.empty(), messages));
+		}
+	}
+	
+	@GetMapping("/alerts/results/lastSuccess")
+	public ResponseEntity<DateDto> lastSucess(@RequestParam Long alertId) {
+		Date date = alertResultRepositoryExtended.findLastDateAlertResultByAlertId(alertId);
+		
+		if (date != null) {
+			return ResponseEntity.ok(new DateDto(date));
+		} else {
+			return ResponseEntity.noContent().build();
 		}
 	}
 	
