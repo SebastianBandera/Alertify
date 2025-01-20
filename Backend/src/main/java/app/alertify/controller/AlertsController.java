@@ -99,7 +99,7 @@ public class AlertsController {
 		params.remove("page");
 		params.put("active", Arrays.asList("true"));
 
-		DynamicSearchResult<GUIAlertGroup> results = guiAlertGroupRepositoryExtended.customSearch(PageRequest.of(page, alertService.getPageSize(), Sort.by(Sort.Order.desc("id"))), params, GUIAlertGroup.class);
+		DynamicSearchResult<GUIAlertGroup> results = guiAlertGroupRepositoryExtended.customSearch(PageRequest.of(page, alertService.getPageSize(), Sort.by(Sort.Order.asc("name"))), params, GUIAlertGroup.class);
 		
 		Page<GUIAlertGroupDto> pageResult = results.getPage().map(in -> simpleMapper.map(in, GUIAlertGroupDto.class, mapperConfig.getMapping()));
 		List<String> messages = parseMessages(results.getExceptions());
