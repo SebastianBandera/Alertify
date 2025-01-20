@@ -7,7 +7,7 @@ export class LoggerService {
 
   constructor() { }
 
-  private formatTimestamp(): string {
+  private static formatTimestamp(): string {
     const now = new Date();
 
     const day = String(now.getDate()).padStart(2, '0');
@@ -22,23 +22,23 @@ export class LoggerService {
   }
 
   log(message: any, ...optionalParams: any[]): void {
-    console.log(`[LOG-${this.formatTimestamp()}]`, message, ...optionalParams);
+    console.log(`[LOG-${LoggerService.formatTimestamp()}]`, message, ...optionalParams);
   }
 
   error(message: any, ...optionalParams: any[]): void {
-    console.error(`[ERR-${this.formatTimestamp()}]`, message, ...optionalParams);
+    console.error(`[ERR-${LoggerService.formatTimestamp()}]`, message, ...optionalParams);
   }
 
   info(message: any, ...optionalParams: any[]): void {
-    console.info(`[INF-${this.formatTimestamp()}]`, message, ...optionalParams);
+    console.info(`[INF-${LoggerService.formatTimestamp()}]`, message, ...optionalParams);
   }
   
   warn(message: any, ...optionalParams: any[]): void {
-    console.warn(`[WAR-${this.formatTimestamp()}]`, message, ...optionalParams);
+    console.warn(`[WAR-${LoggerService.formatTimestamp()}]`, message, ...optionalParams);
   }
   
   debug(message: any, ...optionalParams: any[]): void {
-    console.debug(`[DEB-${this.formatTimestamp()}]`, message, ...optionalParams);
+    console.debug(`[DEB-${LoggerService.formatTimestamp()}]`, message, ...optionalParams);
   }
 
   performance_now(): number {
