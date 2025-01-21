@@ -5,6 +5,7 @@ import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Supplier;
 
 import javax.management.AttributeNotFoundException;
 
@@ -70,21 +71,9 @@ public class AlertsController {
 
 	@GetMapping("/alerts")
 	public ResponseEntity<DynamicSearchResultDto<AlertDto>> all(@RequestParam(defaultValue = "0") int page, @RequestParam MultiValueMap<String, String> params) {
-		if (page < 0) return ResponseEntity.badRequest().build();
+		Supplier<DynamicSearchResult<Alert>> supplier = () -> alertRepositoryExtended.customSearch(PageRequest.of(page, alertService.getPageSize(), Sort.by(Sort.Order.desc("id"))), params, Alert.class);
 		
-		params.remove("page");
-		params.put("active", Arrays.asList("true"));
-
-		DynamicSearchResult<Alert> results = alertRepositoryExtended.customSearch(PageRequest.of(page, alertService.getPageSize(), Sort.by(Sort.Order.desc("id"))), params, Alert.class);
-		
-		Page<AlertDto> pageResult = results.getPage().map(in -> simpleMapper.map(in, AlertDto.class, mapperConfig.getMapping()));
-		List<String> messages = parseMessages(results.getExceptions());
-		
-		if (results.getExceptions() == null || results.getExceptions().isEmpty()) {
-			return ResponseEntity.ok(new DynamicSearchResultDto<AlertDto>(pageResult, messages));
-		} else {
-			return ResponseEntity.badRequest().body(new DynamicSearchResultDto<AlertDto>(Page.empty(), messages));
-		}
+		return commonResponse(page, params, true, AlertDto.class, supplier);
 	}
 	
 	@GetMapping("/alerts/summary/v1")
@@ -94,58 +83,40 @@ public class AlertsController {
 
 	@GetMapping("/alerts/groups")
 	public ResponseEntity<DynamicSearchResultDto<GUIAlertGroupDto>> allGroups(@RequestParam(defaultValue = "0") int page, @RequestParam MultiValueMap<String, String> params) {
-		if (page < 0) return ResponseEntity.badRequest().build();
+		Supplier<DynamicSearchResult<GUIAlertGroup>> supplier = () -> guiAlertGroupRepositoryExtended.customSearch(PageRequest.of(page, alertService.getPageSize(), Sort.by(Sort.Order.asc("name"))), params, GUIAlertGroup.class);
 		
-		params.remove("page");
-		params.put("active", Arrays.asList("true"));
-
-		DynamicSearchResult<GUIAlertGroup> results = guiAlertGroupRepositoryExtended.customSearch(PageRequest.of(page, alertService.getPageSize(), Sort.by(Sort.Order.asc("name"))), params, GUIAlertGroup.class);
-		
-		Page<GUIAlertGroupDto> pageResult = results.getPage().map(in -> simpleMapper.map(in, GUIAlertGroupDto.class, mapperConfig.getMapping()));
-		List<String> messages = parseMessages(results.getExceptions());
-		
-		if (results.getExceptions() == null || results.getExceptions().isEmpty()) {
-			return ResponseEntity.ok(new DynamicSearchResultDto<GUIAlertGroupDto>(pageResult, messages));	
-		} else {
-			return ResponseEntity.badRequest().body(new DynamicSearchResultDto<GUIAlertGroupDto>(Page.empty(), messages));
-		}
+		return commonResponse(page, params, true, GUIAlertGroupDto.class, supplier);
 	}
 
 	@GetMapping("/alerts/nogroups")
 	public ResponseEntity<DynamicSearchResultDto<AlertDto>> noGroups(@RequestParam(defaultValue = "0") int page, @RequestParam MultiValueMap<String, String> params) {
-		if (page < 0) return ResponseEntity.badRequest().build();
+		Supplier<DynamicSearchResult<Alert>> supplier = () -> alertRepositoryExtended.customSearch(PageRequest.of(page, alertService.getPageSize(), Sort.by(Sort.Order.desc("id"))), params, Alert.class);
 		
-		params.remove("page");
-		params.put("active", Arrays.asList("true"));
-
-		DynamicSearchResult<Alert> results = alertRepositoryExtended.customSearch(PageRequest.of(page, alertService.getPageSize(), Sort.by(Sort.Order.desc("id"))), params, Alert.class);
-		
-		Page<AlertDto> pageResult = results.getPage().map(in -> simpleMapper.map(in, AlertDto.class, mapperConfig.getMapping()));
-		List<String> messages = parseMessages(results.getExceptions());
-		
-		if (results.getExceptions() == null || results.getExceptions().isEmpty()) {
-			return ResponseEntity.ok(new DynamicSearchResultDto<AlertDto>(pageResult, messages));	
-		} else {
-			return ResponseEntity.badRequest().body(new DynamicSearchResultDto<AlertDto>(Page.empty(), messages));
-		}
+		return commonResponse(page, params, true, AlertDto.class, supplier);
 	}
 
 	@GetMapping("/alerts/results")
 	public ResponseEntity<DynamicSearchResultDto<AlertResultDto>> allResults(@RequestParam(defaultValue = "0") int page, @RequestParam MultiValueMap<String, String> params) {
+		Supplier<DynamicSearchResult<AlertResult>> supplier = () -> alertResultRepositoryExtended.customSearch(PageRequest.of(page, alertService.getPageSize(), Sort.by(Sort.Order.desc("id"))), params, AlertResult.class);
+		
+		return commonResponse(page, params, true, AlertResultDto.class, supplier);
+	}
+	
+	private <T, U> ResponseEntity<DynamicSearchResultDto<T>> commonResponse(int page, MultiValueMap<String, String> params, boolean putActive, Class<T> classOutput, Supplier<DynamicSearchResult<U>> resultSupplier) {
 		if (page < 0) return ResponseEntity.badRequest().build();
 		
 		params.remove("page");
-		params.put("active", Arrays.asList("true"));
+		if(putActive) params.put("active", Arrays.asList("true"));
 		
-		DynamicSearchResult<AlertResult> results = alertResultRepositoryExtended.customSearch(PageRequest.of(page, alertService.getPageSize(), Sort.by(Sort.Order.desc("id"))), params, AlertResult.class);
+		DynamicSearchResult<U> results = resultSupplier.get();
 		
-		Page<AlertResultDto> pageResult = results.getPage().map(in -> simpleMapper.map(in, AlertResultDto.class, mapperConfig.getMapping()));
+		Page<T> pageResult = results.getPage().map(in -> simpleMapper.map(in, classOutput, mapperConfig.getMapping()));
 		List<String> messages = parseMessages(results.getExceptions());
 		
 		if (results.getExceptions() == null || results.getExceptions().isEmpty()) {
-			return ResponseEntity.ok(new DynamicSearchResultDto<AlertResultDto>(pageResult, messages));	
+			return ResponseEntity.ok(new DynamicSearchResultDto<T>(pageResult, messages));	
 		} else {
-			return ResponseEntity.badRequest().body(new DynamicSearchResultDto<AlertResultDto>(Page.empty(), messages));
+			return ResponseEntity.badRequest().body(new DynamicSearchResultDto<T>(Page.empty(), messages));
 		}
 	}
 	
