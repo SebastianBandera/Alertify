@@ -2,7 +2,7 @@ import { Injectable } from '@angular/core';
 import { LoggerService } from './logger.service';
 import { BackendService } from './backend.service';
 import { Alert, AlertExtradata, AlertResult, ApiPagedResponse, DateResponse, Group, GroupWithAlerts } from '../data/basic.dto';
-import { Observable, Subscriber } from 'rxjs';
+import { Observable, of, Subscriber, tap } from 'rxjs';
 import { Task, TaskType } from '../data/task';
 import { IndexedData } from '../data/index.data.dto';
 
@@ -15,6 +15,7 @@ export class LogicService {
   private groups: IndexedData<string, GroupWithAlerts>;
   private nogroups: IndexedData<number, Alert>;
   private alertsResults: IndexedData<number, AlertResult>;
+  private alertsResultsByAlert: IndexedData<number, AlertResult[]>;
   private alertsExtradata: IndexedData<number, AlertExtradata>;
 
   items!: GroupWithAlerts[];
@@ -24,6 +25,7 @@ export class LogicService {
     this.groups = new IndexedData<string, GroupWithAlerts>();
     this.nogroups = new IndexedData<number, Alert>();
     this.alertsResults = new IndexedData<number, AlertResult>();
+    this.alertsResultsByAlert = new IndexedData<number, AlertResult[]>();
     this.alertsExtradata = new IndexedData<number, AlertExtradata>();
   }
 
@@ -47,8 +49,38 @@ export class LogicService {
     return this.alertsResults;
   }
 
+  public getLoadedAlertsResultsByAlert(): IndexedData<number, AlertResult[]> {
+    return this.alertsResultsByAlert;
+  }
+
   public getLoadedAlertsResultsExtradata(): IndexedData<number, AlertExtradata> {
     return this.alertsExtradata;
+  }
+
+  public getLastSucess(idAlert: number): Observable<DateResponse> {
+    const cachedExtradata: AlertExtradata | undefined = this.getLoadedAlertsResultsExtradata().index.get(idAlert);
+
+    if (cachedExtradata) {
+      return of(cachedExtradata.lastSucess);
+    }
+
+    return this.bckService.getLastSuccess(idAlert).pipe(
+      tap((lastSucess) => {
+        const newExtradata: AlertExtradata = { alertId: idAlert, lastSucess };
+  
+        this.setIndexed(newExtradata, a => a.alertId, this.alertsExtradata);
+      })
+    );
+  }
+
+  public getAlertResults(idAlert: number): Observable<AlertResult[]> {
+    const cachedExtradata: AlertResult[] | undefined = this.getLoadedAlertsResultsByAlert().index.get(idAlert);
+
+    if (cachedExtradata) {
+      return of(cachedExtradata);
+    } else {
+      return of([]);
+    }
   }
 
   public principalSearch(): Observable<Task> {
@@ -213,6 +245,10 @@ export class LogicService {
         alertResultPart.forEach(item => {
           this.setIndexed(item, ar => ar.id, this.alertsResults);
         });
+
+        if(alertResultPart && alertResultPart.length > 0) {
+          this.setIndexed(alertResultPart, ar => ar[0].alert.id ?? -1, this.alertsResultsByAlert);
+        }
 
         observer.next({
           type: TaskType.ALERT_RESULTS,
