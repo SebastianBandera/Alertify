@@ -12,18 +12,24 @@
                     </tr>
                 </thead>
                 <tbody class="[&amp;_tr:last-child]:border-0" >
-                    <!--<ng-container *ngFor="let check of test">-->
-                        <tr class="border-b transition-colors data-[state=selected]:bg-muted cursor-pointer hover:bg-muted/50">
-                            <td class="p-4 align-middle [&amp;:has([role=checkbox])]:pr-0" >
-                                <app-button-up-down></app-button-up-down>
-                            </td>
-                            <td class="p-4 align-middle [&amp;:has([role=checkbox])]:pr-0" >check.name</td>
-                            <td class="p-4 align-middle [&amp;:has([role=checkbox])]:pr-0" >
-                                <app-status [status]="status"></app-status> 
-                            </td>
-                            <td class="p-4 align-middle [&amp;:has([role=checkbox])]:pr-0" >false</td>
-                        </tr>
-                    <!--</ng-container>-->
+                    <ng-container *ngIf="hasAlerts">
+                        <ng-container *ngFor="let alert of alerts">
+                            <tr class="border-b transition-colors data-[state=selected]:bg-muted cursor-pointer hover:bg-muted/50">
+                                <td class="p-4 align-middle [&amp;:has([role=checkbox])]:pr-0" >
+                                    <app-button-up-down></app-button-up-down>
+                                </td>
+                                <td class="p-4 align-middle [&amp;:has([role=checkbox])]:pr-0" >
+                                    {{ alert.alert.name }}
+                                </td>
+                                <td class="p-4 align-middle [&amp;:has([role=checkbox])]:pr-0" >
+                                    <app-status [status]="alert.status"></app-status>
+                                </td>
+                                <td class="p-4 align-middle [&amp;:has([role=checkbox])]:pr-0" >
+                                    false
+                                </td>
+                            </tr>
+                        </ng-container>
+                    </ng-container>
 
                     <tr class="border-b transition-colors data-[state=selected]:bg-muted cursor-pointer hover:bg-muted/50">
                         <td class="p-4 align-middle [&amp;:has([role=checkbox])]:pr-0" >
