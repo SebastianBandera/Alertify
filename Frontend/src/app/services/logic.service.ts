@@ -5,6 +5,8 @@ import { Alert, AlertExtradata, AlertResult, ApiPagedResponse, DateResponse, Gro
 import { Observable, of, Subscriber, tap } from 'rxjs';
 import { Task, TaskType } from '../data/task';
 import { IndexedData } from '../data/index.data.dto';
+import { FrontGroupWithAlerts } from '../data/front.dto';
+import { ParserService } from './parser.service';
 
 @Injectable({
   providedIn: 'root'
@@ -18,19 +20,20 @@ export class LogicService {
   private alertsResultsByAlert: IndexedData<number, AlertResult[]>;
   private alertsExtradata: IndexedData<number, AlertExtradata>;
 
-  items!: GroupWithAlerts[];
+  //FrontEnd Data
+  private groupsFront: IndexedData<string, FrontGroupWithAlerts>;
 
-  constructor(private log: LoggerService, private bckService: BackendService) {
+
+
+  constructor(private log: LoggerService, private bckService: BackendService, private parserService: ParserService) {
     this.alerts = new IndexedData<number, Alert>();
     this.groups = new IndexedData<string, GroupWithAlerts>();
     this.nogroups = new IndexedData<number, Alert>();
     this.alertsResults = new IndexedData<number, AlertResult>();
     this.alertsResultsByAlert = new IndexedData<number, AlertResult[]>();
     this.alertsExtradata = new IndexedData<number, AlertExtradata>();
-  }
 
-  public get(): GroupWithAlerts[] {
-    return this.items;
+    this.groupsFront = new IndexedData<string, FrontGroupWithAlerts>();
   }
 
   public getLoadedAlerts(): IndexedData<number, Alert> {
@@ -39,6 +42,10 @@ export class LogicService {
 
   public getLoadedGroups(): IndexedData<string, GroupWithAlerts> {
     return this.groups;
+  }
+
+  public getLoadedGroupsFront(): IndexedData<string, FrontGroupWithAlerts> {
+    return this.groupsFront;
   }
 
   public getLoadedNoGroups(): IndexedData<number, Alert> {
@@ -83,13 +90,16 @@ export class LogicService {
     }
   }
 
+  /***
+   * Sync and wait, repeat
+   */
   public principalSearch(): Observable<Task> {
     return new Observable<Task>((observer) => {
       (async () => {
         while (true) {
           await this.syncProcess(observer);
           
-          await this.wait(60000);
+          await this.wait(20000);
         }
       })();
     });
@@ -140,13 +150,27 @@ export class LogicService {
           const idGroup: string = group.name;
           if (this.groups.index.has(idGroup)) {
             const groupList: GroupWithAlerts | undefined = this.groups.index.get(idGroup);
-            this.upsertItem(groupList?.alerts!, group.alert);
+            if(groupList) {
+              this.upsertItem(groupList?.alerts!, group.alert);
+
+              const groupListFront: FrontGroupWithAlerts = this.parserService.parseGroupWithAlerts(groupList);
+  
+              const groupListFrontSaved: FrontGroupWithAlerts | undefined = this.groupsFront.index.get(idGroup);
+
+              if(groupListFrontSaved) {
+                Object.assign(groupListFrontSaved, groupListFront)
+              }
+            }
           } else {
             const groupList: GroupWithAlerts = { name: group.name, alerts: [group.alert] };
             this.groups.index.set(idGroup, groupList);
             this.groups.data.push(groupList);
-          }
 
+            const groupListFront: FrontGroupWithAlerts = this.parserService.parseGroupWithAlerts(groupList);
+
+            this.groupsFront.index.set(idGroup, groupListFront);
+            this.groupsFront.data.push(groupListFront);
+          }
         });
 
         observer.next({

@@ -14,6 +14,7 @@ import { GroupComponent } from './group/group.component';
 import { LogicService } from '../../services/logic.service';
 import { Task, TaskType } from '../../data/task';
 import { Alert, GroupWithAlerts } from '../../data/basic.dto';
+import { FrontGroupWithAlerts } from '../../data/front.dto';
 
 @Component({
   selector: 'app-mainevents',
@@ -24,7 +25,7 @@ import { Alert, GroupWithAlerts } from '../../data/basic.dto';
 })
 export class MaineventsComponent {
 
-  groups: GroupWithAlerts[] = [];
+  groups: FrontGroupWithAlerts[] = [];
 
   constructor(
     private logicService: LogicService,
@@ -32,15 +33,11 @@ export class MaineventsComponent {
   }
 
   ngOnInit(): void {
-    this.groups = this.logicService.getLoadedGroups().data;
+    this.groups = this.logicService.getLoadedGroupsFront().data;
+  }
 
-    this.logicService.principalSearch().subscribe({
-      next: (value: Task) => {
-        this.logger.log(value);
-      },
-      error: this.logger.error,
-      complete: () => this.logger.log("Load complete!")
-    });
+  trackByName(index: number, group: GroupWithAlerts): string {
+    return group.name;
   }
 
   onButtonClick(): void {
