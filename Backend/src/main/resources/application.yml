@@ -22,6 +22,8 @@ spring:
     caffeine:
       spec: maximumSize=1000,expireAfterWrite=1h
 
+schedule: false
+
 keyPart: ${KEY_PART}
 
 timezoneSecondsOffset: ${TIMEZONE_SECONDS_OFFSET}

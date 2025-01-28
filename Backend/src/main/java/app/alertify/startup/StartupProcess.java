@@ -10,6 +10,7 @@ import javax.sql.DataSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.SpringApplication;
 import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Service;
@@ -41,6 +42,9 @@ public class StartupProcess {
 	
 	@Autowired
 	private ThreadControl threadControl;
+	
+	@Value("${schedule:true}")
+	private boolean schedule;
 	
     public void runnable() {
     	log.info("Startup");
@@ -74,13 +78,18 @@ public class StartupProcess {
 	}
 
 	private void _init() {
-    	reloadAlerts();
+		if(!schedule) {
+			log.info(">>>>> ¡¡¡ Scheduled alerts disabled !!! <<<<<");
+		}
 		
+    	reloadAlerts();
 	}
 
 	private void reloadAlerts() {
-		repositorioAlert.findAll().forEach(this::registerAlert);
-		threadControl.startThreadControl();
+		if(schedule) {
+			repositorioAlert.findAll().forEach(this::registerAlert);
+			threadControl.startThreadControl();
+		}
 	}
 	
 	public void registerAlert(Alert alert) {
