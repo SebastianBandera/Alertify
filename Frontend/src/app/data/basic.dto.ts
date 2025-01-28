@@ -46,6 +46,12 @@ export interface StatusResult {
     name: string;
 }
 
+export enum StatusResultEnum {
+    SUCCESS = "success",
+    WARN = "warn",
+    ERROR = "error",
+  }
+
 export interface AlertResult {
     id: number;
     alert: Alert;
