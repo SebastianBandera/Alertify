@@ -57,6 +57,8 @@ public class SQLThreshold implements Control {
 		}
 
 		result.put("count", count);
+		result.put("threshold", threshold);
+		result.put("thresholdType", thresholdType);
 		
 		return Pair.of(result, ControlResultStatus.parse(success));
 	}
