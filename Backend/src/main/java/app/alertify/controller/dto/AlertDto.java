@@ -10,6 +10,8 @@ public class AlertDto {
 	private String name;
 
 	private Duration periodicity;
+	
+	private String control;
 
 	public Long getId() {
 		return id;
@@ -55,6 +57,14 @@ public class AlertDto {
 	@Override
 	public String toString() {
 		return "AlertDto [id=" + id + ", name=" + name + ", periodicity=" + periodicity + "]";
+	}
+
+	public String getControl() {
+		return control;
+	}
+
+	public void setControl(String control) {
+		this.control = control;
 	}
 	  
 	  

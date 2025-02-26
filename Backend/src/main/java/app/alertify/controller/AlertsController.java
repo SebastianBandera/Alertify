@@ -110,7 +110,7 @@ public class AlertsController {
 		
 		DynamicSearchResult<U> results = resultSupplier.get();
 		
-		Page<T> pageResult = results.getPage().map(in -> simpleMapper.map(in, classOutput, mapperConfig.getMapping()));
+		Page<T> pageResult = results.getPage().map(in -> simpleMapper.map(in, classOutput, mapperConfig.getMapping(), mapperConfig.getMapFunctions()));
 		List<String> messages = parseMessages(results.getExceptions());
 		
 		if (results.getExceptions() == null || results.getExceptions().isEmpty()) {
