@@ -12,6 +12,8 @@ public class AlertDto {
 	private Duration periodicity;
 	
 	private String control;
+	
+	private int version;
 
 	public Long getId() {
 		return id;
@@ -65,6 +67,14 @@ public class AlertDto {
 
 	public void setControl(String control) {
 		this.control = control;
+	}
+
+	public int getVersion() {
+		return version;
+	}
+
+	public void setVersion(int version) {
+		this.version = version;
 	}
 	  
 	  

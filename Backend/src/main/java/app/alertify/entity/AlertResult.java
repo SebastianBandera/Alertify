@@ -60,6 +60,9 @@ public class AlertResult {
 	  
 	  @Column(name="active")
 	  private boolean active;
+	  
+	  @Column(name="version")
+	  private int version;
 
 	public Long getId() {
 		return id;
@@ -131,6 +134,14 @@ public class AlertResult {
 
 	public void setActive(boolean active) {
 		this.active = active;
+	}
+
+	public int getVersion() {
+		return version;
+	}
+
+	public void setVersion(int version) {
+		this.version = version;
 	}
 
 	@Override

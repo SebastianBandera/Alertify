@@ -56,8 +56,8 @@ public class Alert {
 	  @Column(name="active")
 	  private boolean active;
 	  
-      //@OneToMany(mappedBy = "alert", cascade = CascadeType.ALL, fetch = FetchType.EAGER)
-      //private List<AlertResult> alertResults;
+	  @Column(name="version")
+	  private int version;
 	  
 	  @SuppressWarnings("unchecked")
 	  public Map<String,Object> getParametrosMap() {
@@ -128,5 +128,13 @@ public class Alert {
 
 	public void setActive(boolean active) {
 		this.active = active;
+	}
+
+	public int getVersion() {
+		return version;
+	}
+
+	public void setVersion(int version) {
+		this.version = version;
 	}
 }

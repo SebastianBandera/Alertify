@@ -22,6 +22,8 @@ public class AlertResultDto {
 	  private String result;
 
 	  private boolean needsReview;
+		
+		private int version;
 
 	public Long getId() {
 		return id;
@@ -77,6 +79,14 @@ public class AlertResultDto {
 
 	public void setNeedsReview(boolean needsReview) {
 		this.needsReview = needsReview;
+	}
+
+	public int getVersion() {
+		return version;
+	}
+
+	public void setVersion(int version) {
+		this.version = version;
 	}
 
 	@Override

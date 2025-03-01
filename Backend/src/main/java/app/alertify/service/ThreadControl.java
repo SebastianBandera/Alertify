@@ -197,6 +197,7 @@ public class ThreadControl {
 				ar.setAlert(taskRequest.getAlert());
 				ar.setDateIni(date_ini);
 				ar.setDateEnd(date_fin);
+				ar.setVersion(taskRequest.getAlert().getVersion());
 				ar.setParams(taskRequest.getAlert().getParams());
 				ar.setStatusResult(codStatusService.getCodStatus(result.getSecond()));
 				ar.setNeedsReview(result.getSecond().equals(ControlResultStatus.WARN) || result.getSecond().equals(ControlResultStatus.ERROR));
@@ -207,6 +208,7 @@ public class ThreadControl {
 				ar.setAlert(taskRequest.getAlert());
 				ar.setDateIni(date_ini);
 				ar.setDateEnd(date_fin);
+				ar.setVersion(taskRequest.getAlert().getVersion());
 				ar.setParams(taskRequest.getAlert().getParams());
 				ar.setStatusResult(codStatusService.getCodStatus(ControlResultStatus.ERROR));
 				ar.setNeedsReview(true);
