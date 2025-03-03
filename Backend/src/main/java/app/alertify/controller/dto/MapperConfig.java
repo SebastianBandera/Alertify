@@ -48,7 +48,7 @@ public class MapperConfig {
 	
 	private String generateHash(String input) {
         try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            MessageDigest digest = MessageDigest.getInstance("MD5");
             byte[] encodedhash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
             return bytesToHex(encodedhash);
         } catch (NoSuchAlgorithmException e) {
