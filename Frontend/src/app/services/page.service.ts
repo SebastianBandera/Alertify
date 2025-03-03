@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { firstValueFrom, Observable } from 'rxjs';
-import { ApiPagedResponse, PagedResponse } from '../data/basic.dto';
+import { ApiPagedResponse, PagedResponse } from '../data/service.dto';
 
 @Injectable({
     providedIn: 'root',

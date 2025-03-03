@@ -1,4 +1,4 @@
-import { Status } from "./status";
+import { Status } from "./status.enum";
 
 export class NotificationDto {
     private _name: string;

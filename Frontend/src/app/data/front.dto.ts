@@ -1,5 +1,5 @@
-import { Alert, AlertResult, GroupWithAlerts } from "./basic.dto";
-import { Status } from "./status";
+import { Alert, AlertResult, GroupWithAlerts } from "./service.dto";
+import { Status } from "./status.enum";
 
 export interface FrontGroupWithAlerts {
     name: string;
@@ -10,7 +10,7 @@ export interface FrontGroupWithAlerts {
 export interface FrontAlert {
     alert: Alert;
     status?: Status;
-    last_error?: string;
+    last_error?: Date;
     open: boolean;
     last_success?: Date;
     checks?: FrontChecks[];

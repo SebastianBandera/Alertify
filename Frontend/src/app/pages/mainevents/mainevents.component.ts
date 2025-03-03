@@ -3,7 +3,7 @@ import { BackendService } from '../../services/backend.service';
 import { CheckGroup } from '../../data/check-group';
 import { CommonModule } from '@angular/common';
 import { Check } from '../../data/check';
-import { Status } from '../../data/status';
+import { Status } from '../../data/status.enum';
 import { NotificationService } from '../../services/notification.service';
 import { LoggerService } from '../../services/logger.service';
 import { NotificationDto } from '../../data/notification.dto';
@@ -13,7 +13,7 @@ import { ButtonUpDownComponent } from './button-up-down/button-up-down.component
 import { GroupComponent } from './group/group.component';
 import { LogicService } from '../../services/logic.service';
 import { Task, TaskType } from '../../data/task';
-import { Alert, GroupWithAlerts } from '../../data/basic.dto';
+import { Alert, GroupWithAlerts } from '../../data/service.dto';
 import { FrontGroupWithAlerts } from '../../data/front.dto';
 
 @Component({

@@ -1,11 +1,11 @@
 import { Injectable } from '@angular/core';
 import { LoggerService } from './logger.service';
 import { BackendService } from './backend.service';
-import { Alert, AlertExtradata, AlertResult, ApiPagedResponse, DateResponse, Group, GroupWithAlerts } from '../data/basic.dto';
-import { Observable, of, Subscriber, tap } from 'rxjs';
+import { Alert, AlertExtradata, AlertResult, ApiPagedResponse, DateResponse, Group, GroupWithAlerts, StatusResultEnum } from '../data/service.dto';
+import { map, Observable, of, Subscriber, tap } from 'rxjs';
 import { Task, TaskType } from '../data/task';
 import { IndexedData } from '../data/index.data.dto';
-import { FrontGroupWithAlerts } from '../data/front.dto';
+import { FrontAlert, FrontChecks, FrontGroupWithAlerts } from '../data/front.dto';
 import { ParserService } from './parser.service';
 
 @Injectable({
@@ -34,6 +34,18 @@ export class LogicService {
     this.alertsExtradata = new IndexedData<number, AlertExtradata>();
 
     this.groupsFront = new IndexedData<string, FrontGroupWithAlerts>();
+
+    this.principalSearch().subscribe({
+      next: (value: Task) => {
+        
+      },
+      error: (err) => {
+        this.log.error("principalSearch", err)
+      },
+      complete: () => {
+        this.log.log("principalSearch complete")
+      }
+    });
   }
 
   public getLoadedAlerts(): IndexedData<number, Alert> {
@@ -64,11 +76,11 @@ export class LogicService {
     return this.alertsExtradata;
   }
 
-  public getLastSucess(idAlert: number): Observable<DateResponse> {
+  public getLastSucess(idAlert: number): Observable<Date | undefined> {
     const cachedExtradata: AlertExtradata | undefined = this.getLoadedAlertsResultsExtradata().index.get(idAlert);
 
     if (cachedExtradata) {
-      return of(cachedExtradata.lastSucess);
+      return of(this.parserService.stringToDate(cachedExtradata.lastSucess.date));
     }
 
     return this.bckService.getLastSuccess(idAlert).pipe(
@@ -76,18 +88,58 @@ export class LogicService {
         const newExtradata: AlertExtradata = { alertId: idAlert, lastSucess };
   
         this.setIndexed(newExtradata, a => a.alertId, this.alertsExtradata);
-      })
+      }),
+      map((lastSuccess) => {
+        const date: Date | undefined = this.parserService.stringToDate(lastSuccess.date);
+        return date;
+      }),
     );
   }
 
-  public getAlertResults(idAlert: number): Observable<AlertResult[]> {
-    const cachedExtradata: AlertResult[] | undefined = this.getLoadedAlertsResultsByAlert().index.get(idAlert);
+  public getLastError(idAlert: number): Observable<Date | undefined> {
+    return new Observable<Date | undefined>((observer) => {
+      (async () => {
+        let result: Date | undefined = undefined;
 
-    if (cachedExtradata) {
-      return of(cachedExtradata);
-    } else {
-      return of([]);
-    }
+        const cachedAlertResults: AlertResult[] | undefined = this.getLoadedAlertsResultsByAlert().index.get(idAlert);
+
+        if (cachedAlertResults) {
+          const date: Date | undefined =
+              cachedAlertResults
+                .filter(a => a != null)
+                .filter(a => a.needsReview == true)
+                .filter(a => a.statusResult.name == StatusResultEnum.WARN || a.statusResult.name == StatusResultEnum.ERROR)
+                .map(a => a.dateIni)
+                .map(d => this.parserService.stringToDate(d))
+                .filter(d => this.parserService.isValidDate(d))
+                .sort((a,b) => b.getTime()-a.getTime())
+                .shift();
+          
+          if(date) {
+            result = date;
+          }
+        }
+
+        observer.next(result);
+        observer.complete();
+      })();
+    });
+  }
+
+  public processAlertResult(idAlert: number, checks: FrontChecks[]): Observable<void> {
+    return new Observable<void>((observer) => {
+      (async () => {
+        const cachedAlertResults: AlertResult[] | undefined = this.getLoadedAlertsResultsByAlert().index.get(idAlert);
+    
+        if(cachedAlertResults) {
+          cachedAlertResults.forEach(a => {
+            
+          })
+        }
+
+        observer.complete();
+      })();
+    });
   }
 
   /***
@@ -99,7 +151,9 @@ export class LogicService {
         while (true) {
           await this.syncProcess(observer);
           
-          await this.wait(20000);
+          await this.wait(60000);
+
+          this.log.log("Sync refresh");
         }
       })();
     });

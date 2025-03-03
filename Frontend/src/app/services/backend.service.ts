@@ -2,11 +2,11 @@ import { Injectable } from '@angular/core';
 import { firstValueFrom, Observable, of } from 'rxjs';
 import { CheckGroup } from '../data/check-group';
 import { Check } from '../data/check';
-import { Status } from '../data/status';
+import { Status } from '../data/status.enum';
 import { ErrorCheck } from '../data/error-check';
-import { Period } from '../data/period';
+import { Period } from '../data/period.enum';
 import { ApiService } from './api.service';
-import { Alert, AlertResult, ApiPagedResponse, DateResponse, Group, PagedResponse } from '../data/basic.dto';
+import { Alert, AlertResult, ApiPagedResponse, DateResponse, Group, PagedResponse } from '../data/service.dto';
 import { PageService } from './page.service';
 import { HttpClient } from '@angular/common/http';
 

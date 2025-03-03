@@ -1,5 +1,5 @@
 import { Component, Input, TemplateRef, ViewChild } from '@angular/core';
-import { Status } from '../../../data/status';
+import { Status } from '../../../data/status.enum';
 import { CommonModule } from '@angular/common';
 
 @Component({

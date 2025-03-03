@@ -1,5 +1,5 @@
 import { ErrorCheck } from "./error-check";
-import { Status } from "./status";
+import { Status } from "./status.enum";
 
 export class Check {
     private _name: string;

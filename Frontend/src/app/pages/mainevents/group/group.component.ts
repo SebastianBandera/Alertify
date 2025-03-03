@@ -1,5 +1,5 @@
 import { Component, Input, SimpleChanges } from '@angular/core';
-import { Status } from '../../../data/status';
+import { Status } from '../../../data/status.enum';
 import { Check } from '../../../data/check';
 import { StatusComponent } from '../status/status.component';
 import { ButtonUpDownComponent } from '../button-up-down/button-up-down.component';

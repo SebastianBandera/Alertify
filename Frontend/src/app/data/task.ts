@@ -1,4 +1,4 @@
-import { Alert, AlertExtradata, AlertResult, Group } from "./basic.dto";
+import { Alert, AlertExtradata, AlertResult, Group } from "./service.dto";
 
 export interface Task {
     type: TaskType;

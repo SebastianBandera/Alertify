@@ -2,7 +2,7 @@ import { Injectable } from '@angular/core';
 import { Title } from '@angular/platform-browser';
 import { Observable, Subject, Subscription } from 'rxjs';
 import { LoggerService } from './logger.service';
-import { Status } from '../data/status';
+import { Status } from '../data/status.enum';
 import { NotificationDto } from '../data/notification.dto';
 
 @Injectable({
