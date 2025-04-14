@@ -1,16 +1,16 @@
 package app.alertify.entity;
 
+import javax.persistence.CascadeType;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
+import javax.persistence.JoinColumn;
+import javax.persistence.ManyToOne;
 import javax.persistence.Table;
 
 @Entity(name = "DbSource")
 @Table(schema = "conn", name = "dbsources")
 public class DbSource {
-	
-	public static final int PASSWORD_STATUS_PLAIN = 0;
-	public static final int PASSWORD_STATUS_ENCRYPTED_AES_SHA256_IV = 1;
 
     @Id
     @Column(name = "name", length = 100, nullable = false)
@@ -24,15 +24,14 @@ public class DbSource {
 
     @Column(name = "driverclassname", nullable = false)
     private String driverClassName;
-
-    @Column(name = "username", nullable = false)
-    private String username;
-
-    @Column(name = "passwordstatus", nullable = false)
-    private int passwordStatus;
-
-    @Column(name = "password", nullable = false)
-    private String password;
+    
+    @ManyToOne(cascade = CascadeType.MERGE)
+    @JoinColumn(name = "id_username", nullable = false)
+    private BasicSecret basicSecretUsername;
+	  
+    @ManyToOne(cascade = CascadeType.MERGE)
+    @JoinColumn(name = "id_password", nullable = false)
+    private BasicSecret basicSecretPassword;
 
     public String getName() {
         return name;
@@ -66,27 +65,19 @@ public class DbSource {
         this.driverClassName = driverClassName;
     }
 
-    public String getUsername() {
-        return username;
-    }
+	public BasicSecret getBasicSecretUsername() {
+		return basicSecretUsername;
+	}
 
-    public void setUsername(String username) {
-        this.username = username;
-    }
+	public void setBasicSecretUsername(BasicSecret basicSecretUsername) {
+		this.basicSecretUsername = basicSecretUsername;
+	}
 
-    public int getPasswordStatus() {
-        return passwordStatus;
-    }
+	public BasicSecret getBasicSecretPassword() {
+		return basicSecretPassword;
+	}
 
-    public void setPasswordStatus(int passwordStatus) {
-        this.passwordStatus = passwordStatus;
-    }
-
-    public String getPassword() {
-        return password;
-    }
-
-    public void setPassword(String password) {
-        this.password = password;
-    }
+	public void setBasicSecretPassword(BasicSecret basicSecretPassword) {
+		this.basicSecretPassword = basicSecretPassword;
+	}
 }

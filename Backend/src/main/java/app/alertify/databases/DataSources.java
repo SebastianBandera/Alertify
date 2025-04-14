@@ -22,6 +22,7 @@ import app.alertify.crypto.Crypto;
 import app.alertify.crypto.CryptoMessage;
 import app.alertify.crypto.KeyProvider;
 import app.alertify.databases.DataSourceProperties.DataSourceConfig;
+import app.alertify.entity.BasicSecret;
 import app.alertify.entity.DbSource;
 import app.alertify.entity.repositories.DBSourceRepository;
 
@@ -103,22 +104,30 @@ public class DataSources {
 	}
 
 	private void preprocessPassword(DbSource dbConfig) throws Exception {
-		if (dbConfig.getPasswordStatus() == DbSource.PASSWORD_STATUS_PLAIN) {
-			updatePasswordAES_SHA256_IV(dbConfig);
+		boolean needUpdate = false;
+		if (dbConfig.getBasicSecretUsername().getSecretStatus() == BasicSecret.SECRET_STATUS_PLAIN) {
+			updatePasswordAES_SHA256_IV(dbConfig, dbConfig.getBasicSecretUsername());
+			needUpdate |= true;
+		}
+		if (dbConfig.getBasicSecretPassword().getSecretStatus() == BasicSecret.SECRET_STATUS_PLAIN) {
+			updatePasswordAES_SHA256_IV(dbConfig, dbConfig.getBasicSecretPassword());
+			needUpdate |= true;
+		}
+		
+		if (needUpdate) {
+			repository.saveAndFlush(dbConfig);
 		}
 	}
 
-	private void updatePasswordAES_SHA256_IV(DbSource dbConfig) throws Exception {
-		String plainPassword = dbConfig.getPassword();
+	private void updatePasswordAES_SHA256_IV(DbSource dbConfig, BasicSecret basicSecret) throws Exception {
+		String plainPassword = basicSecret.getSecret();
 		
 		CryptoMessage message = Crypto.encriptar(plainPassword, keyProvider.getAESKey());
 		
 		String newPasswordBody = Crypto.empaquetarIV(message.getMessage(), message.getIv());
 		
-		dbConfig.setPasswordStatus(DbSource.PASSWORD_STATUS_ENCRYPTED_AES_SHA256_IV);
-		dbConfig.setPassword(newPasswordBody);
-		
-		repository.saveAndFlush(dbConfig);
+		basicSecret.setSecretStatus(BasicSecret.SECRET_STATUS_ENCRYPTED_AES_SHA256_IV);
+		basicSecret.setSecret(newPasswordBody);
 	}
 
 	private void processNewDBConfig(DbSource dbConfig, Set<String> registredMemory) throws Exception {
@@ -128,8 +137,8 @@ public class DataSources {
 		dbConfigMemory.setName(dbConfig.getName());
 		dbConfigMemory.setReadonly(dbConfig.isReadonly());
 		dbConfigMemory.setUrl(dbConfig.getUrl());
-		dbConfigMemory.setUsername(dbConfig.getUsername());
-		dbConfigMemory.setPassword(dbConfig.getPassword());
+		dbConfigMemory.setUsername(dbConfig.getBasicSecretUsername().getSecret());
+		dbConfigMemory.setPassword(dbConfig.getBasicSecretPassword().getSecret());
 		
 		dataSourceProperties.getDatasources().add(dbConfigMemory);
 		
@@ -143,8 +152,8 @@ public class DataSources {
 		dbConfigMemory.setName(dbConfig.getName());
 		dbConfigMemory.setReadonly(dbConfig.isReadonly());
 		dbConfigMemory.setUrl(dbConfig.getUrl());
-		dbConfigMemory.setUsername(dbConfig.getUsername());
-		dbConfigMemory.setPassword(dbConfig.getPassword());
+		dbConfigMemory.setUsername(dbConfig.getBasicSecretUsername().getSecret());
+		dbConfigMemory.setPassword(dbConfig.getBasicSecretPassword().getSecret());
 		
 		String name = dbConfig.getName();
 		
@@ -177,7 +186,12 @@ public class DataSources {
 		
 		hikariConfig.setJdbcUrl(config.getUrl());
 		hikariConfig.setDriverClassName(config.getDriverClassName());
-		hikariConfig.setUsername(config.getUsername());
+		
+		try {
+			hikariConfig.setUsername(Crypto.desencriptar(config.getUsername(), keyProvider.getAESKey()));
+		} catch (Exception e) {
+			log.error("Error al desencriptar el usuario", e);
+		}
 		
 		try {
 			hikariConfig.setPassword(Crypto.desencriptar(config.getPassword(), keyProvider.getAESKey()));
