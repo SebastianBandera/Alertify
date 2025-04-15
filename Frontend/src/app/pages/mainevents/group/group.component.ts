@@ -5,18 +5,22 @@ import { CommonModule } from '@angular/common';
 import { LoadingPipeText } from '../../../pipes/loading.pipe';
 import { FrontAlert, FrontGroupWithAlerts } from '../../../data/front.dto';
 import { LoggerService } from '../../../services/logger.service';
+import { HumanDatePipe } from '../../../pipes/human-date.pipe';
+import { TimesAgoPipe } from '../../../pipes/times-ago.pipe';
 
 @Component({
   selector: 'app-group',
-  imports: [CommonModule, StatusComponent, ButtonUpDownComponent, LoadingPipeText],
+  imports: [CommonModule, StatusComponent, ButtonUpDownComponent, LoadingPipeText, HumanDatePipe, TimesAgoPipe],
   templateUrl: './group.component.html',
   styleUrl: './group.component.css'
 })
 export class GroupComponent {
   @Input() group?: FrontGroupWithAlerts;
 
-  constructor(private logger: LoggerService) {
+  private openedAlerts: Set<number>;
 
+  constructor(private logger: LoggerService) {
+    this.openedAlerts = new Set<number>();
   }
 
   testChanges(): void {
