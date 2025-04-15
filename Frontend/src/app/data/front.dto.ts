@@ -12,20 +12,16 @@ export interface FrontAlert {
     status?: Status;
     last_error?: Date;
     open: boolean;
+    open_errors: boolean;
+    period: string;
     last_success?: Date;
-    checks?: FrontChecks[];
-}
-
-export interface FrontChecks {
-    status: Status;
-    period: Number;
-    open: boolean;
     results: FrontResult[];
 }
 
 export interface FrontResult {
     alert_result: AlertResult;
-    time: Date;
+    time: string;
     message: string;
     status: Status;
+    descripcion?: string;
 }
