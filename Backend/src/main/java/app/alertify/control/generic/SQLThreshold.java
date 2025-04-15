@@ -31,6 +31,7 @@ public class SQLThreshold implements Control {
 		Objects.requireNonNull(params, "needs args to execute");
 		int threshold         = (Integer)params.get(Params.THRESHOLD.getValue());
 		String thresholdType  = ObjectsUtils.noNull((String)params.get(Params.THRESHOLD_TYPE.getValue()), "").toLowerCase();
+		String descripcion    = ObjectsUtils.noNull((String)params.get(Params.DESCRIPCION.getValue()), "");
 		String sql            = ObjectsUtils.noNull((String)params.get(Params.SQL.getValue()), "");
 		Object[] paramsSQL    = ObjectsUtils.tryGet(() -> (Object[])params.get(Params.PARAMS_SQL.getValue()), () -> new Object[] {});
 		DataSource dataSource = (DataSource)params.get(Params.DATA_SOURCE.getValue());
@@ -57,8 +58,9 @@ public class SQLThreshold implements Control {
 		}
 
 		result.put("count", count);
-		result.put("threshold", threshold);
-		result.put("thresholdType", thresholdType);
+		result.put(Params.THRESHOLD.toString(), threshold);
+		result.put(Params.THRESHOLD_TYPE.toString(), thresholdType);
+		result.put(Params.DESCRIPCION.toString(), descripcion);
 		
 		return Pair.of(result, ControlResultStatus.parse(success));
 	}
@@ -78,6 +80,7 @@ public class SQLThreshold implements Control {
 		THRESHOLD_TYPE("threshold_type"),
 		PARAMS_SQL("params"),
 		SQL("sql"),
+		DESCRIPCION("descripcion"),
 		DATA_SOURCE("data_source");
 
 		private String value;
