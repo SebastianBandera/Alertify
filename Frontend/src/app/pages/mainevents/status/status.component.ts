@@ -1,6 +1,7 @@
 import { Component, Input, TemplateRef, ViewChild } from '@angular/core';
 import { Status } from '../../../data/status.enum';
 import { CommonModule } from '@angular/common';
+import { LoggerService } from '../../../services/logger.service';
 
 @Component({
   selector: 'app-status',
@@ -14,6 +15,18 @@ export class StatusComponent {
   @ViewChild('status_ok', { static: true }) status_ok!: TemplateRef<any>;
   @ViewChild('status_warn', { static: true }) status_warn!: TemplateRef<any>;
   @ViewChild('status_error', { static: true }) status_error!: TemplateRef<any>;
+
+  constructor(private logger: LoggerService) {
+
+  }
+
+  ngOnInit(): void {
+    this.logger.debug('StatusComponent ngOnInit ' + this.status);
+  }
+
+  ngOnDestroy(): void {
+    this.logger.debug('StatusComponent ngOnDestroy ' + this.status)
+  }
 
   getTemplate(): TemplateRef<any> | null {
     switch (this.status) {

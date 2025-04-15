@@ -1,11 +1,10 @@
-import { Component, Input, SimpleChanges } from '@angular/core';
-import { Status } from '../../../data/status.enum';
-import { Check } from '../../../data/check';
+import { Component, Input } from '@angular/core';
 import { StatusComponent } from '../status/status.component';
 import { ButtonUpDownComponent } from '../button-up-down/button-up-down.component';
 import { CommonModule } from '@angular/common';
 import { LoadingPipeText } from '../../../pipes/loading.pipe';
 import { FrontAlert, FrontGroupWithAlerts } from '../../../data/front.dto';
+import { LoggerService } from '../../../services/logger.service';
 
 @Component({
   selector: 'app-group',
@@ -16,7 +15,7 @@ import { FrontAlert, FrontGroupWithAlerts } from '../../../data/front.dto';
 export class GroupComponent {
   @Input() group?: FrontGroupWithAlerts;
 
-  constructor() {
+  constructor(private logger: LoggerService) {
 
   }
 
@@ -25,7 +24,11 @@ export class GroupComponent {
   }
 
   ngOnInit(): void {
-    
+    this.logger.debug('GroupComponent ngOnInit ' + this.group?.name, this.group)
+  }
+
+  ngOnDestroy(): void {
+    this.logger.debug('GroupComponent ngOnDestroy ' + this.group?.name)
   }
 
   get hasAlerts(): boolean {
