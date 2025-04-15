@@ -9,7 +9,7 @@
                         <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&amp;:has([role=checkbox])]:pr-0 w-[50px]"></th>
                         <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&amp;:has([role=checkbox])]:pr-0">Name</th>
                         <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&amp;:has([role=checkbox])]:pr-0">Status</th>
-                        <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&amp;:has([role=checkbox])]:pr-0">Last error</th>
+                        <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&amp;:has([role=checkbox])]:pr-0">Issue</th>
                     </tr>
                 </thead>
                 <tbody class="[&amp;_tr:last-child]:border-0" >
@@ -26,7 +26,7 @@
                                     <app-status [status]="alert.status"></app-status>
                                 </td>
                                 <td class="p-4 align-middle [&amp;:has([role=checkbox])]:pr-0" >
-                                    false
+                                    {{processIssueMessage(alert)}}
                                 </td>
                             </tr>
 
@@ -43,13 +43,12 @@
                                                         type="button" aria-controls="radix-:r1:" aria-expanded="true"
                                                         data-state="open" data-orientation="vertical" id="radix-:r0:"
                                                         class="flex flex-1 items-center justify-between py-4 font-medium transition-all hover:underline [&amp;[data-state=open]>svg]:rotate-180"
-                                                        data-radix-collection-item="">View Errors (3)<svg
-                                                            xmlns="http://www.w3.org/2000/svg" width="24" height="24"
-                                                            viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-                                                            class="lucide lucide-chevron-down h-4 w-4 shrink-0 transition-transform duration-200">
-                                                            <path d="m6 9 6 6 6-6"></path>
-                                                        </svg></button></h3>
+                                                        data-radix-collection-item="">View Errors {{alert.results | arrayLen }}
+                                                        
+                                                        <svg *ngIf="alert.open_errors" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-up h-4 w-4"><path d="m18 15-6-6-6 6"></path></svg>
+                                                        <svg *ngIf="!alert.open_errors" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down h-4 w-4"><path d="m6 9 6 6 6-6"></path></svg>
+                                                        </button>
+                                                    </h3>
                                                 <div *ngIf="alert.open_errors" data-state="open" id="radix-:r1:" role="region"
                                                     aria-labelledby="radix-:r0:" data-orientation="vertical"
                                                     class="overflow-hidden text-sm transition-all data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down"
