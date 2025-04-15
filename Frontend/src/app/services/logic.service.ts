@@ -347,7 +347,7 @@ export class LogicService {
     const alertFront: FrontAlert = {
       alert: alert,
       open: false,
-      open_errors: false,
+      open_errors: true,
       period: this.generalUtils.tryableSupplier(()=>this.generalUtils.parseIsoDuration(alert.periodicity), this.log.error, ()=>""),
       results: [],
       status: Status.NA
