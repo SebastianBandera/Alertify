@@ -366,6 +366,8 @@ export class LogicService {
       next: (value: ApiPagedResponse<AlertResult>) => {
         const alertResults: AlertResult[] = value.page.content;
 
+        let resultPushed: boolean = false;
+
         alertResults.forEach((alertResult: AlertResult) => {
           if(alertResult == null || alertResult.id == null) return;
 
@@ -379,12 +381,21 @@ export class LogicService {
 
             this.alertsResults.setIndexed(alertResult, item => item.id);
             alertFront.results.push(frontResult);
+            resultPushed = true;
           } else {
             //Resultado de alerta ya agregado, inmutable, no actualizar
           }
         });
 
-        
+        if(resultPushed) {
+          if(alertFront.results.find(v => v.status == Status.ERROR)) {
+            alertFront.status = Status.ERROR;
+          } else if (alertFront.results.find(v => v.status == Status.WARN)) {
+            alertFront.status = Status.WARN;
+          } else {
+            alertFront.status = Status.OK;
+          }
+        }
       },
       error: this.log.error,
       complete: () => []
