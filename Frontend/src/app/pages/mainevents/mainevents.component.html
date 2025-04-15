@@ -1,15 +1,7 @@
-<button (click)="onButtonClick()">Test</button>
-
-<div class="container">
-    <app-test-box text="¡Hola, mundo!" backgroundColor="blue"></app-test-box>
-    <app-test-box text="Componente dos" backgroundColor="green"></app-test-box>
-</div>
-
 <div class="bg-background !opacity-100 transition-opacity duration-300" style="opacity:0">
     <div class="!visible transition-opacity duration-150 bg-background text-foreground !opacity-100" id="v0-container" style="visibility:hidden;opacity:0">
-        <ng-container *ngFor="let item of groups">
+        <ng-container *ngFor="let item of groups; trackBy: trackByName">
             <app-group [group]="item"></app-group>
         </ng-container>
     </div>
 </div>
-

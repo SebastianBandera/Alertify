@@ -20,7 +20,7 @@ import { Observable, Subscription } from 'rxjs';
 
 @Component({
   selector: 'app-mainevents',
-  imports: [CommonModule, TestBoxComponent, GroupComponent],
+  imports: [CommonModule, GroupComponent],
   templateUrl: './mainevents.component.html',
   styleUrls: ['./mainevents.component.css', './c1.css', './c2.css', './main.css'],
   encapsulation: ViewEncapsulation.None
@@ -51,7 +51,7 @@ export class MaineventsComponent {
         try {
           while (!isCancelled) {
             await this.logicService.syncProcess();
-            await this.utils.wait(10000);
+            await this.utils.wait(30000);
           }
         } catch (error) {
           this.logger.error(error);
@@ -72,7 +72,7 @@ export class MaineventsComponent {
     this.logger.debug('MaineventsComponent ngOnDestroy')
   }
 
-  trackByName(index: number, group: GroupWithAlerts): string {
+  trackByName(index: number, group: FrontGroupWithAlerts): string {
     return group.name;
   }
 
