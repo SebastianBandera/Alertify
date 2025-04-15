@@ -2,6 +2,7 @@ export interface Alert {
     id: number;
     name: string;
     periodicity: string;
+    control: string;
 }
 
 export interface Group {
