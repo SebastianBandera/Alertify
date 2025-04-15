@@ -35,6 +35,11 @@ export class GroupComponent {
     this.logger.debug('GroupComponent ngOnDestroy ' + this.group?.name)
   }
 
+  toggleErrorButton(alert: FrontAlert): void {
+    alert.open_errors = !alert.open_errors;
+    console.log(alert.open_errors)
+  }
+
   get hasAlerts(): boolean {
     return (this.group?.alerts?.length ?? 0) > 0;
   }
