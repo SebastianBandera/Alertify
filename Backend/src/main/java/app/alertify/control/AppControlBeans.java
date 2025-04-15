@@ -17,7 +17,7 @@ import app.alertify.control.generic.WebWatch;
 @Configuration
 public class AppControlBeans {
 
-	@Autowired
+	@Autowired(required = true)
 	private DataSource localDataSource;
 	
 	@Bean(name = "sql_threshold")
