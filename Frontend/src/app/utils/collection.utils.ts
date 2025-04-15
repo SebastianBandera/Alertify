@@ -8,7 +8,7 @@ export class CollectionUtils {
         const index: number = array.findIndex(item => keyExtractor(item) === keyExtractor(newItem));
 
         if (index !== -1) {
-            this.upsertItemKeys(array[index], newItem, null)
+            this.upsertItemKeys(array[index], newItem, keysToAssign)
             return false;
         } else {
             array.push(newItem);
@@ -24,7 +24,7 @@ export class CollectionUtils {
         const index = array.findIndex(item => item.id === newItem.id);
 
         if (index !== -1) {
-            this.upsertItemKeys(array[index], newItem, null)
+            this.upsertItemKeys(array[index], newItem, keysToAssign)
             return false;
         } else {
             array.push(newItem);
