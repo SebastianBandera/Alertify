@@ -7,16 +7,16 @@ export class GeneralUtils {
     public parseIsoDuration(isoDuration: string): string {
         const match = isoDuration.match(/P(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?/);
       
-        if (!match) return "Formato inválido";
+        if (!match) return "invalid format";
       
         const [, hours, minutes, seconds] = match.map(val => val ? parseInt(val) : 0);
         const parts = [];
         
-        if (hours) parts.push(`${hours} horas`);
-        if (minutes) parts.push(`${minutes} minutos`);
-        if (seconds) parts.push(`${seconds} segundos`);
+        if (hours) if(hours==1) {parts.push(`${hours} hour`)} else {parts.push(`${hours} hours`)}
+        if (minutes) if(minutes==1) {parts.push(`${minutes} minute`)} else {parts.push(`${minutes} minutes`)}
+        if (seconds) if(seconds==1) {parts.push(`${seconds} seconds`)} else {parts.push(`${seconds} secondss`)}
       
-        return parts.length ? parts.join(", ") : "0 segundos";
+        return parts.length ? parts.join(", ") : "0 seconds";
     }
 
     public tryableRunnable(runnable: ()=>void, callback: (error: unknown)=>void): void {
