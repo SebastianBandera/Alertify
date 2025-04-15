@@ -2,7 +2,6 @@ import { CommonModule } from '@angular/common';
 import { Component, Input, TemplateRef, ViewChild } from '@angular/core';
 import { FrontAlert, FrontGroupWithAlerts } from '../../../data/front.dto';
 import { LoggerService } from '../../../services/logger.service';
-import { ToggleResultsService } from '../../../services/events/toggle-results.service';
 
 @Component({
   selector: 'app-button-up-down',
@@ -20,7 +19,7 @@ export class ButtonUpDownComponent {
   @ViewChild('boton_up', { static: true }) boton_up!: TemplateRef<any>;
   @ViewChild('boton_null', { static: true }) boton_null!: TemplateRef<any>;
   
-  constructor(private eventService: ToggleResultsService, private logger: LoggerService) {
+  constructor(private logger: LoggerService) {
 
   }
 
@@ -52,6 +51,8 @@ export class ButtonUpDownComponent {
 
     toggleStatus(): void {
       this.status_up = !this.status_up;
-      this.eventService.emitTogglePrincipal({alert: this.alert, group: this.group});
+      if(this.alert!=null) {
+        this.alert.open = !this.alert.open;
+      }
     }
 }
