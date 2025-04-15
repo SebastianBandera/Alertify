@@ -45,11 +45,10 @@ export class GroupComponent {
   }
 
   processIssueMessage(alert: FrontAlert): string {
+    if(alert.results.length == 0) return "No elements";
     const errors: number = alert.results.filter(r => r.status != 1).length;
-
     if(errors == 0) return "Ok";
-    if(errors == 1) return "1 active error";
-    return errors + " active errors";
+    return errors + " active";
   }
 
   get hasAlerts(): boolean {
