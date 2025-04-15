@@ -80,6 +80,8 @@ public class WebRequest implements Control {
             result.put("statusCode", -1);
         }
 		
+		result.put(Params.RESPONSE_CODE_EXPECTED.toString(), resposeExpected);
+		
 		if(responseEntity != null && regex_check!=null && regex_check.length > 0) {
 			String bodyStr = responseEntity.getBody();
 			for (int i = 0; i < regex_check.length; i++) {
