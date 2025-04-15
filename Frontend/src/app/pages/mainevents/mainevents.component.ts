@@ -15,6 +15,8 @@ import { LogicService } from '../../services/logic.service';
 import { Task, TaskType } from '../../data/task';
 import { Alert, GroupWithAlerts } from '../../data/service.dto';
 import { FrontGroupWithAlerts } from '../../data/front.dto';
+import { GeneralUtils } from '../../utils/general.utils';
+import { Observable, Subscription } from 'rxjs';
 
 @Component({
   selector: 'app-mainevents',
@@ -27,13 +29,47 @@ export class MaineventsComponent {
 
   groups: FrontGroupWithAlerts[] = [];
 
+  private utils: GeneralUtils = new GeneralUtils();
+
+  private observable!: Observable<void>;
+  private subscription!: Subscription;
+
   constructor(
     private logicService: LogicService,
     private logger: LoggerService) {
+
   }
 
   ngOnInit(): void {
-    this.groups = this.logicService.getLoadedGroupsFront().data;
+    this.logger.debug('MaineventsComponent ngOnInit')
+    this.groups = this.logicService.getGroupsFront().getAllData;
+
+    this.observable = new Observable<void>((observer) => {
+      let isCancelled = false;
+    
+      (async () => {
+        try {
+          while (!isCancelled) {
+            await this.logicService.syncProcess();
+            await this.utils.wait(10000);
+          }
+        } catch (error) {
+          this.logger.error(error);
+          observer.error(error);
+        }
+      })();
+    
+      return () => {
+        isCancelled = true;
+      };
+    });
+
+    this.subscription = this.observable.subscribe();
+  }
+
+  ngOnDestroy(): void {
+    this.subscription.unsubscribe();
+    this.logger.debug('MaineventsComponent ngOnDestroy')
   }
 
   trackByName(index: number, group: GroupWithAlerts): string {
