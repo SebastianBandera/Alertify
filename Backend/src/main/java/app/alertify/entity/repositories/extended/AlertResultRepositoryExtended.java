@@ -168,14 +168,12 @@ public class AlertResultRepositoryExtended implements AlertResultRepository {
 		return dynamicSearchAlertResult.customSearch(pageable, params, type);
 	}
 
-	@Override
-	public Date findLastDateAlertResultByAlert(Alert alert) {
-		return alertResultsRepository.findLastDateAlertResultByAlert(alert);
+	public Date findLastSuccessDateAlertResultByAlert(Long alertId) {
+		return alertResultsRepository.findLastSuccessDateAlertResultByAlert(alertId);
 	}
 
-	public Date findLastDateAlertResultByAlertId(Long alertId) {
-		Alert alert = new Alert();
-		alert.setId(alertId);
-		return alertResultsRepository.findLastDateAlertResultByAlert(alert);
+	public Date findLastIssueDateAlertResultByAlert(Long alertId) {
+		return alertResultsRepository.findLastIssueDateAlertResultByAlert(alertId);
 	}
+	
 }

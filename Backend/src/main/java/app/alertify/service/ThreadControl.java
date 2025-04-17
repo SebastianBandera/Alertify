@@ -129,7 +129,7 @@ public class ThreadControl {
 		task.setTaskRequest(taskRequest);
 		
 		Date now = new Date();
-		Date lastAlertResult = alertResultRepository.findLastDateAlertResultByAlert(taskRequest.getAlert());
+		Date lastAlertResult = alertResultRepository.findLastSuccessDateAlertResultByAlert(taskRequest.getAlert().getId());
 
 		long lastEventInSeconds;
 		if (lastAlertResult == null) {

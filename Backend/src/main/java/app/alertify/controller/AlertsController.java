@@ -122,7 +122,7 @@ public class AlertsController {
 	
 	@GetMapping("/alerts/results/lastSuccess")
 	public ResponseEntity<DateDto> lastSucess(@RequestParam Long alertId) {
-		Date date = alertResultRepositoryExtended.findLastDateAlertResultByAlertId(alertId);
+		Date date = alertResultRepositoryExtended.findLastSuccessDateAlertResultByAlert(alertId);
 		
 		if (date != null) {
 			return ResponseEntity.ok(new DateDto(date));
@@ -130,6 +130,18 @@ public class AlertsController {
 			return ResponseEntity.noContent().build();
 		}
 	}
+	
+	@GetMapping("/alerts/results/lastIssue")
+	public ResponseEntity<DateDto> lastIssue(@RequestParam Long alertId) {
+		Date date = alertResultRepositoryExtended.findLastIssueDateAlertResultByAlert(alertId);
+		
+		if (date != null) {
+			return ResponseEntity.ok(new DateDto(date));
+		} else {
+			return ResponseEntity.noContent().build();
+		}
+	}
+
 	
 	private List<String> parseMessages(List<Exception> exceptions) {
 		List<String> messages = new ArrayList<>();

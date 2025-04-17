@@ -22,6 +22,9 @@ public interface AlertResultRepository extends JpaRepository<AlertResult, Long> 
     @Query("SELECT ar FROM AlertResult ar WHERE ar.alert = :alert AND ar.active = true and ar.needsReview = :needsReview")
     Page<AlertResult> getAlertsResultByAlert(@Param("alert") Alert alert, @Param("needsReview") boolean needsReview, Pageable pageable);
     
-    @Query("SELECT MAX(ar.dateIni) FROM AlertResult ar WHERE ar.active = true and ar.alert = :alert")
-    Date findLastDateAlertResultByAlert(@Param("alert") Alert alert);
+    @Query("SELECT MAX(ar.dateIni) FROM AlertResult ar WHERE ar.active = true and ar.alert.id = :alertId and ar.statusResult.name = 'success'")
+    Date findLastSuccessDateAlertResultByAlert(@Param("alertId") Long alertId);
+    
+    @Query("SELECT MAX(ar.dateIni) FROM AlertResult ar WHERE ar.active = true and ar.alert.id = :alertId and ar.statusResult.name != 'success'")
+    Date findLastIssueDateAlertResultByAlert(@Param("alertId") Long alertId);
 }
