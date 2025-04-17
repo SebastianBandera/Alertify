@@ -11,7 +11,7 @@ spring:
     driverClassName: org.postgresql.Driver
   jpa:
     open-in-view: false
-    show-sql: true
+    show-sql: false
     properties:
       hibernate:
         jdbc:
