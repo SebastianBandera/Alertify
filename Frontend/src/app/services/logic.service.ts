@@ -205,6 +205,10 @@ export class LogicService {
     );
   }
 
+  public resolve(idAlertResult: number): void {
+    this.bckService.resolve(idAlertResult);
+  }
+
   /*public getLastError(idAlert: number): Observable<Date | undefined> {
     return new Observable<Date | undefined>((observer) => {
       (async () => {
@@ -489,4 +493,5 @@ export class LogicService {
       default: return Status.NA;
     }
   }
+  
 }

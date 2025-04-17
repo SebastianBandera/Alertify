@@ -9,6 +9,7 @@ import { HumanDatePipe } from '../../../pipes/human-date.pipe';
 import { TimesAgoPipe } from '../../../pipes/times-ago.pipe';
 import { ArrayLenPipe } from '../../../pipes/array-len.pipe';
 import { Status } from '../../../data/status.enum';
+import { LogicService } from '../../../services/logic.service';
 
 @Component({
   selector: 'app-group',
@@ -19,10 +20,10 @@ import { Status } from '../../../data/status.enum';
 export class GroupComponent {
   @Input() group?: FrontGroupWithAlerts;
 
-  private openedAlerts: Set<number>;
+  private resolvedAlertResults = new Set<number>();
 
-  constructor(private logger: LoggerService) {
-    this.openedAlerts = new Set<number>();
+  constructor(private logger: LoggerService, private logic: LogicService) {
+    this.resolvedAlertResults = new Set<number>();
   }
 
   testChanges(): void {
@@ -105,5 +106,34 @@ export class GroupComponent {
 
   getStatus(id: number): string {
     return Status[id];
+  }
+
+  mark_resolved(frontResults: FrontResult[]) {
+    if(frontResults != null) {
+      this.logger.debug("mark_resolved: ", frontResults.map(x => x.alert_result.id))
+      frontResults.forEach(o => {
+        this.logic.resolve(o.alert_result.id);
+        this.resolvedAlertResults.add(o.alert_result.id);
+      })
+    }
+  }
+
+  is_all_resolved(frontResults: FrontResult[]) {
+    return frontResults.every(fr =>
+      this.resolvedAlertResults.has(fr.alert_result.id)
+    );
+  }
+
+  get_resolved_ratio(frontResults: FrontResult[]): number {
+    if (!frontResults || frontResults.length === 0) {
+      return 0;
+    }
+  
+    const resolvedCount = frontResults.filter(fr =>
+      this.resolvedAlertResults.has(fr.alert_result.id)
+    ).length;
+  
+    const result = resolvedCount / frontResults.length;
+    return result + 1; //+1 falsy problem with ngIf
   }
 }

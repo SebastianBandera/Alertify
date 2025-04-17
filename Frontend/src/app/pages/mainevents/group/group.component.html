@@ -83,55 +83,40 @@
                                                                             <div><strong>Description: </strong>{{firstResult.descripcion}}</div>
                                                                             <div><strong>Message: </strong>{{firstResult.message}}</div>
                                                                             <div><strong>Count: </strong>{{alertResultGrouped.length}}</div>
-                                                                            <div class="flex items-center gap-2"><strong>Status: {{getStatus(firstResult.status)}}</strong><button class="inline-flex items-center justify-center whitespace-nowrap text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-9 rounded-md px-3">Mark as Resolved</button></div>
+                                                                            <div class="flex items-center gap-2"><strong>Status: {{getStatus(firstResult.status)}}</strong>
+                                                                                <ng-container *ngIf="get_resolved_ratio(alertResultGrouped) as ratioResolved">
+                                                                                    <ng-container *ngIf="ratioResolved==1; else possible_resolved">
+                                                                                        <button (click)="mark_resolved(alertResultGrouped)" class="inline-flex items-center justify-center whitespace-nowrap text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-9 rounded-md px-3">Mark as Resolved</button>
+                                                                                    </ng-container>
+                                                                                    
+                                                                                    <ng-template #possible_resolved>
+                                                                                        <ng-container *ngIf="ratioResolved==2; else in_progress_resolved">
+                                                                                            <div class="w-fit whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 text-foreground flex items-center gap-1"
+                                                                                            data-v0-t="badge"><svg
+                                                                                                xmlns="http://www.w3.org/2000/svg" width="24"
+                                                                                                height="24" viewBox="0 0 24 24" fill="none"
+                                                                                                stroke="currentColor" stroke-width="2"
+                                                                                                stroke-linecap="round" stroke-linejoin="round"
+                                                                                                class="lucide lucide-circle-check-big h-4 w-4"
+                                                                                                >
+                                                                                                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                                                                                                <path d="m9 11 3 3L22 4"></path>
+                                                                                            </svg>Resolved</div>
+                                                                                        </ng-container>
+                                                                                        
+                                                                                    </ng-template>
+
+                                                                                    
+                                                                                    <ng-template #in_progress_resolved>
+                                                                                        <strong>marking...</strong>
+                                                                                    </ng-template>
+                                                                                </ng-container>
+                                                                            </div>
                                                                         </div>
                                                                     </ng-container>
                                                                 </ng-container>
                                                             </ng-container>
                                                         </ng-container>
-
-                                                    
-                                                        
-                                                        <div class="p-2 bg-muted/30" >
-                                                            <div ><strong >Time:</strong> 15/6/2023,
-                                                                08:45:00</div>
-                                                            <div ><strong >Message:</strong> Timeout
-                                                                connecting to payment gateway</div>
-                                                            <div class="flex items-center gap-2" ><strong
-                                                                    >Status:</strong><button
-                                                                    class="inline-flex items-center justify-center whitespace-nowrap text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-9 rounded-md px-3"
-                                                                    >Mark as Resolved</button></div>
-                                                        </div>
-                                                        <div class="p-2 " >
-                                                            <div ><strong >Time:</strong> 15/6/2023,
-                                                                07:30:00</div>
-                                                            <div ><strong >Message:</strong> Invalid
-                                                                API key</div>
-                                                            <div class="flex items-center gap-2" ><strong
-                                                                    >Status:</strong>
-                                                                <div class="w-fit whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 text-foreground flex items-center gap-1"
-                                                                    data-v0-t="badge"><svg
-                                                                        xmlns="http://www.w3.org/2000/svg" width="24"
-                                                                        height="24" viewBox="0 0 24 24" fill="none"
-                                                                        stroke="currentColor" stroke-width="2"
-                                                                        stroke-linecap="round" stroke-linejoin="round"
-                                                                        class="lucide lucide-circle-check-big h-4 w-4"
-                                                                        >
-                                                                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-                                                                        <path d="m9 11 3 3L22 4"></path>
-                                                                    </svg>Resolved</div>
-                                                            </div>
-                                                        </div>
-                                                        <div class="p-2 bg-muted/30" >
-                                                            <div ><strong >Time:</strong> 14/6/2023,
-                                                                11:20:00</div>
-                                                            <div ><strong >Message:</strong> Network
-                                                                connection lost</div>
-                                                            <div class="flex items-center gap-2" ><strong
-                                                                    >Status:</strong><button
-                                                                    class="inline-flex items-center justify-center whitespace-nowrap text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-9 rounded-md px-3"
-                                                                    >Mark as Resolved</button></div>
-                                                        </div>
                                                     </div>
                                                 </div>
                                             </div>
