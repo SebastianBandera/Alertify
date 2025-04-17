@@ -26,10 +26,6 @@ export class GroupComponent {
     this.resolvedAlertResults = new Set<number>();
   }
 
-  testChanges(): void {
-     
-  }
-
   ngOnInit(): void {
     this.logger.debug('GroupComponent ngOnInit ' + this.group?.name, this.group)
   }
