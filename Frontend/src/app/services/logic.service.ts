@@ -117,7 +117,7 @@ export class LogicService {
         });
       },
       error: this.log.error,
-      complete: () => []
+      complete: () => {}
     });
   }
 
@@ -163,7 +163,7 @@ export class LogicService {
         });
       },
       error: this.log.error,
-      complete: () => []
+      complete: () => {}
     });
   }
 
@@ -206,7 +206,11 @@ export class LogicService {
   }
 
   public resolve(idAlertResult: number): void {
-    this.bckService.resolve(idAlertResult);
+    this.bckService.resolve(idAlertResult).subscribe({
+      next: (value) => {},
+      error: this.log.error,
+      complete: () => {}
+    });
   }
 
   /*public getLastError(idAlert: number): Observable<Date | undefined> {
@@ -424,7 +428,7 @@ export class LogicService {
         }
       },
       error: this.log.error,
-      complete: () => []
+      complete: () => {}
     });
 
     /*this.getLastError(alert.id).subscribe({
