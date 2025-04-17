@@ -154,10 +154,10 @@ export class LogicService {
               const frontAlert: FrontAlert = this.parseAlert(alert);
               currentAlerts.set(alert.id, frontAlert);
 
-              this.collectionUtils.upsertItemKeys(savedItem, frontAlert, ["last_error", "alert"]);
+              this.collectionUtils.upsertItemKeys(savedItem, frontAlert, ["last_success", "last_issue", "alert"]);
             } else {
               //Alerta ya procesado en este ciclo, quizas desde otro grupo
-              this.collectionUtils.upsertItemKeys(savedItem, alreadyProcessedFrontAlert, ["last_error", "alert"]);
+              this.collectionUtils.upsertItemKeys(savedItem, alreadyProcessedFrontAlert, ["last_success", "last_issue", "alert"]);
             }
           }
         });
@@ -179,8 +179,21 @@ export class LogicService {
     return groupWithAlerts;
   }
 
-  public getLastSucess(idAlert: number): Observable<Date | undefined> {
+  public getLastSuccess(idAlert: number): Observable<Date | undefined> {
     return this.bckService.getLastSuccess(idAlert).pipe(
+      map((lastSuccess) => {
+        if(lastSuccess) {
+          const date: Date | undefined = this.parserService.stringToDate(lastSuccess.date);
+          return date;
+        } else {
+          return undefined;
+        }
+      }),
+    );
+  }
+
+  public getLastIssue(idAlert: number): Observable<Date | undefined> {
+    return this.bckService.getLastIssue(idAlert).pipe(
       map((lastSuccess) => {
         if(lastSuccess) {
           const date: Date | undefined = this.parserService.stringToDate(lastSuccess.date);
@@ -353,13 +366,22 @@ export class LogicService {
       status: Status.NA
     };
 
-    this.getLastSucess(alert.id).subscribe({
+    this.getLastSuccess(alert.id).subscribe({
       next: (item) => {
         if(item) {
           alertFront.last_success = item;
         }
       },
-      error: (e) => this.log.error("parseAlert->getLastSucess", e)
+      error: (e) => this.log.error("parseAlert->getLastSuccess", e)
+    });
+
+    this.getLastIssue(alert.id).subscribe({
+      next: (item) => {
+        if(item) {
+          alertFront.last_issue = item;
+        }
+      },
+      error: (e) => this.log.error("parseAlert->getLastIssue", e)
     });
 
     this.bckService.getAllAlertResultByAlertId(alert.id).subscribe({

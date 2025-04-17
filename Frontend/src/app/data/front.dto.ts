@@ -10,11 +10,11 @@ export interface FrontGroupWithAlerts {
 export interface FrontAlert {
     alert: Alert;
     status?: Status;
-    last_error?: Date;
     open: boolean;
     open_errors: boolean;
     period: string;
     last_success?: Date;
+    last_issue?: Date;
     results: FrontResult[];
 }
 

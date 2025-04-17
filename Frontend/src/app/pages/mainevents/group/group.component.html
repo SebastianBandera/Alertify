@@ -33,8 +33,22 @@
                                 <td class="p-4 align-middle [&amp;:has([role=checkbox])]:pr-0 bg-muted/50" colspan="4"
                                     >
                                     <div class="p-4 space-y-4" >
-                                        <div ><strong >Last Success:</strong> {{alert.last_success | humanDate}} ({{ alert.last_success | daysAgo }})
+                                        <div *ngIf="alert.last_success; else noSuccess">
+                                            <strong>Last Success:</strong> {{ alert.last_success | humanDate }} ({{ alert.last_success | daysAgo }})
                                         </div>
+                                        <ng-template #noSuccess>
+                                            <div><strong>Last Success: </strong>Not found</div>
+                                        </ng-template>
+
+                                        <div *ngIf="alert.last_issue; else noIssue">
+                                            <strong>Last Issue:</strong> {{ alert.last_issue | humanDate }} ({{ alert.last_issue | daysAgo }})
+                                        </div>
+                                        <ng-template #noIssue>
+                                            <div><strong>Last Issue: </strong>Not found</div>
+                                        </ng-template>
+
+                                        <div ><strong >Period: </strong>{{alert.period}}</div>
+                                        
                                         <div class="w-full"  data-orientation="vertical">
                                             <div data-state="open" data-orientation="vertical" class="border-b"
                                                 >
@@ -50,20 +64,34 @@
                                                     </h3>
                                                 <div *ngIf="alert.open_errors" data-state="open" id="radix-:r1:" role="region"
                                                     aria-labelledby="radix-:r0:" data-orientation="vertical"
-                                                    class="overflow-hidden text-sm transition-all data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down"
-                                                    
+                                                    class="overflow-hidden text-sm transition-all data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down"                                                    
                                                     style="--radix-accordion-content-height: var(--radix-collapsible-content-height); --radix-accordion-content-width: var(--radix-collapsible-content-width); --radix-collapsible-content-height: 278px; --radix-collapsible-content-width: 818px;">
+
                                                     <div class="pb-4 pt-0">
-                                                        <div class="p-2 bg-muted/30" >
-                                                            <div ><strong >Time:</strong> 15/6/2023,
-                                                                08:45:00</div>
-                                                            <div ><strong >Period:</strong> {{alert.period}}</div>
-                                                            <div ><strong >Message:</strong> </div>
-                                                            <div class="flex items-center gap-2" ><strong
-                                                                    >Status:</strong><button
-                                                                    class="inline-flex items-center justify-center whitespace-nowrap text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-9 rounded-md px-3"
-                                                                    >Mark as Resolved</button></div>
-                                                        </div>
+                                                        <ng-container *ngIf="hasAlertsResult(alert)">
+                                                            <ng-container *ngFor="let alertResultGrouped of alertsResultsGrouped(alert)">
+                                                                <ng-container *ngIf="getFirst(alertResultGrouped) as firstResult">
+                                                                    <ng-container *ngIf="getTimeRange(alertResultGrouped) as range">
+                                                                        <div class="p-2 bg-muted/30">
+                                                                            <ng-container *ngIf="range.last.alert_result.dateIni == range.first.alert_result.dateIni">
+                                                                                <div><strong>Time:</strong> {{ firstResult.time | humanDate }}</div>
+                                                                            </ng-container>
+                                                                            <ng-container *ngIf="range.last.alert_result.dateIni != range.first.alert_result.dateIni">
+                                                                                <div><strong>From:</strong> {{ range.last.alert_result.dateIni | humanDate }} ({{ range.last.alert_result.dateIni | daysAgo }})</div>
+                                                                                <div><strong>To:</strong> {{ range.first.alert_result.dateIni | humanDate }} ({{ range.first.alert_result.dateIni | daysAgo }})</div>
+                                                                            </ng-container>
+                                                                            <div><strong>Description: </strong>{{firstResult.descripcion}}</div>
+                                                                            <div><strong>Message: </strong>{{firstResult.message}}</div>
+                                                                            <div><strong>Count: </strong>{{alertResultGrouped.length}}</div>
+                                                                            <div class="flex items-center gap-2"><strong>Status: {{getStatus(firstResult.status)}}</strong><button class="inline-flex items-center justify-center whitespace-nowrap text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-9 rounded-md px-3">Mark as Resolved</button></div>
+                                                                        </div>
+                                                                    </ng-container>
+                                                                </ng-container>
+                                                            </ng-container>
+                                                        </ng-container>
+
+                                                    
+                                                        
                                                         <div class="p-2 bg-muted/30" >
                                                             <div ><strong >Time:</strong> 15/6/2023,
                                                                 08:45:00</div>

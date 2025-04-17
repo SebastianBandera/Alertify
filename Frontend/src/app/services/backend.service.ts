@@ -74,5 +74,9 @@ export class BackendService extends ApiService {
   getLastSuccess(alertId: number): Observable<DateResponse> {
     return super.getData<DateResponse>("alerts/results/lastSuccess", {alertId: alertId});
   }
+
+  getLastIssue(alertId: number): Observable<DateResponse> {
+    return super.getData<DateResponse>("alerts/results/lastIssue", {alertId: alertId});
+  }
   
 }
