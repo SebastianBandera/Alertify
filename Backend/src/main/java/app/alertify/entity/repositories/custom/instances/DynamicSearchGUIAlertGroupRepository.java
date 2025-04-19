@@ -1,5 +1,12 @@
 package app.alertify.entity.repositories.custom.instances;
 
+import java.util.List;
+import java.util.function.BiFunction;
+
+import javax.persistence.criteria.CriteriaQuery;
+import javax.persistence.criteria.Predicate;
+import javax.persistence.criteria.Root;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Repository;
@@ -17,8 +24,8 @@ public class DynamicSearchGUIAlertGroupRepository implements DynamicSearch<GUIAl
 	private DynamicSearchGeneric<GUIAlertGroup> dynamic;
 	
 	@Override
-	public DynamicSearchResult<GUIAlertGroup> customSearch(Pageable pageable, MultiValueMap<String, String> params, Class<GUIAlertGroup> type) {
-		return dynamic.customSearch(pageable, params, type);
+	public DynamicSearchResult<GUIAlertGroup> customSearch(Pageable pageable, MultiValueMap<String, String> params, Class<GUIAlertGroup> type, List<BiFunction<Root<GUIAlertGroup>, CriteriaQuery<GUIAlertGroup>, Predicate>> fixedPredicates) {
+		return dynamic.customSearch(pageable, params, type, fixedPredicates);
 	}
 
 }

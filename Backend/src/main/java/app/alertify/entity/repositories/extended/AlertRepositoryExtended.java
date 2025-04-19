@@ -2,7 +2,12 @@ package app.alertify.entity.repositories.extended;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.function.BiFunction;
 import java.util.function.Function;
+
+import javax.persistence.criteria.CriteriaQuery;
+import javax.persistence.criteria.Predicate;
+import javax.persistence.criteria.Root;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Example;
@@ -162,7 +167,7 @@ public class AlertRepositoryExtended implements AlertRepository {
 		return alertRepository.findAll(example, sort);
 	}
 
-	public DynamicSearchResult<Alert> customSearch(Pageable pageable, MultiValueMap<String, String> params, Class<Alert> type) {
-		return dynamicSearch.customSearch(pageable, params, type);
+	public DynamicSearchResult<Alert> customSearch(Pageable pageable, MultiValueMap<String, String> params, Class<Alert> type, List<BiFunction<Root<Alert>, CriteriaQuery<Alert>, Predicate>> fixedPredicates) {
+		return dynamicSearch.customSearch(pageable, params, type, fixedPredicates);
 	}
 }

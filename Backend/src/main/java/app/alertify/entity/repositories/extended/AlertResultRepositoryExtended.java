@@ -3,7 +3,12 @@ package app.alertify.entity.repositories.extended;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.BiFunction;
 import java.util.function.Function;
+
+import javax.persistence.criteria.CriteriaQuery;
+import javax.persistence.criteria.Predicate;
+import javax.persistence.criteria.Root;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Example;
@@ -164,8 +169,8 @@ public class AlertResultRepositoryExtended implements AlertResultRepository {
 		return alertResultsRepository.findAll(example, sort);
 	}
 
-	public DynamicSearchResult<AlertResult> customSearch(Pageable pageable, MultiValueMap<String, String> params, Class<AlertResult> type) {
-		return dynamicSearchAlertResult.customSearch(pageable, params, type);
+	public DynamicSearchResult<AlertResult> customSearch(Pageable pageable, MultiValueMap<String, String> params, Class<AlertResult> type, List<BiFunction<Root<AlertResult>, CriteriaQuery<AlertResult>, Predicate>> fixedPredicates) {
+		return dynamicSearchAlertResult.customSearch(pageable, params, type, fixedPredicates);
 	}
 
 	public Date findLastSuccessDateAlertResultByAlert(Long alertId) {

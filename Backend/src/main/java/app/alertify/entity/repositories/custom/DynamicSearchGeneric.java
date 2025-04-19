@@ -11,6 +11,7 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -94,12 +95,17 @@ public class DynamicSearchGeneric<T> implements DynamicSearch<T> {
 	}
     
 	@Override
-	public DynamicSearchResult<T> customSearch(Pageable pageable, MultiValueMap<String, String> params, Class<T> type) {
+	public DynamicSearchResult<T> customSearch(Pageable pageable, MultiValueMap<String, String> params, Class<T> type, List<BiFunction<Root<T>, CriteriaQuery<T>, Predicate>> fixedPredicates) {
 		CriteriaBuilder cb = entityManager.getCriteriaBuilder();
         CriteriaQuery<T> query = cb.createQuery(type);
         Root<T> root = query.from(type);
         
         List<Predicate> predicates = new ArrayList<>();
+        if(fixedPredicates!=null) {
+        	for (BiFunction<Root<T>, CriteriaQuery<T>, Predicate> fixedPredicateSupplier : fixedPredicates) {
+        		predicates.add(fixedPredicateSupplier.apply(root, query));				
+			}
+        }
         
         List<Exception> errors = new LinkedList<Exception>();
         params.forEach((key, values) -> {

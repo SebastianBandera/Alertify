@@ -5,9 +5,17 @@ import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
 import javax.management.AttributeNotFoundException;
+import javax.persistence.EntityManager;
+import javax.persistence.PersistenceContext;
+import javax.persistence.criteria.CriteriaBuilder;
+import javax.persistence.criteria.CriteriaQuery;
+import javax.persistence.criteria.Predicate;
+import javax.persistence.criteria.Root;
+import javax.persistence.criteria.Subquery;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
@@ -41,6 +49,9 @@ import app.alertify.service.ThreadControl;
 
 @RestController
 public class AlertsController {
+	
+    @PersistenceContext
+    private EntityManager entityManager;
 
 	@Autowired
 	private AlertRepositoryExtended alertRepositoryExtended;
@@ -71,7 +82,7 @@ public class AlertsController {
 
 	@GetMapping("/alerts")
 	public ResponseEntity<DynamicSearchResultDto<AlertDto>> all(@RequestParam(defaultValue = "0") int page, @RequestParam MultiValueMap<String, String> params) {
-		Supplier<DynamicSearchResult<Alert>> supplier = () -> alertRepositoryExtended.customSearch(PageRequest.of(page, alertService.getPageSize(), Sort.by(Sort.Order.desc("id"))), params, Alert.class);
+		Supplier<DynamicSearchResult<Alert>> supplier = () -> alertRepositoryExtended.customSearch(PageRequest.of(page, alertService.getPageSize(), Sort.by(Sort.Order.desc("id"))), params, Alert.class, null);
 		
 		return commonResponse(page, params, true, AlertDto.class, supplier);
 	}
@@ -83,21 +94,36 @@ public class AlertsController {
 
 	@GetMapping("/alerts/groups")
 	public ResponseEntity<DynamicSearchResultDto<GUIAlertGroupDto>> allGroups(@RequestParam(defaultValue = "0") int page, @RequestParam MultiValueMap<String, String> params) {
-		Supplier<DynamicSearchResult<GUIAlertGroup>> supplier = () -> guiAlertGroupRepositoryExtended.customSearch(PageRequest.of(page, alertService.getPageSize(), Sort.by(Sort.Order.asc("name"))), params, GUIAlertGroup.class);
+		Supplier<DynamicSearchResult<GUIAlertGroup>> supplier = () -> guiAlertGroupRepositoryExtended.customSearch(PageRequest.of(page, alertService.getPageSize(), Sort.by(Sort.Order.asc("name"))), params, GUIAlertGroup.class, null);
 		
 		return commonResponse(page, params, true, GUIAlertGroupDto.class, supplier);
 	}
 
 	@GetMapping("/alerts/nogroups")
 	public ResponseEntity<DynamicSearchResultDto<AlertDto>> noGroups(@RequestParam(defaultValue = "0") int page, @RequestParam MultiValueMap<String, String> params) {
-		Supplier<DynamicSearchResult<Alert>> supplier = () -> alertRepositoryExtended.customSearch(PageRequest.of(page, alertService.getPageSize(), Sort.by(Sort.Order.desc("id"))), params, Alert.class);
+		Supplier<DynamicSearchResult<Alert>> supplier = () -> {
+			List<BiFunction<Root<Alert>, CriteriaQuery<Alert>, Predicate>> fixedPredicates = new ArrayList<>();
+			BiFunction<Root<Alert>, CriteriaQuery<Alert>, Predicate> funcRootToAlert = (root, query) -> {
+				CriteriaBuilder cb = entityManager.getCriteriaBuilder();
+				Subquery<Long> subquery = query.subquery(Long.class);
+				Root<GUIAlertGroup> groupRoot = subquery.from(GUIAlertGroup.class);
+				subquery.select(groupRoot.get("alert").get("id"));
+				subquery.where(cb.isTrue(groupRoot.get("active")));
+				
+				return cb.not(root.get("id").in(subquery));
+			};
+			
+			fixedPredicates.add(funcRootToAlert);
+			
+			return alertRepositoryExtended.customSearch(PageRequest.of(page, alertService.getPageSize(), Sort.by(Sort.Order.desc("id"))), params, Alert.class, fixedPredicates);
+		};
 		
 		return commonResponse(page, params, true, AlertDto.class, supplier);
 	}
 
 	@GetMapping("/alerts/results")
 	public ResponseEntity<DynamicSearchResultDto<AlertResultDto>> allResults(@RequestParam(defaultValue = "0") int page, @RequestParam MultiValueMap<String, String> params) {
-		Supplier<DynamicSearchResult<AlertResult>> supplier = () -> alertResultRepositoryExtended.customSearch(PageRequest.of(page, alertService.getPageSize(), Sort.by(Sort.Order.desc("id"))), params, AlertResult.class);
+		Supplier<DynamicSearchResult<AlertResult>> supplier = () -> alertResultRepositoryExtended.customSearch(PageRequest.of(page, alertService.getPageSize(), Sort.by(Sort.Order.desc("id"))), params, AlertResult.class, null);
 		
 		return commonResponse(page, params, true, AlertResultDto.class, supplier);
 	}
