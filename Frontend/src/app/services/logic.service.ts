@@ -24,6 +24,7 @@ export class LogicService {
   private alertsExtradata: IndexedData<number, AlertExtradata>;*/
 
   private alertsResults: IndexedData<number, AlertResult>;
+  private frontAlertsResults: IndexedData<number, FrontResult>;
 
   //FrontEnd Data
   private groupsFront: IndexedData<string, FrontGroupWithAlerts>;
@@ -43,6 +44,7 @@ export class LogicService {
     this.alertsExtradata = new IndexedData<number, AlertExtradata>();*/
 
     this.alertsResults = new IndexedData<number, AlertResult>();
+    this.frontAlertsResults = new IndexedData<number, FrontResult>();
 
     this.groupsFront = new IndexedData<string, FrontGroupWithAlerts>();
     this.noGroupsFront = new IndexedData<number, FrontAlert>();
@@ -85,7 +87,7 @@ export class LogicService {
             const newItem: FrontGroupWithAlerts = this.parseGroup(group);
             if(alreadyProcessedFrontAlert == undefined) {
               //Alerta no procesada en este ciclo
-              const frontAlert: FrontAlert = this.parseAlert(group.alert);
+              const frontAlert: FrontAlert = this.parseAlert(group.alert, undefined);
               currentAlerts.set(group.alert.id, frontAlert);
 
               newItem.alerts.push(frontAlert);
@@ -106,7 +108,7 @@ export class LogicService {
             const alreadyProcessedFrontAlert: FrontAlert | undefined = currentAlerts.get(group.alert.id);
             if(alreadyProcessedFrontAlert == undefined) {
               //Alerta no procesada en este ciclo
-              const frontAlert: FrontAlert = this.parseAlert(group.alert);
+              const frontAlert: FrontAlert = this.parseAlert(group.alert, savedItem.alerts.find(a => a.alert.id == group.alert.id));
               currentAlerts.set(group.alert.id, frontAlert);
               this.collectionUtils.upsertItemKeysArrayByIdExtractor(savedItem.alerts, frontAlert, ["period", "alert"], (item: FrontAlert) => item.alert.id);
             } else {
@@ -138,7 +140,7 @@ export class LogicService {
             const alreadyProcessedFrontAlert: FrontAlert | undefined = currentAlerts.get(id);
             if(alreadyProcessedFrontAlert == undefined) {
               //Alerta no procesada en este ciclo
-              const frontAlert: FrontAlert = this.parseAlert(alert);
+              const frontAlert: FrontAlert = this.parseAlert(alert, undefined);
               currentAlerts.set(alert.id, frontAlert);
 
               this.noGroupsFront.setIndexed(frontAlert, item => item.alert.id);
@@ -151,7 +153,7 @@ export class LogicService {
             const alreadyProcessedFrontAlert: FrontAlert | undefined = currentAlerts.get(id);
             if(alreadyProcessedFrontAlert == undefined) {
               //Alerta no procesada en este ciclo
-              const frontAlert: FrontAlert = this.parseAlert(alert);
+              const frontAlert: FrontAlert = this.parseAlert(alert, savedItem);
               currentAlerts.set(alert.id, frontAlert);
 
               this.collectionUtils.upsertItemKeys(savedItem, frontAlert, ["last_success", "last_issue", "alert"]);
@@ -207,7 +209,12 @@ export class LogicService {
 
   public resolve(idAlertResult: number): void {
     this.bckService.resolve(idAlertResult).subscribe({
-      next: (value) => {},
+      next: (value) => {
+        const frontAlertResult: FrontResult | undefined = this.frontAlertsResults.getIndex.get(idAlertResult);
+        if(frontAlertResult) {
+          frontAlertResult.status = Status.OK
+        }
+      },
       error: this.log.error,
       complete: () => {}
     });
@@ -364,15 +371,21 @@ export class LogicService {
     return { promise, resolve: resolve! };
   }
 
-  public parseAlert(alert: Alert): FrontAlert {
-    const alertFront: FrontAlert = {
-      alert: alert,
-      open: false,
-      open_errors: true,
-      period: this.generalUtils.tryableSupplier(()=>this.generalUtils.parseIsoDuration(alert.periodicity), this.log.error, ()=>""),
-      results: [],
-      status: Status.NA
-    };
+  public parseAlert(alert: Alert, prototipe: FrontAlert | undefined): FrontAlert {
+    let alertFront: FrontAlert;
+    
+    if(prototipe) {
+      alertFront = prototipe;
+    } else {
+      alertFront = {
+        alert: alert,
+        open: false,
+        open_errors: true,
+        period: this.generalUtils.tryableSupplier(()=>this.generalUtils.parseIsoDuration(alert.periodicity), this.log.error, ()=>""),
+        results: [],
+        status: Status.NA
+      };
+    }
 
     this.getLastSuccess(alert.id).subscribe({
       next: (item) => {
@@ -396,8 +409,6 @@ export class LogicService {
       next: (value: ApiPagedResponse<AlertResult>) => {
         const alertResults: AlertResult[] = value.page.content;
 
-        let resultPushed: boolean = false;
-
         alertResults.forEach((alertResult: AlertResult) => {
           if(alertResult == null || alertResult.id == null) return;
 
@@ -407,24 +418,23 @@ export class LogicService {
 
           if(savedItem == undefined) {
             //Nuevo
-            const frontResult: FrontResult = this.parseAlertResult(alertResult);
+            const frontResult: FrontResult = this.parseAlertResult(alertResult, undefined);
 
             this.alertsResults.setIndexed(alertResult, item => item.id);
+            this.frontAlertsResults.setIndexed(frontResult, item => item.alert_result.id);
             alertFront.results.push(frontResult);
-            resultPushed = true;
           } else {
             //Resultado de alerta ya agregado, inmutable, no actualizar
           }
         });
 
-        if(resultPushed) {
-          if(alertFront.results.find(v => v.status == Status.ERROR)) {
-            alertFront.status = Status.ERROR;
-          } else if (alertFront.results.find(v => v.status == Status.WARN)) {
-            alertFront.status = Status.WARN;
-          } else {
-            alertFront.status = Status.OK;
-          }
+        //Este status llega tarde, luego de la copia al objeto correcto
+        if(alertFront.results.find(v => v.status == Status.ERROR)) {
+          alertFront.status = Status.ERROR;
+        } else if (alertFront.results.find(v => v.status == Status.WARN)) {
+          alertFront.status = Status.WARN;
+        } else {
+          alertFront.status = Status.OK;
         }
       },
       error: this.log.error,
@@ -449,15 +459,21 @@ export class LogicService {
   }
 
   
-  public parseAlertResult(alertResult: AlertResult): FrontResult {
-    //const { mensaje, descripcion } = this.messageService.process(alertResult);
-    const frontResult: FrontResult = {
-      alert_result: alertResult,
-      status: this.parseStatusResult(alertResult.statusResult),
-      time: this.processTimeMessage(alertResult),
-      message: "mensaje",
-      descripcion: "descripcion"
-    };
+  public parseAlertResult(alertResult: AlertResult, prototipe: FrontResult | undefined): FrontResult {
+    let frontResult: FrontResult;
+
+    if(prototipe) {
+      frontResult = prototipe;
+    } else {
+      const { mensaje, descripcion } = this.messageService.process(alertResult);
+      frontResult = {
+        alert_result: alertResult,
+        status: this.parseStatusResult(alertResult.statusResult),
+        time: this.processTimeMessage(alertResult),
+        message: mensaje,
+        descripcion: descripcion
+      };
+    }
     
     return frontResult;
   }
