@@ -51,7 +51,7 @@ export class MaineventsComponent {
         try {
           while (!isCancelled) {
             await this.logicService.syncProcess();
-            await this.utils.wait(30000);
+            await this.utils.wait(60000);
           }
         } catch (error) {
           this.logger.error(error);
