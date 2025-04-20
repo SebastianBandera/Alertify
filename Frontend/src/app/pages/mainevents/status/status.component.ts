@@ -2,6 +2,7 @@ import { Component, Input, TemplateRef, ViewChild } from '@angular/core';
 import { Status } from '../../../data/status.enum';
 import { CommonModule } from '@angular/common';
 import { LoggerService } from '../../../services/logger.service';
+import { FrontAlert } from '../../../data/front.dto';
 
 @Component({
   selector: 'app-status',
@@ -10,7 +11,7 @@ import { LoggerService } from '../../../services/logger.service';
   styleUrl: './status.component.css'
 })
 export class StatusComponent {
-  @Input() status!: Status | undefined;
+  @Input() frontAlert!: FrontAlert;
 
   @ViewChild('status_ok', { static: true }) status_ok!: TemplateRef<any>;
   @ViewChild('status_warn', { static: true }) status_warn!: TemplateRef<any>;
@@ -21,15 +22,15 @@ export class StatusComponent {
   }
 
   ngOnInit(): void {
-    this.logger.debug('StatusComponent ngOnInit ' + this.status);
+    this.logger.debug('StatusComponent ngOnInit');
   }
 
   ngOnDestroy(): void {
-    this.logger.debug('StatusComponent ngOnDestroy ' + this.status)
+    this.logger.debug('StatusComponent ngOnDestroy')
   }
 
   getTemplate(): TemplateRef<any> | null {
-    switch (this.status) {
+    switch (this.frontAlert.status) {
       case Status.OK:
         return this.status_ok;
       case Status.WARN:

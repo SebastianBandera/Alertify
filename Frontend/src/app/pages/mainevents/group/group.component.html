@@ -22,7 +22,7 @@
                                     {{ alert.alert.name }}
                                 </td>
                                 <td class="p-4 align-middle [&amp;:has([role=checkbox])]:pr-0" >
-                                    <app-status [status]="alert.status"></app-status>
+                                    <app-status [frontAlert]="alert"></app-status>
                                 </td>
                                 <td class="p-4 align-middle [&amp;:has([role=checkbox])]:pr-0" >
                                     {{processIssueMessage(alert)}}
