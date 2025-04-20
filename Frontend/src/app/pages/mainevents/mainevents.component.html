@@ -3,5 +3,9 @@
         <ng-container *ngFor="let item of groups; trackBy: trackByName">
             <app-group [group]="item"></app-group>
         </ng-container>
+
+        <ng-container *ngIf="noGroupsAlerts">
+            <app-group [group]="noGroupsAlerts"></app-group>
+        </ng-container>
     </div>
 </div>

@@ -30,6 +30,8 @@ export class LogicService {
   private groupsFront: IndexedData<string, FrontGroupWithAlerts>;
   private noGroupsFront: IndexedData<number, FrontAlert>;
 
+  private pseudoGroup: FrontGroupWithAlerts;
+
   private frontAlerts: IndexedData<number, FrontAlert>;
 
   
@@ -51,6 +53,15 @@ export class LogicService {
 
     this.groupsFront = new IndexedData<string, FrontGroupWithAlerts>();
     this.noGroupsFront = new IndexedData<number, FrontAlert>();
+
+    this.pseudoGroup = {
+      name: "Ungrouped",
+      alerts: [],
+      group_with_alerts: {
+        name: "Ungrouped",
+        alerts: []
+      }
+    };
   }
 
   public getGroupsFront(): IndexedData<string, FrontGroupWithAlerts> {
@@ -59,6 +70,10 @@ export class LogicService {
 
   public getNoGroupsFront(): IndexedData<number, FrontAlert> {
     return this.noGroupsFront;
+  }
+
+  public getPseudoGroupsFront(): FrontGroupWithAlerts {
+    return this.pseudoGroup;
   }
 
   public async syncProcess(): Promise<void> {
@@ -149,6 +164,9 @@ export class LogicService {
 
               this.noGroupsFront.setIndexed(frontAlert, item => item.alert.id);
               this.frontAlerts.setIndexed(frontAlert, item => item.alert.id);
+
+              this.pseudoGroup.group_with_alerts.alerts.push(alert);
+              this.pseudoGroup.alerts.push(frontAlert);
             } else {
               //Alerta ya procesado en este ciclo, quizas desde otro grupo
               this.noGroupsFront.setIndexed(alreadyProcessedFrontAlert, item => item.alert.id);
@@ -160,6 +178,9 @@ export class LogicService {
               //Alerta no procesada en este ciclo
               const frontAlert: FrontAlert = this.parseAlert(alert, savedItem);
               currentAlerts.set(alert.id, frontAlert);
+
+              this.pseudoGroup.group_with_alerts.alerts.push(alert);
+              this.pseudoGroup.alerts.push(frontAlert);
 
               this.collectionUtils.upsertItemKeys(savedItem, frontAlert, ["last_success", "last_issue", "alert"]);
             } else {

@@ -14,7 +14,7 @@ import { GroupComponent } from './group/group.component';
 import { LogicService } from '../../services/logic.service';
 import { Task, TaskType } from '../../data/task';
 import { Alert, GroupWithAlerts } from '../../data/service.dto';
-import { FrontGroupWithAlerts } from '../../data/front.dto';
+import { FrontAlert, FrontGroupWithAlerts } from '../../data/front.dto';
 import { GeneralUtils } from '../../utils/general.utils';
 import { Observable, Subscription } from 'rxjs';
 
@@ -28,6 +28,7 @@ import { Observable, Subscription } from 'rxjs';
 export class MaineventsComponent {
 
   groups: FrontGroupWithAlerts[] = [];
+  noGroupsAlerts: FrontGroupWithAlerts | null = null;
 
   private utils: GeneralUtils = new GeneralUtils();
 
@@ -43,6 +44,7 @@ export class MaineventsComponent {
   ngOnInit(): void {
     this.logger.debug('MaineventsComponent ngOnInit')
     this.groups = this.logicService.getGroupsFront().getAllData;
+    this.noGroupsAlerts = this.logicService.getPseudoGroupsFront();
 
     this.observable = new Observable<void>((observer) => {
       let isCancelled = false;
