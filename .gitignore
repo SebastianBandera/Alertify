@@ -1,3 +1,5 @@
+.settings
+*.backup/
 .env
 bootstrap.properties
 
