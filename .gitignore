@@ -1,6 +1,7 @@
 .settings
 *.backup/
 .env
+.project
 bootstrap.properties
 
 notas.txt
