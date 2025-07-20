@@ -1,6 +1,7 @@
 .settings
 *.backup/
 .env
+.vscode
 .project
 bootstrap.properties
 
