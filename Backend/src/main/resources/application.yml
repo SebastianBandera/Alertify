@@ -3,6 +3,17 @@ server:
   tomcat:
     accept-count: ${SERVER_ACCEPT_COUNT:5000}
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include:
+          - health
+          - info
+  endpoint:
+    health:
+      show-details: always
+
 spring:
   application:
     name: Alertify

@@ -9,5 +9,3 @@ RUN apt-get update && apt-get install -y dos2unix
 RUN dos2unix /script_db.sh && mac2unix /script_db.sh
 
 ENTRYPOINT ["/script_db.sh"]
-
-CMD ["postgres"]
