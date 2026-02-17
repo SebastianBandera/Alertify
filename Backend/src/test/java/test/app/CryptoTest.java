@@ -1,8 +1,13 @@
 package test.app;
 
-import static org.junit.jupiter.api.Assertions.*;
-import java.nio.charset.StandardCharsets;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import app.alertify.crypto.AES;
@@ -14,6 +19,7 @@ import app.alertify.crypto.SHA256;
 public class CryptoTest {
 
 	@Test
+	@DisplayName("Pruebas aleatorias de generación aleatoria de 0 a 32 bytes")
     void testRandomBytesGenerator() {
 		for (int i = 0; i <= 32; i++) {
 			byte[] gen = RandomGenerator.generarBytesAleatorios(i);
@@ -21,15 +27,16 @@ public class CryptoTest {
 			assertNotNull(gen);
 			assertEquals(gen.length, i);
 		}
-	}
-	
+	}	
 
 	@Test
+	@DisplayName("Debe fallar si el tamaño es negativo en 'generarBytesAleatorios'")
     void testRandomBytesGeneratorException() {
 		assertThrows(RuntimeException.class, () -> RandomGenerator.generarBytesAleatorios(-1), "Se esperaba una excepción al utilizar un parámetro negativo.");
 	}
 
 	@Test
+	@DisplayName("Pruebas aleatorias de generación de texto de 0 a 32 caracteres.")
     void testRandomTextBase64Generator() {
 		for (int i = 0; i <= 32; i++) {
 			String gen = RandomGenerator.generarTextoAleatorio(i);
@@ -38,38 +45,41 @@ public class CryptoTest {
 			assertEquals(gen.length(), i);
 		}
 	}
-
+	
 	@Test
+	@DisplayName("Debe fallar si el tamaño es negativo en 'generarTextoAleatorio'")
     void testRandomTextGeneratorException() {
 		assertThrows(RuntimeException.class, () -> RandomGenerator.generarTextoAleatorio(-1), "Se esperaba una excepción al utilizar un parámetro negativo.");
 	}
 
 	@Test
+	@DisplayName("Generar sha256 sobre 'generarTextoAleatorio'")
     void testSHA256() throws Exception {
 		for (int i = 0; i <= 100; i=i+10) {
 			String gen = RandomGenerator.generarTextoAleatorio(i);
 			
-			String genSHA = new String(SHA256.hashSHA256(gen), StandardCharsets.ISO_8859_1);
+			byte[] bytes = SHA256.hashSHA256(gen);
 			
-			assertNotNull(genSHA);
-			assertEquals(genSHA.length(), 32);
+			assertNotNull(bytes);
+			assertEquals(bytes.length, 32);
 		}
 	}
-	
 
 	@Test
+	@DisplayName("Generar sha256 para nulo")
     void testSHA256Null() throws Exception {
-		String genSHA = new String(SHA256.hashSHA256(null), StandardCharsets.ISO_8859_1);
+		byte[] bytes = SHA256.hashSHA256(null);
 		
-		assertNotNull(genSHA);
-		assertEquals(genSHA.length(), 32);
+		assertNotNull(bytes);
+		assertEquals(bytes.length, 32);
 	}
 	
 	@Test
+	@DisplayName("Encriptar con AES test 1 con iv - largo 2048")
 	void testAES1() throws Exception {
 		String msg = RandomGenerator.generarTextoAleatorio(2048);
-		String clave = RandomGenerator.generarTextoAleatorio(32);
-		String iv = RandomGenerator.generarTextoAleatorio(16);
+		String clave = RandomGenerator.generarTextoAleatorio(AES.getKeyLength());
+		String iv = RandomGenerator.generarTextoAleatorio(AES.getIvLength());
 		
 		String encriptado = AES.encriptarAES(msg, clave, iv);
 		
@@ -85,10 +95,11 @@ public class CryptoTest {
 	}
 	
 	@Test
+	@DisplayName("Encriptar con AES test 2 con iv - largo 5000")
 	void testAES2() throws Exception {
 		String msg = RandomGenerator.generarTextoAleatorio(5000);
-		String clave = RandomGenerator.generarTextoAleatorio(32);
-		String iv = RandomGenerator.generarTextoAleatorio(16);
+		String clave = RandomGenerator.generarTextoAleatorio(AES.getKeyLength());
+		String iv = RandomGenerator.generarTextoAleatorio(AES.getIvLength());
 		
 		String encriptado = AES.encriptarAES(msg, clave, iv);
 		
@@ -104,10 +115,11 @@ public class CryptoTest {
 	}
 	
 	@Test
+	@DisplayName("Encriptar con AES test 3 con iv - largo 15")
 	void testAES3() throws Exception {
 		String msg = RandomGenerator.generarTextoAleatorio(15);
-		String clave = RandomGenerator.generarTextoAleatorio(32);
-		String iv = RandomGenerator.generarTextoAleatorio(16);
+		String clave = RandomGenerator.generarTextoAleatorio(AES.getKeyLength());
+		String iv = RandomGenerator.generarTextoAleatorio(AES.getIvLength());
 		
 		String encriptado = AES.encriptarAES(msg, clave, iv);
 		
@@ -123,15 +135,18 @@ public class CryptoTest {
 	}
 	
 	@Test
+	@DisplayName("Debe fallar al encriptar nulo")
 	void testAESNull() throws Exception {
-		assertThrows(Exception.class, () -> AES.encriptarAES(null, null, null), "Se esperaba una excepción al utilizar un parámetro nulo.");
+		String nullString = null;
+		assertThrows(Exception.class, () -> AES.encriptarAES(nullString, nullString, nullString), "Se esperaba una excepción al utilizar un parámetro nulo.");
 	}
 	
 	@Test
+	@DisplayName("Encriptar mensaje texto vacio")
 	void testAESEmptyl() throws Exception {
 		String msg = "";
-		String clave = RandomGenerator.generarTextoAleatorio(32);
-		String iv = RandomGenerator.generarTextoAleatorio(16);
+		String clave = RandomGenerator.generarTextoAleatorio(AES.getKeyLength());
+		String iv = RandomGenerator.generarTextoAleatorio(AES.getIvLength());
 		
 		String encriptado = AES.encriptarAES(msg, clave, iv);
 		
@@ -147,9 +162,10 @@ public class CryptoTest {
 	}
 	
 	@Test
+	@DisplayName("Encriptar con CryptoMessage, largo 15")
 	void testCrypto() throws Exception {
 		String msg = RandomGenerator.generarTextoAleatorio(15);
-		String clave = RandomGenerator.generarTextoAleatorio(32);
+		String clave = RandomGenerator.generarTextoAleatorio(AES.getKeyLength());
 		
 		CryptoMessage cm = Crypto.encriptar(msg, clave);
 		
@@ -170,7 +186,7 @@ public class CryptoTest {
 	@Test
 	void testCrypto2() throws Exception {
 		String msg = RandomGenerator.generarTextoAleatorio(15);
-		String clave = RandomGenerator.generarTextoAleatorio(32);
+		String clave = RandomGenerator.generarTextoAleatorio(AES.getKeyLength());
 		
 		CryptoMessage cm = Crypto.encriptar(msg, clave);
 		
@@ -193,7 +209,7 @@ public class CryptoTest {
 	@Test
 	void testCrypto3() throws Exception {
 		String msg = RandomGenerator.generarTextoAleatorio(15);
-		String clave = RandomGenerator.generarTextoAleatorio(32);
+		String clave = RandomGenerator.generarTextoAleatorio(AES.getKeyLength());
 		
 		CryptoMessage cm = Crypto.encriptar(msg, clave);
 		
@@ -211,7 +227,7 @@ public class CryptoTest {
 	@Test
 	void testCryptoNotEqual() throws Exception {
 		String msg = RandomGenerator.generarTextoAleatorio(15);
-		String clave = RandomGenerator.generarTextoAleatorio(32);
+		String clave = RandomGenerator.generarTextoAleatorio(AES.getKeyLength());
 		
 		CryptoMessage cm1 = Crypto.encriptar(msg, clave);
 		
@@ -277,7 +293,7 @@ public class CryptoTest {
 	@Test
 	void testEmpaquetarIV() throws Exception {
 		String texto = "abc";
-		String iv = "1234567890123456";
+		String iv = "123456789012";
 		
 		String empaquetado = Crypto.empaquetarIV(texto, iv);
 
