@@ -5,10 +5,6 @@ import java.util.Optional;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 
-import javax.persistence.criteria.CriteriaQuery;
-import javax.persistence.criteria.Predicate;
-import javax.persistence.criteria.Root;
-
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Example;
 import org.springframework.data.domain.Page;
@@ -22,6 +18,9 @@ import app.alertify.entity.GUIAlertGroup;
 import app.alertify.entity.repositories.GUIAlertGroupRepository;
 import app.alertify.entity.repositories.custom.DynamicSearchResult;
 import app.alertify.entity.repositories.custom.instances.DynamicSearchGUIAlertGroupRepository;
+import jakarta.persistence.criteria.CriteriaQuery;
+import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Root;
 
 @Repository
 public class GUIAlertGroupRepositoryExtended implements GUIAlertGroupRepository {

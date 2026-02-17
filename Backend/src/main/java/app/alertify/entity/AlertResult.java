@@ -3,28 +3,22 @@ package app.alertify.entity;
 import java.util.Date;
 import java.util.Objects;
 
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.GeneratedValue;
-import javax.persistence.GenerationType;
-import javax.persistence.Id;
-import javax.persistence.JoinColumn;
-import javax.persistence.ManyToOne;
-import javax.persistence.Table;
-import javax.persistence.Temporal;
-import javax.persistence.TemporalType;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
-import org.hibernate.annotations.Type;
-import org.hibernate.annotations.TypeDef;
-import org.hibernate.annotations.TypeDefs;
-
-import io.hypersistence.utils.hibernate.type.json.JsonBinaryType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
+import jakarta.persistence.Temporal;
+import jakarta.persistence.TemporalType;
 
 @Entity(name = "AlertResult")
 @Table(schema = "alert", name = "alerts_result")
-@TypeDefs({
-    @TypeDef(name = "jsonb", typeClass = JsonBinaryType.class)
-})
 public class AlertResult {
 
 	  @Id
@@ -47,12 +41,12 @@ public class AlertResult {
 	  @JoinColumn(name = "status_result", nullable = false)
 	  private CodStatus statusResult;
 
-	  @Type(type = "jsonb")
-	  @Column(name="params")
+	  @JdbcTypeCode(SqlTypes.JSON)
+	  @Column(name="params", columnDefinition = "jsonb")
 	  private String params;
-	  
-	  @Type(type = "jsonb")
-	  @Column(name="result")
+
+	  @JdbcTypeCode(SqlTypes.JSON)
+	  @Column(name="result", columnDefinition = "jsonb")
 	  private String result;
 
 	  @Column(name="needsReview", nullable = false)

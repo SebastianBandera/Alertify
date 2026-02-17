@@ -1,5 +1,5 @@
 server:
-  port: ${SERVER_PORT:8080}
+  port: 8080
   tomcat:
     accept-count: ${SERVER_ACCEPT_COUNT:5000}
 

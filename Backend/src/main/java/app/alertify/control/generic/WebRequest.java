@@ -72,10 +72,10 @@ public class WebRequest implements Control {
 			log.error("error with exchange", e);
 		}
 		
-		success = responseEntity != null && responseEntity.getStatusCodeValue() == resposeExpected;
+		success = responseEntity != null && responseEntity.getStatusCode().value() == resposeExpected;
 		
 		if (responseEntity!=null) {
-			result.put("statusCode", responseEntity.getStatusCodeValue());
+			result.put("statusCode", responseEntity.getStatusCode().value());
 		} else {
             result.put("statusCode", -1);
         }

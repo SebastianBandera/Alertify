@@ -5,33 +5,21 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.GeneratedValue;
-import javax.persistence.GenerationType;
-import javax.persistence.Id;
-import javax.persistence.Table;
-
-import org.hibernate.annotations.Type;
-import org.hibernate.annotations.TypeDef;
-import org.hibernate.annotations.TypeDefs;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-
-import io.hypersistence.utils.hibernate.type.interval.PostgreSQLIntervalType;
-import io.hypersistence.utils.hibernate.type.json.JsonBinaryType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import tools.jackson.databind.ObjectMapper;
 
 @Entity(name = "Alert")
 @Table(schema = "alert", name = "alerts")
-@TypeDef(
-	    typeClass = PostgreSQLIntervalType.class,
-	    defaultForType = Duration.class
-	)
-@TypeDefs({
-    @TypeDef(name = "jsonb", typeClass = JsonBinaryType.class)
-})
 public class Alert {
 	
 	private static final Logger log = LoggerFactory.getLogger(Alert.class);
@@ -46,8 +34,8 @@ public class Alert {
 	  @Column(name="control", nullable = false)
 	  private String control;
 
-	  @Type(type = "jsonb")
-	  @Column(name="params")
+	  @JdbcTypeCode(SqlTypes.JSON)
+	  @Column(name="params", columnDefinition = "jsonb")
 	  private String params;
 
 	  @Column(name="periodicity", columnDefinition = "interval")

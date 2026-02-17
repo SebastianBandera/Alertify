@@ -82,10 +82,10 @@ public class WebWatch implements Control {
 			log.error("error with exchange", e);
 		}
 		
-		success = responseEntity != null && responseEntity.getStatusCodeValue() == 200;
+		success = responseEntity != null && responseEntity.getStatusCode().value() == 200;
 
 		if (responseEntity!=null) {
-			result.put("statusCode", responseEntity.getStatusCodeValue());
+			result.put("statusCode", responseEntity.getStatusCode().value());
 		} else {
             result.put("statusCode", -1);
         }
@@ -130,8 +130,8 @@ public class WebWatch implements Control {
                 .showInlineDiffs(true)
                 .mergeOriginalRevised(false)
                 .inlineDiffByWord(true)
-                .oldTag(f -> "~")      //introduce markdown style for strikethrough
-                .newTag(f -> "**")     //introduce markdown style for bold
+                .oldTag(_ -> "~")      //introduce markdown style for strikethrough
+                .newTag(_ -> "**")     //introduce markdown style for bold
                 .build();
 		
 		List<DiffRow> rows = generator.generateDiffRows(

@@ -6,10 +6,6 @@ import java.util.Optional;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 
-import javax.persistence.criteria.CriteriaQuery;
-import javax.persistence.criteria.Predicate;
-import javax.persistence.criteria.Root;
-
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Example;
 import org.springframework.data.domain.Page;
@@ -24,6 +20,9 @@ import app.alertify.entity.AlertResult;
 import app.alertify.entity.repositories.AlertResultRepository;
 import app.alertify.entity.repositories.custom.DynamicSearchResult;
 import app.alertify.entity.repositories.custom.instances.DynamicSearchAlertResult;
+import jakarta.persistence.criteria.CriteriaQuery;
+import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Root;
 
 @Repository
 public class AlertResultRepositoryExtended implements AlertResultRepository {

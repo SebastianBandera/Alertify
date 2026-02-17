@@ -17,8 +17,6 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import javax.management.AttributeNotFoundException;
-import javax.persistence.EntityManager;
-import javax.persistence.PersistenceContext;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageImpl;
@@ -27,12 +25,13 @@ import org.springframework.stereotype.Repository;
 import org.springframework.util.MultiValueMap;
 
 import app.alertify.entity.repositories.custom.DynamicSearchCriteria.Criteria;
-
-import javax.persistence.criteria.CriteriaBuilder;
-import javax.persistence.criteria.CriteriaQuery;
-import javax.persistence.criteria.Path;
-import javax.persistence.criteria.Predicate;
-import javax.persistence.criteria.Root;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+import jakarta.persistence.criteria.CriteriaBuilder;
+import jakarta.persistence.criteria.CriteriaQuery;
+import jakarta.persistence.criteria.Path;
+import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Root;
 
 @Repository
 public class DynamicSearchGeneric<T> implements DynamicSearch<T> {
@@ -179,7 +178,9 @@ public class DynamicSearchGeneric<T> implements DynamicSearch<T> {
 			if (i == 0) {
 				path = root.get(key);
 			} else {
-				path = path.get(key);
+				if (path != null) {
+					path = path.get(key);					
+				}
 			}
 		}
 		return path;
@@ -347,19 +348,19 @@ public class DynamicSearchGeneric<T> implements DynamicSearch<T> {
 		for (int i = 0; i < fields.length; i++) {
 			Field field = fields[i];
 			
-			Annotation annotations[] = field.getAnnotationsByType(javax.persistence.Column.class);
+			Annotation annotations[] = field.getAnnotationsByType(jakarta.persistence.Column.class);
 			if(annotations != null && annotations.length > 0) {
 				dbFields.put(field.getName(), field.getType());
 				continue;
 			}
 
-			Annotation annotationsId[] = field.getAnnotationsByType(javax.persistence.Id.class);
+			Annotation annotationsId[] = field.getAnnotationsByType(jakarta.persistence.Id.class);
 			if(annotationsId != null && annotationsId.length > 0) {
 				dbFields.put(field.getName(), field.getType());
 				continue;
 			}
 			
-			Annotation annotationsJoinColumn[] = field.getAnnotationsByType(javax.persistence.JoinColumn.class);
+			Annotation annotationsJoinColumn[] = field.getAnnotationsByType(jakarta.persistence.JoinColumn.class);
 			if(annotationsJoinColumn != null && annotationsJoinColumn.length > 0) {
 				dbFields.put(field.getName(), field.getType());
 				continue;
