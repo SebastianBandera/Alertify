@@ -43,7 +43,8 @@ public class SQLThreshold implements Control {
 		
 		int[] types = generate(paramsSQL);
 		
-		int count = jdbc.query(sql, paramsSQL, types, rs -> rs.next() ? rs.getInt(1) : 0 );
+		Integer countOriginal = jdbc.query(sql, paramsSQL, types, rs -> rs.next() ? rs.getInt(1) : 0 );
+		int count = countOriginal == null ? -1 : countOriginal;
 		
 		if("warn_if_bigger".equals(thresholdType)) {
 			success = count <= threshold;

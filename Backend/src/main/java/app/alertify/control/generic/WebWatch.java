@@ -93,7 +93,7 @@ public class WebWatch implements Control {
 		if (success) {
 			prepare();
 			
-			String data = responseEntity.getBody();
+			String data = responseEntity == null ? "" : responseEntity.getBody();
 			data = data == null ? "" : data.trim();
 			
 			try {
@@ -238,15 +238,15 @@ public class WebWatch implements Control {
 	}
 
 	private boolean tableExists(String schema, String tableName) {
-		boolean tableExists = localJdbc.query("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = ? AND table_name = ?)", new Object[] {schema, tableName.toLowerCase()}, new int[] {Types.VARCHAR, Types.VARCHAR}, rs -> rs.next() ? rs.getBoolean(1) : false );
+		Boolean tableExists = localJdbc.query("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = ? AND table_name = ?)", new Object[] {schema, tableName.toLowerCase()}, new int[] {Types.VARCHAR, Types.VARCHAR}, rs -> rs.next() ? rs.getBoolean(1) : false );
 		
-		return tableExists;
+		return tableExists != null && tableExists;
 	}
 	
 	private boolean schemaExists(String schema) {
-		int count = localJdbc.query("SELECT count(1) FROM information_schema.schemata WHERE schema_name = ?", new Object[] {SCHEMA}, new int[] {Types.VARCHAR}, rs -> rs.next() ? rs.getInt(1) : 0 );
+		Integer count = localJdbc.query("SELECT count(1) FROM information_schema.schemata WHERE schema_name = ?", new Object[] {SCHEMA}, new int[] {Types.VARCHAR}, rs -> rs.next() ? rs.getInt(1) : 0 );
 		
-		return count != 0;
+		return count != null && count != 0;
 	}
 
 	public enum Params {
