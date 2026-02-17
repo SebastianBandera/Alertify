@@ -1,7 +1,8 @@
 package app.alertify.crypto;
 
-import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+
+import app.alertify.config.Global;
 
 public class SHA256 {
 	
@@ -16,6 +17,6 @@ public class SHA256 {
 		
         MessageDigest digest = MessageDigest.getInstance("SHA-256");
         
-        return digest.digest(text.getBytes(StandardCharsets.ISO_8859_1));
+        return digest.digest(text.getBytes(Global.getAppCharset()));
     }
 }

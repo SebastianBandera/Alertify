@@ -1,6 +1,5 @@
 package app.alertify.controller.dto;
 
-import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
@@ -12,6 +11,7 @@ import java.util.function.Function;
 
 import org.springframework.stereotype.Service;
 
+import app.alertify.config.Global;
 import app.alertify.entity.Alert;
 import app.alertify.entity.AlertResult;
 import app.alertify.entity.CodStatus;
@@ -49,7 +49,7 @@ public class MapperConfig {
 	private String generateHash(String input) {
         try {
             MessageDigest digest = MessageDigest.getInstance("MD5");
-            byte[] encodedhash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
+            byte[] encodedhash = digest.digest(input.getBytes(Global.getAppCharset()));
             return bytesToHex(encodedhash);
         } catch (NoSuchAlgorithmException e) {
             throw new RuntimeException(e);
