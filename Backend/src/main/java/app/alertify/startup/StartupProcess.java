@@ -79,7 +79,7 @@ public class StartupProcess {
 
 	private void _init() {
 		if(!schedule) {
-			log.info(">>>>> ¡¡¡ Scheduled alerts disabled !!! <<<<<");
+			log.info(">>>>> ¡¡¡ Scheduled alerts disabled by 'schedule' param !!! <<<<<");
 		}
 		
     	reloadAlerts();
