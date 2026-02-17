@@ -239,6 +239,7 @@ public class ThreadControl {
 			this.taskRequest = taskRequest;
 		}
 
+		@SuppressWarnings("unused")
 		public long getNextExecutionTime() {
 			return nextExecutionTime;
 		}
@@ -247,6 +248,7 @@ public class ThreadControl {
 			this.nextExecutionTime = nextExecutionTime;
 		}
 
+		@SuppressWarnings("unused")
 		public AlertResultRepository getAlertResultRepository() {
 			return alertResultRepository;
 		}
@@ -255,6 +257,7 @@ public class ThreadControl {
 			this.alertResultRepository = alertResultRepository;
 		}
 
+		@SuppressWarnings("unused")
 		public CodStatusService getCodStatusService() {
 			return codStatusService;
 		}
