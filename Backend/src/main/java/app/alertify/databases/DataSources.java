@@ -6,7 +6,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import javax.annotation.PostConstruct;
+import jakarta.annotation.PostConstruct;
 import javax.sql.DataSource;
 
 import org.slf4j.Logger;
@@ -176,7 +176,7 @@ public class DataSources {
 		dataSources.put(dataSourceConfig.getName(), createDataSource(dataSourceConfig));
 	}
 	
-	private CloseableDataSource createDataSource(DataSourceConfig config) {		
+	private CloseableDataSource createDataSource(DataSourceConfig config) {
 		//DriverManagerDataSource
 		HikariConfig hikariConfig = new HikariConfig();
 		
