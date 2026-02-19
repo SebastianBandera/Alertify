@@ -162,7 +162,7 @@ public class CryptoTest {
 	}
 	
 	@Test
-	@DisplayName("Encriptar con CryptoMessage, largo 15")
+	@DisplayName("Encriptar con CryptoMessage, check 1, largo 15")
 	void testCrypto() throws Exception {
 		String msg = RandomGenerator.generarTextoAleatorio(15);
 		String clave = RandomGenerator.generarTextoAleatorio(AES.getKeyLength());
@@ -184,6 +184,7 @@ public class CryptoTest {
 	}
 	
 	@Test
+	@DisplayName("Encriptar con CryptoMessage, check 2 simulando textoEnDB, largo 15")
 	void testCrypto2() throws Exception {
 		String msg = RandomGenerator.generarTextoAleatorio(15);
 		String clave = RandomGenerator.generarTextoAleatorio(AES.getKeyLength());
@@ -207,6 +208,7 @@ public class CryptoTest {
 	}
 	
 	@Test
+	@DisplayName("Falla por no tener el simbolo $ por esperar iv$encrypted")
 	void testCrypto3() throws Exception {
 		String msg = RandomGenerator.generarTextoAleatorio(15);
 		String clave = RandomGenerator.generarTextoAleatorio(AES.getKeyLength());
@@ -225,6 +227,7 @@ public class CryptoTest {
 	}
 	
 	@Test
+	@DisplayName("Encriptar con CryptoMessage dos veces, deben ser diferentes dado que autogenera otro IV, largo 15")
 	void testCryptoNotEqual() throws Exception {
 		String msg = RandomGenerator.generarTextoAleatorio(15);
 		String clave = RandomGenerator.generarTextoAleatorio(AES.getKeyLength());
@@ -266,6 +269,7 @@ public class CryptoTest {
 	}
 	
 	@Test
+	@DisplayName("Falla al intentar encriptar con nulo")
 	void testCryptoExceptionInput() {
 		assertThrows(Exception.class, () -> Crypto.encriptar(null, null), "Se esperaba una excepción al utilizar un parámetro nulo.");
 		assertThrows(Exception.class, () -> Crypto.encriptar(null, ""), "Se esperaba una excepción al utilizar un parámetro nulo.");
@@ -273,24 +277,26 @@ public class CryptoTest {
 	}
 	
 	@Test
+	@DisplayName("Pruebas de simples de encriptación")
 	void testCryptoMessageEquals() {
 		CryptoMessage cm1 = new CryptoMessage("a", "b");
 		CryptoMessage cm2 = new CryptoMessage("a", "c");
 		CryptoMessage cm3 = new CryptoMessage("c", "b");
 		CryptoMessage cm4 = new CryptoMessage("c", "c");
 		CryptoMessage cm5 = new CryptoMessage("a", "b");
-		
-		assertNotEquals(cm1, null);
-		assertNotEquals(cm1, "");
+
+		assertNotEquals(cm1, null); //Coverage equals
+		assertNotEquals(cm1, ""); //Coverage equals
 		assertNotEquals(cm1, cm2);
 		assertNotEquals(cm1, cm3);
 		assertNotEquals(cm1, cm4);
 
 		assertEquals(cm1, cm5);
-		assertEquals(cm1, cm1);
+		assertEquals(cm1, cm1); //just in case
 	}
 	
 	@Test
+	@DisplayName("Prueba de empaquetado del IV")
 	void testEmpaquetarIV() throws Exception {
 		String texto = "abc";
 		String iv = "123456789012";
@@ -306,6 +312,7 @@ public class CryptoTest {
 	}
 	
 	@Test
+	@DisplayName("Falla al intentar empaquetar el IV por tamaño incorrecto")
 	void testEmpaquetarIVFail() throws Exception {
 		String texto = "abc";
 		String iv1 = "1234567890";
@@ -316,8 +323,17 @@ public class CryptoTest {
 	}
 	
 	@Test
+	@DisplayName("Falla al intentar empaquetar el IV por mensaje incorrecto sin iv$encrypted")
 	void testDesempaquetarIVFail() throws Exception {
 		String texto = "abc";
+
+		assertThrows(Exception.class, () -> Crypto.desempaquetarIV(texto), "Se esperaba una excepción al utilizar un texto de tamaño incorrecto.");
+	}
+	
+	@Test
+	@DisplayName("Falla al intentar empaquetar el IV por mensaje incorrecto con iv$encrypted")
+	void testDesempaquetarIVFail2() throws Exception {
+		String texto = "abc$abc";
 
 		assertThrows(Exception.class, () -> Crypto.desempaquetarIV(texto), "Se esperaba una excepción al utilizar un texto de tamaño incorrecto.");
 	}

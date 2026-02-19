@@ -7,6 +7,7 @@ import java.lang.reflect.Field;
 import static org.junit.jupiter.api.Assertions.*;
 
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -19,7 +20,10 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 class KeyProviderTest {
 
-    @Mock
+	private final String ENV_VALUE_TEST = "EnvPart";
+	private final String DB_VALUE_TEST  = "DatabasePart";
+
+	@Mock
     private ConfigRepositoryGlobal config;
 
     @InjectMocks
@@ -31,9 +35,9 @@ class KeyProviderTest {
     void setUp() throws NoSuchFieldException, SecurityException, IllegalArgumentException, IllegalAccessException {
         MockitoAnnotations.openMocks(this);
         
-        ReflectionTestUtils.setField(keyProvider, "KEY_PART_ENVIRONMENT", "EnvPart", String.class);
+        ReflectionTestUtils.setField(keyProvider, "KEY_PART_ENVIRONMENT", ENV_VALUE_TEST, String.class);
         
-    	KeyProvider instance = new KeyProvider();
+    	KeyProvider instance = new KeyProvider(config);
     	Field field = KeyProvider.class.getDeclaredField("KEY_PART_CODE");
 		field.setAccessible(true);
 		Object value = field.get(instance);
@@ -43,13 +47,13 @@ class KeyProviderTest {
     }
 
     @Test
+	@DisplayName("Prueba obtener la clave AES")
     void testGetAESKey() {
-        String databaseKey = "DatabasePart";
-        when(config.getString("KEY_PART")).thenReturn(databaseKey);
+        when(config.getString("KEY_PART")).thenReturn(DB_VALUE_TEST);
 
         String aesKey = keyProvider.getAESKey();
 
-        String expectedKey = "DatabasePart" + key + "EnvPart";
+        String expectedKey = DB_VALUE_TEST + key + ENV_VALUE_TEST;
         assertEquals(expectedKey, aesKey, "La clave AES generada no es la esperada");
     }
 }
