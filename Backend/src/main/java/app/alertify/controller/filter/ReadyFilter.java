@@ -4,7 +4,6 @@ import java.io.IOException;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
@@ -23,8 +22,11 @@ public class ReadyFilter implements Filter {
 	
 	private static final Logger log = LoggerFactory.getLogger(ReadyFilter.class);
 
-	@Autowired
-	private GlobalStatus status;
+	private final GlobalStatus status;
+	
+	public ReadyFilter(GlobalStatus status) {
+		this.status = status;
+	}
 
     @Override
     public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain) throws IOException, ServletException {
