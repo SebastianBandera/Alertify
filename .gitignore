@@ -7,3 +7,4 @@ bootstrap.properties
 
 notas.txt
 nb-configuration.xml
+Backend/hs_err_pid*.log
