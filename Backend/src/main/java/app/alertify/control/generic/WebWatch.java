@@ -11,7 +11,6 @@ import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
-import org.springframework.data.util.Pair;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -24,6 +23,7 @@ import com.github.difflib.text.DiffRow.Tag;
 import com.github.difflib.text.DiffRowGenerator;
 
 import app.alertify.control.Control;
+import app.alertify.control.ControlResponse;
 import app.alertify.control.ControlResultStatus;
 import app.alertify.control.common.ObjectsUtils;
 
@@ -42,7 +42,7 @@ public class WebWatch implements Control {
 	}
 	
 	@Override
-	public Pair<Map<String, Object>, ControlResultStatus> execute(Map<String, Object> params) {
+	public ControlResponse execute(Map<String, Object> params) {
 		Objects.requireNonNull(params, "needs args to execute");
 		String url    = ObjectsUtils.noNull((String)params.get(Params.URL.getValue()), "");
 		String method = ObjectsUtils.noNull((String)params.get(Params.METHOD.getValue()), "");
@@ -85,9 +85,9 @@ public class WebWatch implements Control {
 		success = responseEntity != null && responseEntity.getStatusCode().value() == 200;
 
 		if (responseEntity!=null) {
-			result.put("statusCode", responseEntity.getStatusCode().value());
+			result.put(OutputParams.STATUS_CODE.toString(), responseEntity.getStatusCode().value());
 		} else {
-            result.put("statusCode", -1);
+            result.put(OutputParams.STATUS_CODE.toString(), -1);
         }
 		
 		if (success) {
@@ -108,24 +108,24 @@ public class WebWatch implements Control {
 					
 					return processCompare(result, oldData, data, control_id);
 				} else {
-					result.put("msg", "Can't find data attribute");
-					return Pair.of(result, ControlResultStatus.ERROR);
+					result.put(OutputParams.MSG.toString(), "Can't find data attribute");
+					return new ControlResponse(result, ControlResultStatus.ERROR);
 				}
 			} catch (DataAccessException e) {
 				int res = localJdbc.update("INSERT INTO " + SCHEMA + "." + TABLE + "(id_name, date, data) VALUES(?, NOW(), ?)", control_id, data);
 				if(res != 1) {
-					result.put("msg", "Can't insert one single row. Case 1.");
-					return Pair.of(result, ControlResultStatus.ERROR);
+					result.put(OutputParams.MSG.toString(), "Can't insert one single row. Case 1.");
+					return new ControlResponse(result, ControlResultStatus.ERROR);
 				} else {
-					return Pair.of(result, ControlResultStatus.SUCCESS);
+					return new ControlResponse(result, ControlResultStatus.SUCCESS);
 				}
 			}
 		}
-		
-		return Pair.of(result, ControlResultStatus.WARN);
+
+		return new ControlResponse(result, ControlResultStatus.WARN);
 	}
 	
-	private Pair<Map<String, Object>, ControlResultStatus> processCompare(Map<String, Object> result, String oldData, String newData, String control_id) {
+	private ControlResponse processCompare(Map<String, Object> result, String oldData, String newData, String control_id) {
 		DiffRowGenerator generator = DiffRowGenerator.create()
                 .showInlineDiffs(true)
                 .mergeOriginalRevised(false)
@@ -155,16 +155,16 @@ public class WebWatch implements Control {
 		}
 		
 		if (found) {
-			result.put("diff", sb.toString());
+			result.put(OutputParams.DIFF.toString(), sb.toString());
 			
 			int res = localJdbc.update("INSERT INTO " + SCHEMA + "." + TABLE + "(id_name, date, data) VALUES(?, NOW(), ?)", control_id, newData);
 			if(res != 1) {
-				result.put("msg", "Can't insert one single row. Case 2.");
-				return Pair.of(result, ControlResultStatus.ERROR);
+				result.put(OutputParams.MSG.toString(), "Can't insert one single row. Case 2.");
+				return new ControlResponse(result, ControlResultStatus.ERROR);
 			}
 		}
-		
-		return Pair.of(result, ControlResultStatus.parse(!found));
+
+		return new ControlResponse(result, !found);
 	}
 
 	private HttpMethod parse(String method) {
@@ -259,6 +259,28 @@ public class WebWatch implements Control {
 		private String value;
 		
 		Params(String str) {
+			this.value = str;
+		}
+		
+		String getValue() {
+			return this.value;
+		}
+		
+		@Override
+		public String toString() {
+			return this.value;
+		}
+	}
+
+	public enum OutputParams {
+		MSG("msg"),
+		DIFF("diff"),
+		STATUS_CODE("statusCode"),
+		METHOD("method");
+		
+		private String value;
+		
+		OutputParams(String str) {
 			this.value = str;
 		}
 		

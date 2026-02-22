@@ -21,10 +21,10 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.util.Pair;
 import org.springframework.stereotype.Service;
 
 import app.alertify.control.Control;
+import app.alertify.control.ControlResponse;
 import app.alertify.control.ControlResultStatus;
 import app.alertify.control.common.StringUtils;
 import app.alertify.entity.Alert;
@@ -113,7 +113,8 @@ public class ThreadControl {
 		if (optTaskContext.isPresent()) {
 			log.warn(StringUtils.concat("Alert ", taskRequest.getAlert().getName(), " already registred. Reloading."));
 			TaskContext tc = optTaskContext.get();
-			boolean canCancel = tc.getScheduledFuture().cancel(false);
+			boolean mayInterruptIfRunning = false;
+			boolean canCancel = tc.getScheduledFuture().cancel(mayInterruptIfRunning);
 			log.info(StringUtils.concat("Alert ", taskRequest.getAlert().getName(), " trying to cancel. Result: ", String.valueOf(canCancel)));
 			scheduledFutureList.remove(tc);
 		}
@@ -188,18 +189,18 @@ public class ThreadControl {
 			try {
 				log.info(StringUtils.concat("execute control: ", taskRequest.getAlert().getControl(), ", alert: ", taskRequest.getAlert().getName()));
 				date_ini = new Date();
-				Pair<Map<String, Object>, ControlResultStatus> result = taskRequest.getControl().execute(taskRequest.getMapParams());
+				ControlResponse result = taskRequest.getControl().execute(taskRequest.getMapParams());
 				date_fin = new Date();
-				log.info(StringUtils.concat("execute control ends: ", taskRequest.getAlert().getControl(), ", alert: ", taskRequest.getAlert().getName(), ". Result: ", result.getSecond().toString(), ", ", result.getFirst().toString()));
+				log.info(StringUtils.concat("execute control ends: ", taskRequest.getAlert().getControl(), ", alert: ", taskRequest.getAlert().getName(), ". Result: ", result.getStatus().toString(), ", ", result.getData().toString()));
 				
 				ar.setAlert(taskRequest.getAlert());
 				ar.setDateIni(date_ini);
 				ar.setDateEnd(date_fin);
 				ar.setVersion(taskRequest.getAlert().getVersion());
 				ar.setParams(taskRequest.getAlert().getParams());
-				ar.setStatusResult(codStatusService.getCodStatus(result.getSecond()));
-				ar.setNeedsReview(result.getSecond().equals(ControlResultStatus.WARN) || result.getSecond().equals(ControlResultStatus.ERROR));
-				ar.setResult(new ObjectMapper().writeValueAsString(result.getFirst()));
+				ar.setStatusResult(codStatusService.getCodStatus(result.getStatus()));
+				ar.setNeedsReview(result.getStatus().equals(ControlResultStatus.WARN) || result.getStatus().equals(ControlResultStatus.ERROR));
+				ar.setResult(new ObjectMapper().writeValueAsString(result.getData()));
 			} catch (Exception e) {
 				log.error("error execute control", e);
 				

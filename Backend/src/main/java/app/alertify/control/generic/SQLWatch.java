@@ -14,17 +14,17 @@ import java.util.stream.Collectors;
 
 import javax.sql.DataSource;
 
-import org.springframework.data.util.Pair;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import app.alertify.control.Control;
+import app.alertify.control.ControlResponse;
 import app.alertify.control.ControlResultStatus;
 import app.alertify.control.common.InferTypeForSQL;
 import app.alertify.control.common.ListMerger;
 import app.alertify.control.common.ObjectsUtils;
 import app.alertify.control.common.StringUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 public class SQLWatch implements Control {
     private static final Logger log = LoggerFactory.getLogger(SQLWatch.class);
@@ -41,7 +41,7 @@ public class SQLWatch implements Control {
 	}
 	
 	@Override
-	public Pair<Map<String, Object>, ControlResultStatus> execute(Map<String, Object> params) {
+	public ControlResponse execute(Map<String, Object> params) {
 		Objects.requireNonNull(params, "needs args to execute");
 		String sql            = ObjectsUtils.noNull((String)params.get(Params.SQL.getValue()), "");
 		String control_id     = ObjectsUtils.noNull((String)params.get(Params.CONTROL_IDENTIFIER.getValue()), "");
@@ -62,14 +62,16 @@ public class SQLWatch implements Control {
 		
 		List<Map<String, Object>> data = jdbc.queryForList(sql + " order by 1", paramsSQL, types);
 		
-		result.put("rows", data.size());
+		result.put(OutputParams.ROWS.toString(), data.size());
 
 		log.info("firstInvocation: " + firstInvocation);
 		
+		result.put(OutputParams.FIRST_INVOCATION.toString(), firstInvocation);
+		
 		if (firstInvocation) {
 			if (data.isEmpty()) {
-				result.put("error", "cant empty when creating table");
-				return Pair.of(result, ControlResultStatus.ERROR);
+				result.put(OutputParams.ERROR.toString(), "cant empty when creating table");
+				new ControlResponse(result, ControlResultStatus.ERROR);
 			}
 			
 			Map<String, Object> firstRow = data.get(0);
@@ -80,8 +82,6 @@ public class SQLWatch implements Control {
 			
 			loadTable(SCHEMA, control_id, data, types);
 			
-			result.put("firstInvocation", firstInvocation);
-			
 			success = true;
 		} else {
 			List<Map<String, Object>> backupData = loadFromBackup(SCHEMA, control_id);
@@ -91,17 +91,17 @@ public class SQLWatch implements Control {
 				result.putAll(compareResult);
 			} catch (Exception e) {
 				log.error("Error", e);
-				return Pair.of(result, ControlResultStatus.ERROR);
+				new ControlResponse(result, ControlResultStatus.ERROR);
 			}
 			
 			if (result.containsKey("repBackupData") || result.containsKey("repNewData") || (int)result.get("newRowsSize")>0 || (int)result.get("remRowsSize")>0 || (int)result.get("modRowsSize")>0) {
-				return Pair.of(result, ControlResultStatus.WARN);
+				new ControlResponse(result, ControlResultStatus.WARN);
 			}
 			
 			success = true;
 		}
 		
-		return Pair.of(result, ControlResultStatus.parse(success));
+		return new ControlResponse(result, success);
 	}
 	
 	private Map<String, Object> compare(List<Map<String, Object>> backupData, List<Map<String, Object>> newData, Object[] keysSQL) throws Exception {
@@ -111,8 +111,8 @@ public class SQLWatch implements Control {
 		
 		if (backupData.size() != newData.size()) {
 			log.info("size mismatch");
-			compareResult.put("sizeBackup", backupData.size());
-			compareResult.put("sizeNewData", newData.size());
+			compareResult.put(OutputParams.SIZE_BACKUP.toString(), backupData.size());
+			compareResult.put(OutputParams.SIZE_NEW_DATA.toString(), newData.size());
 		}
 		
 		Set<String> names = new HashSet<>(backupData.get(0).keySet());
@@ -132,11 +132,11 @@ public class SQLWatch implements Control {
         List<List<Map<String, Object>>> repnewData = merger.getDuplicatedItems(newData);
         
         if (!repnewData.isEmpty()) {
-        	compareResult.put("repBackupData", repbackupData);
+        	compareResult.put(OutputParams.REP_BACKUP_DATA.toString(), repbackupData);
 		}
         
         if (!repbackupData.isEmpty()) {
-        	compareResult.put("repNewData", repnewData);
+        	compareResult.put(OutputParams.REP_NEW_DATA.toString(), repnewData);
 		}
         
         if (!repnewData.isEmpty() || !repbackupData.isEmpty()) {
@@ -145,18 +145,18 @@ public class SQLWatch implements Control {
 
         ListMerger<Map<String, Object>>.MergeResults mergeResults = merger.merge(backupData, newData);
         
-        compareResult.put("newRowsSize", mergeResults.getNewItems().size());
-        compareResult.put("remRowsSize", mergeResults.getRemovedItems().size());
-        compareResult.put("modRowsSize", mergeResults.getChangedItems().size());
+        compareResult.put(OutputParams.NEW_ROWS_SIZE.toString(), mergeResults.getNewItems().size());
+        compareResult.put(OutputParams.REM_ROWS_SIZE.toString(), mergeResults.getRemovedItems().size());
+        compareResult.put(OutputParams.MOD_ROWS_SIZE.toString(), mergeResults.getChangedItems().size());
 		
         if (!mergeResults.getNewItems().isEmpty()) {
-        	compareResult.put("newRows", mergeResults.getNewItems());
+        	compareResult.put(OutputParams.NEW_ROWS.toString(), mergeResults.getNewItems());
 		}
         if (!mergeResults.getRemovedItems().isEmpty()) {
-        	compareResult.put("remRows", mergeResults.getRemovedItems());
+        	compareResult.put(OutputParams.REM_ROWS.toString(), mergeResults.getRemovedItems());
 		}
         if (!mergeResults.getChangedItems().isEmpty()) {
-        	compareResult.put("modRows", mergeResults.getChangedItems());
+        	compareResult.put(OutputParams.MOD_ROWS.toString(), mergeResults.getChangedItems());
 		}
         
 		log.info("Comparing data ends");
@@ -264,6 +264,37 @@ public class SQLWatch implements Control {
 		private String value;
 		
 		Params(String str) {
+			this.value = str;
+		}
+		
+		String getValue() {
+			return this.value;
+		}
+		
+		@Override
+		public String toString() {
+			return this.value;
+		}
+	}
+	
+	public enum OutputParams {
+		ROWS("rows"),
+		FIRST_INVOCATION("firstInvocation"),
+		SIZE_BACKUP("sizeBackup"),
+		SIZE_NEW_DATA("sizeNewData"),
+		REP_BACKUP_DATA("repBackupData"),
+		REP_NEW_DATA("repNewData"),
+		NEW_ROWS_SIZE("newRowsSize"),
+		REM_ROWS_SIZE("remRowsSize"),
+		MOD_ROWS_SIZE("modRowsSize"),
+		NEW_ROWS("newRows"),
+		REM_ROWS("remRows"),
+		MOD_ROWS("modRows"),
+		ERROR("error");
+		
+		private String value;
+		
+		OutputParams(String str) {
 			this.value = str;
 		}
 		

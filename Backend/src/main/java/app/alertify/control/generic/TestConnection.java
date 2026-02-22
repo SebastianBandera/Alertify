@@ -8,10 +8,9 @@ import javax.sql.DataSource;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.data.util.Pair;
 
 import app.alertify.control.Control;
-import app.alertify.control.ControlResultStatus;
+import app.alertify.control.ControlResponse;
 
 /**
  * Prueba que un DataSource sea valido según 'isValid'
@@ -25,7 +24,7 @@ public class TestConnection implements Control {
 	}
 	
 	@Override
-	public Pair<Map<String, Object>, ControlResultStatus> execute(Map<String, Object> params) {
+	public ControlResponse execute(Map<String, Object> params) {
 		Objects.requireNonNull(params, "needs args to execute");
 		DataSource dataSource = (DataSource)params.get(Params.DATA_SOURCE.getValue());
 		Objects.requireNonNull(dataSource, "needs a datasource");
@@ -38,15 +37,15 @@ public class TestConnection implements Control {
 				success = true;
 			} else {
 				success = false;
-				result.put("msg", "Test connection failed");
+				result.put(OutputParams.MSG.toString(), "Test connection failed");
 			}
 		} catch (Exception e) {
 			success = false;
-			result.put("msg", "Error");
+			result.put(OutputParams.MSG.toString(), "Error");
 			log.error("error testing connection", e);
 		}
 		
-		return Pair.of(result, ControlResultStatus.parse(success));
+		return new ControlResponse(result, success);
 	}
 	
 	public enum Params {
@@ -68,4 +67,22 @@ public class TestConnection implements Control {
 		}
 	}
 
+	public enum OutputParams {
+		MSG("msg");
+
+		private String value;
+		
+		OutputParams(String str) {
+			this.value = str;
+		}
+		
+		String getValue() {
+			return this.value;
+		}
+		
+		@Override
+		public String toString() {
+			return this.value;
+		}
+	}
 }

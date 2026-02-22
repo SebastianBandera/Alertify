@@ -6,11 +6,10 @@ import java.util.Objects;
 
 import javax.sql.DataSource;
 
-import org.springframework.data.util.Pair;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import app.alertify.control.Control;
-import app.alertify.control.ControlResultStatus;
+import app.alertify.control.ControlResponse;
 import app.alertify.control.common.InferTypeForSQL;
 import app.alertify.control.common.ObjectsUtils;
 
@@ -27,7 +26,7 @@ public class SQLThreshold implements Control {
 	}
 	
 	@Override
-	public Pair<Map<String, Object>, ControlResultStatus> execute(Map<String, Object> params) {
+	public ControlResponse execute(Map<String, Object> params) {
 		Objects.requireNonNull(params, "needs args to execute");
 		int threshold         = (Integer)params.get(Params.THRESHOLD.getValue());
 		String thresholdType  = ObjectsUtils.noNull((String)params.get(Params.THRESHOLD_TYPE.getValue()), "").toLowerCase();
@@ -46,24 +45,28 @@ public class SQLThreshold implements Control {
 		Integer countOriginal = jdbc.query(sql, paramsSQL, types, rs -> rs.next() ? rs.getInt(1) : 0 );
 		int count = countOriginal == null ? -1 : countOriginal;
 		
+		success = evaluate(count, threshold, thresholdType);
+
+		result.put(OutputParams.COUNT.toString(), count);
+		result.put(OutputParams.THRESHOLD.toString(), threshold);
+		result.put(OutputParams.THRESHOLD_TYPE.toString(), thresholdType);
+		result.put(OutputParams.DESCRIPCION.toString(), descripcion);
+		
+		return new ControlResponse(result, success);
+	}
+	
+	private boolean evaluate(int count, int threshold, String thresholdType) {
 		if("warn_if_bigger".equals(thresholdType)) {
-			success = count <= threshold;
+			return count <= threshold;
 		} else if ("warn_if_lower".equals(thresholdType)) {
-			success = count >= threshold;
+			return count >= threshold;
 		} else if ("warn_if_equal".equals(thresholdType)) {
-			success = count != threshold;
+			return count != threshold;
 		} else if ("warn_if_distinct".equals(thresholdType)) {
-			success = count == threshold;
+			return count == threshold;
 		} else {
 			throw new RuntimeException("thresholdType: " + thresholdType + " no recognized");
 		}
-
-		result.put("count", count);
-		result.put(Params.THRESHOLD.toString(), threshold);
-		result.put(Params.THRESHOLD_TYPE.toString(), thresholdType);
-		result.put(Params.DESCRIPCION.toString(), descripcion);
-		
-		return Pair.of(result, ControlResultStatus.parse(success));
 	}
 
 	private int[] generate(Object[] paramsSQL) {
@@ -87,6 +90,28 @@ public class SQLThreshold implements Control {
 		private String value;
 		
 		Params(String str) {
+			this.value = str;
+		}
+		
+		String getValue() {
+			return this.value;
+		}
+		
+		@Override
+		public String toString() {
+			return this.value;
+		}
+	}
+	
+	public enum OutputParams {
+		COUNT("count"),
+		THRESHOLD("threshold"),
+		THRESHOLD_TYPE("threshold_type"),
+		DESCRIPCION("descripcion");
+
+		private String value;
+		
+		OutputParams(String str) {
 			this.value = str;
 		}
 		

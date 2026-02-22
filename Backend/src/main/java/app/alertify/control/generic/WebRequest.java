@@ -8,7 +8,6 @@ import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.data.util.Pair;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -16,7 +15,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.client.RestTemplate;
 
 import app.alertify.control.Control;
-import app.alertify.control.ControlResultStatus;
+import app.alertify.control.ControlResponse;
 import app.alertify.control.common.ObjectsUtils;
 
 /**
@@ -31,7 +30,7 @@ public class WebRequest implements Control {
 	}
 	
 	@Override
-	public Pair<Map<String, Object>, ControlResultStatus> execute(Map<String, Object> params) {
+	public ControlResponse execute(Map<String, Object> params) {
 		Objects.requireNonNull(params, "needs args to execute");
 		String url    = ObjectsUtils.noNull((String)params.get(Params.URL.getValue()), "");
 		String method = ObjectsUtils.noNull((String)params.get(Params.METHOD.getValue()), "");
@@ -75,12 +74,12 @@ public class WebRequest implements Control {
 		success = responseEntity != null && responseEntity.getStatusCode().value() == resposeExpected;
 		
 		if (responseEntity!=null) {
-			result.put("statusCode", responseEntity.getStatusCode().value());
+			result.put(OutputParams.STATUS_CODE.toString(), responseEntity.getStatusCode().value());
 		} else {
-            result.put("statusCode", -1);
+            result.put(OutputParams.STATUS_CODE.toString(), -1);
         }
 		
-		result.put(Params.RESPONSE_CODE_EXPECTED.toString(), resposeExpected);
+		result.put(OutputParams.RESPONSE_CODE_EXPECTED.toString(), resposeExpected);
 		
 		if(responseEntity != null && regex_check!=null && regex_check.length > 0) {
 			String bodyStr = responseEntity.getBody();
@@ -91,17 +90,17 @@ public class WebRequest implements Control {
 				Matcher matcher = pattern.matcher(bodyStr);
 				boolean isValid = matcher.find();
 				
-				result.put("regex_result_isvalid", isValid);
+				result.put(OutputParams.REGEX_RESULT_IS_VALID.toString(), isValid);
 				
 				if(!isValid) {
 					success = false;
-					result.put("regex_result_no_valid_index", i);
+					result.put(OutputParams.REGEX_RESULT_NOT_VALID_INDEX.toString(), i);
 					break;
 				}
 			}
 		}
 		
-		return Pair.of(result, ControlResultStatus.parse(success));
+		return new ControlResponse(result, success);
 	}
 	
 	private HttpMethod parse(String method) {
@@ -154,6 +153,28 @@ public class WebRequest implements Control {
 		private String value;
 		
 		Params(String str) {
+			this.value = str;
+		}
+		
+		String getValue() {
+			return this.value;
+		}
+		
+		@Override
+		public String toString() {
+			return this.value;
+		}
+	}
+
+	public enum OutputParams {
+		STATUS_CODE("statusCode"),
+		REGEX_RESULT_IS_VALID("regex_result_isvalid"),
+		REGEX_RESULT_NOT_VALID_INDEX("regex_result_no_valid_index"),
+		RESPONSE_CODE_EXPECTED("response_code_expected");
+
+		private String value;
+		
+		OutputParams(String str) {
 			this.value = str;
 		}
 		
