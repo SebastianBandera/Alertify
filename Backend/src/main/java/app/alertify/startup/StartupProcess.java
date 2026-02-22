@@ -107,7 +107,7 @@ public class StartupProcess {
 		Control control = null;
 		
 		try {
-			control = context.getBean(alert.getControl(), Control.class);
+			control = context.getBean(controlString, Control.class);
 		} catch (Exception e) {
 			log.warn(StringUtils.concat("control ", controlString, " not found"), e);
 		}
