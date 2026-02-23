@@ -3,6 +3,7 @@ package app.alertify.control.generic;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Function;
 
 import javax.sql.DataSource;
 
@@ -21,8 +22,15 @@ public class SQLThreshold implements Control {
 
 	private InferTypeForSQL inferTypeForSQL = new InferTypeForSQL();
 	
+	private final Function<DataSource, JdbcTemplate> jdbcSupplier;
+	
 	public SQLThreshold() {
-		
+		this.jdbcSupplier = JdbcTemplate::new;
+	}
+	
+	// facilitates the tests
+	public SQLThreshold(Function<DataSource, JdbcTemplate> jdbcSupplier) {
+		this.jdbcSupplier = jdbcSupplier;
 	}
 	
 	@Override
@@ -38,7 +46,7 @@ public class SQLThreshold implements Control {
 		Map<String, Object> result = new HashMap<>();
 		boolean success = false;
 		
-		JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+		JdbcTemplate jdbc = this.jdbcSupplier.apply(dataSource);
 		
 		int[] types = generate(paramsSQL);
 		
@@ -115,7 +123,7 @@ public class SQLThreshold implements Control {
 			this.value = str;
 		}
 		
-		String getValue() {
+		public String getValue() {
 			return this.value;
 		}
 		
