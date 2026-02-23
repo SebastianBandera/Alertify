@@ -24,4 +24,12 @@ public enum ControlResultStatus {
 	public static ControlResultStatus parse(boolean successStatus) {
 		return successStatus ? SUCCESS : WARN;
 	}
+	
+	public boolean isSuccess() {
+		return this == SUCCESS;
+	}
+	
+	public boolean isWarn() {
+		return this == WARN;
+	}
 }
