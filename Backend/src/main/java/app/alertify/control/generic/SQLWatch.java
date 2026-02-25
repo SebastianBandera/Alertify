@@ -1,5 +1,6 @@
 package app.alertify.control.generic;
 
+import java.sql.ResultSetMetaData;
 import java.sql.Types;
 import java.util.Arrays;
 import java.util.Collections;
@@ -9,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -30,14 +32,26 @@ public class SQLWatch implements Control {
     private static final Logger log = LoggerFactory.getLogger(SQLWatch.class);
 
 	private final static String SCHEMA = "sqlwatch";
+	private final static String SQL_SCHEMA_EXISTS = "SELECT count(1) FROM information_schema.schemata WHERE schema_name = ?";
+	private final static String SQL_TABLE_EXISTS = "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = ? AND table_name = ?)";
+	private final static String SQL_CREATE_SCHEMA = "CREATE SCHEMA " + SCHEMA;
 	
 	private InferTypeForSQL inferTypeForSQL = new InferTypeForSQL();
 	
 	private final JdbcTemplate localJdbc;
+	private final Function<DataSource, JdbcTemplate> jdbcSupplier;
 	
 	public SQLWatch(JdbcTemplate localJdbc) {
 		Objects.requireNonNull(localJdbc, "needs args to create instance");
 		this.localJdbc = localJdbc;
+		this.jdbcSupplier = JdbcTemplate::new;
+	}
+
+	// facilitates the tests
+	public SQLWatch(JdbcTemplate localJdbc, Function<DataSource, JdbcTemplate> jdbcSupplier) {
+		Objects.requireNonNull(localJdbc, "needs args to create instance");
+		this.localJdbc = localJdbc;
+		this.jdbcSupplier = jdbcSupplier;
 	}
 	
 	@Override
@@ -56,11 +70,11 @@ public class SQLWatch implements Control {
 		
 		boolean firstInvocation = firstInvocation(control_id);
 		
-		JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+		JdbcTemplate jdbc = this.jdbcSupplier.apply(dataSource);
 		
 		int[] types = generate(paramsSQL);
 		
-		List<Map<String, Object>> data = jdbc.queryForList(sql + " order by 1", paramsSQL, types);
+		List<Map<String, Object>> data = jdbc.queryForList(sql, paramsSQL, types);
 		
 		result.put(OutputParams.ROWS.toString(), data.size());
 
@@ -69,18 +83,27 @@ public class SQLWatch implements Control {
 		result.put(OutputParams.FIRST_INVOCATION.toString(), firstInvocation);
 		
 		if (firstInvocation) {
-			if (data.isEmpty()) {
-				result.put(OutputParams.ERROR.toString(), "cant empty when creating table");
-				new ControlResponse(result, ControlResultStatus.ERROR);
-			}
+			AtomicReference<String[]> columnNamesRef = new AtomicReference<>();
+			AtomicReference<int[]> columnTypesRef = new AtomicReference<>();
+			jdbc.query(sql, paramsSQL, types, rs -> {
+			    ResultSetMetaData meta = rs.getMetaData();
+			    int columnCount = meta.getColumnCount();
+
+			    String[] columnNames = new String[columnCount];
+			    int[] columnTypes = new int[columnCount];
+
+			    for (int i = 1; i <= columnCount; i++) {
+			        columnNames[i - 1] = meta.getColumnName(i);
+			        columnTypes[i - 1] = meta.getColumnType(i);
+			    }
+
+			    columnNamesRef.set(columnNames);
+			    columnTypesRef.set(columnTypes);
+			});
 			
-			Map<String, Object> firstRow = data.get(0);
+			createTable(SCHEMA, control_id, columnNamesRef.get(), columnTypesRef.get());
 			
-			int[] typesColumns = generate(firstRow.values().toArray());
-			
-			createTable(SCHEMA, control_id, firstRow.keySet().toArray(), typesColumns);
-			
-			loadTable(SCHEMA, control_id, data, types);
+			loadTable(SCHEMA, control_id, data, columnTypesRef.get());
 			
 			success = true;
 		} else {
@@ -169,6 +192,10 @@ public class SQLWatch implements Control {
 	}
 
 	private void loadTable(String schema, String control_id, List<Map<String, Object>> data, int[] types) {
+		if(data == null || data.isEmpty()) {
+			return;
+		}
+		
 		String placeholders = String.join(",", Collections.nCopies(data.get(0).keySet().size(), "?").stream().collect(Collectors.toList()));
 		
 		String sql = StringUtils.concat("INSERT INTO ", schema, ".", control_id, " VALUES(", placeholders, ");");
@@ -222,7 +249,10 @@ public class SQLWatch implements Control {
 		
 		if (!schemaExists) {
 			log.info("CREATING SCHEMA: " + SCHEMA);
-			localJdbc.execute("CREATE SCHEMA " + SCHEMA);
+			localJdbc.execute(SQL_CREATE_SCHEMA);
+			
+			// If the schema didn't exist, neither would the table.
+			return true;
 		}
 		
 		boolean tableExists = tableExists(SCHEMA, control_id);
@@ -233,13 +263,13 @@ public class SQLWatch implements Control {
 	}
 
 	private boolean tableExists(String schema, String tableName) {
-		Boolean tableExists = localJdbc.query("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = ? AND table_name = ?)", new Object[] {schema, tableName.toLowerCase()}, new int[] {Types.VARCHAR, Types.VARCHAR}, rs -> rs.next() ? rs.getBoolean(1) : false );
+		Boolean tableExists = localJdbc.query(SQL_TABLE_EXISTS, new Object[] {schema, tableName.toLowerCase()}, new int[] {Types.VARCHAR, Types.VARCHAR}, rs -> rs.next() ? rs.getBoolean(1) : false );
 		
 		return tableExists != null && tableExists;
 	}
 	
 	private boolean schemaExists(String schema) {
-		Integer count = localJdbc.query("SELECT count(1) FROM information_schema.schemata WHERE schema_name = ?", new Object[] {SCHEMA}, new int[] {Types.VARCHAR}, rs -> rs.next() ? rs.getInt(1) : 0 );
+		Integer count = localJdbc.query(SQL_SCHEMA_EXISTS, new Object[] {SCHEMA}, new int[] {Types.VARCHAR}, rs -> rs.next() ? rs.getInt(1) : 0 );
 		
 		return count != null && count != 0;
 	}

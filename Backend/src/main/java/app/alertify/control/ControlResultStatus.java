@@ -32,4 +32,8 @@ public enum ControlResultStatus {
 	public boolean isWarn() {
 		return this == WARN;
 	}
+	
+	public boolean isError() {
+		return this == ERROR;
+	}
 }
