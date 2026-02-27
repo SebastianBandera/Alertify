@@ -1,5 +1,9 @@
 package test.app;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -14,7 +18,6 @@ import java.util.function.Function;
 
 import javax.sql.DataSource;
 
-import org.aspectj.apache.bcel.generic.Type;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -24,12 +27,14 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.jdbc.CannotGetJdbcConnectionException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.ResultSetExtractor;
 import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import app.alertify.control.ControlResponse;
+import app.alertify.control.generic.SQLThreshold;
 import app.alertify.control.generic.SQLWatch;
 import app.alertify.control.generic.SQLWatch.Params;
 
@@ -151,6 +156,7 @@ public class SQLWatchTest {
     	);
     
     	assertTrue(response.getStatus().isSuccess());
+    	assertEquals(response.getData().get(SQLWatch.OutputParams.FIRST_INVOCATION.toString()), true);
     	
     	Mockito.verifyNoMoreInteractions(jdbcLocal, jdbcTemplate);
     }
@@ -238,6 +244,7 @@ public class SQLWatchTest {
     	);
     	
     	assertTrue(response.getStatus().isSuccess());
+    	assertEquals(response.getData().get(SQLWatch.OutputParams.FIRST_INVOCATION.toString()), true);
     	
     	Mockito.verifyNoMoreInteractions(jdbcLocal, jdbcTemplate);
     }
@@ -337,6 +344,7 @@ public class SQLWatchTest {
     	);
     	
     	assertTrue(response.getStatus().isSuccess());
+    	assertEquals(response.getData().get(SQLWatch.OutputParams.FIRST_INVOCATION.toString()), true);
     	
     	Mockito.verifyNoMoreInteractions(jdbcLocal, jdbcTemplate);
     }
@@ -431,9 +439,799 @@ public class SQLWatchTest {
     	);
     	
     	assertTrue(response.getStatus().isSuccess());
+    	assertEquals(response.getData().get(SQLWatch.OutputParams.FIRST_INVOCATION.toString()), true);
     	
     	Mockito.verifyNoMoreInteractions(jdbcLocal, jdbcTemplate);
     }
     
+    @Test
+	@DisplayName("SKIP SCHEMA - TABLE ALREADY PRESENT - with data equal")
+    void case5() {
+    	String sql = "sql";
+    	String controlId = "id_1";
+    	String[] keys = new String[] {"col1"};
+    	Object[] paramsSql = new Object[] {};
+    	List<Map<String, Object>> dataReturn = new LinkedList<>();
+    	dataReturn.add(Map.of("col1", "val1", "col2", 1));
+    	dataReturn.add(Map.of("col1", "val2", "col2", 2));
+    	List<Map<String, Object>> dataBD = new LinkedList<>();
+    	dataBD.add(Map.of("col1", "val1", "col2", 1));
+    	dataBD.add(Map.of("col1", "val2", "col2", 2));
+    	
+    	Map<String, Object> params = new HashMap<String, Object>();
+    	params.put(Params.SQL.toString(), sql);
+    	params.put(Params.CONTROL_IDENTIFIER.toString(), controlId);
+    	params.put(Params.LOG_ROWS.toString(), false);
+    	params.put(Params.KEYS.toString(), keys);
+    	params.put(Params.PARAMS_SQL.toString(), paramsSql);
+    	params.put(Params.DATA_SOURCE.toString(), dataSource);
+        
+    	Mockito.when(jdbcLocal.query(
+    	        Mockito.eq(SQL_SCHEMA_EXISTS),
+    	        Mockito.eq(new String[] {SCHEMA}),
+    	        Mockito.eq(new int[] {Types.VARCHAR}),
+    	        Mockito.<ResultSetExtractor<Integer>>any()
+    	)).thenReturn(SCHEMA_EXISTS);
+        
+    	Mockito.when(jdbcTemplate.queryForList(
+    	        Mockito.eq(sql),
+    	        Mockito.any(Object[].class),
+    	        Mockito.any(int[].class)
+    	)).thenReturn(dataReturn);
+    	
+    	Mockito.when(jdbcLocal.query(
+		        Mockito.eq(SQL_TABLE_EXISTS),
+		        Mockito.eq(new Object[] {SCHEMA, controlId.toLowerCase()}),
+		        Mockito.eq(new int[] {Types.VARCHAR, Types.VARCHAR}),
+		        Mockito.<ResultSetExtractor<Boolean>>any()
+		)).thenReturn(TABLE_EXISTS);
+
+    	Mockito.when(jdbcLocal.queryForList(
+    	        Mockito.startsWith("SELECT * FROM " + SCHEMA)
+    	)).thenReturn(dataBD);
+    	
+    	ControlResponse response = sqlWatch.execute(params);
+    	
+    	Mockito.verify(jdbcLocal, Mockito.never()).execute(
+    			Mockito.eq(SQL_CREATE_SCHEMA)
+    	);
+    	
+    	Mockito.verify(jdbcTemplate, Mockito.times(1)).queryForList(
+    			Mockito.eq(sql),
+    	        Mockito.eq(paramsSql),
+    	        Mockito.eq(new int[] {})
+    	);
+    	
+    	assertTrue(response.getStatus().isSuccess());
+    	assertEquals(0, response.getData().get(SQLWatch.OutputParams.REM_ROWS_SIZE.toString()));
+    	assertEquals(0, response.getData().get(SQLWatch.OutputParams.NEW_ROWS_SIZE.toString()));
+    	assertEquals(0, response.getData().get(SQLWatch.OutputParams.MOD_ROWS_SIZE.toString()));
+    	assertEquals(2, response.getData().get(SQLWatch.OutputParams.ROWS.toString()));
+    	assertEquals(false, response.getData().get(SQLWatch.OutputParams.FIRST_INVOCATION.toString()));
+    	
+    	Mockito.verifyNoMoreInteractions(jdbcLocal, jdbcTemplate);
+    }
     
+    @Test
+	@DisplayName("SKIP SCHEMA - TABLE ALREADY PRESENT - with new data - with logRows")
+    void case6() {
+    	String sql = "sql";
+    	String controlId = "id_1";
+    	String[] keys = new String[] {"col1"};
+    	Object[] paramsSql = new Object[] {};
+    	List<Map<String, Object>> dataReturn = new LinkedList<>();
+    	dataReturn.add(Map.of("col1", "val1", "col2", 1));
+    	dataReturn.add(Map.of("col1", "val2", "col2", 2));
+    	dataReturn.add(Map.of("col1", "val3", "col2", 3));
+    	List<Map<String, Object>> dataBD = new LinkedList<>();
+    	dataBD.add(Map.of("col1", "val1", "col2", 1));
+    	dataBD.add(Map.of("col1", "val2", "col2", 2));
+    	
+    	Map<String, Object> params = new HashMap<String, Object>();
+    	params.put(Params.SQL.toString(), sql);
+    	params.put(Params.CONTROL_IDENTIFIER.toString(), controlId);
+    	params.put(Params.LOG_ROWS.toString(), true);
+    	params.put(Params.KEYS.toString(), keys);
+    	params.put(Params.PARAMS_SQL.toString(), paramsSql);
+    	params.put(Params.DATA_SOURCE.toString(), dataSource);
+        
+    	Mockito.when(jdbcLocal.query(
+    	        Mockito.eq(SQL_SCHEMA_EXISTS),
+    	        Mockito.eq(new String[] {SCHEMA}),
+    	        Mockito.eq(new int[] {Types.VARCHAR}),
+    	        Mockito.<ResultSetExtractor<Integer>>any()
+    	)).thenReturn(SCHEMA_EXISTS);
+        
+    	Mockito.when(jdbcTemplate.queryForList(
+    	        Mockito.eq(sql),
+    	        Mockito.any(Object[].class),
+    	        Mockito.any(int[].class)
+    	)).thenReturn(dataReturn);
+    	
+    	Mockito.when(jdbcLocal.query(
+		        Mockito.eq(SQL_TABLE_EXISTS),
+		        Mockito.eq(new Object[] {SCHEMA, controlId.toLowerCase()}),
+		        Mockito.eq(new int[] {Types.VARCHAR, Types.VARCHAR}),
+		        Mockito.<ResultSetExtractor<Boolean>>any()
+		)).thenReturn(TABLE_EXISTS);
+
+    	Mockito.when(jdbcLocal.queryForList(
+    	        Mockito.startsWith("SELECT * FROM " + SCHEMA)
+    	)).thenReturn(dataBD);
+    	
+    	ControlResponse response = sqlWatch.execute(params);
+    	
+    	Mockito.verify(jdbcLocal, Mockito.never()).execute(
+    			Mockito.eq(SQL_CREATE_SCHEMA)
+    	);
+    	
+    	Mockito.verify(jdbcTemplate, Mockito.times(1)).queryForList(
+    			Mockito.eq(sql),
+    	        Mockito.eq(paramsSql),
+    	        Mockito.eq(new int[] {})
+    	);
+    	
+    	assertTrue(response.getStatus().isWarn());
+    	assertEquals(0, response.getData().get(SQLWatch.OutputParams.REM_ROWS_SIZE.toString()));
+    	assertEquals(1, response.getData().get(SQLWatch.OutputParams.NEW_ROWS_SIZE.toString()));
+    	assertEquals(0, response.getData().get(SQLWatch.OutputParams.MOD_ROWS_SIZE.toString()));
+    	assertEquals(3, response.getData().get(SQLWatch.OutputParams.ROWS.toString()));
+    	assertEquals(false, response.getData().get(SQLWatch.OutputParams.FIRST_INVOCATION.toString()));
+    	assertEquals(2, response.getData().get(SQLWatch.OutputParams.SIZE_BACKUP.toString()));
+    	assertEquals(3, response.getData().get(SQLWatch.OutputParams.SIZE_NEW_DATA.toString()));
+    	assertEquals(true, response.getData().get(SQLWatch.OutputParams.LOG_ROWS.toString()));
+    	assertFalse(response.getData().containsKey(SQLWatch.OutputParams.MOD_ROWS.toString()));
+    	assertFalse(response.getData().containsKey(SQLWatch.OutputParams.REM_ROWS.toString()));
+    	assertEquals(new LinkedList<Map<String, Object>>(List.of(dataReturn.get(dataReturn.size() - 1))), response.getData().get(SQLWatch.OutputParams.NEW_ROWS.toString()));
+    	
+    	Mockito.verifyNoMoreInteractions(jdbcLocal, jdbcTemplate);
+    }
+    
+    @Test
+	@DisplayName("SKIP SCHEMA - TABLE ALREADY PRESENT - with new data - with no logRows")
+    void case7() {
+    	String sql = "sql";
+    	String controlId = "id_1";
+    	String[] keys = new String[] {"col1"};
+    	Object[] paramsSql = new Object[] {};
+    	List<Map<String, Object>> dataReturn = new LinkedList<>();
+    	dataReturn.add(Map.of("col1", "val1", "col2", 1));
+    	dataReturn.add(Map.of("col1", "val2", "col2", 2));
+    	dataReturn.add(Map.of("col1", "val3", "col2", 3));
+    	List<Map<String, Object>> dataBD = new LinkedList<>();
+    	dataBD.add(Map.of("col1", "val1", "col2", 1));
+    	dataBD.add(Map.of("col1", "val2", "col2", 2));
+    	
+    	Map<String, Object> params = new HashMap<String, Object>();
+    	params.put(Params.SQL.toString(), sql);
+    	params.put(Params.CONTROL_IDENTIFIER.toString(), controlId);
+    	params.put(Params.LOG_ROWS.toString(), false);
+    	params.put(Params.KEYS.toString(), keys);
+    	params.put(Params.PARAMS_SQL.toString(), paramsSql);
+    	params.put(Params.DATA_SOURCE.toString(), dataSource);
+        
+    	Mockito.when(jdbcLocal.query(
+    	        Mockito.eq(SQL_SCHEMA_EXISTS),
+    	        Mockito.eq(new String[] {SCHEMA}),
+    	        Mockito.eq(new int[] {Types.VARCHAR}),
+    	        Mockito.<ResultSetExtractor<Integer>>any()
+    	)).thenReturn(SCHEMA_EXISTS);
+        
+    	Mockito.when(jdbcTemplate.queryForList(
+    	        Mockito.eq(sql),
+    	        Mockito.any(Object[].class),
+    	        Mockito.any(int[].class)
+    	)).thenReturn(dataReturn);
+    	
+    	Mockito.when(jdbcLocal.query(
+		        Mockito.eq(SQL_TABLE_EXISTS),
+		        Mockito.eq(new Object[] {SCHEMA, controlId.toLowerCase()}),
+		        Mockito.eq(new int[] {Types.VARCHAR, Types.VARCHAR}),
+		        Mockito.<ResultSetExtractor<Boolean>>any()
+		)).thenReturn(TABLE_EXISTS);
+
+    	Mockito.when(jdbcLocal.queryForList(
+    	        Mockito.startsWith("SELECT * FROM " + SCHEMA)
+    	)).thenReturn(dataBD);
+    	
+    	ControlResponse response = sqlWatch.execute(params);
+    	
+    	Mockito.verify(jdbcLocal, Mockito.never()).execute(
+    			Mockito.eq(SQL_CREATE_SCHEMA)
+    	);
+    	
+    	Mockito.verify(jdbcTemplate, Mockito.times(1)).queryForList(
+    			Mockito.eq(sql),
+    	        Mockito.eq(paramsSql),
+    	        Mockito.eq(new int[] {})
+    	);
+    	
+    	assertTrue(response.getStatus().isWarn());
+    	assertEquals(0, response.getData().get(SQLWatch.OutputParams.REM_ROWS_SIZE.toString()));
+    	assertEquals(1, response.getData().get(SQLWatch.OutputParams.NEW_ROWS_SIZE.toString()));
+    	assertEquals(0, response.getData().get(SQLWatch.OutputParams.MOD_ROWS_SIZE.toString()));
+    	assertEquals(3, response.getData().get(SQLWatch.OutputParams.ROWS.toString()));
+    	assertEquals(false, response.getData().get(SQLWatch.OutputParams.FIRST_INVOCATION.toString()));
+    	assertEquals(2, response.getData().get(SQLWatch.OutputParams.SIZE_BACKUP.toString()));
+    	assertEquals(3, response.getData().get(SQLWatch.OutputParams.SIZE_NEW_DATA.toString()));
+    	assertEquals(false, response.getData().get(SQLWatch.OutputParams.LOG_ROWS.toString()));
+    	assertFalse(response.getData().containsKey(SQLWatch.OutputParams.NEW_ROWS.toString()));
+    	assertFalse(response.getData().containsKey(SQLWatch.OutputParams.MOD_ROWS.toString()));
+    	assertFalse(response.getData().containsKey(SQLWatch.OutputParams.REM_ROWS.toString()));
+    	
+    	Mockito.verifyNoMoreInteractions(jdbcLocal, jdbcTemplate);
+    }
+    
+    @Test
+	@DisplayName("SKIP SCHEMA - TABLE ALREADY PRESENT - with less data - with logRows")
+    void case8() {
+    	String sql = "sql";
+    	String controlId = "id_1";
+    	String[] keys = new String[] {"col1"};
+    	Object[] paramsSql = new Object[] {};
+    	List<Map<String, Object>> dataReturn = new LinkedList<>();
+    	dataReturn.add(Map.of("col1", "val1", "col2", 1));
+    	dataReturn.add(Map.of("col1", "val2", "col2", 2));
+    	List<Map<String, Object>> dataBD = new LinkedList<>();
+    	dataBD.add(Map.of("col1", "val1", "col2", 1));
+    	dataBD.add(Map.of("col1", "val2", "col2", 2));
+    	dataBD.add(Map.of("col1", "val3", "col2", 3));
+    	
+    	Map<String, Object> params = new HashMap<String, Object>();
+    	params.put(Params.SQL.toString(), sql);
+    	params.put(Params.CONTROL_IDENTIFIER.toString(), controlId);
+    	params.put(Params.LOG_ROWS.toString(), true);
+    	params.put(Params.KEYS.toString(), keys);
+    	params.put(Params.PARAMS_SQL.toString(), paramsSql);
+    	params.put(Params.DATA_SOURCE.toString(), dataSource);
+        
+    	Mockito.when(jdbcLocal.query(
+    	        Mockito.eq(SQL_SCHEMA_EXISTS),
+    	        Mockito.eq(new String[] {SCHEMA}),
+    	        Mockito.eq(new int[] {Types.VARCHAR}),
+    	        Mockito.<ResultSetExtractor<Integer>>any()
+    	)).thenReturn(SCHEMA_EXISTS);
+        
+    	Mockito.when(jdbcTemplate.queryForList(
+    	        Mockito.eq(sql),
+    	        Mockito.any(Object[].class),
+    	        Mockito.any(int[].class)
+    	)).thenReturn(dataReturn);
+    	
+    	Mockito.when(jdbcLocal.query(
+		        Mockito.eq(SQL_TABLE_EXISTS),
+		        Mockito.eq(new Object[] {SCHEMA, controlId.toLowerCase()}),
+		        Mockito.eq(new int[] {Types.VARCHAR, Types.VARCHAR}),
+		        Mockito.<ResultSetExtractor<Boolean>>any()
+		)).thenReturn(TABLE_EXISTS);
+
+    	Mockito.when(jdbcLocal.queryForList(
+    	        Mockito.startsWith("SELECT * FROM " + SCHEMA)
+    	)).thenReturn(dataBD);
+    	
+    	ControlResponse response = sqlWatch.execute(params);
+    	
+    	Mockito.verify(jdbcLocal, Mockito.never()).execute(
+    			Mockito.eq(SQL_CREATE_SCHEMA)
+    	);
+    	
+    	Mockito.verify(jdbcTemplate, Mockito.times(1)).queryForList(
+    			Mockito.eq(sql),
+    	        Mockito.eq(paramsSql),
+    	        Mockito.eq(new int[] {})
+    	);
+    	
+    	assertTrue(response.getStatus().isWarn());
+    	assertEquals(1, response.getData().get(SQLWatch.OutputParams.REM_ROWS_SIZE.toString()));
+    	assertEquals(0, response.getData().get(SQLWatch.OutputParams.NEW_ROWS_SIZE.toString()));
+    	assertEquals(0, response.getData().get(SQLWatch.OutputParams.MOD_ROWS_SIZE.toString()));
+    	assertEquals(2, response.getData().get(SQLWatch.OutputParams.ROWS.toString()));
+    	assertEquals(false, response.getData().get(SQLWatch.OutputParams.FIRST_INVOCATION.toString()));
+    	assertEquals(3, response.getData().get(SQLWatch.OutputParams.SIZE_BACKUP.toString()));
+    	assertEquals(2, response.getData().get(SQLWatch.OutputParams.SIZE_NEW_DATA.toString()));
+    	assertEquals(true, response.getData().get(SQLWatch.OutputParams.LOG_ROWS.toString()));
+    	assertFalse(response.getData().containsKey(SQLWatch.OutputParams.NEW_ROWS.toString()));
+    	assertFalse(response.getData().containsKey(SQLWatch.OutputParams.MOD_ROWS.toString()));
+    	assertEquals(new LinkedList<Map<String, Object>>(List.of(dataBD.get(dataBD.size() - 1))), response.getData().get(SQLWatch.OutputParams.REM_ROWS.toString()));
+    	
+    	Mockito.verifyNoMoreInteractions(jdbcLocal, jdbcTemplate);
+    }
+    
+    @Test
+	@DisplayName("SKIP SCHEMA - TABLE ALREADY PRESENT - with less data - with no logRows")
+    void case9() {
+    	String sql = "sql";
+    	String controlId = "id_1";
+    	String[] keys = new String[] {"col1"};
+    	Object[] paramsSql = new Object[] {};
+    	List<Map<String, Object>> dataReturn = new LinkedList<>();
+    	dataReturn.add(Map.of("col1", "val1", "col2", 1));
+    	dataReturn.add(Map.of("col1", "val2", "col2", 2));
+    	List<Map<String, Object>> dataBD = new LinkedList<>();
+    	dataBD.add(Map.of("col1", "val1", "col2", 1));
+    	dataBD.add(Map.of("col1", "val2", "col2", 2));
+    	dataBD.add(Map.of("col1", "val3", "col2", 3));
+    	
+    	Map<String, Object> params = new HashMap<String, Object>();
+    	params.put(Params.SQL.toString(), sql);
+    	params.put(Params.CONTROL_IDENTIFIER.toString(), controlId);
+    	params.put(Params.LOG_ROWS.toString(), false);
+    	params.put(Params.KEYS.toString(), keys);
+    	params.put(Params.PARAMS_SQL.toString(), paramsSql);
+    	params.put(Params.DATA_SOURCE.toString(), dataSource);
+        
+    	Mockito.when(jdbcLocal.query(
+    	        Mockito.eq(SQL_SCHEMA_EXISTS),
+    	        Mockito.eq(new String[] {SCHEMA}),
+    	        Mockito.eq(new int[] {Types.VARCHAR}),
+    	        Mockito.<ResultSetExtractor<Integer>>any()
+    	)).thenReturn(SCHEMA_EXISTS);
+        
+    	Mockito.when(jdbcTemplate.queryForList(
+    	        Mockito.eq(sql),
+    	        Mockito.any(Object[].class),
+    	        Mockito.any(int[].class)
+    	)).thenReturn(dataReturn);
+    	
+    	Mockito.when(jdbcLocal.query(
+		        Mockito.eq(SQL_TABLE_EXISTS),
+		        Mockito.eq(new Object[] {SCHEMA, controlId.toLowerCase()}),
+		        Mockito.eq(new int[] {Types.VARCHAR, Types.VARCHAR}),
+		        Mockito.<ResultSetExtractor<Boolean>>any()
+		)).thenReturn(TABLE_EXISTS);
+
+    	Mockito.when(jdbcLocal.queryForList(
+    	        Mockito.startsWith("SELECT * FROM " + SCHEMA)
+    	)).thenReturn(dataBD);
+    	
+    	ControlResponse response = sqlWatch.execute(params);
+    	
+    	Mockito.verify(jdbcLocal, Mockito.never()).execute(
+    			Mockito.eq(SQL_CREATE_SCHEMA)
+    	);
+    	
+    	Mockito.verify(jdbcTemplate, Mockito.times(1)).queryForList(
+    			Mockito.eq(sql),
+    	        Mockito.eq(paramsSql),
+    	        Mockito.eq(new int[] {})
+    	);
+    	
+    	assertTrue(response.getStatus().isWarn());
+    	assertEquals(1, response.getData().get(SQLWatch.OutputParams.REM_ROWS_SIZE.toString()));
+    	assertEquals(0, response.getData().get(SQLWatch.OutputParams.NEW_ROWS_SIZE.toString()));
+    	assertEquals(0, response.getData().get(SQLWatch.OutputParams.MOD_ROWS_SIZE.toString()));
+    	assertEquals(2, response.getData().get(SQLWatch.OutputParams.ROWS.toString()));
+    	assertEquals(false, response.getData().get(SQLWatch.OutputParams.FIRST_INVOCATION.toString()));
+    	assertEquals(3, response.getData().get(SQLWatch.OutputParams.SIZE_BACKUP.toString()));
+    	assertEquals(2, response.getData().get(SQLWatch.OutputParams.SIZE_NEW_DATA.toString()));
+    	assertEquals(false, response.getData().get(SQLWatch.OutputParams.LOG_ROWS.toString()));
+    	assertFalse(response.getData().containsKey(SQLWatch.OutputParams.NEW_ROWS.toString()));
+    	assertFalse(response.getData().containsKey(SQLWatch.OutputParams.MOD_ROWS.toString()));
+    	assertFalse(response.getData().containsKey(SQLWatch.OutputParams.REM_ROWS.toString()));
+    	
+    	Mockito.verifyNoMoreInteractions(jdbcLocal, jdbcTemplate);
+    }
+    
+    @Test
+	@DisplayName("SKIP SCHEMA - TABLE ALREADY PRESENT - with mod data - with logRows")
+    void case10() {
+    	String sql = "sql";
+    	String controlId = "id_1";
+    	String[] keys = new String[] {"col1"};
+    	Object[] paramsSql = new Object[] {};
+    	List<Map<String, Object>> dataReturn = new LinkedList<>();
+    	dataReturn.add(Map.of("col1", "val1", "col2", 1));
+    	dataReturn.add(Map.of("col1", "val2", "col2", 100));
+    	List<Map<String, Object>> dataBD = new LinkedList<>();
+    	dataBD.add(Map.of("col1", "val1", "col2", 1));
+    	dataBD.add(Map.of("col1", "val2", "col2", 2));
+    	
+    	Map<String, Object> params = new HashMap<String, Object>();
+    	params.put(Params.SQL.toString(), sql);
+    	params.put(Params.CONTROL_IDENTIFIER.toString(), controlId);
+    	params.put(Params.LOG_ROWS.toString(), true);
+    	params.put(Params.KEYS.toString(), keys);
+    	params.put(Params.PARAMS_SQL.toString(), paramsSql);
+    	params.put(Params.DATA_SOURCE.toString(), dataSource);
+        
+    	Mockito.when(jdbcLocal.query(
+    	        Mockito.eq(SQL_SCHEMA_EXISTS),
+    	        Mockito.eq(new String[] {SCHEMA}),
+    	        Mockito.eq(new int[] {Types.VARCHAR}),
+    	        Mockito.<ResultSetExtractor<Integer>>any()
+    	)).thenReturn(SCHEMA_EXISTS);
+        
+    	Mockito.when(jdbcTemplate.queryForList(
+    	        Mockito.eq(sql),
+    	        Mockito.any(Object[].class),
+    	        Mockito.any(int[].class)
+    	)).thenReturn(dataReturn);
+    	
+    	Mockito.when(jdbcLocal.query(
+		        Mockito.eq(SQL_TABLE_EXISTS),
+		        Mockito.eq(new Object[] {SCHEMA, controlId.toLowerCase()}),
+		        Mockito.eq(new int[] {Types.VARCHAR, Types.VARCHAR}),
+		        Mockito.<ResultSetExtractor<Boolean>>any()
+		)).thenReturn(TABLE_EXISTS);
+
+    	Mockito.when(jdbcLocal.queryForList(
+    	        Mockito.startsWith("SELECT * FROM " + SCHEMA)
+    	)).thenReturn(dataBD);
+    	
+    	ControlResponse response = sqlWatch.execute(params);
+    	
+    	Mockito.verify(jdbcLocal, Mockito.never()).execute(
+    			Mockito.eq(SQL_CREATE_SCHEMA)
+    	);
+    	
+    	Mockito.verify(jdbcTemplate, Mockito.times(1)).queryForList(
+    			Mockito.eq(sql),
+    	        Mockito.eq(paramsSql),
+    	        Mockito.eq(new int[] {})
+    	);
+    	
+    	assertTrue(response.getStatus().isWarn());
+    	assertEquals(0, response.getData().get(SQLWatch.OutputParams.REM_ROWS_SIZE.toString()));
+    	assertEquals(0, response.getData().get(SQLWatch.OutputParams.NEW_ROWS_SIZE.toString()));
+    	assertEquals(1, response.getData().get(SQLWatch.OutputParams.MOD_ROWS_SIZE.toString()));
+    	assertEquals(2, response.getData().get(SQLWatch.OutputParams.ROWS.toString()));
+    	assertEquals(false, response.getData().get(SQLWatch.OutputParams.FIRST_INVOCATION.toString()));
+    	assertEquals(2, response.getData().get(SQLWatch.OutputParams.SIZE_BACKUP.toString()));
+    	assertEquals(2, response.getData().get(SQLWatch.OutputParams.SIZE_NEW_DATA.toString()));
+    	assertEquals(true, response.getData().get(SQLWatch.OutputParams.LOG_ROWS.toString()));
+    	assertFalse(response.getData().containsKey(SQLWatch.OutputParams.NEW_ROWS.toString()));
+    	assertFalse(response.getData().containsKey(SQLWatch.OutputParams.REM_ROWS.toString()));
+    	assertEquals(new LinkedList<Map<String, Object>>(List.of(Map.of("col1", "val2", "col2", 100, "col2_OLD", 2))), response.getData().get(SQLWatch.OutputParams.MOD_ROWS.toString()));
+    	
+    	Mockito.verifyNoMoreInteractions(jdbcLocal, jdbcTemplate);
+    }
+    
+    @Test
+	@DisplayName("SKIP SCHEMA - TABLE ALREADY PRESENT - with mod data - with no logRows")
+    void case11() {
+    	String sql = "sql";
+    	String controlId = "id_1";
+    	String[] keys = new String[] {"col1"};
+    	Object[] paramsSql = new Object[] {};
+    	List<Map<String, Object>> dataReturn = new LinkedList<>();
+    	dataReturn.add(Map.of("col1", "val1", "col2", 1));
+    	dataReturn.add(Map.of("col1", "val2", "col2", 100));
+    	List<Map<String, Object>> dataBD = new LinkedList<>();
+    	dataBD.add(Map.of("col1", "val1", "col2", 1));
+    	dataBD.add(Map.of("col1", "val2", "col2", 2));
+    	
+    	Map<String, Object> params = new HashMap<String, Object>();
+    	params.put(Params.SQL.toString(), sql);
+    	params.put(Params.CONTROL_IDENTIFIER.toString(), controlId);
+    	params.put(Params.LOG_ROWS.toString(), false);
+    	params.put(Params.KEYS.toString(), keys);
+    	params.put(Params.PARAMS_SQL.toString(), paramsSql);
+    	params.put(Params.DATA_SOURCE.toString(), dataSource);
+        
+    	Mockito.when(jdbcLocal.query(
+    	        Mockito.eq(SQL_SCHEMA_EXISTS),
+    	        Mockito.eq(new String[] {SCHEMA}),
+    	        Mockito.eq(new int[] {Types.VARCHAR}),
+    	        Mockito.<ResultSetExtractor<Integer>>any()
+    	)).thenReturn(SCHEMA_EXISTS);
+        
+    	Mockito.when(jdbcTemplate.queryForList(
+    	        Mockito.eq(sql),
+    	        Mockito.any(Object[].class),
+    	        Mockito.any(int[].class)
+    	)).thenReturn(dataReturn);
+    	
+    	Mockito.when(jdbcLocal.query(
+		        Mockito.eq(SQL_TABLE_EXISTS),
+		        Mockito.eq(new Object[] {SCHEMA, controlId.toLowerCase()}),
+		        Mockito.eq(new int[] {Types.VARCHAR, Types.VARCHAR}),
+		        Mockito.<ResultSetExtractor<Boolean>>any()
+		)).thenReturn(TABLE_EXISTS);
+
+    	Mockito.when(jdbcLocal.queryForList(
+    	        Mockito.startsWith("SELECT * FROM " + SCHEMA)
+    	)).thenReturn(dataBD);
+    	
+    	ControlResponse response = sqlWatch.execute(params);
+    	
+    	Mockito.verify(jdbcLocal, Mockito.never()).execute(
+    			Mockito.eq(SQL_CREATE_SCHEMA)
+    	);
+    	
+    	Mockito.verify(jdbcTemplate, Mockito.times(1)).queryForList(
+    			Mockito.eq(sql),
+    	        Mockito.eq(paramsSql),
+    	        Mockito.eq(new int[] {})
+    	);
+    	
+    	assertTrue(response.getStatus().isWarn());
+    	assertEquals(0, response.getData().get(SQLWatch.OutputParams.REM_ROWS_SIZE.toString()));
+    	assertEquals(0, response.getData().get(SQLWatch.OutputParams.NEW_ROWS_SIZE.toString()));
+    	assertEquals(1, response.getData().get(SQLWatch.OutputParams.MOD_ROWS_SIZE.toString()));
+    	assertEquals(2, response.getData().get(SQLWatch.OutputParams.ROWS.toString()));
+    	assertEquals(false, response.getData().get(SQLWatch.OutputParams.FIRST_INVOCATION.toString()));
+    	assertEquals(2, response.getData().get(SQLWatch.OutputParams.SIZE_BACKUP.toString()));
+    	assertEquals(2, response.getData().get(SQLWatch.OutputParams.SIZE_NEW_DATA.toString()));
+    	assertEquals(false, response.getData().get(SQLWatch.OutputParams.LOG_ROWS.toString()));
+    	assertFalse(response.getData().containsKey(SQLWatch.OutputParams.NEW_ROWS.toString()));
+    	assertFalse(response.getData().containsKey(SQLWatch.OutputParams.MOD_ROWS.toString()));
+    	assertFalse(response.getData().containsKey(SQLWatch.OutputParams.REM_ROWS.toString()));
+    	
+    	Mockito.verifyNoMoreInteractions(jdbcLocal, jdbcTemplate);
+    }
+    
+    @Test
+	@DisplayName("SKIP SCHEMA - TABLE ALREADY PRESENT - with new repeated data - with logRows")
+    void case12() {
+    	String sql = "sql";
+    	String controlId = "id_1";
+    	String[] keys = new String[] {"col1"};
+    	Object[] paramsSql = new Object[] {};
+    	List<Map<String, Object>> dataReturn = new LinkedList<>();
+    	dataReturn.add(Map.of("col1", "val1", "col2", 1));
+    	dataReturn.add(Map.of("col1", "val2", "col2", 2));
+    	dataReturn.add(Map.of("col1", "val2", "col2", 3));
+    	List<Map<String, Object>> dataBD = new LinkedList<>();
+    	dataBD.add(Map.of("col1", "val1", "col2", 1));
+    	dataBD.add(Map.of("col1", "val2", "col2", 2));
+    	
+    	Map<String, Object> params = new HashMap<String, Object>();
+    	params.put(Params.SQL.toString(), sql);
+    	params.put(Params.CONTROL_IDENTIFIER.toString(), controlId);
+    	params.put(Params.LOG_ROWS.toString(), true);
+    	params.put(Params.KEYS.toString(), keys);
+    	params.put(Params.PARAMS_SQL.toString(), paramsSql);
+    	params.put(Params.DATA_SOURCE.toString(), dataSource);
+        
+    	Mockito.when(jdbcLocal.query(
+    	        Mockito.eq(SQL_SCHEMA_EXISTS),
+    	        Mockito.eq(new String[] {SCHEMA}),
+    	        Mockito.eq(new int[] {Types.VARCHAR}),
+    	        Mockito.<ResultSetExtractor<Integer>>any()
+    	)).thenReturn(SCHEMA_EXISTS);
+        
+    	Mockito.when(jdbcTemplate.queryForList(
+    	        Mockito.eq(sql),
+    	        Mockito.any(Object[].class),
+    	        Mockito.any(int[].class)
+    	)).thenReturn(dataReturn);
+    	
+    	Mockito.when(jdbcLocal.query(
+		        Mockito.eq(SQL_TABLE_EXISTS),
+		        Mockito.eq(new Object[] {SCHEMA, controlId.toLowerCase()}),
+		        Mockito.eq(new int[] {Types.VARCHAR, Types.VARCHAR}),
+		        Mockito.<ResultSetExtractor<Boolean>>any()
+		)).thenReturn(TABLE_EXISTS);
+
+    	Mockito.when(jdbcLocal.queryForList(
+    	        Mockito.startsWith("SELECT * FROM " + SCHEMA)
+    	)).thenReturn(dataBD);
+    	
+    	ControlResponse response = sqlWatch.execute(params);
+    	
+    	Mockito.verify(jdbcLocal, Mockito.never()).execute(
+    			Mockito.eq(SQL_CREATE_SCHEMA)
+    	);
+    	
+    	Mockito.verify(jdbcTemplate, Mockito.times(1)).queryForList(
+    			Mockito.eq(sql),
+    	        Mockito.eq(paramsSql),
+    	        Mockito.eq(new int[] {})
+    	);
+    	
+    	assertTrue(response.getStatus().isWarn());
+    	assertEquals(3, response.getData().get(SQLWatch.OutputParams.ROWS.toString()));
+    	assertEquals(false, response.getData().get(SQLWatch.OutputParams.FIRST_INVOCATION.toString()));
+    	assertEquals(2, response.getData().get(SQLWatch.OutputParams.SIZE_BACKUP.toString()));
+    	assertEquals(3, response.getData().get(SQLWatch.OutputParams.SIZE_NEW_DATA.toString()));
+    	assertEquals(true, response.getData().get(SQLWatch.OutputParams.LOG_ROWS.toString()));
+    	assertFalse(response.getData().containsKey(SQLWatch.OutputParams.NEW_ROWS.toString()));
+    	assertFalse(response.getData().containsKey(SQLWatch.OutputParams.MOD_ROWS.toString()));
+    	assertFalse(response.getData().containsKey(SQLWatch.OutputParams.REM_ROWS.toString()));
+    	List<List<Map<String, Object>>> expected = List.of(
+		        List.of(
+		            dataReturn.get(dataReturn.size() - 1),
+		            dataReturn.get(dataReturn.size() - 2)
+		        )
+		    );
+    	@SuppressWarnings("unchecked")
+		List<List<Map<String, Object>>> actual = (List<List<Map<String, Object>>>)response.getData().get(SQLWatch.OutputParams.REP_NEW_DATA.toString());
+    	assertThat(actual)
+	        .usingRecursiveComparison()
+	        .ignoringCollectionOrder()
+	        .isEqualTo(expected);
+	    	
+    	Mockito.verifyNoMoreInteractions(jdbcLocal, jdbcTemplate);
+    }
+    
+    @Test
+	@DisplayName("SKIP SCHEMA - TABLE ALREADY PRESENT - with old repeated data - with logRows")
+    void case13() {
+    	String sql = "sql";
+    	String controlId = "id_1";
+    	String[] keys = new String[] {"col1"};
+    	Object[] paramsSql = new Object[] {};
+    	List<Map<String, Object>> dataReturn = new LinkedList<>();
+    	dataReturn.add(Map.of("col1", "val1", "col2", 1));
+    	dataReturn.add(Map.of("col1", "val2", "col2", 2));
+    	List<Map<String, Object>> dataBD = new LinkedList<>();
+    	dataBD.add(Map.of("col1", "val1", "col2", 1));
+    	dataBD.add(Map.of("col1", "val2", "col2", 2));
+    	dataBD.add(Map.of("col1", "val2", "col2", 3));
+    	
+    	Map<String, Object> params = new HashMap<String, Object>();
+    	params.put(Params.SQL.toString(), sql);
+    	params.put(Params.CONTROL_IDENTIFIER.toString(), controlId);
+    	params.put(Params.LOG_ROWS.toString(), true);
+    	params.put(Params.KEYS.toString(), keys);
+    	params.put(Params.PARAMS_SQL.toString(), paramsSql);
+    	params.put(Params.DATA_SOURCE.toString(), dataSource);
+        
+    	Mockito.when(jdbcLocal.query(
+    	        Mockito.eq(SQL_SCHEMA_EXISTS),
+    	        Mockito.eq(new String[] {SCHEMA}),
+    	        Mockito.eq(new int[] {Types.VARCHAR}),
+    	        Mockito.<ResultSetExtractor<Integer>>any()
+    	)).thenReturn(SCHEMA_EXISTS);
+        
+    	Mockito.when(jdbcTemplate.queryForList(
+    	        Mockito.eq(sql),
+    	        Mockito.any(Object[].class),
+    	        Mockito.any(int[].class)
+    	)).thenReturn(dataReturn);
+    	
+    	Mockito.when(jdbcLocal.query(
+		        Mockito.eq(SQL_TABLE_EXISTS),
+		        Mockito.eq(new Object[] {SCHEMA, controlId.toLowerCase()}),
+		        Mockito.eq(new int[] {Types.VARCHAR, Types.VARCHAR}),
+		        Mockito.<ResultSetExtractor<Boolean>>any()
+		)).thenReturn(TABLE_EXISTS);
+
+    	Mockito.when(jdbcLocal.queryForList(
+    	        Mockito.startsWith("SELECT * FROM " + SCHEMA)
+    	)).thenReturn(dataBD);
+    	
+    	ControlResponse response = sqlWatch.execute(params);
+    	
+    	Mockito.verify(jdbcLocal, Mockito.never()).execute(
+    			Mockito.eq(SQL_CREATE_SCHEMA)
+    	);
+    	
+    	Mockito.verify(jdbcTemplate, Mockito.times(1)).queryForList(
+    			Mockito.eq(sql),
+    	        Mockito.eq(paramsSql),
+    	        Mockito.eq(new int[] {})
+    	);
+    	
+    	assertTrue(response.getStatus().isWarn());
+    	assertEquals(2, response.getData().get(SQLWatch.OutputParams.ROWS.toString()));
+    	assertEquals(false, response.getData().get(SQLWatch.OutputParams.FIRST_INVOCATION.toString()));
+    	assertEquals(3, response.getData().get(SQLWatch.OutputParams.SIZE_BACKUP.toString()));
+    	assertEquals(2, response.getData().get(SQLWatch.OutputParams.SIZE_NEW_DATA.toString()));
+    	assertEquals(true, response.getData().get(SQLWatch.OutputParams.LOG_ROWS.toString()));
+    	assertFalse(response.getData().containsKey(SQLWatch.OutputParams.NEW_ROWS.toString()));
+    	assertFalse(response.getData().containsKey(SQLWatch.OutputParams.MOD_ROWS.toString()));
+    	assertFalse(response.getData().containsKey(SQLWatch.OutputParams.REM_ROWS.toString()));
+    	List<List<Map<String, Object>>> expected = List.of(
+		        List.of(
+		        	dataBD.get(dataBD.size() - 1),
+		            dataBD.get(dataBD.size() - 2)
+		        )
+		    );
+    	@SuppressWarnings("unchecked")
+		List<List<Map<String, Object>>> actual = (List<List<Map<String, Object>>>)response.getData().get(SQLWatch.OutputParams.REP_BACKUP_DATA.toString());
+    	assertThat(actual)
+	        .usingRecursiveComparison()
+	        .ignoringCollectionOrder()
+	        .isEqualTo(expected);
+	    	
+    	Mockito.verifyNoMoreInteractions(jdbcLocal, jdbcTemplate);
+    }
+    
+    @Test
+	@DisplayName("SKIP SCHEMA - TABLE ALREADY PRESENT - with new and old repeated data - with logRows")
+    void case14() {
+    	String sql = "sql";
+    	String controlId = "id_1";
+    	String[] keys = new String[] {"col1"};
+    	Object[] paramsSql = new Object[] {};
+    	List<Map<String, Object>> dataReturn = new LinkedList<>();
+    	dataReturn.add(Map.of("col1", "val1", "col2", 1));
+    	dataReturn.add(Map.of("col1", "val2", "col2", 2));
+    	dataReturn.add(Map.of("col1", "val2", "col2", 3));
+    	List<Map<String, Object>> dataBD = new LinkedList<>();
+    	dataBD.add(Map.of("col1", "val1", "col2", 1));
+    	dataBD.add(Map.of("col1", "val2", "col2", 2));
+    	dataBD.add(Map.of("col1", "val2", "col2", 3));
+    	
+    	Map<String, Object> params = new HashMap<String, Object>();
+    	params.put(Params.SQL.toString(), sql);
+    	params.put(Params.CONTROL_IDENTIFIER.toString(), controlId);
+    	params.put(Params.LOG_ROWS.toString(), true);
+    	params.put(Params.KEYS.toString(), keys);
+    	params.put(Params.PARAMS_SQL.toString(), paramsSql);
+    	params.put(Params.DATA_SOURCE.toString(), dataSource);
+        
+    	Mockito.when(jdbcLocal.query(
+    	        Mockito.eq(SQL_SCHEMA_EXISTS),
+    	        Mockito.eq(new String[] {SCHEMA}),
+    	        Mockito.eq(new int[] {Types.VARCHAR}),
+    	        Mockito.<ResultSetExtractor<Integer>>any()
+    	)).thenReturn(SCHEMA_EXISTS);
+        
+    	Mockito.when(jdbcTemplate.queryForList(
+    	        Mockito.eq(sql),
+    	        Mockito.any(Object[].class),
+    	        Mockito.any(int[].class)
+    	)).thenReturn(dataReturn);
+    	
+    	Mockito.when(jdbcLocal.query(
+		        Mockito.eq(SQL_TABLE_EXISTS),
+		        Mockito.eq(new Object[] {SCHEMA, controlId.toLowerCase()}),
+		        Mockito.eq(new int[] {Types.VARCHAR, Types.VARCHAR}),
+		        Mockito.<ResultSetExtractor<Boolean>>any()
+		)).thenReturn(TABLE_EXISTS);
+
+    	Mockito.when(jdbcLocal.queryForList(
+    	        Mockito.startsWith("SELECT * FROM " + SCHEMA)
+    	)).thenReturn(dataBD);
+    	
+    	ControlResponse response = sqlWatch.execute(params);
+    	
+    	Mockito.verify(jdbcLocal, Mockito.never()).execute(
+    			Mockito.eq(SQL_CREATE_SCHEMA)
+    	);
+    	
+    	Mockito.verify(jdbcTemplate, Mockito.times(1)).queryForList(
+    			Mockito.eq(sql),
+    	        Mockito.eq(paramsSql),
+    	        Mockito.eq(new int[] {})
+    	);
+    	
+    	assertTrue(response.getStatus().isWarn());
+    	assertEquals(3, response.getData().get(SQLWatch.OutputParams.ROWS.toString()));
+    	assertEquals(false, response.getData().get(SQLWatch.OutputParams.FIRST_INVOCATION.toString()));
+    	assertEquals(3, response.getData().get(SQLWatch.OutputParams.SIZE_BACKUP.toString()));
+    	assertEquals(3, response.getData().get(SQLWatch.OutputParams.SIZE_NEW_DATA.toString()));
+    	assertEquals(true, response.getData().get(SQLWatch.OutputParams.LOG_ROWS.toString()));
+    	assertFalse(response.getData().containsKey(SQLWatch.OutputParams.NEW_ROWS.toString()));
+    	assertFalse(response.getData().containsKey(SQLWatch.OutputParams.MOD_ROWS.toString()));
+    	assertFalse(response.getData().containsKey(SQLWatch.OutputParams.REM_ROWS.toString()));
+
+    	List<List<Map<String, Object>>> expectedNew = List.of(
+		        List.of(
+		            dataReturn.get(dataReturn.size() - 1),
+		            dataReturn.get(dataReturn.size() - 2)
+		        )
+		    );
+    	@SuppressWarnings("unchecked")
+		List<List<Map<String, Object>>> actualNew = (List<List<Map<String, Object>>>)response.getData().get(SQLWatch.OutputParams.REP_NEW_DATA.toString());
+    	assertThat(actualNew)
+	        .usingRecursiveComparison()
+	        .ignoringCollectionOrder()
+	        .isEqualTo(expectedNew);
+    	
+    	List<List<Map<String, Object>>> expectedBD = List.of(
+		        List.of(
+		        	dataBD.get(dataBD.size() - 1),
+		            dataBD.get(dataBD.size() - 2)
+		        )
+		    );
+    	@SuppressWarnings("unchecked")
+		List<List<Map<String, Object>>> actualBD = (List<List<Map<String, Object>>>)response.getData().get(SQLWatch.OutputParams.REP_BACKUP_DATA.toString());
+    	assertThat(actualBD)
+	        .usingRecursiveComparison()
+	        .ignoringCollectionOrder()
+	        .isEqualTo(expectedBD);
+	    	
+    	Mockito.verifyNoMoreInteractions(jdbcLocal, jdbcTemplate);
+    }
+    
+    @Test
+	@DisplayName("Coverage1")
+    void coverage1() {
+    	SQLWatch sqlWatch = new SQLWatch(jdbcLocal);
+    	
+		assertNotNull(sqlWatch.toString());
+    }
 }

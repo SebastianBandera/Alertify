@@ -59,6 +59,7 @@ public class SQLWatch implements Control {
 		Objects.requireNonNull(params, "needs args to execute");
 		String sql            = ObjectsUtils.noNull((String)params.get(Params.SQL.getValue()), "");
 		String control_id     = ObjectsUtils.noNull((String)params.get(Params.CONTROL_IDENTIFIER.getValue()), "");
+		Boolean logRows       = ObjectsUtils.tryGet(() -> (Boolean)params.get(Params.LOG_ROWS.getValue()), () -> false);
 		Object[] paramsSQL    = ObjectsUtils.tryGet(() -> (Object[])params.get(Params.PARAMS_SQL.getValue()), () -> new Object[] {});
 		Object[] keysSQL      = ObjectsUtils.tryGet(() -> (Object[])params.get(Params.KEYS.getValue()), () -> new Object[] {});
 		DataSource dataSource = (DataSource)params.get(Params.DATA_SOURCE.getValue());
@@ -66,6 +67,8 @@ public class SQLWatch implements Control {
 		log.info("control_id: " + control_id);
 		
 		Map<String, Object> result = new HashMap<>();
+		result.put(OutputParams.LOG_ROWS.toString(), logRows);
+		
 		boolean success = false;
 		
 		boolean firstInvocation = firstInvocation(control_id);
@@ -110,33 +113,30 @@ public class SQLWatch implements Control {
 			List<Map<String, Object>> backupData = loadFromBackup(SCHEMA, control_id);
 			
 			try {
-				Map<String, Object> compareResult = compare(backupData, data, keysSQL);
+				Map<String, Object> compareResult = compare(backupData, data, keysSQL, logRows);
 				result.putAll(compareResult);
 			} catch (Exception e) {
 				log.error("Error", e);
 				new ControlResponse(result, ControlResultStatus.ERROR);
 			}
 			
-			if (result.containsKey("repBackupData") || result.containsKey("repNewData") || (int)result.get("newRowsSize")>0 || (int)result.get("remRowsSize")>0 || (int)result.get("modRowsSize")>0) {
-				new ControlResponse(result, ControlResultStatus.WARN);
-			}
-			
-			success = true;
+			success = !( result.containsKey(OutputParams.REP_BACKUP_DATA.toString())
+					  || result.containsKey(OutputParams.REP_NEW_DATA.toString()) 
+					  || (int)result.get(OutputParams.NEW_ROWS_SIZE.toString())>0 
+					  || (int)result.get(OutputParams.REM_ROWS_SIZE.toString())>0 
+					  || (int)result.get(OutputParams.MOD_ROWS_SIZE.toString())>0);
 		}
 		
 		return new ControlResponse(result, success);
 	}
 	
-	private Map<String, Object> compare(List<Map<String, Object>> backupData, List<Map<String, Object>> newData, Object[] keysSQL) throws Exception {
+	private Map<String, Object> compare(List<Map<String, Object>> backupData, List<Map<String, Object>> newData, Object[] keysSQL, Boolean logRows) throws Exception {
 		log.info("Comparing data... " + backupData.size() + "x" + newData.size());
 		
 		Map<String, Object> compareResult = new HashMap<>();
 		
-		if (backupData.size() != newData.size()) {
-			log.info("size mismatch");
-			compareResult.put(OutputParams.SIZE_BACKUP.toString(), backupData.size());
-			compareResult.put(OutputParams.SIZE_NEW_DATA.toString(), newData.size());
-		}
+		compareResult.put(OutputParams.SIZE_BACKUP.toString(), backupData.size());
+		compareResult.put(OutputParams.SIZE_NEW_DATA.toString(), newData.size());
 		
 		Set<String> names = new HashSet<>(backupData.get(0).keySet());
 		
@@ -154,12 +154,12 @@ public class SQLWatch implements Control {
         List<List<Map<String, Object>>> repbackupData = merger.getDuplicatedItems(backupData);
         List<List<Map<String, Object>>> repnewData = merger.getDuplicatedItems(newData);
         
-        if (!repnewData.isEmpty()) {
-        	compareResult.put(OutputParams.REP_BACKUP_DATA.toString(), repbackupData);
+        if (logRows && !repnewData.isEmpty()) {
+        	compareResult.put(OutputParams.REP_NEW_DATA.toString(), repnewData);
 		}
         
-        if (!repbackupData.isEmpty()) {
-        	compareResult.put(OutputParams.REP_NEW_DATA.toString(), repnewData);
+        if (logRows && !repbackupData.isEmpty()) {
+        	compareResult.put(OutputParams.REP_BACKUP_DATA.toString(), repbackupData);
 		}
         
         if (!repnewData.isEmpty() || !repbackupData.isEmpty()) {
@@ -172,13 +172,13 @@ public class SQLWatch implements Control {
         compareResult.put(OutputParams.REM_ROWS_SIZE.toString(), mergeResults.getRemovedItems().size());
         compareResult.put(OutputParams.MOD_ROWS_SIZE.toString(), mergeResults.getChangedItems().size());
 		
-        if (!mergeResults.getNewItems().isEmpty()) {
+        if (logRows && !mergeResults.getNewItems().isEmpty()) {
         	compareResult.put(OutputParams.NEW_ROWS.toString(), mergeResults.getNewItems());
 		}
-        if (!mergeResults.getRemovedItems().isEmpty()) {
+        if (logRows && !mergeResults.getRemovedItems().isEmpty()) {
         	compareResult.put(OutputParams.REM_ROWS.toString(), mergeResults.getRemovedItems());
 		}
-        if (!mergeResults.getChangedItems().isEmpty()) {
+        if (logRows && !mergeResults.getChangedItems().isEmpty()) {
         	compareResult.put(OutputParams.MOD_ROWS.toString(), mergeResults.getChangedItems());
 		}
         
@@ -289,6 +289,7 @@ public class SQLWatch implements Control {
 		CONTROL_IDENTIFIER("id"),
 		KEYS("keys"),
 		PARAMS_SQL("params"),
+		LOG_ROWS("logRows"),
 		DATA_SOURCE("data_source");
 
 		private String value;
@@ -317,6 +318,7 @@ public class SQLWatch implements Control {
 		NEW_ROWS_SIZE("newRowsSize"),
 		REM_ROWS_SIZE("remRowsSize"),
 		MOD_ROWS_SIZE("modRowsSize"),
+		LOG_ROWS("logRows"),
 		NEW_ROWS("newRows"),
 		REM_ROWS("remRows"),
 		MOD_ROWS("modRows"),

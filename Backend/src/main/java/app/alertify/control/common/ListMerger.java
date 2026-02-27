@@ -92,7 +92,7 @@ public class ListMerger<T> {
             return null;
         } else {
             if (list.get(0) instanceof Map) {
-                Map<String, Object> map = (Map<String, Object>) list.get(0);
+                Map<String, Object> map = new HashMap<>((Map<String, Object>) list.get(0));
                 List<Map.Entry<String, Object>> entriesToModify = new ArrayList<>();
 
                 for (Map.Entry<String, Object> entry : map.entrySet()) {
