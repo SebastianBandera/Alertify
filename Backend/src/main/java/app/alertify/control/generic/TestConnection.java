@@ -37,11 +37,10 @@ public class TestConnection implements Control {
 				success = true;
 			} else {
 				success = false;
-				result.put(OutputParams.MSG.toString(), "Test connection failed");
 			}
 		} catch (Exception e) {
 			success = false;
-			result.put(OutputParams.MSG.toString(), "Error");
+			result.put(OutputParams.ERROR.toString(), e.getMessage());
 			log.error("error testing connection", e);
 		}
 		
@@ -68,7 +67,7 @@ public class TestConnection implements Control {
 	}
 
 	public enum OutputParams {
-		MSG("msg");
+		ERROR("error");
 
 		private String value;
 		
