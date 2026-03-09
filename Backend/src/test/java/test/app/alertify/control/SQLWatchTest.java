@@ -48,7 +48,6 @@ public class SQLWatchTest {
 	@Mock
     private JdbcTemplate jdbcTemplate;
     
-    @InjectMocks
     private SQLWatch sqlWatch;
     
     private String SCHEMA;
