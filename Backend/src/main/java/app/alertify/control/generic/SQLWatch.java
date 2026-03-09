@@ -321,8 +321,7 @@ public class SQLWatch implements Control {
 		LOG_ROWS("logRows"),
 		NEW_ROWS("newRows"),
 		REM_ROWS("remRows"),
-		MOD_ROWS("modRows"),
-		ERROR("error");
+		MOD_ROWS("modRows");
 		
 		private String value;
 		
