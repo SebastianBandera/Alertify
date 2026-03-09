@@ -1,4 +1,4 @@
-package test.app;
+package test.app.alertify.control;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -27,14 +27,12 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.jdbc.CannotGetJdbcConnectionException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.ResultSetExtractor;
 import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import app.alertify.control.ControlResponse;
-import app.alertify.control.generic.SQLThreshold;
 import app.alertify.control.generic.SQLWatch;
 import app.alertify.control.generic.SQLWatch.Params;
 

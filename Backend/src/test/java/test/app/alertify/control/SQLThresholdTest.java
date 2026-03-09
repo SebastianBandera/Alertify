@@ -1,4 +1,4 @@
-package test.app;
+package test.app.alertify.control;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
