@@ -3,6 +3,7 @@ package app.alertify.control.generic;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -24,9 +25,15 @@ import app.alertify.control.common.ObjectsUtils;
 public class WebRequest implements Control {
 
 	private static final Logger log = LoggerFactory.getLogger(WebRequest.class);
-    
+
+	private final Supplier<RestTemplate> restSupplier;
+	
 	public WebRequest() {
-		
+		this.restSupplier = () -> new RestTemplate();
+	}
+	
+	public WebRequest(Supplier<RestTemplate> restSupplier) {
+		this.restSupplier = restSupplier;
 	}
 	
 	@Override
@@ -37,12 +44,12 @@ public class WebRequest implements Control {
 		String body   = (String)params.get(Params.BODY.getValue());
 		Object[] headers = ObjectsUtils.tryGet(() -> (Object[])params.get(Params.HEADERS.getValue()), () -> new Object[] {});
 		Integer resposeExpected = (Integer)params.get(Params.RESPONSE_CODE_EXPECTED.getValue());
-		Object[] regex_check = ObjectsUtils.tryGet(() -> (Object[])params.get(Params.REGEX_EXTRA_CHECK.getValue()), () -> new Object[] {});
+		Object[] regexCheck = ObjectsUtils.tryGet(() -> (Object[])params.get(Params.REGEX_EXTRA_CHECK.getValue()), () -> new Object[] {});
 		
 		Map<String, Object> result = new HashMap<>();
 		boolean success = false;
 		
-		RestTemplate rt = new RestTemplate();
+		RestTemplate rt = this.restSupplier.get();
 		
 		HttpMethod httpMethod = parse(method);
 		
@@ -81,10 +88,10 @@ public class WebRequest implements Control {
 		
 		result.put(OutputParams.RESPONSE_CODE_EXPECTED.toString(), resposeExpected);
 		
-		if(responseEntity != null && regex_check!=null && regex_check.length > 0) {
+		if(responseEntity != null && regexCheck!=null && regexCheck.length > 0) {
 			String bodyStr = responseEntity.getBody();
-			for (int i = 0; i < regex_check.length; i++) {
-				String regex = (String)regex_check[i];
+			for (int i = 0; i < regexCheck.length; i++) {
+				String regex = (String)regexCheck[i];
 				
 				Pattern pattern = Pattern.compile(regex, Pattern.DOTALL);
 				Matcher matcher = pattern.matcher(bodyStr);
