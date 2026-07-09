@@ -1,11 +1,121 @@
-.settings
-*.backup/
-.env
-.vscode
+# =========================================================
+# Java / Maven / Gradle
+# =========================================================
+target/
+bin/
+build/
+out/
+
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+
+# Maven
+.mvn/timing.properties
+
+# Gradle
+.gradle/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Java crash logs
+hs_err_pid*.log
+replay_pid*.log
+
+# =========================================================
+# Angular / Node
+# =========================================================
+node_modules/
+dist/
+tmp/
+coverage/
+
+.angular/cache/
+
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# TypeScript
+*.tsbuildinfo
+
+# ESLint
+.eslintcache
+
+# Test artifacts
+.nyc_output/
+karma-debug.log
+
+# =========================================================
+# IDEs / Editors
+# =========================================================
+
+# Eclipse / Spring Tool Suite
+.settings/
+.classpath
 .project
+.factorypath
+.springBeans
+.sts4-cache/
+.apt_generated/
+.apt_generated_tests/
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# VS Code
+.vscode/
+
+# NetBeans
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+# =========================================================
+# Environment files
+# =========================================================
+.env
+.env.*
+!.env.example
+!.env.template
+
+# =========================================================
+# Logs
+# =========================================================
+logs/
+*.log
+
+# =========================================================
+# OS files
+# =========================================================
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# =========================================================
+# Temporary files
+# =========================================================
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+
+# =========================================================
+# Custom
+# =========================================================
+*.backup/
 bootstrap.properties
 
 notas.txt
 nb-configuration.xml
-Backend/hs_err_pid*.log
 _.code-workspace
