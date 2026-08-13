@@ -1,0 +1,5 @@
+*
+!Dockerfile
+!start-identity.sh
+!configure-permanent-admin.sh
+!realm-template.json
