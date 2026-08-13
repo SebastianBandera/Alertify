@@ -123,3 +123,6 @@ _.code-workspace
 nogit/
 remake/README.md
 README.md
+
+/*.bat
+!/run.bat
