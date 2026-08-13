@@ -1,0 +1,81 @@
+name: ${COMPOSE_PROJECT_NAME:?Set COMPOSE_PROJECT_NAME in .env}
+
+services:
+  identity-database:
+    container_name: monitoring-keycloak-database
+    image: ${POSTGRES_IMAGE:?Set POSTGRES_IMAGE in .env}
+    environment:
+      POSTGRES_DB: ${IDENTITY_DB_NAME:?Set IDENTITY_DB_NAME in .env}
+      POSTGRES_USER: ${IDENTITY_DB_USER:?Set IDENTITY_DB_USER in .env}
+      POSTGRES_PASSWORD: ${IDENTITY_DB_PASSWORD:?Set IDENTITY_DB_PASSWORD in .env}
+      TZ: ${TIME_ZONE:?Set TIME_ZONE in .env}
+    ports:
+      - "${BIND_ADDRESS:?Set BIND_ADDRESS in .env}:${IDENTITY_DB_HOST_PORT:?Set IDENTITY_DB_HOST_PORT in .env}:5432"
+    volumes:
+      - identity_database_data:/var/lib/postgresql
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready --username="$${POSTGRES_USER}" --dbname="$${POSTGRES_DB}"
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+
+  identity:
+    container_name: monitoring-keycloak
+    build:
+      context: ./identity
+      dockerfile: Dockerfile
+      args:
+        KEYCLOAK_IMAGE: ${KEYCLOAK_IMAGE:?Set KEYCLOAK_IMAGE in .env}
+    image: ${KEYCLOAK_OPTIMIZED_IMAGE:?Set KEYCLOAK_OPTIMIZED_IMAGE in .env}
+    pull_policy: build
+    command:
+      - start
+      - --optimized
+      - --import-realm
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://identity-database:5432/${IDENTITY_DB_NAME:?Set IDENTITY_DB_NAME in .env}
+      KC_DB_USERNAME: ${IDENTITY_DB_USER:?Set IDENTITY_DB_USER in .env}
+      KC_DB_PASSWORD: ${IDENTITY_DB_PASSWORD:?Set IDENTITY_DB_PASSWORD in .env}
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_BOOTSTRAP_ADMIN_USERNAME:?Set KEYCLOAK_BOOTSTRAP_ADMIN_USERNAME in .env}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_BOOTSTRAP_ADMIN_PASSWORD:?Set KEYCLOAK_BOOTSTRAP_ADMIN_PASSWORD in .env}
+      KEYCLOAK_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME:?Set KEYCLOAK_ADMIN_USERNAME in .env}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?Set KEYCLOAK_ADMIN_PASSWORD in .env}
+      KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME: ${KEYCLOAK_PUBLIC_URL:?Set KEYCLOAK_PUBLIC_URL in .env}
+      OIDC_REALM: ${OIDC_REALM:?Set OIDC_REALM in .env}
+      APP_DISPLAY_NAME: ${APP_DISPLAY_NAME:?Set APP_DISPLAY_NAME in .env}
+      APP_PUBLIC_URL: ${APP_PUBLIC_URL:?Set APP_PUBLIC_URL in .env}
+      OIDC_FRONTEND_CLIENT_ID: ${OIDC_FRONTEND_CLIENT_ID:?Set OIDC_FRONTEND_CLIENT_ID in .env}
+      OIDC_BACKEND_AUDIENCE: ${OIDC_BACKEND_AUDIENCE:?Set OIDC_BACKEND_AUDIENCE in .env}
+      APP_ADMIN_USERNAME: ${APP_ADMIN_USERNAME:?Set APP_ADMIN_USERNAME in .env}
+      APP_ADMIN_PASSWORD: ${APP_ADMIN_PASSWORD:?Set APP_ADMIN_PASSWORD in .env}
+      APP_VIEWER_USERNAME: ${APP_VIEWER_USERNAME:?Set APP_VIEWER_USERNAME in .env}
+      APP_VIEWER_PASSWORD: ${APP_VIEWER_PASSWORD:?Set APP_VIEWER_PASSWORD in .env}
+    ports:
+      - "${BIND_ADDRESS:?Set BIND_ADDRESS in .env}:${KEYCLOAK_HTTP_PORT:?Set KEYCLOAK_HTTP_PORT in .env}:8080"
+    depends_on:
+      identity-database:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - /bin/bash
+        - -ec
+        - >-
+          test -f /tmp/permanent-admin-ready;
+          exec 3<>/dev/tcp/127.0.0.1/9000;
+          printf 'GET /health/ready HTTP/1.0\r\n\r\n' >&3;
+          grep -q '200 OK' <&3
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 40s
+    restart: unless-stopped
+
+volumes:
+  identity_database_data:
