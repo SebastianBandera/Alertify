@@ -9,5 +9,5 @@ RUN apk add --no-cache nodejs \
 
 WORKDIR /workspace
 
-ENTRYPOINT ["node", "/workspace/run.js"]
+ENTRYPOINT ["node", "/workspace/runner/run.js"]
 CMD []

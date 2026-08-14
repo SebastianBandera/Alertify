@@ -25,7 +25,7 @@ function parseDocument(content, sourceName) {
 
     const key = match[1];
     if (seenKeys.has(key)) {
-      throw new Error(`${sourceName} contiene la variable duplicada ${key}.`);
+      throw new Error(`${sourceName} contains the duplicate variable ${key}.`);
     }
 
     seenKeys.add(key);
@@ -76,7 +76,7 @@ function resolveSecretValues(templateAssignments, existingValues) {
       const expectedPlaceholder = `<GENERATE_${secretName}>`;
       if (assignment.rawValue !== expectedPlaceholder) {
         throw new Error(
-          `El placeholder ${expectedPlaceholder} debe ocupar todo el valor de ${assignment.key}.`,
+          `The placeholder ${expectedPlaceholder} must be the entire value of ${assignment.key}.`,
         );
       }
 
@@ -102,8 +102,8 @@ function resolveSecretValues(templateAssignments, existingValues) {
       const rawValue = existingValues.get(key);
       if (rawValue === '' || rawValue.includes(placeholder)) {
         throw new Error(
-          `${key} ya existe en .env, pero no contiene un secreto resuelto. ` +
-            'No se modificó porque la reconciliación nunca sobrescribe variables existentes.',
+          `${key} already exists in .env but does not contain a resolved secret. ` +
+            'It was not modified because reconciliation never overwrites existing variables.',
         );
       }
       candidates.add(rawValue);
@@ -111,8 +111,8 @@ function resolveSecretValues(templateAssignments, existingValues) {
 
     if (candidates.size > 1) {
       throw new Error(
-        `Las variables asociadas a ${placeholder} tienen valores distintos en .env. ` +
-          'No se modificó ninguna de ellas.',
+        `Variables associated with ${placeholder} have different values in .env. ` +
+          'None of them were modified.',
       );
     }
 
@@ -132,7 +132,7 @@ function resolveLine(line, secrets) {
   return line.replace(SECRET_PATTERN, (_, name) => {
     const value = secrets.get(name);
     if (value === undefined) {
-      throw new Error(`No se pudo resolver el secreto GENERATE_${name}.`);
+      throw new Error(`The GENERATE_${name} secret could not be resolved.`);
     }
     return value;
   });
@@ -175,7 +175,7 @@ function reconcileEnvironment(templatePath, envPath) {
     }
 
     const separator = envContent.length > 0 && !envContent.endsWith('\n') ? '\n\n' : '\n';
-    const header = '# Variables agregadas automáticamente desde .env.template.\n';
+    const header = '# Variables automatically added from .env.template.\n';
     fs.appendFileSync(envPath, `${separator}${header}${appendedLines.join('\n')}\n`, 'utf8');
   }
 
@@ -211,7 +211,7 @@ function plainValue(rawValue) {
 function required(environment, key) {
   const value = plainValue(environment.get(key));
   if (!value) {
-    throw new Error(`La variable ${key} debe tener un valor en .env.`);
+    throw new Error(`${key} must have a value in .env.`);
   }
   return value;
 }
@@ -219,7 +219,7 @@ function required(environment, key) {
 function mode(environment, key) {
   const value = required(environment, key).toLowerCase();
   if (!['local', 'external'].includes(value)) {
-    throw new Error(`${key} debe ser local o external; valor recibido: ${value}.`);
+    throw new Error(`${key} must be local or external; received: ${value}.`);
   }
   return value;
 }
@@ -272,27 +272,27 @@ function buildPlan(environment) {
 }
 
 function printPlan(plan, environment) {
-  console.log('\nComponentes seleccionados:');
+  console.log('\nSelected components:');
   if (plan.redisMode === 'local') {
     console.log(`  - Redis: local (${redactUrl(plan.redisUrl)})`);
   } else {
-    console.log(`  - Redis: externo, se reutiliza ${redactUrl(plan.redisUrl)}`);
+    console.log(`  - Redis: external, reusing ${redactUrl(plan.redisUrl)}`);
   }
 
   if (plan.keycloakMode === 'external') {
-    console.log(`  - Keycloak: externo, se reutiliza ${redactUrl(plan.keycloakUrl)}`);
-    console.log('  - Base de Keycloak: no se administra porque Keycloak es externo');
+    console.log(`  - Keycloak: external, reusing ${redactUrl(plan.keycloakUrl)}`);
+    console.log('  - Keycloak database: not managed because Keycloak is external');
     return;
   }
 
   console.log(`  - Keycloak: local (${redactUrl(plan.keycloakUrl)})`);
   if (plan.databaseMode === 'local') {
-    console.log('  - Base de Keycloak: PostgreSQL local');
+    console.log('  - Keycloak database: local PostgreSQL');
   } else {
     const host = required(environment, 'IDENTITY_DB_HOST');
     const port = required(environment, 'IDENTITY_DB_PORT');
     const database = required(environment, 'IDENTITY_DB_NAME');
-    console.log(`  - Base de Keycloak: externa (${host}:${port}/${database})`);
+    console.log(`  - Keycloak database: external (${host}:${port}/${database})`);
   }
 }
 
@@ -303,49 +303,49 @@ function runCommand(command, args, cwd, label) {
     throw new Error(`${label}: ${result.error.message}`);
   }
   if (result.status !== 0) {
-    throw new Error(`${label}: el comando terminó con código ${result.status}.`);
+    throw new Error(`${label}: command exited with code ${result.status}.`);
   }
 }
 
 function startLocalServices(plan, projectDirectory) {
   if (plan.services.length === 0) {
-    console.log('\nNo hay componentes locales para iniciar; Docker no es necesario.');
+    console.log('\nNo local application components need to be started.');
     return;
   }
 
-  runCommand('docker', ['compose', 'version'], projectDirectory, 'Comprobando Docker Compose...');
+  runCommand('docker', ['compose', 'version'], projectDirectory, 'Checking Docker Compose...');
   runCommand(
     'docker',
     ['compose', '--env-file', '.env', 'config', '--quiet'],
     projectDirectory,
-    'Validando compose.yaml...',
+    'Validating compose.yaml...',
   );
 
   for (const service of plan.services) {
     const args = ['compose', '--env-file', '.env', 'up', '--detach'];
     if (service.build) args.push('--build');
     args.push('--wait', service.name);
-    runCommand('docker', args, projectDirectory, `Iniciando ${service.name}...`);
+    runCommand('docker', args, projectDirectory, `Starting ${service.name}...`);
   }
 }
 
 function printHelp() {
-  console.log(`Uso: node run.js [--configure-only]\n\n` +
-    '  Sin opciones          Reconcilia .env e inicia los componentes locales.\n' +
-    '  --configure-only     Reconcilia .env y muestra el plan sin usar Docker.\n' +
-    '  --help               Muestra esta ayuda.');
+  console.log(`Usage: run.bat [--configure-only]\n       ./run.sh [--configure-only]\n\n` +
+    '  No options            Reconcile .env and start local components.\n' +
+    '  --configure-only     Reconcile .env and show the plan without starting services.\n' +
+    '  --help               Show this help.');
 }
 
-function main(argv = process.argv.slice(2), projectDirectory = __dirname) {
+function main(argv = process.argv.slice(2), projectDirectory = path.resolve(__dirname, '..')) {
   const nodeMajorVersion = Number.parseInt(process.versions.node.split('.')[0], 10);
   if (nodeMajorVersion < 18) {
-    throw new Error(`Se requiere Node.js 18 o posterior; versión detectada: ${process.versions.node}.`);
+    throw new Error(`Node.js 18 or later is required; detected version: ${process.versions.node}.`);
   }
 
   const allowed = new Set(['--configure-only', '--help']);
   const unknown = argv.filter((argument) => !allowed.has(argument));
   if (unknown.length > 0) {
-    throw new Error(`Opción desconocida: ${unknown.join(', ')}. Use --help para ver las opciones.`);
+    throw new Error(`Unknown option: ${unknown.join(', ')}. Use --help to list the available options.`);
   }
   if (argv.includes('--help')) {
     printHelp();
@@ -355,31 +355,31 @@ function main(argv = process.argv.slice(2), projectDirectory = __dirname) {
   const templatePath = path.join(projectDirectory, '.env.template');
   const envPath = path.join(projectDirectory, '.env');
   if (!fs.existsSync(templatePath)) {
-    throw new Error(`No se encontró ${templatePath}.`);
+    throw new Error(`${templatePath} was not found.`);
   }
 
   const result = reconcileEnvironment(templatePath, envPath);
   if (result.created) {
-    console.log(`Se creó .env con ${result.addedKeys.length} variables.`);
+    console.log(`.env was created with ${result.addedKeys.length} variables.`);
   } else if (result.addedKeys.length > 0) {
-    console.log(`Se agregaron a .env: ${result.addedKeys.join(', ')}.`);
+    console.log(`Added to .env: ${result.addedKeys.join(', ')}.`);
   } else {
-    console.log('.env ya contiene todas las variables de .env.template; no se modificó.');
+    console.log('.env already contains every variable from .env.template; no changes were made.');
   }
 
   if (result.generatedSecrets.length > 0) {
     console.log(
-      `Secretos generados sin mostrar sus valores: ${result.generatedSecrets.join(', ')}.`,
+      `Secrets generated without displaying their values: ${result.generatedSecrets.join(', ')}.`,
     );
   }
   if (result.reusedSecrets.length > 0) {
     console.log(
-      `Secretos existentes reutilizados para variables faltantes: ${result.reusedSecrets.join(', ')}.`,
+      `Existing secrets reused for missing variables: ${result.reusedSecrets.join(', ')}.`,
     );
   }
   if (result.duplicates.length > 0) {
     console.warn(
-      `Advertencia: .env contiene claves duplicadas; prevalece la última: ${result.duplicates.join(', ')}.`,
+      `Warning: .env contains duplicate keys; the last value takes precedence: ${result.duplicates.join(', ')}.`,
     );
   }
 
@@ -387,12 +387,12 @@ function main(argv = process.argv.slice(2), projectDirectory = __dirname) {
   printPlan(plan, result.environment);
 
   if (argv.includes('--configure-only')) {
-    console.log('\nConfiguración finalizada; no se iniciaron contenedores.');
+    console.log('\nConfiguration completed; no application containers were started.');
     return;
   }
 
   startLocalServices(plan, projectDirectory);
-  console.log('\nInicio finalizado correctamente.');
+  console.log('\nStartup completed successfully.');
 }
 
 if (require.main === module) {
