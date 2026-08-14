@@ -1,0 +1,413 @@
+'use strict';
+
+const crypto = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
+const { spawnSync } = require('node:child_process');
+
+const SECRET_PATTERN = /<GENERATE_([A-Z][A-Z0-9_]*)>/g;
+const ASSIGNMENT_PATTERN = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/;
+
+function parseDocument(content, sourceName) {
+  const lines = content.split(/\r?\n/);
+  const assignments = [];
+  const pendingLines = [];
+  const seenKeys = new Set();
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const comparableLine = index === 0 ? lines[index].replace(/^\uFEFF/, '') : lines[index];
+    const match = comparableLine.match(ASSIGNMENT_PATTERN);
+
+    if (!match || comparableLine.trimStart().startsWith('#')) {
+      pendingLines.push(lines[index]);
+      continue;
+    }
+
+    const key = match[1];
+    if (seenKeys.has(key)) {
+      throw new Error(`${sourceName} contiene la variable duplicada ${key}.`);
+    }
+
+    seenKeys.add(key);
+    assignments.push({
+      key,
+      rawValue: match[2].trim(),
+      line: lines[index],
+      prefixLines: pendingLines.splice(0),
+    });
+  }
+
+  return { assignments, lines };
+}
+
+function parseExistingEnvironment(content) {
+  const values = new Map();
+  const duplicates = new Set();
+
+  for (const [index, line] of content.split(/\r?\n/).entries()) {
+    const comparableLine = index === 0 ? line.replace(/^\uFEFF/, '') : line;
+    const match = comparableLine.match(ASSIGNMENT_PATTERN);
+    if (!match || comparableLine.trimStart().startsWith('#')) {
+      continue;
+    }
+
+    if (values.has(match[1])) {
+      duplicates.add(match[1]);
+    }
+    values.set(match[1], match[2].trim());
+  }
+
+  return { values, duplicates: [...duplicates] };
+}
+
+function placeholders(rawValue) {
+  return [...rawValue.matchAll(SECRET_PATTERN)].map((match) => match[1]);
+}
+
+function generateSecret() {
+  return crypto.randomBytes(32).toString('base64url');
+}
+
+function resolveSecretValues(templateAssignments, existingValues) {
+  const keysBySecret = new Map();
+
+  for (const assignment of templateAssignments) {
+    for (const secretName of placeholders(assignment.rawValue)) {
+      const expectedPlaceholder = `<GENERATE_${secretName}>`;
+      if (assignment.rawValue !== expectedPlaceholder) {
+        throw new Error(
+          `El placeholder ${expectedPlaceholder} debe ocupar todo el valor de ${assignment.key}.`,
+        );
+      }
+
+      const keys = keysBySecret.get(secretName) ?? [];
+      keys.push(assignment.key);
+      keysBySecret.set(secretName, keys);
+    }
+  }
+
+  const resolved = new Map();
+  const generated = [];
+  const reused = [];
+
+  for (const [secretName, keys] of keysBySecret.entries()) {
+    const placeholder = `<GENERATE_${secretName}>`;
+    const candidates = new Set();
+
+    for (const key of keys) {
+      if (!existingValues.has(key)) {
+        continue;
+      }
+
+      const rawValue = existingValues.get(key);
+      if (rawValue === '' || rawValue.includes(placeholder)) {
+        throw new Error(
+          `${key} ya existe en .env, pero no contiene un secreto resuelto. ` +
+            'No se modificó porque la reconciliación nunca sobrescribe variables existentes.',
+        );
+      }
+      candidates.add(rawValue);
+    }
+
+    if (candidates.size > 1) {
+      throw new Error(
+        `Las variables asociadas a ${placeholder} tienen valores distintos en .env. ` +
+          'No se modificó ninguna de ellas.',
+      );
+    }
+
+    if (candidates.size === 1) {
+      resolved.set(secretName, [...candidates][0]);
+      reused.push(secretName);
+    } else {
+      resolved.set(secretName, generateSecret());
+      generated.push(secretName);
+    }
+  }
+
+  return { resolved, generated, reused };
+}
+
+function resolveLine(line, secrets) {
+  return line.replace(SECRET_PATTERN, (_, name) => {
+    const value = secrets.get(name);
+    if (value === undefined) {
+      throw new Error(`No se pudo resolver el secreto GENERATE_${name}.`);
+    }
+    return value;
+  });
+}
+
+function trimLeadingBlankLines(lines) {
+  const copy = [...lines];
+  while (copy.length > 0 && copy[0].trim() === '') {
+    copy.shift();
+  }
+  return copy;
+}
+
+function reconcileEnvironment(templatePath, envPath) {
+  const templateContent = fs.readFileSync(templatePath, 'utf8');
+  const template = parseDocument(templateContent, '.env.template');
+  const envExists = fs.existsSync(envPath);
+  const envContent = envExists ? fs.readFileSync(envPath, 'utf8') : '';
+  const existing = parseExistingEnvironment(envContent);
+  const secretResult = resolveSecretValues(template.assignments, existing.values);
+  const missing = template.assignments.filter(({ key }) => !existing.values.has(key));
+  const missingSecretNames = new Set(
+    missing.flatMap(({ rawValue }) => placeholders(rawValue)),
+  );
+
+  if (!envExists) {
+    const rendered = resolveLine(templateContent, secretResult.resolved);
+    fs.writeFileSync(envPath, rendered.endsWith('\n') ? rendered : `${rendered}\n`, {
+      encoding: 'utf8',
+      flag: 'wx',
+      mode: 0o600,
+    });
+  } else if (missing.length > 0) {
+    const appendedLines = [];
+    for (const assignment of missing) {
+      appendedLines.push(
+        ...trimLeadingBlankLines(assignment.prefixLines),
+        resolveLine(assignment.line, secretResult.resolved),
+      );
+    }
+
+    const separator = envContent.length > 0 && !envContent.endsWith('\n') ? '\n\n' : '\n';
+    const header = '# Variables agregadas automáticamente desde .env.template.\n';
+    fs.appendFileSync(envPath, `${separator}${header}${appendedLines.join('\n')}\n`, 'utf8');
+  }
+
+  const finalContent = fs.readFileSync(envPath, 'utf8');
+  const finalEnvironment = parseExistingEnvironment(finalContent);
+
+  return {
+    created: !envExists,
+    addedKeys: missing.map(({ key }) => key),
+    duplicates: finalEnvironment.duplicates,
+    environment: finalEnvironment.values,
+    generatedSecrets: secretResult.generated.filter((name) => missingSecretNames.has(name)),
+    reusedSecrets: secretResult.reused.filter((name) => missingSecretNames.has(name)),
+  };
+}
+
+function plainValue(rawValue) {
+  if (rawValue === undefined) {
+    return undefined;
+  }
+
+  const trimmed = rawValue.trim();
+  if (
+    trimmed.length >= 2 &&
+    ((trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+      (trimmed.startsWith("'") && trimmed.endsWith("'")))
+  ) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+}
+
+function required(environment, key) {
+  const value = plainValue(environment.get(key));
+  if (!value) {
+    throw new Error(`La variable ${key} debe tener un valor en .env.`);
+  }
+  return value;
+}
+
+function mode(environment, key) {
+  const value = required(environment, key).toLowerCase();
+  if (!['local', 'external'].includes(value)) {
+    throw new Error(`${key} debe ser local o external; valor recibido: ${value}.`);
+  }
+  return value;
+}
+
+function redactUrl(value) {
+  try {
+    const parsed = new URL(value);
+    if (parsed.username) parsed.username = '***';
+    if (parsed.password) parsed.password = '***';
+    return parsed.toString().replace(/\/$/, '');
+  } catch {
+    return value.replace(/\/\/[^/@\s]+@/, '//***@');
+  }
+}
+
+function buildPlan(environment) {
+  const redisMode = mode(environment, 'REDIS_MODE');
+  const keycloakMode = mode(environment, 'KEYCLOAK_MODE');
+  const plan = {
+    redisMode,
+    redisUrl: required(environment, 'REDIS_URL'),
+    keycloakMode,
+    keycloakUrl: required(environment, 'KEYCLOAK_PUBLIC_URL'),
+    databaseMode: null,
+    services: [],
+  };
+
+  if (redisMode === 'local') {
+    required(environment, 'CACHE_PASSWORD');
+    required(environment, 'CACHE_MAX_MEMORY');
+    required(environment, 'CACHE_CONTAINER_MEMORY');
+    plan.services.push({ name: 'cache', build: true });
+  }
+
+  if (keycloakMode === 'local') {
+    plan.databaseMode = mode(environment, 'KEYCLOAK_DATABASE_MODE');
+    required(environment, 'IDENTITY_DB_HOST');
+    required(environment, 'IDENTITY_DB_PORT');
+    required(environment, 'IDENTITY_DB_NAME');
+    required(environment, 'IDENTITY_DB_USER');
+    required(environment, 'IDENTITY_DB_PASSWORD');
+
+    if (plan.databaseMode === 'local') {
+      plan.services.unshift({ name: 'identity-database', build: false });
+    }
+    plan.services.push({ name: 'identity', build: true });
+  }
+
+  return plan;
+}
+
+function printPlan(plan, environment) {
+  console.log('\nComponentes seleccionados:');
+  if (plan.redisMode === 'local') {
+    console.log(`  - Redis: local (${redactUrl(plan.redisUrl)})`);
+  } else {
+    console.log(`  - Redis: externo, se reutiliza ${redactUrl(plan.redisUrl)}`);
+  }
+
+  if (plan.keycloakMode === 'external') {
+    console.log(`  - Keycloak: externo, se reutiliza ${redactUrl(plan.keycloakUrl)}`);
+    console.log('  - Base de Keycloak: no se administra porque Keycloak es externo');
+    return;
+  }
+
+  console.log(`  - Keycloak: local (${redactUrl(plan.keycloakUrl)})`);
+  if (plan.databaseMode === 'local') {
+    console.log('  - Base de Keycloak: PostgreSQL local');
+  } else {
+    const host = required(environment, 'IDENTITY_DB_HOST');
+    const port = required(environment, 'IDENTITY_DB_PORT');
+    const database = required(environment, 'IDENTITY_DB_NAME');
+    console.log(`  - Base de Keycloak: externa (${host}:${port}/${database})`);
+  }
+}
+
+function runCommand(command, args, cwd, label) {
+  console.log(`\n${label}`);
+  const result = spawnSync(command, args, { cwd, stdio: 'inherit', shell: false });
+  if (result.error) {
+    throw new Error(`${label}: ${result.error.message}`);
+  }
+  if (result.status !== 0) {
+    throw new Error(`${label}: el comando terminó con código ${result.status}.`);
+  }
+}
+
+function startLocalServices(plan, projectDirectory) {
+  if (plan.services.length === 0) {
+    console.log('\nNo hay componentes locales para iniciar; Docker no es necesario.');
+    return;
+  }
+
+  runCommand('docker', ['compose', 'version'], projectDirectory, 'Comprobando Docker Compose...');
+  runCommand(
+    'docker',
+    ['compose', '--env-file', '.env', 'config', '--quiet'],
+    projectDirectory,
+    'Validando compose.yaml...',
+  );
+
+  for (const service of plan.services) {
+    const args = ['compose', '--env-file', '.env', 'up', '--detach'];
+    if (service.build) args.push('--build');
+    args.push('--wait', service.name);
+    runCommand('docker', args, projectDirectory, `Iniciando ${service.name}...`);
+  }
+}
+
+function printHelp() {
+  console.log(`Uso: node run.js [--configure-only]\n\n` +
+    '  Sin opciones          Reconcilia .env e inicia los componentes locales.\n' +
+    '  --configure-only     Reconcilia .env y muestra el plan sin usar Docker.\n' +
+    '  --help               Muestra esta ayuda.');
+}
+
+function main(argv = process.argv.slice(2), projectDirectory = __dirname) {
+  const nodeMajorVersion = Number.parseInt(process.versions.node.split('.')[0], 10);
+  if (nodeMajorVersion < 18) {
+    throw new Error(`Se requiere Node.js 18 o posterior; versión detectada: ${process.versions.node}.`);
+  }
+
+  const allowed = new Set(['--configure-only', '--help']);
+  const unknown = argv.filter((argument) => !allowed.has(argument));
+  if (unknown.length > 0) {
+    throw new Error(`Opción desconocida: ${unknown.join(', ')}. Use --help para ver las opciones.`);
+  }
+  if (argv.includes('--help')) {
+    printHelp();
+    return;
+  }
+
+  const templatePath = path.join(projectDirectory, '.env.template');
+  const envPath = path.join(projectDirectory, '.env');
+  if (!fs.existsSync(templatePath)) {
+    throw new Error(`No se encontró ${templatePath}.`);
+  }
+
+  const result = reconcileEnvironment(templatePath, envPath);
+  if (result.created) {
+    console.log(`Se creó .env con ${result.addedKeys.length} variables.`);
+  } else if (result.addedKeys.length > 0) {
+    console.log(`Se agregaron a .env: ${result.addedKeys.join(', ')}.`);
+  } else {
+    console.log('.env ya contiene todas las variables de .env.template; no se modificó.');
+  }
+
+  if (result.generatedSecrets.length > 0) {
+    console.log(
+      `Secretos generados sin mostrar sus valores: ${result.generatedSecrets.join(', ')}.`,
+    );
+  }
+  if (result.reusedSecrets.length > 0) {
+    console.log(
+      `Secretos existentes reutilizados para variables faltantes: ${result.reusedSecrets.join(', ')}.`,
+    );
+  }
+  if (result.duplicates.length > 0) {
+    console.warn(
+      `Advertencia: .env contiene claves duplicadas; prevalece la última: ${result.duplicates.join(', ')}.`,
+    );
+  }
+
+  const plan = buildPlan(result.environment);
+  printPlan(plan, result.environment);
+
+  if (argv.includes('--configure-only')) {
+    console.log('\nConfiguración finalizada; no se iniciaron contenedores.');
+    return;
+  }
+
+  startLocalServices(plan, projectDirectory);
+  console.log('\nInicio finalizado correctamente.');
+}
+
+if (require.main === module) {
+  try {
+    main();
+  } catch (error) {
+    console.error(`ERROR: ${error.message}`);
+    process.exitCode = 1;
+  }
+}
+
+module.exports = {
+  buildPlan,
+  main,
+  parseExistingEnvironment,
+  reconcileEnvironment,
+  resolveSecretValues,
+};

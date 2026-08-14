@@ -1,8 +1,35 @@
 name: ${COMPOSE_PROJECT_NAME:?Set COMPOSE_PROJECT_NAME in .env}
 
 services:
+  cache:
+    profiles:
+      - local-cache
+    container_name: ${COMPOSE_PROJECT_NAME}-cache
+    build:
+      context: ./cache
+      dockerfile: Dockerfile
+      args:
+        REDIS_IMAGE: ${REDIS_IMAGE:?Set REDIS_IMAGE in .env}
+    image: ${REDIS_LOCAL_IMAGE:?Set REDIS_LOCAL_IMAGE in .env}
+    pull_policy: build
+    environment:
+      REDIS_PASSWORD: ${CACHE_PASSWORD:?Set CACHE_PASSWORD in .env}
+      REDIS_MAXMEMORY: ${CACHE_MAX_MEMORY:?Set CACHE_MAX_MEMORY in .env}
+    mem_limit: ${CACHE_CONTAINER_MEMORY:?Set CACHE_CONTAINER_MEMORY in .env}
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - REDISCLI_AUTH="$${REDIS_PASSWORD}" redis-cli ping | grep -q PONG
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    restart: unless-stopped
+
   identity-database:
-    container_name: monitoring-keycloak-database
+    profiles:
+      - local-identity-database
+    container_name: ${COMPOSE_PROJECT_NAME}-keycloak-database
     image: ${POSTGRES_IMAGE:?Set POSTGRES_IMAGE in .env}
     environment:
       POSTGRES_DB: ${IDENTITY_DB_NAME:?Set IDENTITY_DB_NAME in .env}
@@ -24,7 +51,9 @@ services:
     restart: unless-stopped
 
   identity:
-    container_name: monitoring-keycloak
+    profiles:
+      - local-identity
+    container_name: ${COMPOSE_PROJECT_NAME}-keycloak
     build:
       context: ./identity
       dockerfile: Dockerfile
@@ -38,7 +67,7 @@ services:
       - --import-realm
     environment:
       KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://identity-database:5432/${IDENTITY_DB_NAME:?Set IDENTITY_DB_NAME in .env}
+      KC_DB_URL: jdbc:postgresql://${IDENTITY_DB_HOST:?Set IDENTITY_DB_HOST in .env}:${IDENTITY_DB_PORT:?Set IDENTITY_DB_PORT in .env}/${IDENTITY_DB_NAME:?Set IDENTITY_DB_NAME in .env}${IDENTITY_DB_JDBC_PARAMETERS:-}
       KC_DB_USERNAME: ${IDENTITY_DB_USER:?Set IDENTITY_DB_USER in .env}
       KC_DB_PASSWORD: ${IDENTITY_DB_PASSWORD:?Set IDENTITY_DB_PASSWORD in .env}
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_BOOTSTRAP_ADMIN_USERNAME:?Set KEYCLOAK_BOOTSTRAP_ADMIN_USERNAME in .env}
@@ -58,9 +87,8 @@ services:
       APP_VIEWER_PASSWORD: ${APP_VIEWER_PASSWORD:?Set APP_VIEWER_PASSWORD in .env}
     ports:
       - "${BIND_ADDRESS:?Set BIND_ADDRESS in .env}:${KEYCLOAK_HTTP_PORT:?Set KEYCLOAK_HTTP_PORT in .env}:8080"
-    depends_on:
-      identity-database:
-        condition: service_healthy
+    extra_hosts:
+      - host.docker.internal:host-gateway
     post_start:
       - command:
           - /bin/bash
