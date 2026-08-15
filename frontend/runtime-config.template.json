@@ -1,0 +1,7 @@
+{
+  "keycloak": {
+    "url": "${KEYCLOAK_PUBLIC_URL}",
+    "realm": "${OIDC_REALM}",
+    "clientId": "${OIDC_FRONTEND_CLIENT_ID}"
+  }
+}

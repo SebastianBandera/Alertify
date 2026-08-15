@@ -178,6 +178,36 @@ services:
       start_period: 20s
     restart: unless-stopped
 
+  frontend:
+    profiles:
+      - local-frontend
+    container_name: ${COMPOSE_PROJECT_NAME}-frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        FRONTEND_BUILD_IMAGE: ${FRONTEND_BUILD_IMAGE:?Set FRONTEND_BUILD_IMAGE in .env}
+        FRONTEND_RUNTIME_IMAGE: ${FRONTEND_RUNTIME_IMAGE:?Set FRONTEND_RUNTIME_IMAGE in .env}
+    image: ${FRONTEND_IMAGE:?Set FRONTEND_IMAGE in .env}
+    pull_policy: build
+    environment:
+      KEYCLOAK_PUBLIC_URL: ${KEYCLOAK_PUBLIC_URL:?Set KEYCLOAK_PUBLIC_URL in .env}
+      OIDC_REALM: ${OIDC_REALM:?Set OIDC_REALM in .env}
+      OIDC_FRONTEND_CLIENT_ID: ${OIDC_FRONTEND_CLIENT_ID:?Set OIDC_FRONTEND_CLIENT_ID in .env}
+      TZ: ${TIME_ZONE:?Set TIME_ZONE in .env}
+    ports:
+      - "${BIND_ADDRESS:?Set BIND_ADDRESS in .env}:${FRONTEND_HTTP_PORT:?Set FRONTEND_HTTP_PORT in .env}:8080"
+    mem_limit: ${FRONTEND_CONTAINER_MEMORY:?Set FRONTEND_CONTAINER_MEMORY in .env}
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget --quiet --output-document=- http://127.0.0.1:8080/health | grep -q UP
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    restart: unless-stopped
+
 volumes:
   identity_database_data:
   database_data:

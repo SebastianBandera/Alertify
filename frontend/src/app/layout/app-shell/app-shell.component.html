@@ -1,0 +1,67 @@
+<div class="app-shell">
+  <aside class="sidebar" aria-label="Primary navigation">
+    <a class="brand" routerLink="/configs" aria-label="Alertify home">
+      <span class="brand__mark" aria-hidden="true">A</span>
+      <span>
+        <strong>Alertify</strong>
+        <small>Operations console</small>
+      </span>
+    </a>
+
+    <label class="navigation-search">
+      <span class="navigation-search__icon" aria-hidden="true"></span>
+      <span class="visually-hidden">Filter navigation</span>
+      <input
+        type="search"
+        placeholder="Filter options"
+        autocomplete="off"
+        [value]="searchTerm()"
+        (input)="updateSearch($event)"
+      >
+    </label>
+
+    <nav class="navigation" aria-label="Workspace sections">
+      @for (item of filteredNavigationItems(); track item.path) {
+        <a
+          class="navigation__item"
+          [routerLink]="item.path"
+          routerLinkActive="navigation__item--active"
+        >
+          <span class="navigation__marker" aria-hidden="true">{{ item.marker }}</span>
+          <span>{{ item.label }}</span>
+        </a>
+      } @empty {
+        <p class="navigation__empty">No options match your search.</p>
+      }
+    </nav>
+
+    <div class="sidebar__footer">
+      <div class="user-summary">
+        <span class="user-summary__avatar" aria-hidden="true">
+          {{ authService.userInitial }}
+        </span>
+        <span class="user-summary__details">
+          <strong>{{ authService.displayName }}</strong>
+          <small>Authenticated</small>
+        </span>
+      </div>
+      <button class="logout-button" type="button" (click)="logout()" aria-label="Sign out">
+        <span aria-hidden="true">&#8594;</span>
+      </button>
+    </div>
+  </aside>
+
+  <main class="workspace">
+    <header class="workspace__header">
+      <div>
+        <span class="workspace__eyebrow">Workspace</span>
+        <strong>Monitoring administration</strong>
+      </div>
+      <span class="environment-badge">Connected</span>
+    </header>
+
+    <section class="workspace__content">
+      <router-outlet />
+    </section>
+  </main>
+</div>

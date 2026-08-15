@@ -1,0 +1,15 @@
+*
+!package.json
+!package-lock.json
+!angular.json
+!tsconfig.json
+!tsconfig.app.json
+!src/
+!src/**
+!public/
+!public/**
+!nginx/
+!nginx/**
+!runtime-config.template.json
+!start-frontend.sh
+!Dockerfile

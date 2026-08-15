@@ -320,6 +320,7 @@ function buildPlan(environment) {
   const redisMode = mode(environment, 'REDIS_MODE');
   const keycloakMode = mode(environment, 'KEYCLOAK_MODE');
   const backendMode = mode(environment, 'BACKEND_MODE');
+  const frontendMode = mode(environment, 'FRONTEND_MODE');
   const plan = {
     redisMode,
     redisUrl: required(environment, 'REDIS_URL'),
@@ -327,6 +328,8 @@ function buildPlan(environment) {
     keycloakUrl: required(environment, 'KEYCLOAK_PUBLIC_URL'),
     backendMode,
     backendUrl: required(environment, 'BACKEND_PUBLIC_URL'),
+    frontendMode,
+    frontendUrl: required(environment, 'APP_PUBLIC_URL'),
     backendDebugEnabled: false,
     backendDebugPort: null,
     backendDebugSuspend: null,
@@ -390,12 +393,25 @@ function buildPlan(environment) {
     plan.services.push({ name: 'backend', build: true });
   }
 
+  if (frontendMode === 'local') {
+    required(environment, 'FRONTEND_BUILD_IMAGE');
+    required(environment, 'FRONTEND_RUNTIME_IMAGE');
+    required(environment, 'FRONTEND_IMAGE');
+    required(environment, 'FRONTEND_HTTP_PORT');
+    required(environment, 'KEYCLOAK_PUBLIC_URL');
+    required(environment, 'OIDC_REALM');
+    required(environment, 'OIDC_FRONTEND_CLIENT_ID');
+    required(environment, 'FRONTEND_CONTAINER_MEMORY');
+    plan.services.push({ name: 'frontend', build: true });
+  }
+
   const serviceOrder = new Map([
     ['identity-database', 10],
     ['database', 20],
     ['cache', 30],
     ['identity', 40],
     ['backend', 50],
+    ['frontend', 60],
   ]);
   plan.services.sort(
     (left, right) => serviceOrder.get(left.name) - serviceOrder.get(right.name),
@@ -448,6 +464,12 @@ function printPlan(plan, environment) {
       const database = required(environment, 'DATABASE_NAME');
       console.log(`  - Application database: external (${host}:${port}/${database})`);
     }
+  }
+
+  if (plan.frontendMode === 'local') {
+    console.log(`  - Frontend: local (${redactUrl(plan.frontendUrl)})`);
+  } else {
+    console.log(`  - Frontend: external, reusing ${redactUrl(plan.frontendUrl)}`);
   }
 }
 
