@@ -1,7 +1,14 @@
 <div class="app-shell">
   <aside class="sidebar" aria-label="Primary navigation">
     <a class="brand" routerLink="/configs" aria-label="Alertify home">
-      <span class="brand__mark" aria-hidden="true">A</span>
+      <img
+        class="brand__mark"
+        src="/icons/alertify.svg"
+        width="42"
+        height="42"
+        alt=""
+        aria-hidden="true"
+      >
       <span>
         <strong>Alertify</strong>
         <small>Operations console</small>
@@ -27,7 +34,14 @@
           [routerLink]="item.path"
           routerLinkActive="navigation__item--active"
         >
-          <span class="navigation__marker" aria-hidden="true">{{ item.marker }}</span>
+          <span class="navigation__marker" aria-hidden="true">
+            <span
+              class="navigation__icon"
+              [class.navigation__icon--configs]="item.icon === 'configs'"
+              [class.navigation__icon--secrets]="item.icon === 'secrets'"
+              [class.navigation__icon--logs]="item.icon === 'logs'"
+            ></span>
+          </span>
           <span>{{ item.label }}</span>
         </a>
       } @empty {

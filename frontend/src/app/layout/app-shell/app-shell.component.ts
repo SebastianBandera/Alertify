@@ -12,7 +12,7 @@ import { AuthService } from '../../core/auth/auth.service';
 interface NavigationItem {
   readonly label: string;
   readonly path: string;
-  readonly marker: string;
+  readonly icon: 'configs' | 'secrets' | 'logs';
 }
 
 @Component({
@@ -25,9 +25,9 @@ interface NavigationItem {
 export class AppShellComponent {
   protected readonly authService = inject(AuthService);
   protected readonly navigationItems: readonly NavigationItem[] = [
-    { label: 'Configs', path: '/configs', marker: 'C' },
-    { label: 'Secrets', path: '/secrets', marker: 'S' },
-    { label: 'Logs', path: '/logs', marker: 'L' },
+    { label: 'Configs', path: '/configs', icon: 'configs' },
+    { label: 'Secrets', path: '/secrets', icon: 'secrets' },
+    { label: 'Logs', path: '/logs', icon: 'logs' },
   ];
   protected readonly searchTerm = signal('');
   protected readonly filteredNavigationItems = computed(() => {

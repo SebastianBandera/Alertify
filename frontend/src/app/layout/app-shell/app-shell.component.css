@@ -35,13 +35,9 @@
 .brand__mark {
   width: 42px;
   height: 42px;
-  display: grid;
-  place-items: center;
+  display: block;
   flex: 0 0 auto;
   border-radius: 13px;
-  background: linear-gradient(145deg, #8b7cff, #6251ed);
-  font-size: 19px;
-  font-weight: 750;
   box-shadow: 0 12px 28px rgb(0 0 0 / 25%);
 }
 
@@ -154,8 +150,34 @@
   border-radius: 9px;
   background: rgb(255 255 255 / 6%);
   color: #c7c1ff;
-  font-size: 11px;
-  font-weight: 750;
+}
+
+.navigation__icon {
+  width: 18px;
+  height: 18px;
+  display: block;
+  background: currentColor;
+  mask-position: center;
+  mask-repeat: no-repeat;
+  mask-size: contain;
+  -webkit-mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
+}
+
+.navigation__icon--configs {
+  mask-image: url('/icons/configs.svg');
+  -webkit-mask-image: url('/icons/configs.svg');
+}
+
+.navigation__icon--secrets {
+  mask-image: url('/icons/secrets.svg');
+  -webkit-mask-image: url('/icons/secrets.svg');
+}
+
+.navigation__icon--logs {
+  mask-image: url('/icons/logs.svg');
+  -webkit-mask-image: url('/icons/logs.svg');
 }
 
 .navigation__item--active .navigation__marker {
@@ -342,9 +364,20 @@
     justify-content: center;
   }
 
-  .navigation__marker,
   .sidebar__footer {
     display: none;
+  }
+
+  .navigation__item {
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .navigation__marker {
+    width: 26px;
+    height: 26px;
+    border: 0;
+    background: transparent;
   }
 
   .workspace__header {

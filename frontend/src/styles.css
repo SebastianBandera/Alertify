@@ -79,6 +79,7 @@ a {
   color: white;
   font-size: 21px;
   font-weight: 750;
+  object-fit: contain;
   box-shadow: 0 10px 24px rgb(109 93 252 / 28%);
 }
 
