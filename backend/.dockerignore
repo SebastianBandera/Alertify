@@ -2,4 +2,5 @@
 !pom.xml
 !src/
 !src/**
+!start-backend.sh
 !Dockerfile

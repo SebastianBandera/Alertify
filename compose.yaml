@@ -113,25 +113,26 @@ services:
     profiles:
       - local-database
     container_name: ${COMPOSE_PROJECT_NAME}-database
-    image: ${POSTGRES_IMAGE:?Set POSTGRES_IMAGE in .env}
+    build:
+      context: ./database
+      dockerfile: Dockerfile
+      args:
+        POSTGRES_IMAGE: ${POSTGRES_IMAGE:?Set POSTGRES_IMAGE in .env}
+    image: ${DATABASE_IMAGE:?Set DATABASE_IMAGE in .env}
+    pull_policy: build
     environment:
-      POSTGRES_DB: ${DATABASE_NAME:?Set DATABASE_NAME in .env}
-      POSTGRES_USER: ${DATABASE_USER:?Set DATABASE_USER in .env}
-      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:?Set DATABASE_PASSWORD in .env}
+      POSTGRES_DB: ${DATABASE_BOOTSTRAP_NAME:?Set DATABASE_BOOTSTRAP_NAME in .env}
+      POSTGRES_USER: ${DATABASE_BOOTSTRAP_USER:?Set DATABASE_BOOTSTRAP_USER in .env}
+      POSTGRES_PASSWORD: ${DATABASE_BOOTSTRAP_PASSWORD:?Set DATABASE_BOOTSTRAP_PASSWORD in .env}
+      DATABASE_NAME: ${DATABASE_NAME:?Set DATABASE_NAME in .env}
+      DATABASE_OWNER_USER: ${DATABASE_USER:?Set DATABASE_USER in .env}
+      DATABASE_OWNER_PASSWORD: ${DATABASE_PASSWORD:?Set DATABASE_PASSWORD in .env}
       TZ: ${TIME_ZONE:?Set TIME_ZONE in .env}
     ports:
       - "${BIND_ADDRESS:?Set BIND_ADDRESS in .env}:${DATABASE_HOST_PORT:?Set DATABASE_HOST_PORT in .env}:5432"
     volumes:
       - database_data:/var/lib/postgresql
     mem_limit: ${DATABASE_CONTAINER_MEMORY:?Set DATABASE_CONTAINER_MEMORY in .env}
-    healthcheck:
-      test:
-        - CMD-SHELL
-        - pg_isready --username="$${POSTGRES_USER}" --dbname="$${POSTGRES_DB}"
-      interval: 5s
-      timeout: 3s
-      retries: 20
-      start_period: 10s
     restart: unless-stopped
 
   backend:
@@ -157,9 +158,13 @@ services:
       OIDC_ISSUER_URI: ${OIDC_ISSUER_URI:?Set OIDC_ISSUER_URI in .env}
       OIDC_JWK_SET_URI: ${OIDC_JWK_SET_URI:?Set OIDC_JWK_SET_URI in .env}
       OIDC_BACKEND_AUDIENCE: ${OIDC_BACKEND_AUDIENCE:?Set OIDC_BACKEND_AUDIENCE in .env}
+      JAVA_DEBUG_ENABLED: ${BACKEND_DEBUG_ENABLED:?Set BACKEND_DEBUG_ENABLED in .env}
+      JAVA_DEBUG_PORT: ${BACKEND_DEBUG_PORT:?Set BACKEND_DEBUG_PORT in .env}
+      JAVA_DEBUG_SUSPEND: ${BACKEND_DEBUG_SUSPEND:?Set BACKEND_DEBUG_SUSPEND in .env}
       TZ: ${TIME_ZONE:?Set TIME_ZONE in .env}
     ports:
       - "${BIND_ADDRESS:?Set BIND_ADDRESS in .env}:${BACKEND_HTTP_PORT:?Set BACKEND_HTTP_PORT in .env}:8080"
+      - "${BIND_ADDRESS:?Set BIND_ADDRESS in .env}:${BACKEND_DEBUG_PORT:?Set BACKEND_DEBUG_PORT in .env}:${BACKEND_DEBUG_PORT:?Set BACKEND_DEBUG_PORT in .env}"
     mem_limit: ${BACKEND_CONTAINER_MEMORY:?Set BACKEND_CONTAINER_MEMORY in .env}
     extra_hosts:
       - host.docker.internal:host-gateway

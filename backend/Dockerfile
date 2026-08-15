@@ -22,8 +22,13 @@ COPY --from=builder --chown=application:application \
     /build/target/alertify-backend.jar \
     /application/alertify-backend.jar
 
+COPY --chown=application:application start-backend.sh /application/start-backend.sh
+
+RUN chmod 0755 /application/start-backend.sh
+
 USER application
 
 EXPOSE 8080
+EXPOSE 5005
 
-ENTRYPOINT ["java", "-jar", "/application/alertify-backend.jar"]
+ENTRYPOINT ["/application/start-backend.sh"]

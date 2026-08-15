@@ -138,12 +138,79 @@ function resolveLine(line, secrets) {
   });
 }
 
-function trimLeadingBlankLines(lines) {
+function trimOuterBlankLines(lines) {
   const copy = [...lines];
   while (copy.length > 0 && copy[0].trim() === '') {
     copy.shift();
   }
+  while (copy.length > 0 && copy[copy.length - 1].trim() === '') {
+    copy.pop();
+  }
   return copy;
+}
+
+function assignmentLocations(lines) {
+  const locations = new Map();
+
+  for (const [index, line] of lines.entries()) {
+    const comparableLine = index === 0 ? line.replace(/^\uFEFF/, '') : line;
+    const match = comparableLine.match(ASSIGNMENT_PATTERN);
+    if (match && !comparableLine.trimStart().startsWith('#')) {
+      locations.set(match[1], index);
+    }
+  }
+
+  return locations;
+}
+
+function commentBlockStart(lines, assignmentIndex) {
+  let index = assignmentIndex;
+  while (index > 0 && lines[index - 1].trimStart().startsWith('#')) {
+    index -= 1;
+  }
+  return index;
+}
+
+function resolvedTemplateBlock(assignment, secrets) {
+  return [
+    ...trimOuterBlankLines(assignment.prefixLines),
+    resolveLine(assignment.line, secrets),
+  ];
+}
+
+function insertMissingAssignments(envContent, templateAssignments, missing, secrets) {
+  const lineEnding = envContent.includes('\r\n') ? '\r\n' : '\n';
+  const lines = envContent === '' ? [] : envContent.split(/\r?\n/);
+  const missingKeys = new Set(missing.map(({ key }) => key));
+
+  for (const [templateIndex, assignment] of templateAssignments.entries()) {
+    if (!missingKeys.has(assignment.key)) {
+      continue;
+    }
+
+    const locations = assignmentLocations(lines);
+    const nextAssignment = templateAssignments
+      .slice(templateIndex + 1)
+      .find(({ key }) => locations.has(key));
+    const insertionIndex = nextAssignment
+      ? commentBlockStart(lines, locations.get(nextAssignment.key))
+      : lines.length;
+    const block = resolvedTemplateBlock(assignment, secrets);
+    const insertedLines = [];
+
+    if (insertionIndex > 0 && lines[insertionIndex - 1].trim() !== '') {
+      insertedLines.push('');
+    }
+    insertedLines.push(...block);
+    if (insertionIndex < lines.length && lines[insertionIndex].trim() !== '') {
+      insertedLines.push('');
+    }
+
+    lines.splice(insertionIndex, 0, ...insertedLines);
+  }
+
+  const rendered = lines.join(lineEnding);
+  return rendered.endsWith(lineEnding) ? rendered : `${rendered}${lineEnding}`;
 }
 
 function reconcileEnvironment(templatePath, envPath) {
@@ -166,17 +233,13 @@ function reconcileEnvironment(templatePath, envPath) {
       mode: 0o600,
     });
   } else if (missing.length > 0) {
-    const appendedLines = [];
-    for (const assignment of missing) {
-      appendedLines.push(
-        ...trimLeadingBlankLines(assignment.prefixLines),
-        resolveLine(assignment.line, secretResult.resolved),
-      );
-    }
-
-    const separator = envContent.length > 0 && !envContent.endsWith('\n') ? '\n\n' : '\n';
-    const header = '# Variables automatically added from .env.template.\n';
-    fs.appendFileSync(envPath, `${separator}${header}${appendedLines.join('\n')}\n`, 'utf8');
+    const reconciled = insertMissingAssignments(
+      envContent,
+      template.assignments,
+      missing,
+      secretResult.resolved,
+    );
+    fs.writeFileSync(envPath, reconciled, 'utf8');
   }
 
   const finalContent = fs.readFileSync(envPath, 'utf8');
@@ -224,6 +287,24 @@ function mode(environment, key) {
   return value;
 }
 
+function booleanValue(environment, key) {
+  const value = required(environment, key).toLowerCase();
+  if (!['true', 'false'].includes(value)) {
+    throw new Error(`${key} must be true or false; received: ${value}.`);
+  }
+  return value === 'true';
+}
+
+function allowedValue(environment, key, allowedValues) {
+  const value = required(environment, key).toLowerCase();
+  if (!allowedValues.includes(value)) {
+    throw new Error(
+      `${key} must be one of ${allowedValues.join(', ')}; received: ${value}.`,
+    );
+  }
+  return value;
+}
+
 function redactUrl(value) {
   try {
     const parsed = new URL(value);
@@ -246,6 +327,9 @@ function buildPlan(environment) {
     keycloakUrl: required(environment, 'KEYCLOAK_PUBLIC_URL'),
     backendMode,
     backendUrl: required(environment, 'BACKEND_PUBLIC_URL'),
+    backendDebugEnabled: false,
+    backendDebugPort: null,
+    backendDebugSuspend: null,
     identityDatabaseMode: null,
     applicationDatabaseMode: null,
     services: [],
@@ -281,13 +365,27 @@ function buildPlan(environment) {
     required(environment, 'DATABASE_PASSWORD');
     required(environment, 'REDIS_HOST');
     required(environment, 'REDIS_PORT');
-    required(environment, 'REDIS_SSL_ENABLED');
+    booleanValue(environment, 'REDIS_SSL_ENABLED');
     required(environment, 'OIDC_ISSUER_URI');
     required(environment, 'OIDC_JWK_SET_URI');
     required(environment, 'OIDC_BACKEND_AUDIENCE');
+    plan.backendDebugEnabled = booleanValue(environment, 'BACKEND_DEBUG_ENABLED');
+    plan.backendDebugPort = required(environment, 'BACKEND_DEBUG_PORT');
+    plan.backendDebugSuspend = allowedValue(
+      environment,
+      'BACKEND_DEBUG_SUSPEND',
+      ['y', 'n'],
+    );
 
     if (plan.applicationDatabaseMode === 'local') {
-      plan.services.push({ name: 'database', build: false });
+      required(environment, 'DATABASE_IMAGE');
+      required(environment, 'DATABASE_BOOTSTRAP_NAME');
+      const bootstrapUser = required(environment, 'DATABASE_BOOTSTRAP_USER');
+      required(environment, 'DATABASE_BOOTSTRAP_PASSWORD');
+      if (bootstrapUser === required(environment, 'DATABASE_USER')) {
+        throw new Error('DATABASE_BOOTSTRAP_USER must be different from DATABASE_USER.');
+      }
+      plan.services.push({ name: 'database', build: true });
     }
     plan.services.push({ name: 'backend', build: true });
   }
@@ -334,6 +432,14 @@ function printPlan(plan, environment) {
     console.log('  - Application database: not managed because the backend is external');
   } else {
     console.log(`  - Backend: local (${redactUrl(plan.backendUrl)})`);
+    if (plan.backendDebugEnabled) {
+      console.log(
+        `  - Java remote debug: enabled on port ${plan.backendDebugPort} ` +
+          `(suspend=${plan.backendDebugSuspend})`,
+      );
+    } else {
+      console.log('  - Java remote debug: disabled');
+    }
     if (plan.applicationDatabaseMode === 'local') {
       console.log('  - Application database: local PostgreSQL');
     } else {

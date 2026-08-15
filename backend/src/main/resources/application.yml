@@ -24,8 +24,14 @@ spring:
       ddl-auto: validate
     properties:
       hibernate:
+        default_schema: public
         jdbc:
           time_zone: UTC
+      org:
+        hibernate:
+          envers:
+            default_schema: audit
+            audit_table_suffix: _aud
   data:
     redis:
       host: ${REDIS_HOST}
