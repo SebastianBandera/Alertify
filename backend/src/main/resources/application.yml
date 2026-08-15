@@ -74,3 +74,6 @@ info:
   application:
     name: ${spring.application.name}
     description: Alertify backend skeleton
+
+security:
+  roles-client-id: ${OIDC_BACKEND_AUDIENCE}

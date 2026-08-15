@@ -12,20 +12,24 @@
   "supportedLocales": ["es", "en"],
   "defaultLocale": "es",
   "roles": {
-    "realm": [
-      {
-        "name": "DASHBOARD",
-        "description": "Can view the dashboard"
-      },
-      {
-        "name": "ADMIN",
-        "description": "Can administer alert definitions",
-        "composite": true,
-        "composites": {
-          "realm": ["DASHBOARD"]
+    "client": {
+      "${OIDC_BACKEND_AUDIENCE}": [
+        {
+          "name": "DASHBOARD",
+          "description": "Can view the dashboard"
+        },
+        {
+          "name": "ADMIN",
+          "description": "Can administer alert definitions",
+          "composite": true,
+          "composites": {
+            "client": {
+              "${OIDC_BACKEND_AUDIENCE}": ["DASHBOARD"]
+            }
+          }
         }
-      }
-    ]
+      ]
+    }
   },
   "clients": [
     {
@@ -85,8 +89,8 @@
         }
       ],
       "requiredActions": [],
-      "realmRoles": ["ADMIN"],
       "clientRoles": {
+        "${OIDC_BACKEND_AUDIENCE}": ["ADMIN"],
         "account": ["view-profile"]
       }
     },
@@ -105,8 +109,8 @@
         }
       ],
       "requiredActions": [],
-      "realmRoles": ["DASHBOARD"],
       "clientRoles": {
+        "${OIDC_BACKEND_AUDIENCE}": ["DASHBOARD"],
         "account": ["view-profile"]
       }
     }
