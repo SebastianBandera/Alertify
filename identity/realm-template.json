@@ -31,6 +31,7 @@
     {
       "clientId": "${OIDC_BACKEND_AUDIENCE}",
       "name": "API",
+      "description": "Alertify backend API protected by Keycloak.",
       "enabled": true,
       "bearerOnly": true,
       "publicClient": false,
@@ -39,6 +40,7 @@
     {
       "clientId": "${OIDC_FRONTEND_CLIENT_ID}",
       "name": "Frontend",
+      "description": "Alertify web application using the OpenID Connect authorization code flow with PKCE.",
       "enabled": true,
       "publicClient": true,
       "protocol": "openid-connect",
@@ -83,7 +85,10 @@
         }
       ],
       "requiredActions": [],
-      "realmRoles": ["ADMIN"]
+      "realmRoles": ["ADMIN"],
+      "clientRoles": {
+        "account": ["view-profile"]
+      }
     },
     {
       "username": "${APP_VIEWER_USERNAME}",
@@ -100,7 +105,10 @@
         }
       ],
       "requiredActions": [],
-      "realmRoles": ["DASHBOARD"]
+      "realmRoles": ["DASHBOARD"],
+      "clientRoles": {
+        "account": ["view-profile"]
+      }
     }
   ]
 }
