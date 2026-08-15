@@ -1,7 +1,7 @@
 <article class="dashboard">
   <header class="dashboard__header">
-    <h1>Dashboard</h1>
-    <p>Review the current state of application and monitoring services.</p>
+    <h1>{{ localization.translate('navigation.dashboard') }}</h1>
+    <p>{{ localization.translate('dashboard.description') }}</p>
   </header>
 
   <section class="dashboard__empty">
@@ -11,7 +11,7 @@
       <span></span>
       <span></span>
     </span>
-    <strong>No dashboard data available yet</strong>
-    <p>Monitoring summaries will appear here when backend integration is available.</p>
+    <strong>{{ localization.translate('dashboard.empty') }}</strong>
+    <p>{{ localization.translate('dashboard.emptyDescription') }}</p>
   </section>
 </article>

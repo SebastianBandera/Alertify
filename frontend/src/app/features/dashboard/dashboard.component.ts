@@ -1,4 +1,6 @@
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+
+import { LocalizationService } from '../../core/i18n/localization.service';
 
 @Component({
   selector: 'app-dashboard',
@@ -6,4 +8,6 @@ import { ChangeDetectionStrategy, Component } from '@angular/core';
   styleUrl: './dashboard.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class DashboardComponent {}
+export class DashboardComponent {
+  protected readonly localization = inject(LocalizationService);
+}

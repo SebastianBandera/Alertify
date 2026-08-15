@@ -1,4 +1,6 @@
-import { ChangeDetectionStrategy, Component, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, input } from '@angular/core';
+
+import { LocalizationService } from '../../core/i18n/localization.service';
 
 @Component({
   selector: 'app-empty-table',
@@ -7,6 +9,7 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class EmptyTableComponent {
+  protected readonly localization = inject(LocalizationService);
   readonly title = input.required<string>();
   readonly description = input.required<string>();
   readonly emptyMessage = input.required<string>();

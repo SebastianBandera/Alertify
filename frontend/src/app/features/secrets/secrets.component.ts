@@ -1,5 +1,6 @@
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 
+import { LocalizationService } from '../../core/i18n/localization.service';
 import { EmptyTableComponent } from '../../shared/empty-table/empty-table.component';
 
 @Component({
@@ -7,14 +8,20 @@ import { EmptyTableComponent } from '../../shared/empty-table/empty-table.compon
   imports: [EmptyTableComponent],
   template: `
     <app-empty-table
-      title="Secrets"
-      description="Review secret metadata without exposing stored values."
-      emptyMessage="No secrets available yet"
-      [columns]="columns"
+      [title]="localization.translate('secrets.title')"
+      [description]="localization.translate('secrets.description')"
+      [emptyMessage]="localization.translate('secrets.empty')"
+      [columns]="columns()"
     />
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class SecretsComponent {
-  protected readonly columns = ['Name', 'Scope', 'Updated at', 'Status'];
+  protected readonly localization = inject(LocalizationService);
+  protected readonly columns = computed(() => [
+    this.localization.translate('secrets.column.name'),
+    this.localization.translate('secrets.column.scope'),
+    this.localization.translate('secrets.column.updatedAt'),
+    this.localization.translate('secrets.column.status'),
+  ]);
 }

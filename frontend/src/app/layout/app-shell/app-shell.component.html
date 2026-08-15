@@ -1,6 +1,10 @@
 <div class="app-shell">
-  <aside class="sidebar" aria-label="Primary navigation">
-    <a class="brand" routerLink="/dashboard" aria-label="Alertify home">
+  <aside class="sidebar" [attr.aria-label]="localization.translate('navigation.primary')">
+    <a
+      class="brand"
+      routerLink="/dashboard"
+      [attr.aria-label]="localization.translate('brand.home')"
+    >
       <img
         class="brand__mark"
         src="/icons/alertify.svg"
@@ -11,23 +15,23 @@
       >
       <span>
         <strong>Alertify</strong>
-        <small>Operations console</small>
+        <small>{{ localization.translate('brand.subtitle') }}</small>
       </span>
     </a>
 
     <label class="navigation-search">
       <span class="navigation-search__icon" aria-hidden="true"></span>
-      <span class="visually-hidden">Filter navigation</span>
+      <span class="visually-hidden">{{ localization.translate('navigation.filter') }}</span>
       <input
         type="search"
-        placeholder="Filter options"
+        [placeholder]="localization.translate('navigation.filterPlaceholder')"
         autocomplete="off"
         [value]="searchTerm()"
         (input)="updateSearch($event)"
       >
     </label>
 
-    <nav class="navigation" aria-label="Workspace sections">
+    <nav class="navigation" [attr.aria-label]="localization.translate('navigation.sections')">
       @for (item of filteredNavigationItems(); track item.path) {
         <a
           class="navigation__item"
@@ -43,10 +47,10 @@
               [class.navigation__icon--logs]="item.icon === 'logs'"
             ></span>
           </span>
-          <span>{{ item.label }}</span>
+          <span>{{ localization.translate(item.labelKey) }}</span>
         </a>
       } @empty {
-        <p class="navigation__empty">No options match your search.</p>
+        <p class="navigation__empty">{{ localization.translate('navigation.noMatches') }}</p>
       }
     </nav>
 
@@ -57,7 +61,7 @@
         </span>
         <span class="user-summary__details">
           <strong>{{ authService.displayName }}</strong>
-          <small>Authenticated</small>
+          <small>{{ localization.translate('user.authenticated') }}</small>
         </span>
       </div>
       <div class="logout-action">
@@ -65,12 +69,14 @@
           class="logout-button"
           type="button"
           (click)="logout()"
-          aria-label="Sign out"
+          [attr.aria-label]="localization.translate('action.signOut')"
           aria-describedby="logout-tooltip"
         >
           <span class="logout-button__icon" aria-hidden="true">&#8594;</span>
         </button>
-        <span id="logout-tooltip" class="logout-tooltip" role="tooltip">Sign out</span>
+        <span id="logout-tooltip" class="logout-tooltip" role="tooltip">
+          {{ localization.translate('action.signOut') }}
+        </span>
       </div>
     </div>
   </aside>
@@ -78,10 +84,20 @@
   <main class="workspace">
     <header class="workspace__header">
       <div>
-        <span class="workspace__eyebrow">Workspace</span>
-        <strong>Monitoring administration</strong>
+        <span class="workspace__eyebrow">{{ localization.translate('workspace.eyebrow') }}</span>
+        <strong>{{ localization.translate('workspace.title') }}</strong>
       </div>
-      <span class="environment-badge">Connected</span>
+      <div class="workspace__actions">
+        <label class="language-selector">
+          <span>{{ localization.translate('language.label') }}</span>
+          <select [value]="localization.locale()" (change)="updateLocale($event)">
+            @for (localeOption of localization.localeOptions; track localeOption.value) {
+              <option [value]="localeOption.value">{{ localeOption.label }}</option>
+            }
+          </select>
+        </label>
+        <span class="environment-badge">{{ localization.translate('status.connected') }}</span>
+      </div>
     </header>
 
     <section class="workspace__content">
