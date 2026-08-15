@@ -251,6 +251,11 @@
   font-size: 10px;
 }
 
+.logout-action {
+  position: relative;
+  flex: 0 0 auto;
+}
+
 .logout-button {
   width: 34px;
   height: 34px;
@@ -263,6 +268,10 @@
   color: #98a2b3;
   cursor: pointer;
   font-size: 18px;
+}
+
+.logout-button__icon {
+  display: block;
   transform: rotate(180deg);
 }
 
@@ -271,6 +280,32 @@
   outline: none;
   background: rgb(255 255 255 / 7%);
   color: white;
+}
+
+.logout-tooltip {
+  position: absolute;
+  z-index: 10;
+  right: 0;
+  bottom: calc(100% + 8px);
+  padding: 6px 9px;
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 7px;
+  background: #344054;
+  color: white;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(4px);
+  transition: opacity 140ms ease, transform 140ms ease;
+}
+
+.logout-action:hover .logout-tooltip,
+.logout-action:focus-within .logout-tooltip {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .workspace {
@@ -370,7 +405,8 @@
   }
 
   .sidebar__footer {
-    display: none;
+    margin-top: 14px;
+    padding-top: 14px;
   }
 
   .navigation__item {

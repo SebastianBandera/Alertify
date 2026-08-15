@@ -60,9 +60,18 @@
           <small>Authenticated</small>
         </span>
       </div>
-      <button class="logout-button" type="button" (click)="logout()" aria-label="Sign out">
-        <span aria-hidden="true">&#8594;</span>
-      </button>
+      <div class="logout-action">
+        <button
+          class="logout-button"
+          type="button"
+          (click)="logout()"
+          aria-label="Sign out"
+          aria-describedby="logout-tooltip"
+        >
+          <span class="logout-button__icon" aria-hidden="true">&#8594;</span>
+        </button>
+        <span id="logout-tooltip" class="logout-tooltip" role="tooltip">Sign out</span>
+      </div>
     </div>
   </aside>
 
