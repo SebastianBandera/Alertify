@@ -15,7 +15,7 @@ class SymmetricKeyServiceTest {
     @Test
     void derivesAes256KeyWithDatabasePartBeforeEnvironmentPart() throws Exception {
         byte[] environmentKeyPart = "environment-key-part".getBytes(StandardCharsets.UTF_8);
-        SymmetricKeyService service = new SymmetricKeyService(new EnvironmentKeyPartSource("environment-key-part"));
+        SymmetricKeyService service = new SymmetricKeyService(new EnvironmentKeyPartSource("environment-key-part"), new Sha256HashService());
 
         MessageDigest digest = MessageDigest.getInstance("SHA-256");
         digest.update(ByteBuffer.allocate(Integer.BYTES).putInt(0).array());
