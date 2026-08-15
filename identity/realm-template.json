@@ -70,6 +70,10 @@
   "users": [
     {
       "username": "${APP_ADMIN_USERNAME}",
+      "firstName": "Application",
+      "lastName": "Administrator",
+      "email": "admin@example.invalid",
+      "emailVerified": true,
       "enabled": true,
       "credentials": [
         {
@@ -78,10 +82,15 @@
           "temporary": false
         }
       ],
+      "requiredActions": [],
       "realmRoles": ["ADMIN"]
     },
     {
       "username": "${APP_VIEWER_USERNAME}",
+      "firstName": "Application",
+      "lastName": "Viewer",
+      "email": "viewer@example.invalid",
+      "emailVerified": true,
       "enabled": true,
       "credentials": [
         {
@@ -90,6 +99,7 @@
           "temporary": false
         }
       ],
+      "requiredActions": [],
       "realmRoles": ["DASHBOARD"]
     }
   ]
