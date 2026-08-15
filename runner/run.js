@@ -366,6 +366,7 @@ function buildPlan(environment) {
     required(environment, 'DATABASE_NAME');
     required(environment, 'DATABASE_USER');
     required(environment, 'DATABASE_PASSWORD');
+    required(environment, 'KEY_ENV_PART');
     required(environment, 'REDIS_HOST');
     required(environment, 'REDIS_PORT');
     booleanValue(environment, 'REDIS_SSL_ENABLED');

@@ -77,3 +77,5 @@ info:
 
 security:
   roles-client-id: ${OIDC_BACKEND_AUDIENCE}
+  symmetric-key:
+    environment-part: ${KEY_ENV_PART}
