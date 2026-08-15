@@ -238,12 +238,16 @@ function redactUrl(value) {
 function buildPlan(environment) {
   const redisMode = mode(environment, 'REDIS_MODE');
   const keycloakMode = mode(environment, 'KEYCLOAK_MODE');
+  const backendMode = mode(environment, 'BACKEND_MODE');
   const plan = {
     redisMode,
     redisUrl: required(environment, 'REDIS_URL'),
     keycloakMode,
     keycloakUrl: required(environment, 'KEYCLOAK_PUBLIC_URL'),
-    databaseMode: null,
+    backendMode,
+    backendUrl: required(environment, 'BACKEND_PUBLIC_URL'),
+    identityDatabaseMode: null,
+    applicationDatabaseMode: null,
     services: [],
   };
 
@@ -255,18 +259,49 @@ function buildPlan(environment) {
   }
 
   if (keycloakMode === 'local') {
-    plan.databaseMode = mode(environment, 'KEYCLOAK_DATABASE_MODE');
+    plan.identityDatabaseMode = mode(environment, 'KEYCLOAK_DATABASE_MODE');
     required(environment, 'IDENTITY_DB_HOST');
     required(environment, 'IDENTITY_DB_PORT');
     required(environment, 'IDENTITY_DB_NAME');
     required(environment, 'IDENTITY_DB_USER');
     required(environment, 'IDENTITY_DB_PASSWORD');
 
-    if (plan.databaseMode === 'local') {
-      plan.services.unshift({ name: 'identity-database', build: false });
+    if (plan.identityDatabaseMode === 'local') {
+      plan.services.push({ name: 'identity-database', build: false });
     }
     plan.services.push({ name: 'identity', build: true });
   }
+
+  if (backendMode === 'local') {
+    plan.applicationDatabaseMode = mode(environment, 'DATABASE_MODE');
+    required(environment, 'DATABASE_HOST');
+    required(environment, 'DATABASE_PORT');
+    required(environment, 'DATABASE_NAME');
+    required(environment, 'DATABASE_USER');
+    required(environment, 'DATABASE_PASSWORD');
+    required(environment, 'REDIS_HOST');
+    required(environment, 'REDIS_PORT');
+    required(environment, 'REDIS_SSL_ENABLED');
+    required(environment, 'OIDC_ISSUER_URI');
+    required(environment, 'OIDC_JWK_SET_URI');
+    required(environment, 'OIDC_BACKEND_AUDIENCE');
+
+    if (plan.applicationDatabaseMode === 'local') {
+      plan.services.push({ name: 'database', build: false });
+    }
+    plan.services.push({ name: 'backend', build: true });
+  }
+
+  const serviceOrder = new Map([
+    ['identity-database', 10],
+    ['database', 20],
+    ['cache', 30],
+    ['identity', 40],
+    ['backend', 50],
+  ]);
+  plan.services.sort(
+    (left, right) => serviceOrder.get(left.name) - serviceOrder.get(right.name),
+  );
 
   return plan;
 }
@@ -282,17 +317,31 @@ function printPlan(plan, environment) {
   if (plan.keycloakMode === 'external') {
     console.log(`  - Keycloak: external, reusing ${redactUrl(plan.keycloakUrl)}`);
     console.log('  - Keycloak database: not managed because Keycloak is external');
-    return;
+  } else {
+    console.log(`  - Keycloak: local (${redactUrl(plan.keycloakUrl)})`);
+    if (plan.identityDatabaseMode === 'local') {
+      console.log('  - Keycloak database: local PostgreSQL');
+    } else {
+      const host = required(environment, 'IDENTITY_DB_HOST');
+      const port = required(environment, 'IDENTITY_DB_PORT');
+      const database = required(environment, 'IDENTITY_DB_NAME');
+      console.log(`  - Keycloak database: external (${host}:${port}/${database})`);
+    }
   }
 
-  console.log(`  - Keycloak: local (${redactUrl(plan.keycloakUrl)})`);
-  if (plan.databaseMode === 'local') {
-    console.log('  - Keycloak database: local PostgreSQL');
+  if (plan.backendMode === 'external') {
+    console.log(`  - Backend: external, reusing ${redactUrl(plan.backendUrl)}`);
+    console.log('  - Application database: not managed because the backend is external');
   } else {
-    const host = required(environment, 'IDENTITY_DB_HOST');
-    const port = required(environment, 'IDENTITY_DB_PORT');
-    const database = required(environment, 'IDENTITY_DB_NAME');
-    console.log(`  - Keycloak database: external (${host}:${port}/${database})`);
+    console.log(`  - Backend: local (${redactUrl(plan.backendUrl)})`);
+    if (plan.applicationDatabaseMode === 'local') {
+      console.log('  - Application database: local PostgreSQL');
+    } else {
+      const host = required(environment, 'DATABASE_HOST');
+      const port = required(environment, 'DATABASE_PORT');
+      const database = required(environment, 'DATABASE_NAME');
+      console.log(`  - Application database: external (${host}:${port}/${database})`);
+    }
   }
 }
 
