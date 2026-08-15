@@ -8,6 +8,14 @@ export const routes: Routes = [
     component: AppShellComponent,
     children: [
       {
+        path: 'dashboard',
+        title: 'Dashboard | Alertify',
+        loadComponent: () =>
+          import('./features/dashboard/dashboard.component').then(
+            (component) => component.DashboardComponent,
+          ),
+      },
+      {
         path: 'configs',
         title: 'Configs | Alertify',
         loadComponent: () =>
@@ -31,8 +39,8 @@ export const routes: Routes = [
             (component) => component.LogsComponent,
           ),
       },
-      { path: '', pathMatch: 'full', redirectTo: 'configs' },
+      { path: '', pathMatch: 'full', redirectTo: 'dashboard' },
     ],
   },
-  { path: '**', redirectTo: 'configs' },
+  { path: '**', redirectTo: 'dashboard' },
 ];

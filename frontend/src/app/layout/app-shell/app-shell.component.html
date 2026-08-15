@@ -1,6 +1,6 @@
 <div class="app-shell">
   <aside class="sidebar" aria-label="Primary navigation">
-    <a class="brand" routerLink="/configs" aria-label="Alertify home">
+    <a class="brand" routerLink="/dashboard" aria-label="Alertify home">
       <img
         class="brand__mark"
         src="/icons/alertify.svg"
@@ -37,6 +37,7 @@
           <span class="navigation__marker" aria-hidden="true">
             <span
               class="navigation__icon"
+              [class.navigation__icon--dashboard]="item.icon === 'dashboard'"
               [class.navigation__icon--configs]="item.icon === 'configs'"
               [class.navigation__icon--secrets]="item.icon === 'secrets'"
               [class.navigation__icon--logs]="item.icon === 'logs'"
