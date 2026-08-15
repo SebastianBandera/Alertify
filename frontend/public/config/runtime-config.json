@@ -1,7 +1,0 @@
-{
-  "keycloak": {
-    "url": "http://localhost:8081",
-    "realm": "monitoring",
-    "clientId": "monitoring-web"
-  }
-}
