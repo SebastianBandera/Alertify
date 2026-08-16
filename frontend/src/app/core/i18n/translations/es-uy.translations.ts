@@ -10,7 +10,7 @@ export const ES_UY_TRANSLATIONS = {
   'navigation.filterPlaceholder': 'Filtrar opciones',
   'navigation.sections': 'Secciones del espacio de trabajo',
   'navigation.noMatches': 'Ninguna opción coincide con la búsqueda.',
-  'navigation.dashboard': 'Panel',
+  'navigation.dashboard': 'Tablero',
   'navigation.configs': 'Configuraciones',
   'navigation.secrets': 'Secretos',
   'navigation.logs': 'Registros',
@@ -20,7 +20,7 @@ export const ES_UY_TRANSLATIONS = {
   'workspace.title': 'Administración del monitoreo',
   'language.label': 'Idioma',
   'dashboard.description': 'Revisá el estado actual de la aplicación y de los servicios de monitoreo.',
-  'dashboard.empty': 'Todavía no hay datos disponibles en el panel',
+  'dashboard.empty': 'Todavía no hay datos disponibles en el tablero',
   'dashboard.emptyDescription':
     'Los resúmenes de monitoreo aparecerán aquí cuando la integración con el backend esté disponible.',
   'configs.title': 'Configuraciones',
