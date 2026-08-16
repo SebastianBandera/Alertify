@@ -43,8 +43,8 @@
         <select
           class="tag-filter__select"
           [disabled]="availableFilterTags().length === 0"
-          [ngModel]="tagFilterSelection()"
-          (ngModelChange)="addTagFilter($event)"
+          value=""
+          (change)="addTagFilter($event)"
           [attr.aria-label]="localization.translate('configs.addTagFilter')"
         >
           <option value="">
@@ -54,6 +54,28 @@
             <option [value]="tag.id">{{ tag.name }}</option>
           }
         </select>
+        @if (selectedTagIds().length >= 2) {
+          <div
+            class="tag-match-mode"
+            role="group"
+            [attr.aria-label]="localization.translate('configs.tagMatchMode')"
+          >
+            <button
+              type="button"
+              [class.tag-match-mode__option--active]="tagMatchMode() === 'OR'"
+              [attr.aria-pressed]="tagMatchMode() === 'OR'"
+              [title]="localization.translate('configs.tagMatchAnyHint')"
+              (click)="updateTagMatchMode('OR')"
+            >OR</button>
+            <button
+              type="button"
+              [class.tag-match-mode__option--active]="tagMatchMode() === 'AND'"
+              [attr.aria-pressed]="tagMatchMode() === 'AND'"
+              [title]="localization.translate('configs.tagMatchAllHint')"
+              (click)="updateTagMatchMode('AND')"
+            >AND</button>
+          </div>
+        }
       </div>
     </div>
     <button class="button button--secondary toolbar-button" type="button" (click)="loadConfigurations()">

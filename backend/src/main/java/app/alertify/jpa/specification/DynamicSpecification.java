@@ -19,7 +19,7 @@ import jakarta.persistence.criteria.Predicate;
 public final class DynamicSpecification {
 
     private static final Set<String> RESERVED_PARAMS = Set.of(
-        "page", "size", "sort", "tagId"
+        "page", "size", "sort", "tagId", "tagOperator"
     );
 
     private DynamicSpecification() {

@@ -6,6 +6,7 @@ import {
   inject,
   signal,
 } from '@angular/core';
+import { FormsModule } from '@angular/forms';
 import { Title } from '@angular/platform-browser';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -23,7 +24,7 @@ interface NavigationItem {
 
 @Component({
   selector: 'app-shell',
-  imports: [RouterLink, RouterLinkActive, RouterOutlet],
+  imports: [FormsModule, RouterLink, RouterLinkActive, RouterOutlet],
   templateUrl: './app-shell.component.html',
   styleUrl: './app-shell.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -69,8 +70,8 @@ export class AppShellComponent {
     this.searchTerm.set((event.target as HTMLInputElement).value);
   }
 
-  protected updateLocale(event: Event): void {
-    this.localization.setLocale((event.target as HTMLSelectElement).value);
+  protected updateLocale(locale: string): void {
+    this.localization.setLocale(locale);
   }
 
   protected logout(): void {

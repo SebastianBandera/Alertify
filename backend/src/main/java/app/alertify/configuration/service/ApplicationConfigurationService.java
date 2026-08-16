@@ -2,6 +2,7 @@ package app.alertify.configuration.service;
 
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -65,8 +66,11 @@ public class ApplicationConfigurationService {
             DynamicSpecification.from(params, FILTER_ALIASES, FILTER_FIELDS);
 
         Set<Long> tagIds = parseTagIds(params.get("tagId"));
+        boolean matchAllTags = parseMatchAllTags(params.get("tagOperator"));
         if (!tagIds.isEmpty()) {
-            specification = specification.and(ApplicationConfigurationSpecifications.hasAnyTagId(tagIds));
+            specification = specification.and(matchAllTags
+                ? ApplicationConfigurationSpecifications.hasAllTagIds(tagIds)
+                : ApplicationConfigurationSpecifications.hasAnyTagId(tagIds));
         }
 
         return configurationRepository.findAll(specification, pageable)
@@ -181,6 +185,17 @@ public class ApplicationConfigurationService {
         } catch (RuntimeException exception) {
             throw new InvalidFilterException("tagId", exception);
         }
+    }
+
+    private static boolean parseMatchAllTags(List<String> rawValues) {
+        if (rawValues == null || rawValues.isEmpty()) return false;
+        if (rawValues.size() != 1) throw new InvalidFilterException("tagOperator");
+
+        return switch (rawValues.get(0).trim().toUpperCase(Locale.ROOT)) {
+            case "OR" -> false;
+            case "AND" -> true;
+            default -> throw new InvalidFilterException("tagOperator");
+        };
     }
 
     private static Set<Long> tagIds(Set<Tag> tags) {

@@ -13,6 +13,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.util.LinkedMultiValueMap;
 
 import app.alertify.api.error.ConflictException;
 import app.alertify.configuration.api.ConfigurationCreateRequest;
@@ -21,6 +23,7 @@ import app.alertify.jpa.entity.ApplicationConfiguration;
 import app.alertify.jpa.entity.ConfigurationValueType;
 import app.alertify.jpa.repository.ApplicationConfigurationRepository;
 import app.alertify.jpa.repository.TagRepository;
+import app.alertify.jpa.specification.InvalidFilterException;
 import tools.jackson.databind.node.IntNode;
 import tools.jackson.databind.node.StringNode;
 
@@ -100,5 +103,19 @@ class ApplicationConfigurationServiceTest {
             .hasMessageContaining("cannot be deleted");
 
         verify(configurationRepository, never()).delete(configuration);
+    }
+
+    @Test
+    void rejectsUnknownTagOperator() {
+        ApplicationConfigurationService service = new ApplicationConfigurationService(
+            configurationRepository, tagRepository, new ConfigurationValueValidator()
+        );
+        var params = new LinkedMultiValueMap<String, String>();
+        params.add("tagId", "1");
+        params.add("tagOperator", "XOR");
+
+        assertThatThrownBy(() -> service.search(params, PageRequest.of(0, 20)))
+            .isInstanceOf(InvalidFilterException.class)
+            .hasMessageContaining("tagOperator");
     }
 }

@@ -90,7 +90,10 @@
       <div class="workspace__actions">
         <label class="language-selector">
           <span>{{ localization.translate('language.label') }}</span>
-          <select [value]="localization.locale()" (change)="updateLocale($event)">
+          <select
+            [ngModel]="localization.locale()"
+            (ngModelChange)="updateLocale($event)"
+          >
             @for (localeOption of localization.localeOptions; track localeOption.value) {
               <option [value]="localeOption.value">{{ localeOption.label }}</option>
             }

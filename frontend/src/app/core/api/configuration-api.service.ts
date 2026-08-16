@@ -12,6 +12,8 @@ export type ConfigurationValueType =
   | 'DATE_TIME'
   | 'JSON';
 
+export type TagMatchMode = 'OR' | 'AND';
+
 export interface ConfigurationTag {
   readonly id: number;
   readonly version: number;
@@ -69,10 +71,12 @@ export class ConfigurationApiService {
   async listConfigurations(
     search: string,
     tagIds: readonly number[],
+    tagMatchMode: TagMatchMode,
   ): Promise<readonly ApplicationConfiguration[]> {
     const params = new URLSearchParams({ page: '0', size: '200', sort: 'name,asc' });
     if (search.trim()) params.set('name', `~*${search.trim()}*`);
     tagIds.forEach((tagId) => params.append('tagId', String(tagId)));
+    if (tagIds.length >= 2) params.set('tagOperator', tagMatchMode);
     const page = await this.request<PageResponse<ApplicationConfiguration>>(
       `/api/configurations?${params.toString()}`,
     );

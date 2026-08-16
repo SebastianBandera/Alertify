@@ -6,6 +6,7 @@ import {
   ConfigurationApiService,
   ConfigurationTag,
   ConfigurationValueType,
+  TagMatchMode,
 } from '../../core/api/configuration-api.service';
 import { LocalizationService } from '../../core/i18n/localization.service';
 
@@ -52,7 +53,7 @@ export class ConfigsComponent implements OnInit {
   protected readonly error = signal<string | null>(null);
   protected readonly searchTerm = signal('');
   protected readonly selectedTagIds = signal<readonly number[]>([]);
-  protected readonly tagFilterSelection = signal('');
+  protected readonly tagMatchMode = signal<TagMatchMode>('OR');
   protected readonly selectedFilterTags = computed(() => {
     const tagsById = new Map(this.tags().map((tag) => [tag.id, tag]));
     return this.selectedTagIds().flatMap((tagId) => {
@@ -85,7 +86,11 @@ export class ConfigsComponent implements OnInit {
     this.error.set(null);
     try {
       this.configurations.set(
-        await this.api.listConfigurations(this.searchTerm(), this.selectedTagIds()),
+        await this.api.listConfigurations(
+          this.searchTerm(),
+          this.selectedTagIds(),
+          this.tagMatchMode(),
+        ),
       );
     } catch (error) {
       this.error.set(this.errorMessage(error));
@@ -106,8 +111,10 @@ export class ConfigsComponent implements OnInit {
     this.searchTerm.set(value);
   }
 
-  protected addTagFilter(value: string): void {
-    this.tagFilterSelection.set('');
+  protected addTagFilter(event: Event): void {
+    const select = event.target as HTMLSelectElement;
+    const value = select.value;
+    select.value = '';
     if (!value) return;
 
     const tagId = Number(value);
@@ -126,6 +133,12 @@ export class ConfigsComponent implements OnInit {
   protected removeTagFilter(tagId: number): void {
     this.selectedTagIds.update((tagIds) => tagIds.filter((currentId) => currentId !== tagId));
     void this.loadConfigurations();
+  }
+
+  protected updateTagMatchMode(mode: TagMatchMode): void {
+    if (this.tagMatchMode() === mode) return;
+    this.tagMatchMode.set(mode);
+    if (this.selectedTagIds().length >= 2) void this.loadConfigurations();
   }
 
   protected openCreate(): void {

@@ -164,6 +164,31 @@ select:disabled {
   outline: none;
 }
 
+.tag-match-mode {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid #d0d5dd;
+  border-radius: 8px;
+  background: #f9fafb;
+}
+
+.tag-match-mode button {
+  height: 26px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #667085;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.tag-match-mode .tag-match-mode__option--active {
+  background: white;
+  color: var(--primary-strong);
+}
+
 .button {
   min-height: 40px;
   display: inline-flex;
