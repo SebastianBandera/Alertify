@@ -305,6 +305,41 @@ function allowedValue(environment, key, allowedValues) {
   return value;
 }
 
+function portValue(environment, key) {
+  const rawValue = required(environment, key);
+  if (!/^\d+$/.test(rawValue)) {
+    throw new Error(`${key} must be an integer between 1 and 65535; received: ${rawValue}.`);
+  }
+  const value = Number(rawValue);
+  if (!Number.isSafeInteger(value) || value < 1 || value > 65535) {
+    throw new Error(`${key} must be an integer between 1 and 65535; received: ${rawValue}.`);
+  }
+  return value;
+}
+
+function validateUrlPort(environment, key, expectedPort) {
+  const rawValue = required(environment, key);
+  let url;
+  try {
+    url = new URL(rawValue);
+  } catch {
+    throw new Error(`${key} must be an absolute URL; received: ${rawValue}.`);
+  }
+
+  const effectivePort = url.port
+    ? Number(url.port)
+    : url.protocol === 'http:'
+      ? 80
+      : url.protocol === 'https:'
+        ? 443
+        : null;
+  if (effectivePort !== expectedPort) {
+    throw new Error(
+      `${key} must use the publication port ${expectedPort}; received: ${rawValue}.`,
+    );
+  }
+}
+
 function redactUrl(value) {
   try {
     const parsed = new URL(value);
@@ -321,6 +356,7 @@ function buildPlan(environment) {
   const keycloakMode = mode(environment, 'KEYCLOAK_MODE');
   const backendMode = mode(environment, 'BACKEND_MODE');
   const frontendMode = mode(environment, 'FRONTEND_MODE');
+  const publicPort = portValue(environment, 'PUBLIC_PORT');
   const plan = {
     redisMode,
     redisUrl: required(environment, 'REDIS_URL'),
@@ -330,6 +366,9 @@ function buildPlan(environment) {
     backendUrl: required(environment, 'BACKEND_PUBLIC_URL'),
     frontendMode,
     frontendUrl: required(environment, 'APP_PUBLIC_URL'),
+    publicPort,
+    publisherUrl: required(environment, 'APP_PUBLIC_URL'),
+    keycloakAdminUrl: null,
     backendDebugEnabled: false,
     backendDebugPort: null,
     backendDebugSuspend: null,
@@ -337,6 +376,14 @@ function buildPlan(environment) {
     applicationDatabaseMode: null,
     services: [],
   };
+
+  required(environment, 'FRONTEND_RUNTIME_IMAGE');
+  required(environment, 'PUBLISHER_IMAGE');
+  required(environment, 'PUBLISHER_FRONTEND_UPSTREAM');
+  required(environment, 'PUBLISHER_BACKEND_UPSTREAM');
+  required(environment, 'PUBLISHER_IDENTITY_UPSTREAM');
+  required(environment, 'PUBLISHER_CONTAINER_MEMORY');
+  validateUrlPort(environment, 'APP_PUBLIC_URL', publicPort);
 
   if (redisMode === 'local') {
     required(environment, 'CACHE_PASSWORD');
@@ -352,6 +399,11 @@ function buildPlan(environment) {
     required(environment, 'IDENTITY_DB_NAME');
     required(environment, 'IDENTITY_DB_USER');
     required(environment, 'IDENTITY_DB_PASSWORD');
+    required(environment, 'OIDC_REALM');
+    const keycloakAdminPort = portValue(environment, 'KEYCLOAK_HTTP_PORT');
+    plan.keycloakAdminUrl = required(environment, 'KEYCLOAK_ADMIN_URL');
+    validateUrlPort(environment, 'KEYCLOAK_ADMIN_URL', keycloakAdminPort);
+    validateUrlPort(environment, 'KEYCLOAK_PUBLIC_URL', publicPort);
 
     if (plan.identityDatabaseMode === 'local') {
       plan.services.push({ name: 'identity-database', build: false });
@@ -373,6 +425,10 @@ function buildPlan(environment) {
     required(environment, 'OIDC_ISSUER_URI');
     required(environment, 'OIDC_JWK_SET_URI');
     required(environment, 'OIDC_BACKEND_AUDIENCE');
+    validateUrlPort(environment, 'BACKEND_PUBLIC_URL', publicPort);
+    if (keycloakMode === 'local') {
+      validateUrlPort(environment, 'OIDC_ISSUER_URI', publicPort);
+    }
     plan.backendDebugEnabled = booleanValue(environment, 'BACKEND_DEBUG_ENABLED');
     plan.backendDebugPort = required(environment, 'BACKEND_DEBUG_PORT');
     plan.backendDebugSuspend = allowedValue(
@@ -398,13 +454,14 @@ function buildPlan(environment) {
     required(environment, 'FRONTEND_BUILD_IMAGE');
     required(environment, 'FRONTEND_RUNTIME_IMAGE');
     required(environment, 'FRONTEND_IMAGE');
-    required(environment, 'FRONTEND_HTTP_PORT');
     required(environment, 'KEYCLOAK_PUBLIC_URL');
     required(environment, 'OIDC_REALM');
     required(environment, 'OIDC_FRONTEND_CLIENT_ID');
     required(environment, 'FRONTEND_CONTAINER_MEMORY');
     plan.services.push({ name: 'frontend', build: true });
   }
+
+  plan.services.push({ name: 'publisher', build: true });
 
   const serviceOrder = new Map([
     ['identity-database', 10],
@@ -413,6 +470,7 @@ function buildPlan(environment) {
     ['identity', 40],
     ['backend', 50],
     ['frontend', 60],
+    ['publisher', 70],
   ]);
   plan.services.sort(
     (left, right) => serviceOrder.get(left.name) - serviceOrder.get(right.name),
@@ -471,6 +529,13 @@ function printPlan(plan, environment) {
     console.log(`  - Frontend: local (${redactUrl(plan.frontendUrl)})`);
   } else {
     console.log(`  - Frontend: external, reusing ${redactUrl(plan.frontendUrl)}`);
+  }
+
+  console.log(`  - HTTP publisher: local (${redactUrl(plan.publisherUrl)})`);
+  if (plan.keycloakAdminUrl) {
+    console.log(
+      `  - Keycloak master administration: direct local access (${redactUrl(plan.keycloakAdminUrl)})`,
+    );
   }
 }
 

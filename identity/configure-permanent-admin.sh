@@ -5,6 +5,9 @@ set -Eeuo pipefail
 : "${KC_BOOTSTRAP_ADMIN_PASSWORD:?KC_BOOTSTRAP_ADMIN_PASSWORD is required}"
 : "${KEYCLOAK_ADMIN_USERNAME:?KEYCLOAK_ADMIN_USERNAME is required}"
 : "${KEYCLOAK_ADMIN_PASSWORD:?KEYCLOAK_ADMIN_PASSWORD is required}"
+: "${OIDC_REALM:?OIDC_REALM is required}"
+: "${OIDC_FRONTEND_CLIENT_ID:?OIDC_FRONTEND_CLIENT_ID is required}"
+: "${APP_PUBLIC_URL:?APP_PUBLIC_URL is required}"
 
 if [[ "$KC_BOOTSTRAP_ADMIN_USERNAME" == "$KEYCLOAK_ADMIN_USERNAME" ]]; then
   echo "The bootstrap and permanent administrator usernames must be different." >&2
@@ -28,7 +31,7 @@ authenticate() {
   rm -f "$kcadm_config"
   /opt/keycloak/bin/kcadm.sh config credentials \
     --config "$kcadm_config" \
-    --server http://127.0.0.1:8080 \
+    --server http://127.0.0.1:8080/identity \
     --realm master \
     --user "$username" \
     --password "$password" >/dev/null 2>&1
@@ -89,6 +92,30 @@ if [[ "$authenticated_as" == bootstrap ]]; then
   authenticate "$KEYCLOAK_ADMIN_USERNAME" "$KEYCLOAK_ADMIN_PASSWORD"
 fi
 
+app_public_url=${APP_PUBLIC_URL%/}
+frontend_client_internal_id=$(
+  /opt/keycloak/bin/kcadm.sh get clients \
+    --config "$kcadm_config" \
+    -r "$OIDC_REALM" \
+    --query "clientId=$OIDC_FRONTEND_CLIENT_ID" \
+    --fields id,clientId |
+    sed -n 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' |
+    head -n 1
+)
+
+if [[ -z "$frontend_client_internal_id" ]]; then
+  echo "Could not find frontend client '$OIDC_FRONTEND_CLIENT_ID' in realm '$OIDC_REALM'." >&2
+  exit 1
+fi
+
+/opt/keycloak/bin/kcadm.sh update "clients/$frontend_client_internal_id" \
+  --config "$kcadm_config" \
+  -r "$OIDC_REALM" \
+  --set "redirectUris=[\"${app_public_url}/*\"]" \
+  --set "webOrigins=[\"${app_public_url}\"]" \
+  --set "attributes.\"pkce.code.challenge.method\"=\"S256\"" \
+  --set "attributes.\"post.logout.redirect.uris\"=\"${app_public_url}/*\""
+
 bootstrap_admin_id=$(
   /opt/keycloak/bin/kcadm.sh get users \
     --config "$kcadm_config" \
@@ -117,3 +144,5 @@ elif [[ "$bootstrap_removed" == true ]]; then
 else
   echo "The permanent Keycloak administrator already exists; no bootstrap changes were required."
 fi
+
+echo "Frontend client '$OIDC_FRONTEND_CLIENT_ID' uses '$app_public_url' for redirects and web origins."

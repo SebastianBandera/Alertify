@@ -5,6 +5,7 @@ FROM ${KEYCLOAK_IMAGE} AS builder
 # These are non-secret build-time options persisted in the optimized image.
 ENV KC_DB=postgres
 ENV KC_HEALTH_ENABLED=true
+ENV KC_HTTP_RELATIVE_PATH=/identity
 
 RUN /opt/keycloak/bin/kc.sh build
 

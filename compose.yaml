@@ -1,6 +1,36 @@
 name: ${COMPOSE_PROJECT_NAME:?Set COMPOSE_PROJECT_NAME in .env}
 
 services:
+  publisher:
+    profiles:
+      - local-publisher
+    container_name: ${COMPOSE_PROJECT_NAME}-publisher
+    build:
+      context: ./publisher
+      dockerfile: Dockerfile
+      args:
+        PUBLISHER_BASE_IMAGE: ${FRONTEND_RUNTIME_IMAGE:?Set FRONTEND_RUNTIME_IMAGE in .env}
+    image: ${PUBLISHER_IMAGE:?Set PUBLISHER_IMAGE in .env}
+    pull_policy: build
+    environment:
+      NGINX_ENVSUBST_FILTER: ^(PUBLIC_PORT|PUBLISHER_)
+      PUBLIC_PORT: ${PUBLIC_PORT:?Set PUBLIC_PORT in .env}
+      PUBLISHER_FRONTEND_UPSTREAM: ${PUBLISHER_FRONTEND_UPSTREAM:?Set PUBLISHER_FRONTEND_UPSTREAM in .env}
+      PUBLISHER_BACKEND_UPSTREAM: ${PUBLISHER_BACKEND_UPSTREAM:?Set PUBLISHER_BACKEND_UPSTREAM in .env}
+      PUBLISHER_IDENTITY_UPSTREAM: ${PUBLISHER_IDENTITY_UPSTREAM:?Set PUBLISHER_IDENTITY_UPSTREAM in .env}
+    ports:
+      - "${BIND_ADDRESS:?Set BIND_ADDRESS in .env}:${PUBLIC_PORT:?Set PUBLIC_PORT in .env}:8080"
+    mem_limit: ${PUBLISHER_CONTAINER_MEMORY:?Set PUBLISHER_CONTAINER_MEMORY in .env}
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget --quiet --output-document=- http://127.0.0.1:8080/publisher-health | grep -q UP
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    restart: unless-stopped
+
   cache:
     profiles:
       - local-cache
@@ -75,7 +105,9 @@ services:
       KEYCLOAK_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME:?Set KEYCLOAK_ADMIN_USERNAME in .env}
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?Set KEYCLOAK_ADMIN_PASSWORD in .env}
       KC_HTTP_ENABLED: "true"
-      KC_HOSTNAME: ${KEYCLOAK_PUBLIC_URL:?Set KEYCLOAK_PUBLIC_URL in .env}
+      KC_HOSTNAME_STRICT: "false"
+      KC_HTTP_RELATIVE_PATH: /identity
+      KC_PROXY_HEADERS: xforwarded
       OIDC_REALM: ${OIDC_REALM:?Set OIDC_REALM in .env}
       APP_DISPLAY_NAME: ${APP_DISPLAY_NAME:?Set APP_DISPLAY_NAME in .env}
       APP_PUBLIC_URL: ${APP_PUBLIC_URL:?Set APP_PUBLIC_URL in .env}
@@ -86,7 +118,7 @@ services:
       APP_VIEWER_USERNAME: ${APP_VIEWER_USERNAME:?Set APP_VIEWER_USERNAME in .env}
       APP_VIEWER_PASSWORD: ${APP_VIEWER_PASSWORD:?Set APP_VIEWER_PASSWORD in .env}
     ports:
-      - "${BIND_ADDRESS:?Set BIND_ADDRESS in .env}:${KEYCLOAK_HTTP_PORT:?Set KEYCLOAK_HTTP_PORT in .env}:8080"
+      - "127.0.0.1:${KEYCLOAK_HTTP_PORT:?Set KEYCLOAK_HTTP_PORT in .env}:8080"
     extra_hosts:
       - host.docker.internal:host-gateway
     post_start:
@@ -101,7 +133,7 @@ services:
         - >-
           test -f /tmp/permanent-admin-ready;
           exec 3<>/dev/tcp/127.0.0.1/9000;
-          printf 'GET /health/ready HTTP/1.0\r\n\r\n' >&3;
+          printf 'GET /identity/health/ready HTTP/1.0\r\n\r\n' >&3;
           grep -q '200 OK' <&3
       interval: 10s
       timeout: 5s
@@ -165,7 +197,6 @@ services:
       JAVA_DEBUG_SUSPEND: ${BACKEND_DEBUG_SUSPEND:?Set BACKEND_DEBUG_SUSPEND in .env}
       TZ: ${TIME_ZONE:?Set TIME_ZONE in .env}
     ports:
-      - "${BIND_ADDRESS:?Set BIND_ADDRESS in .env}:${BACKEND_HTTP_PORT:?Set BACKEND_HTTP_PORT in .env}:8080"
       - "${BIND_ADDRESS:?Set BIND_ADDRESS in .env}:${BACKEND_DEBUG_PORT:?Set BACKEND_DEBUG_PORT in .env}:${BACKEND_DEBUG_PORT:?Set BACKEND_DEBUG_PORT in .env}"
     mem_limit: ${BACKEND_CONTAINER_MEMORY:?Set BACKEND_CONTAINER_MEMORY in .env}
     extra_hosts:
@@ -199,8 +230,6 @@ services:
       OIDC_BACKEND_AUDIENCE: ${OIDC_BACKEND_AUDIENCE:?Set OIDC_BACKEND_AUDIENCE in .env}
       BACKEND_PUBLIC_URL: ${BACKEND_PUBLIC_URL:?Set BACKEND_PUBLIC_URL in .env}
       TZ: ${TIME_ZONE:?Set TIME_ZONE in .env}
-    ports:
-      - "${BIND_ADDRESS:?Set BIND_ADDRESS in .env}:${FRONTEND_HTTP_PORT:?Set FRONTEND_HTTP_PORT in .env}:8080"
     mem_limit: ${FRONTEND_CONTAINER_MEMORY:?Set FRONTEND_CONTAINER_MEMORY in .env}
     healthcheck:
       test:
