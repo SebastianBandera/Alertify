@@ -26,7 +26,7 @@ import jakarta.persistence.Version;
 @AuditTable(value = "tags_aud", schema = "audit")
 @Table(
     name = "tags",
-    schema = "public",
+    schema = "core",
     uniqueConstraints = @UniqueConstraint(
         name = "uq_tags_scope_name",
         columnNames = { "scope", "name" }

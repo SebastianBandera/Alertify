@@ -17,6 +17,7 @@ spring:
       maximum-pool-size: 10
       connection-timeout: 30000
       validation-timeout: 5000
+      schema: core
   jpa:
     open-in-view: false
     show-sql: false
@@ -24,9 +25,11 @@ spring:
       ddl-auto: validate
     properties:
       hibernate:
-        default_schema: public
+        default_schema: core
         jdbc:
           time_zone: UTC
+        type:
+          json_format_mapper: app.alertify.jpa.json.AlertifyJackson3JsonFormatMapper
       org:
         hibernate:
           envers:

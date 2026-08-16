@@ -37,7 +37,7 @@ import jakarta.persistence.Version;
 @AuditTable(value = "configurations_aud", schema = "audit")
 @Table(
     name = "configurations",
-    schema = "public",
+    schema = "core",
     uniqueConstraints = @UniqueConstraint(
         name = "uq_configurations_name",
         columnNames = "name"
@@ -81,7 +81,7 @@ public class ApplicationConfiguration {
     @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(
         name = "configuration_tag",
-        schema = "public",
+        schema = "core",
         joinColumns = @JoinColumn(name = "configuration_id"),
         inverseJoinColumns = @JoinColumn(name = "tag_id")
     )
