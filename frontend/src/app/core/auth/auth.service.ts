@@ -4,10 +4,16 @@ import { KeycloakRuntimeConfig } from '../config/runtime-config';
 
 export class AuthService {
   private readonly keycloak: Keycloak;
+  private readonly rolesClientId: string;
   private profile: KeycloakProfile | undefined;
 
   constructor(config: KeycloakRuntimeConfig) {
-    this.keycloak = new Keycloak(config);
+    this.rolesClientId = config.rolesClientId;
+    this.keycloak = new Keycloak({
+      url: config.url,
+      realm: config.realm,
+      clientId: config.clientId,
+    });
   }
 
   async initialize(): Promise<void> {
@@ -37,6 +43,18 @@ export class AuthService {
 
   get userInitial(): string {
     return this.displayName.charAt(0).toUpperCase();
+  }
+
+  get isAdmin(): boolean {
+    return this.keycloak.hasResourceRole('ADMIN', this.rolesClientId);
+  }
+
+  async getAccessToken(): Promise<string> {
+    await this.keycloak.updateToken(30);
+    if (!this.keycloak.token) {
+      throw new Error('The authenticated access token is unavailable.');
+    }
+    return this.keycloak.token;
   }
 
   logout(): Promise<void> {

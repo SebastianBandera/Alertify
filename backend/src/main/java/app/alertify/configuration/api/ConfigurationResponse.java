@@ -15,6 +15,9 @@ public record ConfigurationResponse(
     ConfigurationValueType valueType,
     JsonNode value,
     Set<TagResponse> tags,
+    boolean systemManaged,
+    boolean deletable,
+    ConfigurationWarning changeWarning,
     Instant createdAt,
     Instant updatedAt
 ) {

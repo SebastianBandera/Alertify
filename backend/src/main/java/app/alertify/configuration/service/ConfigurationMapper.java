@@ -23,6 +23,9 @@ final class ConfigurationMapper {
             configuration.getId(), configuration.getVersion(), configuration.getName(),
             configuration.getDescription(), configuration.getValueType(),
             configuration.getValue().deepCopy(), tags,
+            SystemConfigurationPolicy.isSystemManaged(configuration.getName()),
+            SystemConfigurationPolicy.isDeletable(configuration.getName()),
+            SystemConfigurationPolicy.warning(configuration.getName()),
             configuration.getCreatedAt(), configuration.getUpdatedAt()
         );
     }

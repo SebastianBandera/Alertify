@@ -78,5 +78,7 @@ info:
 
 security:
   roles-client-id: ${OIDC_BACKEND_AUDIENCE}
+  cors:
+    allowed-origin: ${APP_PUBLIC_URL}
   symmetric-key:
     environment-part: ${KEY_ENV_PART}

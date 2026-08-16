@@ -81,6 +81,7 @@ public class ApplicationConfigurationService {
     @Transactional
     public ConfigurationResponse create(ConfigurationCreateRequest request) {
         String name = normalizeRequired(request.name());
+        SystemConfigurationPolicy.validateCreation(name);
         ensureNameAvailable(name, null);
 
         JsonNode value = valueValidator.validateAndNormalize(request.valueType(), request.value());
@@ -99,6 +100,14 @@ public class ApplicationConfigurationService {
         String name = normalizeRequired(request.name());
         String description = normalizeOptional(request.description());
         JsonNode value = valueValidator.validateAndNormalize(request.valueType(), request.value());
+        SystemConfigurationPolicy.validateUpdate(
+            configuration, name, request.valueType(), value
+        );
+        if (SystemConfigurationPolicy.isSystemManaged(configuration.getName())) {
+            value = tools.jackson.databind.node.StringNode.valueOf(
+                SystemConfigurationPolicy.normalizeKeyPart(value.stringValue())
+            );
+        }
         Set<Tag> tags = resolveConfigurationTags(request.tagIds());
         boolean changed = false;
 
@@ -129,6 +138,7 @@ public class ApplicationConfigurationService {
     public void delete(Long id, long version) {
         ApplicationConfiguration configuration = find(id);
         verifyVersion(configuration.getVersion(), version, "Configuration");
+        SystemConfigurationPolicy.validateDeletion(configuration);
         configurationRepository.delete(configuration);
         configurationRepository.flush();
     }

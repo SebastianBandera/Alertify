@@ -5,7 +5,7 @@ import { provideRouter } from '@angular/router';
 import { AppComponent } from './app/app.component';
 import { routes } from './app/app.routes';
 import { AuthService } from './app/core/auth/auth.service';
-import { loadRuntimeConfig } from './app/core/config/runtime-config';
+import { loadRuntimeConfig, RUNTIME_CONFIG } from './app/core/config/runtime-config';
 
 async function startApplication(): Promise<void> {
   const runtimeConfig = await loadRuntimeConfig();
@@ -17,6 +17,7 @@ async function startApplication(): Promise<void> {
     providers: [
       provideZonelessChangeDetection(),
       provideRouter(routes),
+      { provide: RUNTIME_CONFIG, useValue: runtimeConfig },
       { provide: AuthService, useValue: authService },
     ],
   });

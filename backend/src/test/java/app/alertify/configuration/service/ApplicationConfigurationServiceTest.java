@@ -1,6 +1,7 @@
 package app.alertify.configuration.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -13,12 +14,15 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import app.alertify.api.error.ConflictException;
+import app.alertify.configuration.api.ConfigurationCreateRequest;
 import app.alertify.configuration.api.ConfigurationUpdateRequest;
 import app.alertify.jpa.entity.ApplicationConfiguration;
 import app.alertify.jpa.entity.ConfigurationValueType;
 import app.alertify.jpa.repository.ApplicationConfigurationRepository;
 import app.alertify.jpa.repository.TagRepository;
 import tools.jackson.databind.node.IntNode;
+import tools.jackson.databind.node.StringNode;
 
 @ExtendWith(MockitoExtension.class)
 class ApplicationConfigurationServiceTest {
@@ -63,5 +67,38 @@ class ApplicationConfigurationServiceTest {
         ));
 
         verify(configurationRepository).flush();
+    }
+
+    @Test
+    void rejectsManualCreationOfKeyPart() {
+        ApplicationConfigurationService service = new ApplicationConfigurationService(
+            configurationRepository, tagRepository, new ConfigurationValueValidator()
+        );
+
+        assertThatThrownBy(() -> service.create(new ConfigurationCreateRequest(
+            "KEY_PART", null, ConfigurationValueType.STRING,
+            StringNode.valueOf("a".repeat(64)), Set.of()
+        ))).isInstanceOf(ConflictException.class)
+            .hasMessageContaining("created automatically");
+
+        verify(configurationRepository, never()).saveAndFlush(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void rejectsDeletionOfKeyPart() {
+        ApplicationConfiguration configuration = new ApplicationConfiguration(
+            "KEY_PART", null, ConfigurationValueType.STRING,
+            StringNode.valueOf("a".repeat(64)), Set.of()
+        );
+        when(configurationRepository.findById(1L)).thenReturn(Optional.of(configuration));
+        ApplicationConfigurationService service = new ApplicationConfigurationService(
+            configurationRepository, tagRepository, new ConfigurationValueValidator()
+        );
+
+        assertThatThrownBy(() -> service.delete(1L, 0L))
+            .isInstanceOf(ConflictException.class)
+            .hasMessageContaining("cannot be deleted");
+
+        verify(configurationRepository, never()).delete(configuration);
     }
 }

@@ -1,7 +1,9 @@
 {
+  "apiBaseUrl": "${BACKEND_PUBLIC_URL}",
   "keycloak": {
     "url": "${KEYCLOAK_PUBLIC_URL}",
     "realm": "${OIDC_REALM}",
-    "clientId": "${OIDC_FRONTEND_CLIENT_ID}"
+    "clientId": "${OIDC_FRONTEND_CLIENT_ID}",
+    "rolesClientId": "${OIDC_BACKEND_AUDIENCE}"
   }
 }

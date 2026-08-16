@@ -13,18 +13,24 @@ public class SymmetricKeyService {
 
     private static final String KEY_ALGORITHM = "AES";
 
-    private final byte[] keyBytes;
+    private final DatabaseKeyPartSource databaseKeyPartSource;
+    private final EnvironmentKeyPartSource environmentKeyPartSource;
+    private final Sha256HashService sha256HashService;
 
-    public SymmetricKeyService(EnvironmentKeyPartSource environmentKeyPartSource, Sha256HashService sha256HashService) {
-        // The database-backed source will replace this empty part when it is implemented.
-        byte[] databaseKeyPart = new byte[0];
-        byte[] environmentKeyPart = environmentKeyPartSource.read().getBytes(StandardCharsets.UTF_8);
-
-        this.keyBytes = sha256HashService.hash(encodeKeyParts(databaseKeyPart, environmentKeyPart));
+    public SymmetricKeyService(
+            DatabaseKeyPartSource databaseKeyPartSource,
+            EnvironmentKeyPartSource environmentKeyPartSource,
+            Sha256HashService sha256HashService) {
+        this.databaseKeyPartSource = databaseKeyPartSource;
+        this.environmentKeyPartSource = environmentKeyPartSource;
+        this.sha256HashService = sha256HashService;
     }
 
     public SecretKey getKey() {
-        return new SecretKeySpec(keyBytes.clone(), KEY_ALGORITHM);
+        byte[] databaseKeyPart = databaseKeyPartSource.read();
+        byte[] environmentKeyPart = environmentKeyPartSource.read().getBytes(StandardCharsets.UTF_8);
+        byte[] keyBytes = sha256HashService.hash(encodeKeyParts(databaseKeyPart, environmentKeyPart));
+        return new SecretKeySpec(keyBytes, KEY_ALGORITHM);
     }
 
     private static byte[] encodeKeyParts(byte[] databaseKeyPart, byte[] environmentKeyPart) {

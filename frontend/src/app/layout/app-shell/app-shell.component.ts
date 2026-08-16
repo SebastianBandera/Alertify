@@ -35,7 +35,9 @@ export class AppShellComponent {
   private readonly title = inject(Title);
   protected readonly navigationItems: readonly NavigationItem[] = [
     { labelKey: 'navigation.dashboard', path: '/dashboard', icon: 'dashboard' },
-    { labelKey: 'navigation.configs', path: '/configs', icon: 'configs' },
+    ...(this.authService.isAdmin
+      ? [{ labelKey: 'navigation.configs' as const, path: '/configs', icon: 'configs' as const }]
+      : []),
     { labelKey: 'navigation.secrets', path: '/secrets', icon: 'secrets' },
     { labelKey: 'navigation.logs', path: '/logs', icon: 'logs' },
   ];

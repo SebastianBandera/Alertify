@@ -1,6 +1,7 @@
 import { Routes } from '@angular/router';
 
 import { AppShellComponent } from './layout/app-shell/app-shell.component';
+import { adminGuard } from './core/auth/admin.guard';
 
 export const routes: Routes = [
   {
@@ -18,6 +19,7 @@ export const routes: Routes = [
       {
         path: 'configs',
         title: 'Configs | Alertify',
+        canActivate: [adminGuard],
         loadComponent: () =>
           import('./features/configs/configs.component').then(
             (component) => component.ConfigsComponent,

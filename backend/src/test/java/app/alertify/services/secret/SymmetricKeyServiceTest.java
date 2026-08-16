@@ -3,6 +3,8 @@ package app.alertify.services.secret;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -14,11 +16,19 @@ class SymmetricKeyServiceTest {
 
     @Test
     void derivesAes256KeyWithDatabasePartBeforeEnvironmentPart() throws Exception {
+        byte[] databaseKeyPart = "database-key-part".getBytes(StandardCharsets.UTF_8);
         byte[] environmentKeyPart = "environment-key-part".getBytes(StandardCharsets.UTF_8);
-        SymmetricKeyService service = new SymmetricKeyService(new EnvironmentKeyPartSource("environment-key-part"), new Sha256HashService());
+        DatabaseKeyPartSource databaseSource = mock(DatabaseKeyPartSource.class);
+        when(databaseSource.read()).thenReturn(databaseKeyPart);
+        SymmetricKeyService service = new SymmetricKeyService(
+            databaseSource,
+            new EnvironmentKeyPartSource("environment-key-part"),
+            new Sha256HashService()
+        );
 
         MessageDigest digest = MessageDigest.getInstance("SHA-256");
-        digest.update(ByteBuffer.allocate(Integer.BYTES).putInt(0).array());
+        digest.update(ByteBuffer.allocate(Integer.BYTES).putInt(databaseKeyPart.length).array());
+        digest.update(databaseKeyPart);
         digest.update(ByteBuffer.allocate(Integer.BYTES).putInt(environmentKeyPart.length).array());
         digest.update(environmentKeyPart);
 
