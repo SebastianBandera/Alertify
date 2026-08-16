@@ -54,10 +54,10 @@ public class ApplicationConfiguration {
     @Column(nullable = false)
     private long version;
 
-    @Column(nullable = false, length = 200)
+    @Column(nullable = false, columnDefinition = "text")
     private String name;
 
-    @Column(length = 2000)
+    @Column(columnDefinition = "text")
     private String description;
 
     @Enumerated(EnumType.STRING)

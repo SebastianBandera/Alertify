@@ -47,7 +47,7 @@ public class Tag {
     @Column(nullable = false, updatable = false, length = 32)
     private TagScope scope;
 
-    @Column(nullable = false, length = 100)
+    @Column(nullable = false, columnDefinition = "text")
     private String name;
 
     @Column(nullable = false, length = 7)
