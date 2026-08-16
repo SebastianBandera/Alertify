@@ -90,7 +90,7 @@ docker build ^
 if errorlevel 1 exit /b %ERRORLEVEL%
 
 docker run --rm ^
-    --name monitoring-bootstrap-runner
+    --name monitoring-bootstrap-runner ^
     --env DOCKER_HOST=unix:///var/run/docker.sock ^
     --env HOME=/tmp ^
     --mount "type=bind,source=%PROJECT_DIRECTORY%,target=/workspace" ^
