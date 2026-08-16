@@ -23,7 +23,7 @@
         [placeholder]="localization.translate('configs.searchPlaceholder')"
         [ngModel]="searchTerm()"
         (ngModelChange)="updateSearch($event)"
-        (keyup.enter)="loadConfigurations()"
+        (keyup.enter)="applySearch()"
       />
     </label>
     <div class="field field--filter">
@@ -78,7 +78,7 @@
         }
       </div>
     </div>
-    <button class="button button--secondary toolbar-button" type="button" (click)="loadConfigurations()">
+    <button class="button button--secondary toolbar-button" type="button" (click)="applySearch()">
       {{ localization.translate('configs.refresh') }}
     </button>
   </section>
@@ -149,6 +149,53 @@
       </table>
     }
   </div>
+
+  @if (!loading()) {
+    <footer
+      class="configs-pagination"
+      [attr.aria-label]="localization.translate('configs.pagination.label')"
+    >
+      <span class="configs-pagination__total">
+        {{ totalElements() }} {{ localization.translate('configs.pagination.records') }}
+      </span>
+      <div class="configs-pagination__controls">
+        <label>
+          <span>{{ localization.translate('configs.pagination.rowsPerPage') }}</span>
+          <select
+            [ngModel]="pageSize()"
+            (ngModelChange)="updatePageSize($event)"
+            [attr.aria-label]="localization.translate('configs.pagination.rowsPerPage')"
+          >
+            @for (option of pageSizeOptions; track option) {
+              <option [value]="option">{{ option }}</option>
+            }
+          </select>
+        </label>
+        <span class="configs-pagination__page">
+          {{ localization.translate('configs.pagination.page') }}
+          {{ totalPages() === 0 ? 0 : pageIndex() + 1 }}
+          {{ localization.translate('configs.pagination.of') }}
+          {{ totalPages() }}
+        </span>
+        <button
+          class="pagination-button"
+          type="button"
+          [disabled]="pageIndex() === 0"
+          [attr.aria-label]="localization.translate('configs.pagination.previous')"
+          [title]="localization.translate('configs.pagination.previous')"
+          (click)="goToPage(pageIndex() - 1)"
+        >‹</button>
+        <button
+          class="pagination-button"
+          type="button"
+          [disabled]="pageIndex() + 1 >= totalPages()"
+          [attr.aria-label]="localization.translate('configs.pagination.next')"
+          [title]="localization.translate('configs.pagination.next')"
+          (click)="goToPage(pageIndex() + 1)"
+        >›</button>
+      </div>
+    </footer>
+  }
 </article>
 
 @if (editorOpen()) {

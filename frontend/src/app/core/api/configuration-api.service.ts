@@ -54,8 +54,16 @@ export interface TagWriteRequest {
   readonly color: string;
 }
 
-interface PageResponse<T> {
+export interface PageMetadata {
+  readonly size: number;
+  readonly number: number;
+  readonly totalElements: number;
+  readonly totalPages: number;
+}
+
+export interface PageResponse<T> {
   readonly content: readonly T[];
+  readonly page: PageMetadata;
 }
 
 interface ApiErrorResponse {
@@ -72,15 +80,20 @@ export class ConfigurationApiService {
     search: string,
     tagIds: readonly number[],
     tagMatchMode: TagMatchMode,
-  ): Promise<readonly ApplicationConfiguration[]> {
-    const params = new URLSearchParams({ page: '0', size: '200', sort: 'name,asc' });
+    pageNumber: number,
+    pageSize: number,
+  ): Promise<PageResponse<ApplicationConfiguration>> {
+    const params = new URLSearchParams({
+      page: String(pageNumber),
+      size: String(pageSize),
+      sort: 'name,asc',
+    });
     if (search.trim()) params.set('name', `~*${search.trim()}*`);
     tagIds.forEach((tagId) => params.append('tagId', String(tagId)));
     if (tagIds.length >= 2) params.set('tagOperator', tagMatchMode);
-    const page = await this.request<PageResponse<ApplicationConfiguration>>(
+    return this.request<PageResponse<ApplicationConfiguration>>(
       `/api/configurations?${params.toString()}`,
     );
-    return page.content;
   }
 
   async createConfiguration(request: ConfigurationWriteRequest): Promise<ApplicationConfiguration> {

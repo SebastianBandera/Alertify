@@ -233,6 +233,60 @@ select:disabled {
   overflow-x: auto;
 }
 
+.configs-pagination {
+  min-height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 26px;
+  border-top: 1px solid var(--border);
+  background: #fcfcfd;
+  color: #667085;
+  font-size: 12px;
+}
+
+.configs-pagination__controls,
+.configs-pagination__controls label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.configs-pagination__controls label {
+  font-weight: 650;
+}
+
+.configs-pagination select {
+  width: 72px;
+  height: 32px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+.configs-pagination__page {
+  min-width: 92px;
+  text-align: center;
+}
+
+.pagination-button {
+  width: 32px;
+  height: 32px;
+  border: 1px solid #d0d5dd;
+  border-radius: 8px;
+  background: white;
+  color: #344054;
+  cursor: pointer;
+  font-size: 21px;
+  line-height: 1;
+}
+
+.pagination-button:disabled {
+  background: #f2f4f7;
+  color: #98a2b3;
+  cursor: not-allowed;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
@@ -609,6 +663,17 @@ td small {
 
   .configs__header-actions .button {
     flex: 1;
+  }
+
+  .configs-pagination {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 14px 18px;
+  }
+
+  .configs-pagination__controls {
+    width: 100%;
+    flex-wrap: wrap;
   }
 
   .modal-backdrop {

@@ -33,6 +33,18 @@ const VALUE_TYPES: readonly ConfigurationValueType[] = [
   'JSON',
 ];
 
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100, 250, 500, 1000] as const;
+const PAGE_SIZE_STORAGE_KEY = 'alertify.configs.page-size';
+
+function readStoredPageSize(): number {
+  try {
+    const storedValue = Number(localStorage.getItem(PAGE_SIZE_STORAGE_KEY));
+    return PAGE_SIZE_OPTIONS.some((pageSize) => pageSize === storedValue) ? storedValue : 10;
+  } catch {
+    return 10;
+  }
+}
+
 @Component({
   selector: 'app-configs',
   imports: [FormsModule],
@@ -43,6 +55,7 @@ const VALUE_TYPES: readonly ConfigurationValueType[] = [
 export class ConfigsComponent implements OnInit {
   protected readonly localization = inject(LocalizationService);
   protected readonly valueTypes = VALUE_TYPES;
+  protected readonly pageSizeOptions = PAGE_SIZE_OPTIONS;
 
   private readonly api = inject(ConfigurationApiService);
 
@@ -52,8 +65,13 @@ export class ConfigsComponent implements OnInit {
   protected readonly saving = signal(false);
   protected readonly error = signal<string | null>(null);
   protected readonly searchTerm = signal('');
+  protected readonly appliedSearchTerm = signal('');
   protected readonly selectedTagIds = signal<readonly number[]>([]);
   protected readonly tagMatchMode = signal<TagMatchMode>('OR');
+  protected readonly pageIndex = signal(0);
+  protected readonly pageSize = signal(readStoredPageSize());
+  protected readonly totalElements = signal(0);
+  protected readonly totalPages = signal(0);
   protected readonly selectedFilterTags = computed(() => {
     const tagsById = new Map(this.tags().map((tag) => [tag.id, tag]));
     return this.selectedTagIds().flatMap((tagId) => {
@@ -85,13 +103,17 @@ export class ConfigsComponent implements OnInit {
     this.loading.set(true);
     this.error.set(null);
     try {
-      this.configurations.set(
-        await this.api.listConfigurations(
-          this.searchTerm(),
-          this.selectedTagIds(),
-          this.tagMatchMode(),
-        ),
+      const result = await this.api.listConfigurations(
+        this.appliedSearchTerm(),
+        this.selectedTagIds(),
+        this.tagMatchMode(),
+        this.pageIndex(),
+        this.pageSize(),
       );
+      this.configurations.set(result.content);
+      this.pageIndex.set(result.page.number);
+      this.totalElements.set(result.page.totalElements);
+      this.totalPages.set(result.page.totalPages);
     } catch (error) {
       this.error.set(this.errorMessage(error));
     } finally {
@@ -111,6 +133,32 @@ export class ConfigsComponent implements OnInit {
     this.searchTerm.set(value);
   }
 
+  protected applySearch(): void {
+    this.appliedSearchTerm.set(this.searchTerm());
+    this.pageIndex.set(0);
+    void this.loadConfigurations();
+  }
+
+  protected updatePageSize(value: string | number): void {
+    const pageSize = Number(value);
+    if (!PAGE_SIZE_OPTIONS.some((option) => option === pageSize)) return;
+
+    this.pageSize.set(pageSize);
+    this.pageIndex.set(0);
+    try {
+      localStorage.setItem(PAGE_SIZE_STORAGE_KEY, String(pageSize));
+    } catch {
+      // The selection still applies to this page when browser storage is unavailable.
+    }
+    void this.loadConfigurations();
+  }
+
+  protected goToPage(pageIndex: number): void {
+    if (pageIndex < 0 || pageIndex >= this.totalPages() || pageIndex === this.pageIndex()) return;
+    this.pageIndex.set(pageIndex);
+    void this.loadConfigurations();
+  }
+
   protected addTagFilter(event: Event): void {
     const select = event.target as HTMLSelectElement;
     const value = select.value;
@@ -127,18 +175,23 @@ export class ConfigsComponent implements OnInit {
     }
 
     this.selectedTagIds.update((tagIds) => [...tagIds, tagId]);
+    this.pageIndex.set(0);
     void this.loadConfigurations();
   }
 
   protected removeTagFilter(tagId: number): void {
     this.selectedTagIds.update((tagIds) => tagIds.filter((currentId) => currentId !== tagId));
+    this.pageIndex.set(0);
     void this.loadConfigurations();
   }
 
   protected updateTagMatchMode(mode: TagMatchMode): void {
     if (this.tagMatchMode() === mode) return;
     this.tagMatchMode.set(mode);
-    if (this.selectedTagIds().length >= 2) void this.loadConfigurations();
+    if (this.selectedTagIds().length >= 2) {
+      this.pageIndex.set(0);
+      void this.loadConfigurations();
+    }
   }
 
   protected openCreate(): void {
@@ -239,6 +292,9 @@ export class ConfigsComponent implements OnInit {
     this.error.set(null);
     try {
       await this.api.deleteConfiguration(configuration.id, configuration.version);
+      if (this.configurations().length === 1 && this.pageIndex() > 0) {
+        this.pageIndex.update((pageIndex) => pageIndex - 1);
+      }
       await this.loadConfigurations();
     } catch (error) {
       this.error.set(this.errorMessage(error));
@@ -318,6 +374,7 @@ export class ConfigsComponent implements OnInit {
     try {
       await this.api.deleteTag(tag.id, tag.version);
       this.selectedTagIds.update((tagIds) => tagIds.filter((tagId) => tagId !== tag.id));
+      this.pageIndex.set(0);
       await Promise.all([this.loadTags(), this.loadConfigurations()]);
       if (this.editingTag()?.id === tag.id) this.resetTagForm();
     } catch (error) {
