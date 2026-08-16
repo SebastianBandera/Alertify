@@ -18,7 +18,6 @@ export const EN_TRANSLATIONS = {
   'action.signOut': 'Sign out',
   'workspace.eyebrow': 'Workspace',
   'workspace.title': 'Monitoring administration',
-  'status.connected': 'Connected',
   'language.label': 'Language',
   'dashboard.description': 'Review the current state of application and monitoring services.',
   'dashboard.empty': 'No dashboard data available yet',

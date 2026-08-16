@@ -16,7 +16,6 @@ export type TranslationKey =
   | 'action.signOut'
   | 'workspace.eyebrow'
   | 'workspace.title'
-  | 'status.connected'
   | 'language.label'
   | 'dashboard.description'
   | 'dashboard.empty'

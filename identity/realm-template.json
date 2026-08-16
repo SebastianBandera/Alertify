@@ -20,7 +20,7 @@
         },
         {
           "name": "ADMIN",
-          "description": "Can administer alert definitions",
+          "description": "Can administer Alertify configurations, tags, secrets and alert definitions",
           "composite": true,
           "composites": {
             "client": {
