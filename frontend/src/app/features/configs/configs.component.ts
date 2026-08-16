@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
 import {
@@ -51,7 +51,19 @@ export class ConfigsComponent implements OnInit {
   protected readonly saving = signal(false);
   protected readonly error = signal<string | null>(null);
   protected readonly searchTerm = signal('');
-  protected readonly selectedTagId = signal<number | null>(null);
+  protected readonly selectedTagIds = signal<readonly number[]>([]);
+  protected readonly tagFilterSelection = signal('');
+  protected readonly selectedFilterTags = computed(() => {
+    const tagsById = new Map(this.tags().map((tag) => [tag.id, tag]));
+    return this.selectedTagIds().flatMap((tagId) => {
+      const tag = tagsById.get(tagId);
+      return tag ? [tag] : [];
+    });
+  });
+  protected readonly availableFilterTags = computed(() => {
+    const selectedIds = new Set(this.selectedTagIds());
+    return this.tags().filter((tag) => !selectedIds.has(tag.id));
+  });
 
   protected readonly editorOpen = signal(false);
   protected readonly editingConfiguration = signal<ApplicationConfiguration | null>(null);
@@ -73,7 +85,7 @@ export class ConfigsComponent implements OnInit {
     this.error.set(null);
     try {
       this.configurations.set(
-        await this.api.listConfigurations(this.searchTerm(), this.selectedTagId()),
+        await this.api.listConfigurations(this.searchTerm(), this.selectedTagIds()),
       );
     } catch (error) {
       this.error.set(this.errorMessage(error));
@@ -94,8 +106,25 @@ export class ConfigsComponent implements OnInit {
     this.searchTerm.set(value);
   }
 
-  protected updateTagFilter(value: string): void {
-    this.selectedTagId.set(value ? Number(value) : null);
+  protected addTagFilter(value: string): void {
+    this.tagFilterSelection.set('');
+    if (!value) return;
+
+    const tagId = Number(value);
+    if (
+      !Number.isSafeInteger(tagId) ||
+      this.selectedTagIds().includes(tagId) ||
+      !this.tags().some((tag) => tag.id === tagId)
+    ) {
+      return;
+    }
+
+    this.selectedTagIds.update((tagIds) => [...tagIds, tagId]);
+    void this.loadConfigurations();
+  }
+
+  protected removeTagFilter(tagId: number): void {
+    this.selectedTagIds.update((tagIds) => tagIds.filter((currentId) => currentId !== tagId));
     void this.loadConfigurations();
   }
 
@@ -275,7 +304,7 @@ export class ConfigsComponent implements OnInit {
     this.tagError.set(null);
     try {
       await this.api.deleteTag(tag.id, tag.version);
-      if (this.selectedTagId() === tag.id) this.selectedTagId.set(null);
+      this.selectedTagIds.update((tagIds) => tagIds.filter((tagId) => tagId !== tag.id));
       await Promise.all([this.loadTags(), this.loadConfigurations()]);
       if (this.editingTag()?.id === tag.id) this.resetTagForm();
     } catch (error) {

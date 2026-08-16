@@ -66,10 +66,13 @@ export class ConfigurationApiService {
   private readonly authService = inject(AuthService);
   private readonly apiBaseUrl = inject(RUNTIME_CONFIG).apiBaseUrl;
 
-  async listConfigurations(search: string, tagId: number | null): Promise<readonly ApplicationConfiguration[]> {
+  async listConfigurations(
+    search: string,
+    tagIds: readonly number[],
+  ): Promise<readonly ApplicationConfiguration[]> {
     const params = new URLSearchParams({ page: '0', size: '200', sort: 'name,asc' });
     if (search.trim()) params.set('name', `~*${search.trim()}*`);
-    if (tagId !== null) params.set('tagId', String(tagId));
+    tagIds.forEach((tagId) => params.append('tagId', String(tagId)));
     const page = await this.request<PageResponse<ApplicationConfiguration>>(
       `/api/configurations?${params.toString()}`,
     );

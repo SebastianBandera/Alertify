@@ -26,15 +26,36 @@
         (keyup.enter)="loadConfigurations()"
       />
     </label>
-    <label class="field field--filter">
+    <div class="field field--filter">
       <span>{{ localization.translate('configs.filterTag') }}</span>
-      <select [ngModel]="selectedTagId() ?? ''" (ngModelChange)="updateTagFilter($event)">
-        <option value="">{{ localization.translate('configs.allTags') }}</option>
-        @for (tag of tags(); track tag.id) {
-          <option [value]="tag.id">{{ tag.name }}</option>
+      <div class="tag-filter">
+        @for (tag of selectedFilterTags(); track tag.id) {
+          <span class="filter-tag" [style.--tag-color]="tag.color">
+            <span>{{ tag.name }}</span>
+            <button
+              type="button"
+              [attr.aria-label]="localization.translate('configs.removeTagFilter') + ': ' + tag.name"
+              [title]="localization.translate('configs.removeTagFilter')"
+              (click)="removeTagFilter(tag.id)"
+            >×</button>
+          </span>
         }
-      </select>
-    </label>
+        <select
+          class="tag-filter__select"
+          [disabled]="availableFilterTags().length === 0"
+          [ngModel]="tagFilterSelection()"
+          (ngModelChange)="addTagFilter($event)"
+          [attr.aria-label]="localization.translate('configs.addTagFilter')"
+        >
+          <option value="">
+            {{ localization.translate(availableFilterTags().length ? 'configs.addTagFilter' : 'configs.allTagsSelected') }}
+          </option>
+          @for (tag of availableFilterTags(); track tag.id) {
+            <option [value]="tag.id">{{ tag.name }}</option>
+          }
+        </select>
+      </div>
+    </div>
     <button class="button button--secondary toolbar-button" type="button" (click)="loadConfigurations()">
       {{ localization.translate('configs.refresh') }}
     </button>
