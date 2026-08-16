@@ -48,14 +48,20 @@ public class ApplicationConfigurationService {
     private final ApplicationConfigurationRepository configurationRepository;
     private final TagRepository tagRepository;
     private final ConfigurationValueValidator valueValidator;
+    private final ApplicationConfigurationLookupService lookupService;
+    private final ConfigurationCacheInvalidator cacheInvalidator;
 
     public ApplicationConfigurationService(
             ApplicationConfigurationRepository configurationRepository,
             TagRepository tagRepository,
-            ConfigurationValueValidator valueValidator) {
+            ConfigurationValueValidator valueValidator,
+            ApplicationConfigurationLookupService lookupService,
+            ConfigurationCacheInvalidator cacheInvalidator) {
         this.configurationRepository = configurationRepository;
         this.tagRepository = tagRepository;
         this.valueValidator = valueValidator;
+        this.lookupService = lookupService;
+        this.cacheInvalidator = cacheInvalidator;
     }
 
     @Transactional(readOnly = true)
@@ -77,9 +83,8 @@ public class ApplicationConfigurationService {
             .map(ConfigurationMapper::toResponse);
     }
 
-    @Transactional(readOnly = true)
     public ConfigurationResponse get(Long id) {
-        return ConfigurationMapper.toResponse(find(id));
+        return lookupService.getById(id);
     }
 
     @Transactional
@@ -93,13 +98,16 @@ public class ApplicationConfigurationService {
         ApplicationConfiguration configuration = new ApplicationConfiguration(
             name, normalizeOptional(request.description()), request.valueType(), value, tags
         );
-        return ConfigurationMapper.toResponse(configurationRepository.saveAndFlush(configuration));
+        ApplicationConfiguration saved = configurationRepository.saveAndFlush(configuration);
+        cacheInvalidator.evictAfterCommit(saved.getId(), Set.of(saved.getName()));
+        return ConfigurationMapper.toResponse(saved);
     }
 
     @Transactional
     public ConfigurationResponse update(Long id, ConfigurationUpdateRequest request) {
         ApplicationConfiguration configuration = find(id);
         verifyVersion(configuration.getVersion(), request.version(), "Configuration");
+        String previousName = configuration.getName();
 
         String name = normalizeRequired(request.name());
         String description = normalizeOptional(request.description());
@@ -129,7 +137,13 @@ public class ApplicationConfigurationService {
             changed = true;
         }
 
-        if (changed) configurationRepository.flush();
+        if (changed) {
+            configurationRepository.flush();
+            cacheInvalidator.evictAfterCommit(
+                id,
+                new LinkedHashSet<>(List.of(previousName, configuration.getName()))
+            );
+        }
         return ConfigurationMapper.toResponse(configuration);
     }
 
@@ -138,8 +152,10 @@ public class ApplicationConfigurationService {
         ApplicationConfiguration configuration = find(id);
         verifyVersion(configuration.getVersion(), version, "Configuration");
         SystemConfigurationPolicy.validateDeletion(configuration);
+        String name = configuration.getName();
         configurationRepository.delete(configuration);
         configurationRepository.flush();
+        cacheInvalidator.evictAfterCommit(id, Set.of(name));
     }
 
     private ApplicationConfiguration find(Long id) {

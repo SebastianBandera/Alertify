@@ -38,12 +38,15 @@ public class ConfigurationTagService {
 
     private final TagRepository tagRepository;
     private final ApplicationConfigurationRepository configurationRepository;
+    private final ConfigurationCacheInvalidator cacheInvalidator;
 
     public ConfigurationTagService(
             TagRepository tagRepository,
-            ApplicationConfigurationRepository configurationRepository) {
+            ApplicationConfigurationRepository configurationRepository,
+            ConfigurationCacheInvalidator cacheInvalidator) {
         this.tagRepository = tagRepository;
         this.configurationRepository = configurationRepository;
+        this.cacheInvalidator = cacheInvalidator;
     }
 
     @Transactional(readOnly = true)
@@ -85,7 +88,10 @@ public class ConfigurationTagService {
             tag.changeColor(color);
             changed = true;
         }
-        if (changed) tagRepository.flush();
+        if (changed) {
+            tagRepository.flush();
+            cacheInvalidator.clearAfterCommit();
+        }
         return ConfigurationMapper.toResponse(tag);
     }
 

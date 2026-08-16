@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
 
 import java.nio.charset.StandardCharsets;
-import java.util.Optional;
 import java.util.Set;
 
 import org.junit.jupiter.api.Test;
@@ -12,25 +11,26 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import app.alertify.jpa.entity.ApplicationConfiguration;
+import app.alertify.configuration.api.ConfigurationResponse;
+import app.alertify.configuration.service.ApplicationConfigurationLookupService;
 import app.alertify.jpa.entity.ConfigurationValueType;
-import app.alertify.jpa.repository.ApplicationConfigurationRepository;
 import tools.jackson.databind.node.StringNode;
 
 @ExtendWith(MockitoExtension.class)
 class DatabaseKeyPartSourceTest {
 
-    @Mock private ApplicationConfigurationRepository repository;
+    @Mock private ApplicationConfigurationLookupService configurationLookup;
 
     @Test
     void loadsAnyNonEmptyKeyPartAsUtf8Bytes() {
         String keyPart = "A key part with symbols: ñ-🔐-!@#$%^&*()";
-        ApplicationConfiguration configuration = new ApplicationConfiguration(
-            "KEY_PART", null, ConfigurationValueType.STRING, StringNode.valueOf(keyPart), Set.of()
+        ConfigurationResponse configuration = new ConfigurationResponse(
+            1L, 0L, "KEY_PART", null, ConfigurationValueType.STRING,
+            StringNode.valueOf(keyPart), Set.of(), true, false, null, null, null
         );
-        when(repository.findByName("KEY_PART")).thenReturn(Optional.of(configuration));
+        when(configurationLookup.getByName("KEY_PART")).thenReturn(configuration);
 
-        byte[] value = new DatabaseKeyPartSource(repository).read();
+        byte[] value = new DatabaseKeyPartSource(configurationLookup).read();
 
         assertThat(value).containsExactly(keyPart.getBytes(StandardCharsets.UTF_8));
     }

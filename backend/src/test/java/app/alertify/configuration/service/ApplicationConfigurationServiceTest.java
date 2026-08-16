@@ -33,6 +33,8 @@ class ApplicationConfigurationServiceTest {
 
     @Mock private ApplicationConfigurationRepository configurationRepository;
     @Mock private TagRepository tagRepository;
+    @Mock private ApplicationConfigurationLookupService lookupService;
+    @Mock private ConfigurationCacheInvalidator cacheInvalidator;
 
     @Test
     void doesNotFlushOrChangeVersionWhenUpdateHasNoChanges() {
@@ -41,9 +43,7 @@ class ApplicationConfigurationServiceTest {
             ConfigurationValueType.INTEGER, IntNode.valueOf(5), Set.of()
         );
         when(configurationRepository.findById(10L)).thenReturn(Optional.of(configuration));
-        ApplicationConfigurationService service = new ApplicationConfigurationService(
-            configurationRepository, tagRepository, new ConfigurationValueValidator()
-        );
+        ApplicationConfigurationService service = service();
 
         var response = service.update(10L, new ConfigurationUpdateRequest(
             0L, "notification.retry-count", "Number of retries",
@@ -52,6 +52,9 @@ class ApplicationConfigurationServiceTest {
 
         assertThat(response.version()).isZero();
         verify(configurationRepository, never()).flush();
+        verify(cacheInvalidator, never()).evictAfterCommit(
+            org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()
+        );
     }
 
     @Test
@@ -61,9 +64,7 @@ class ApplicationConfigurationServiceTest {
             ConfigurationValueType.INTEGER, IntNode.valueOf(5), Set.of()
         );
         when(configurationRepository.findById(10L)).thenReturn(Optional.of(configuration));
-        ApplicationConfigurationService service = new ApplicationConfigurationService(
-            configurationRepository, tagRepository, new ConfigurationValueValidator()
-        );
+        ApplicationConfigurationService service = service();
 
         service.update(10L, new ConfigurationUpdateRequest(
             0L, "notification.retry-count", null,
@@ -71,13 +72,12 @@ class ApplicationConfigurationServiceTest {
         ));
 
         verify(configurationRepository).flush();
+        verify(cacheInvalidator).evictAfterCommit(10L, Set.of("notification.retry-count"));
     }
 
     @Test
     void rejectsManualCreationOfKeyPart() {
-        ApplicationConfigurationService service = new ApplicationConfigurationService(
-            configurationRepository, tagRepository, new ConfigurationValueValidator()
-        );
+        ApplicationConfigurationService service = service();
 
         assertThatThrownBy(() -> service.create(new ConfigurationCreateRequest(
             "KEY_PART", null, ConfigurationValueType.STRING,
@@ -95,9 +95,7 @@ class ApplicationConfigurationServiceTest {
             StringNode.valueOf("a".repeat(64)), Set.of()
         );
         when(configurationRepository.findById(1L)).thenReturn(Optional.of(configuration));
-        ApplicationConfigurationService service = new ApplicationConfigurationService(
-            configurationRepository, tagRepository, new ConfigurationValueValidator()
-        );
+        ApplicationConfigurationService service = service();
 
         assertThatThrownBy(() -> service.delete(1L, 0L))
             .isInstanceOf(ConflictException.class)
@@ -113,9 +111,7 @@ class ApplicationConfigurationServiceTest {
             StringNode.valueOf("initial"), Set.of()
         );
         when(configurationRepository.findById(1L)).thenReturn(Optional.of(configuration));
-        ApplicationConfigurationService service = new ApplicationConfigurationService(
-            configurationRepository, tagRepository, new ConfigurationValueValidator()
-        );
+        ApplicationConfigurationService service = service();
 
         var response = service.update(1L, new ConfigurationUpdateRequest(
             0L, "KEY_PART", null, ConfigurationValueType.STRING,
@@ -124,6 +120,7 @@ class ApplicationConfigurationServiceTest {
 
         assertThat(response.value().stringValue()).isEqualTo("Ñ");
         verify(configurationRepository).flush();
+        verify(cacheInvalidator).evictAfterCommit(1L, Set.of("KEY_PART"));
     }
 
     @Test
@@ -133,9 +130,7 @@ class ApplicationConfigurationServiceTest {
             StringNode.valueOf("initial"), Set.of()
         );
         when(configurationRepository.findById(1L)).thenReturn(Optional.of(configuration));
-        ApplicationConfigurationService service = new ApplicationConfigurationService(
-            configurationRepository, tagRepository, new ConfigurationValueValidator()
-        );
+        ApplicationConfigurationService service = service();
 
         assertThatThrownBy(() -> service.update(1L, new ConfigurationUpdateRequest(
             0L, "KEY_PART", null, ConfigurationValueType.STRING,
@@ -146,9 +141,7 @@ class ApplicationConfigurationServiceTest {
 
     @Test
     void rejectsUnknownTagOperator() {
-        ApplicationConfigurationService service = new ApplicationConfigurationService(
-            configurationRepository, tagRepository, new ConfigurationValueValidator()
-        );
+        ApplicationConfigurationService service = service();
         var params = new LinkedMultiValueMap<String, String>();
         params.add("tagId", "1");
         params.add("tagOperator", "XOR");
@@ -156,5 +149,12 @@ class ApplicationConfigurationServiceTest {
         assertThatThrownBy(() -> service.search(params, PageRequest.of(0, 20)))
             .isInstanceOf(InvalidFilterException.class)
             .hasMessageContaining("tagOperator");
+    }
+
+    private ApplicationConfigurationService service() {
+        return new ApplicationConfigurationService(
+            configurationRepository, tagRepository, new ConfigurationValueValidator(),
+            lookupService, cacheInvalidator
+        );
     }
 }
