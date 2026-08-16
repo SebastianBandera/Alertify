@@ -17,6 +17,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.util.LinkedMultiValueMap;
 
 import app.alertify.api.error.ConflictException;
+import app.alertify.api.error.InvalidConfigurationValueException;
 import app.alertify.configuration.api.ConfigurationCreateRequest;
 import app.alertify.configuration.api.ConfigurationUpdateRequest;
 import app.alertify.jpa.entity.ApplicationConfiguration;
@@ -103,6 +104,44 @@ class ApplicationConfigurationServiceTest {
             .hasMessageContaining("cannot be deleted");
 
         verify(configurationRepository, never()).delete(configuration);
+    }
+
+    @Test
+    void acceptsAndPreservesSingleSymbolKeyPart() {
+        ApplicationConfiguration configuration = new ApplicationConfiguration(
+            "KEY_PART", null, ConfigurationValueType.STRING,
+            StringNode.valueOf("initial"), Set.of()
+        );
+        when(configurationRepository.findById(1L)).thenReturn(Optional.of(configuration));
+        ApplicationConfigurationService service = new ApplicationConfigurationService(
+            configurationRepository, tagRepository, new ConfigurationValueValidator()
+        );
+
+        var response = service.update(1L, new ConfigurationUpdateRequest(
+            0L, "KEY_PART", null, ConfigurationValueType.STRING,
+            StringNode.valueOf("Ñ"), Set.of()
+        ));
+
+        assertThat(response.value().stringValue()).isEqualTo("Ñ");
+        verify(configurationRepository).flush();
+    }
+
+    @Test
+    void rejectsEmptyKeyPart() {
+        ApplicationConfiguration configuration = new ApplicationConfiguration(
+            "KEY_PART", null, ConfigurationValueType.STRING,
+            StringNode.valueOf("initial"), Set.of()
+        );
+        when(configurationRepository.findById(1L)).thenReturn(Optional.of(configuration));
+        ApplicationConfigurationService service = new ApplicationConfigurationService(
+            configurationRepository, tagRepository, new ConfigurationValueValidator()
+        );
+
+        assertThatThrownBy(() -> service.update(1L, new ConfigurationUpdateRequest(
+            0L, "KEY_PART", null, ConfigurationValueType.STRING,
+            StringNode.valueOf(""), Set.of()
+        ))).isInstanceOf(InvalidConfigurationValueException.class)
+            .hasMessageContaining("at least one character");
     }
 
     @Test

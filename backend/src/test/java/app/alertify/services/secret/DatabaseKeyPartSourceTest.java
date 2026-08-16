@@ -3,7 +3,7 @@ package app.alertify.services.secret;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
 
-import java.util.HexFormat;
+import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 import java.util.Set;
 
@@ -23,15 +23,15 @@ class DatabaseKeyPartSourceTest {
     @Mock private ApplicationConfigurationRepository repository;
 
     @Test
-    void loadsHexKeyPartAsRawBytes() {
-        String hex = "0123456789abcdef".repeat(4);
+    void loadsAnyNonEmptyKeyPartAsUtf8Bytes() {
+        String keyPart = "A key part with symbols: ñ-🔐-!@#$%^&*()";
         ApplicationConfiguration configuration = new ApplicationConfiguration(
-            "KEY_PART", null, ConfigurationValueType.STRING, StringNode.valueOf(hex), Set.of()
+            "KEY_PART", null, ConfigurationValueType.STRING, StringNode.valueOf(keyPart), Set.of()
         );
         when(repository.findByName("KEY_PART")).thenReturn(Optional.of(configuration));
 
         byte[] value = new DatabaseKeyPartSource(repository).read();
 
-        assertThat(value).containsExactly(HexFormat.of().parseHex(hex));
+        assertThat(value).containsExactly(keyPart.getBytes(StandardCharsets.UTF_8));
     }
 }

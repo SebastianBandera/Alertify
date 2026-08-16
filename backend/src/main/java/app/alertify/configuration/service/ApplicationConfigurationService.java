@@ -107,11 +107,6 @@ public class ApplicationConfigurationService {
         SystemConfigurationPolicy.validateUpdate(
             configuration, name, request.valueType(), value
         );
-        if (SystemConfigurationPolicy.isSystemManaged(configuration.getName())) {
-            value = tools.jackson.databind.node.StringNode.valueOf(
-                SystemConfigurationPolicy.normalizeKeyPart(value.stringValue())
-            );
-        }
         Set<Tag> tags = resolveConfigurationTags(request.tagIds());
         boolean changed = false;
 

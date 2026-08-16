@@ -1,6 +1,6 @@
 package app.alertify.services.secret;
 
-import java.util.HexFormat;
+import java.nio.charset.StandardCharsets;
 
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,19 +34,11 @@ class DatabaseKeyPartSource {
         }
 
         String keyPart = configuration.getValue().stringValue();
-        if (keyPart == null || keyPart.length() != 64) {
+        if (keyPart == null || keyPart.isEmpty()) {
             throw new IllegalStateException(
-                "Required configuration '" + KEY_PART_NAME + "' must contain 64 hexadecimal characters"
+                "Required configuration '" + KEY_PART_NAME + "' must contain at least one character"
             );
         }
-
-        try {
-            return HexFormat.of().parseHex(keyPart);
-        } catch (IllegalArgumentException exception) {
-            throw new IllegalStateException(
-                "Required configuration '" + KEY_PART_NAME + "' is not a valid hexadecimal key part",
-                exception
-            );
-        }
+        return keyPart.getBytes(StandardCharsets.UTF_8);
     }
 }
