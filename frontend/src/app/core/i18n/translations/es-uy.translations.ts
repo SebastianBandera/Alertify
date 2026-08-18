@@ -123,6 +123,7 @@ export const ES_UY_TRANSLATIONS = {
   'logs.event.CONFIGURATION_UPDATED': 'Actualización de configuración procesada',
   'logs.event.CONFIGURATION_VIEWED': 'Configuración consultada',
   'logs.event.USER_LOGIN': 'Sesión autenticada iniciada',
+  'logs.event.USER_LOGOUT': 'Cierre de sesión iniciado',
   'logs.column.timestamp': 'Fecha y hora',
   'logs.column.level': 'Nivel',
   'logs.column.source': 'Origen',

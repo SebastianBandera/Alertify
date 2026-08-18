@@ -123,6 +123,7 @@ export const EN_TRANSLATIONS = {
   'logs.event.CONFIGURATION_UPDATED': 'Configuration update processed',
   'logs.event.CONFIGURATION_VIEWED': 'Configuration viewed',
   'logs.event.USER_LOGIN': 'Authenticated browser session started',
+  'logs.event.USER_LOGOUT': 'Sign-out initiated',
   'logs.column.timestamp': 'Timestamp',
   'logs.column.level': 'Level',
   'logs.column.source': 'Source',

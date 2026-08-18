@@ -13,6 +13,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { filter } from 'rxjs';
 
 import { AuthService } from '../../core/auth/auth.service';
+import { LogApiService } from '../../core/api/log-api.service';
 import { LocalizationService } from '../../core/i18n/localization.service';
 import { TranslationKey } from '../../core/i18n/localization.types';
 
@@ -32,6 +33,7 @@ interface NavigationItem {
 export class AppShellComponent {
   protected readonly authService = inject(AuthService);
   protected readonly localization = inject(LocalizationService);
+  private readonly logApi = inject(LogApiService);
   private readonly router = inject(Router);
   private readonly title = inject(Title);
   protected readonly navigationItems: readonly NavigationItem[] = [
@@ -76,8 +78,13 @@ export class AppShellComponent {
     this.localization.setLocale(locale);
   }
 
-  protected logout(): void {
-    void this.authService.logout();
+  protected async logout(): Promise<void> {
+    try {
+      await this.logApi.recordLogout();
+    } catch (error) {
+      console.warn('Unable to record the logout event.', error);
+    }
+    await this.authService.logout();
   }
 
   private titleKeyForUrl(url: string): TranslationKey {

@@ -45,12 +45,25 @@ public class ApplicationLogController {
     @PostMapping("/login")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Void> login(HttpServletRequest request) {
+        logSessionEvent("USER_LOGIN", request);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/logout")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<Void> logout(HttpServletRequest request) {
+        logSessionEvent("USER_LOGOUT", request);
+        return ResponseEntity.noContent().build();
+    }
+
+    private void logSessionEvent(String event, HttpServletRequest request) {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("clientAddress", clientAddress(request));
         String userAgent = request.getHeader("User-Agent");
-        if (userAgent != null && !userAgent.isBlank()) data.put("userAgent", userAgent);
-        eventLogger.success("USER_LOGIN", data);
-        return ResponseEntity.noContent().build();
+        if (userAgent != null && !userAgent.isBlank()) {
+            data.put("userAgent", userAgent);
+        }
+        eventLogger.success(event, data);
     }
 
     private static String clientAddress(HttpServletRequest request) {

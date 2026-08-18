@@ -68,6 +68,17 @@ export class LogApiService {
     return (await response.json()) as PageResponse<ApplicationLog>;
   }
 
+  async recordLogout(): Promise<void> {
+    const token = await this.authService.getAccessToken();
+    const response = await fetch(`${this.apiBaseUrl}/api/logs/logout`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) {
+      throw new Error(`Logout event failed with status ${response.status}.`);
+    }
+  }
+
   private toInstant(value: string): string | null {
     if (!value) return null;
     const date = new Date(value);

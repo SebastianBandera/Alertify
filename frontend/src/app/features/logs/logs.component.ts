@@ -26,6 +26,7 @@ const EVENT_TRANSLATION_KEYS = {
   CONFIGURATION_UPDATED: 'logs.event.CONFIGURATION_UPDATED',
   CONFIGURATION_VIEWED: 'logs.event.CONFIGURATION_VIEWED',
   USER_LOGIN: 'logs.event.USER_LOGIN',
+  USER_LOGOUT: 'logs.event.USER_LOGOUT',
 } as const satisfies Readonly<Record<string, TranslationKey>>;
 
 function startOfToday(): string {

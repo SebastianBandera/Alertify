@@ -119,6 +119,7 @@ export type TranslationKey =
   | 'logs.event.CONFIGURATION_UPDATED'
   | 'logs.event.CONFIGURATION_VIEWED'
   | 'logs.event.USER_LOGIN'
+  | 'logs.event.USER_LOGOUT'
   | 'logs.column.timestamp'
   | 'logs.column.level'
   | 'logs.column.source'
