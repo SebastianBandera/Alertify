@@ -21,6 +21,28 @@ async function startApplication(): Promise<void> {
       { provide: AuthService, useValue: authService },
     ],
   });
+  void recordAuthenticatedSession(runtimeConfig.apiBaseUrl, authService);
+}
+async function recordAuthenticatedSession(
+  apiBaseUrl: string,
+  authService: AuthService,
+): Promise<void> {
+  const storageKey = 'alertify.auth.logged-session';
+  if (sessionStorage.getItem(storageKey) === authService.sessionIdentifier) return;
+
+  try {
+    const token = await authService.getAccessToken();
+    const response = await fetch(`${apiBaseUrl}/api/logs/login`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) {
+      throw new Error(`Login event failed with status ${response.status}.`);
+    }
+    sessionStorage.setItem(storageKey, authService.sessionIdentifier);
+  } catch (error) {
+    console.warn('Unable to record the authenticated browser session.', error);
+  }
 }
 
 function showStartupError(error: unknown): void {

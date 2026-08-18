@@ -40,7 +40,9 @@ export class AppShellComponent {
       ? [{ labelKey: 'navigation.configs' as const, path: '/configs', icon: 'configs' as const }]
       : []),
     { labelKey: 'navigation.secrets', path: '/secrets', icon: 'secrets' },
-    { labelKey: 'navigation.logs', path: '/logs', icon: 'logs' },
+    ...(this.authService.isAdmin
+      ? [{ labelKey: 'navigation.logs' as const, path: '/logs', icon: 'logs' as const }]
+      : []),
   ];
   protected readonly searchTerm = signal('');
   private readonly activeTitleKey = signal<TranslationKey>(this.titleKeyForUrl(this.router.url));

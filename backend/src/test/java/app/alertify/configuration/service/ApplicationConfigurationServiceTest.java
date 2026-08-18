@@ -25,6 +25,7 @@ import app.alertify.jpa.entity.ConfigurationValueType;
 import app.alertify.jpa.repository.ApplicationConfigurationRepository;
 import app.alertify.jpa.repository.TagRepository;
 import app.alertify.jpa.specification.InvalidFilterException;
+import app.alertify.logging.ApplicationEventLogger;
 import tools.jackson.databind.node.IntNode;
 import tools.jackson.databind.node.StringNode;
 
@@ -35,6 +36,7 @@ class ApplicationConfigurationServiceTest {
     @Mock private TagRepository tagRepository;
     @Mock private ApplicationConfigurationLookupService lookupService;
     @Mock private ConfigurationCacheInvalidator cacheInvalidator;
+    @Mock private ApplicationEventLogger eventLogger;
 
     @Test
     void doesNotFlushOrChangeVersionWhenUpdateHasNoChanges() {
@@ -154,7 +156,7 @@ class ApplicationConfigurationServiceTest {
     private ApplicationConfigurationService service() {
         return new ApplicationConfigurationService(
             configurationRepository, tagRepository, new ConfigurationValueValidator(),
-            lookupService, cacheInvalidator
+            lookupService, cacheInvalidator, eventLogger
         );
     }
 }

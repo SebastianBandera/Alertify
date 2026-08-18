@@ -36,6 +36,7 @@ export const routes: Routes = [
       {
         path: 'logs',
         title: 'Logs | Alertify',
+        canActivate: [adminGuard],
         loadComponent: () =>
           import('./features/logs/logs.component').then(
             (component) => component.LogsComponent,

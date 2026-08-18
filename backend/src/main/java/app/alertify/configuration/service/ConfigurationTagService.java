@@ -1,5 +1,7 @@
 package app.alertify.configuration.service;
 
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -21,6 +23,7 @@ import app.alertify.jpa.entity.TagScope;
 import app.alertify.jpa.repository.ApplicationConfigurationRepository;
 import app.alertify.jpa.repository.TagRepository;
 import app.alertify.jpa.specification.DynamicSpecification;
+import app.alertify.logging.ApplicationEventLogger;
 
 @Service
 public class ConfigurationTagService {
@@ -39,14 +42,17 @@ public class ConfigurationTagService {
     private final TagRepository tagRepository;
     private final ApplicationConfigurationRepository configurationRepository;
     private final ConfigurationCacheInvalidator cacheInvalidator;
+    private final ApplicationEventLogger eventLogger;
 
     public ConfigurationTagService(
             TagRepository tagRepository,
             ApplicationConfigurationRepository configurationRepository,
-            ConfigurationCacheInvalidator cacheInvalidator) {
+            ConfigurationCacheInvalidator cacheInvalidator,
+            ApplicationEventLogger eventLogger) {
         this.tagRepository = tagRepository;
         this.configurationRepository = configurationRepository;
         this.cacheInvalidator = cacheInvalidator;
+        this.eventLogger = eventLogger;
     }
 
     @Transactional(readOnly = true)
@@ -67,7 +73,12 @@ public class ConfigurationTagService {
         String name = normalizeName(request.name());
         String color = normalizeColor(request.color());
         ensureNameAvailable(name, null);
-        return ConfigurationMapper.toResponse(tagRepository.saveAndFlush(new Tag(SCOPE, name, color)));
+        Tag saved = tagRepository.saveAndFlush(new Tag(SCOPE, name, color));
+        eventLogger.successAfterCommit(
+            "CONFIGURATION_TAG_CREATED",
+            Map.of("tagId", saved.getId(), "name", saved.getName(), "color", saved.getColor())
+        );
+        return ConfigurationMapper.toResponse(saved);
     }
 
     @Transactional
@@ -77,21 +88,32 @@ public class ConfigurationTagService {
 
         String name = normalizeName(request.name());
         String color = normalizeColor(request.color());
-        boolean changed = false;
+        String previousName = tag.getName();
+        String previousColor = tag.getColor();
+        Set<String> changedFields = new LinkedHashSet<>();
 
         if (!tag.getName().equals(name)) {
             ensureNameAvailable(name, id);
             tag.rename(name);
-            changed = true;
+            changedFields.add("name");
         }
         if (!tag.getColor().equals(color)) {
             tag.changeColor(color);
-            changed = true;
+            changedFields.add("color");
         }
-        if (changed) {
+        if (!changedFields.isEmpty()) {
             tagRepository.flush();
             cacheInvalidator.clearAfterCommit();
         }
+        Map<String, Object> logData = new LinkedHashMap<>();
+        logData.put("tagId", id);
+        logData.put("name", tag.getName());
+        logData.put("previousName", previousName);
+        logData.put("color", tag.getColor());
+        logData.put("previousColor", previousColor);
+        logData.put("changed", !changedFields.isEmpty());
+        logData.put("changedFields", changedFields);
+        eventLogger.successAfterCommit("CONFIGURATION_TAG_UPDATED", logData);
         return ConfigurationMapper.toResponse(tag);
     }
 
@@ -104,6 +126,10 @@ public class ConfigurationTagService {
         }
         tagRepository.delete(tag);
         tagRepository.flush();
+        eventLogger.successAfterCommit(
+            "CONFIGURATION_TAG_DELETED",
+            Map.of("tagId", id, "name", tag.getName(), "color", tag.getColor(), "version", version)
+        );
     }
 
     private Tag find(Long id) {

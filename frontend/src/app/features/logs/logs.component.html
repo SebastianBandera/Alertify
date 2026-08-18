@@ -1,0 +1,180 @@
+<section class="logs">
+  <header class="logs__header">
+    <div>
+      <h1>{{ localization.translate('logs.title') }}</h1>
+      <p>{{ localization.translate('logs.description') }}</p>
+    </div>
+    <button class="button button--secondary" type="button" (click)="load()" [disabled]="loading()">
+      {{ localization.translate('logs.refresh') }}
+    </button>
+  </header>
+
+  <form class="logs__filters" (submit)="$event.preventDefault(); applyFilters()">
+    <label>
+      <span>{{ localization.translate('logs.filter.user') }}</span>
+      <input
+        type="search"
+        [ngModel]="filters().username"
+        (ngModelChange)="patchFilters({ username: $event })"
+        name="username"
+      >
+    </label>
+    <label>
+      <span>{{ localization.translate('logs.filter.subject') }}</span>
+      <input
+        type="search"
+        [ngModel]="filters().subject"
+        (ngModelChange)="patchFilters({ subject: $event })"
+        name="subject"
+      >
+    </label>
+    <label>
+      <span>{{ localization.translate('logs.filter.event') }}</span>
+      <input
+        type="search"
+        [ngModel]="filters().event"
+        (ngModelChange)="patchFilters({ event: $event })"
+        name="event"
+      >
+    </label>
+    <label>
+      <span>{{ localization.translate('logs.filter.path') }}</span>
+      <input
+        type="search"
+        [ngModel]="filters().path"
+        (ngModelChange)="patchFilters({ path: $event })"
+        name="path"
+      >
+    </label>
+    <label>
+      <span>{{ localization.translate('logs.filter.level') }}</span>
+      <select [ngModel]="filters().level" (ngModelChange)="patchFilters({ level: $event })" name="level">
+        <option value="">{{ localization.translate('logs.filter.any') }}</option>
+        @for (level of levels; track level) { <option [value]="level">{{ level }}</option> }
+      </select>
+    </label>
+    <label>
+      <span>{{ localization.translate('logs.filter.outcome') }}</span>
+      <select [ngModel]="filters().outcome" (ngModelChange)="patchFilters({ outcome: $event })" name="outcome">
+        <option value="">{{ localization.translate('logs.filter.any') }}</option>
+        @for (outcome of outcomes; track outcome) { <option [value]="outcome">{{ outcome }}</option> }
+      </select>
+    </label>
+    <label>
+      <span>{{ localization.translate('logs.filter.from') }}</span>
+      <input
+        type="datetime-local"
+        [ngModel]="filters().from"
+        (ngModelChange)="patchFilters({ from: $event })"
+        name="from"
+      >
+    </label>
+    <label>
+      <span>{{ localization.translate('logs.filter.to') }}</span>
+      <input
+        type="datetime-local"
+        [ngModel]="filters().to"
+        (ngModelChange)="patchFilters({ to: $event })"
+        name="to"
+      >
+    </label>
+    <div class="logs__filter-actions">
+      <button class="button button--primary" type="submit">{{ localization.translate('logs.filter.apply') }}</button>
+      <button class="button button--secondary" type="button" (click)="clearFilters()">
+        {{ localization.translate('logs.filter.clear') }}
+      </button>
+    </div>
+  </form>
+
+  @if (error()) { <p class="state state--error" role="alert">{{ error() }}</p> }
+  @if (loading()) {
+    <p class="state">{{ localization.translate('logs.loading') }}</p>
+  } @else if (!logs().length) {
+    <p class="state">{{ localization.translate('logs.empty') }}</p>
+  } @else {
+    <div class="table-shell">
+      <table>
+        <thead><tr>
+          <th>{{ localization.translate('logs.column.timestamp') }}</th>
+          <th>{{ localization.translate('logs.column.level') }}</th>
+          <th>{{ localization.translate('logs.column.event') }}</th>
+          <th>{{ localization.translate('logs.column.path') }}</th>
+          <th>{{ localization.translate('logs.column.user') }}</th>
+          <th>{{ localization.translate('logs.column.outcome') }}</th>
+          <th>{{ localization.translate('logs.column.message') }}</th>
+          <th>{{ localization.translate('logs.column.data') }}</th>
+        </tr></thead>
+        <tbody>
+          @for (log of logs(); track log.id) {
+            <tr>
+              <td class="timestamp">{{ log.eventAt | date:'medium' }}</td>
+              <td>
+                <span
+                  class="badge"
+                  [class.badge--warn]="log.level === 'WARN'"
+                  [class.badge--error]="log.level === 'ERROR'"
+                >{{ log.level }}</span>
+              </td>
+              <td><strong>{{ log.event }}</strong><small>{{ log.source }}</small></td>
+              <td class="path">{{ log.path || '—' }}</td>
+              <td><strong>{{ log.username }}</strong><small>{{ log.userSubject }}</small></td>
+              <td>{{ log.outcome }}</td>
+              <td>{{ eventMessage(log.event) }}</td>
+              <td>
+                <details>
+                  <summary>{{ localization.translate('logs.details') }}</summary>
+                  <pre>{{ formatData(log.data) }}</pre>
+                  @if (log.requestId) {
+                    <button
+                      class="request-id"
+                      type="button"
+                      [title]="log.requestId"
+                      [attr.aria-label]="requestIdCopyLabel(log.requestId)"
+                      (click)="copyRequestId(log.requestId)"
+                    >
+                      <span>requestId:</span>
+                      <code>{{ log.requestId }}</code>
+                    </button>
+                  }
+                </details>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+
+  <footer class="logs-pagination" [attr.aria-label]="localization.translate('logs.pagination.label')">
+    <span>{{ totalElements() }} {{ localization.translate('configs.pagination.records') }}</span>
+    <div class="logs-pagination__controls">
+      <label>
+        <span>{{ localization.translate('configs.pagination.rowsPerPage') }}</span>
+        <select [ngModel]="pageSize()" (ngModelChange)="updatePageSize($event)">
+          @for (size of pageSizeOptions; track size) {
+            <option [ngValue]="size">{{ size }}</option>
+          }
+        </select>
+      </label>
+      <button
+        class="pagination-button"
+        type="button"
+        (click)="goToPage(pageIndex() - 1)"
+        [disabled]="pageIndex() <= 0"
+        [attr.aria-label]="localization.translate('configs.pagination.previous')"
+      >‹</button>
+      <span>
+        {{ localization.translate('configs.pagination.page') }}
+        {{ totalPages() ? pageIndex() + 1 : 0 }}
+        {{ localization.translate('configs.pagination.of') }} {{ totalPages() }}
+      </span>
+      <button
+        class="pagination-button"
+        type="button"
+        (click)="goToPage(pageIndex() + 1)"
+        [disabled]="pageIndex() + 1 >= totalPages()"
+        [attr.aria-label]="localization.translate('configs.pagination.next')"
+      >›</button>
+    </div>
+  </footer>
+</section>

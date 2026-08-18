@@ -13,33 +13,14 @@ server {
 
     # The Keycloak master realm is intentionally unavailable through the
     # general publisher. Other realms keep their normal public endpoints.
-    location = /identity/admin/master {
-        return 404;
-    }
+    location = /identity/admin/master { return 404; }
+    location ^~ /identity/admin/master/ { return 404; }
+    location = /identity/admin/realms/master { return 404; }
+    location ^~ /identity/admin/realms/master/ { return 404; }
+    location = /identity/realms/master { return 404; }
+    location ^~ /identity/realms/master/ { return 404; }
 
-    location ^~ /identity/admin/master/ {
-        return 404;
-    }
-
-    location = /identity/admin/realms/master {
-        return 404;
-    }
-
-    location ^~ /identity/admin/realms/master/ {
-        return 404;
-    }
-
-    location = /identity/realms/master {
-        return 404;
-    }
-
-    location ^~ /identity/realms/master/ {
-        return 404;
-    }
-
-    location = /identity {
-        return 308 /identity/;
-    }
+    location = /identity { return 308 /identity/; }
 
     location ^~ /identity/ {
         proxy_pass ${PUBLISHER_IDENTITY_UPSTREAM};

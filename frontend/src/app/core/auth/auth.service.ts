@@ -48,6 +48,13 @@ export class AuthService {
   get isAdmin(): boolean {
     return this.keycloak.hasResourceRole('ADMIN', this.rolesClientId);
   }
+  get sessionIdentifier(): string {
+    const token = this.keycloak.tokenParsed;
+    const identifier = token?.['sid'] ?? token?.['session_state'];
+    if (typeof identifier === 'string' && identifier) return identifier;
+
+    return `${String(token?.['sub'] ?? 'unknown')}:${String(token?.['iat'] ?? 'unknown')}`;
+  }
 
   async getAccessToken(): Promise<string> {
     await this.keycloak.updateToken(30);

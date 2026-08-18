@@ -1,5 +1,6 @@
 package app.alertify.configuration.service;
 
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -31,6 +32,7 @@ import app.alertify.jpa.repository.TagRepository;
 import app.alertify.jpa.specification.ApplicationConfigurationSpecifications;
 import app.alertify.jpa.specification.DynamicSpecification;
 import app.alertify.jpa.specification.InvalidFilterException;
+import app.alertify.logging.ApplicationEventLogger;
 
 @Service
 public class ApplicationConfigurationService {
@@ -50,18 +52,21 @@ public class ApplicationConfigurationService {
     private final ConfigurationValueValidator valueValidator;
     private final ApplicationConfigurationLookupService lookupService;
     private final ConfigurationCacheInvalidator cacheInvalidator;
+    private final ApplicationEventLogger eventLogger;
 
     public ApplicationConfigurationService(
             ApplicationConfigurationRepository configurationRepository,
             TagRepository tagRepository,
             ConfigurationValueValidator valueValidator,
             ApplicationConfigurationLookupService lookupService,
-            ConfigurationCacheInvalidator cacheInvalidator) {
+            ConfigurationCacheInvalidator cacheInvalidator,
+            ApplicationEventLogger eventLogger) {
         this.configurationRepository = configurationRepository;
         this.tagRepository = tagRepository;
         this.valueValidator = valueValidator;
         this.lookupService = lookupService;
         this.cacheInvalidator = cacheInvalidator;
+        this.eventLogger = eventLogger;
     }
 
     @Transactional(readOnly = true)
@@ -79,12 +84,30 @@ public class ApplicationConfigurationService {
                 : ApplicationConfigurationSpecifications.hasAnyTagId(tagIds));
         }
 
-        return configurationRepository.findAll(specification, pageable)
+        Page<ConfigurationResponse> result = configurationRepository.findAll(specification, pageable)
             .map(ConfigurationMapper::toResponse);
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("page", result.getNumber());
+        data.put("size", result.getSize());
+        data.put("totalElements", result.getTotalElements());
+        data.put("configurationIds", result.getContent().stream().map(ConfigurationResponse::id).toList());
+        if (!tagIds.isEmpty()) {
+            data.put("tagIds", tagIds);
+            data.put("tagOperator", matchAllTags ? "AND" : "OR");
+        }
+        String nameFilter = params.getFirst("name");
+        if (nameFilter != null && !nameFilter.isBlank()) data.put("nameFilter", nameFilter);
+        eventLogger.successAfterCommit("CONFIGURATION_PAGE_VIEWED", data);
+        return result;
     }
 
     public ConfigurationResponse get(Long id) {
-        return lookupService.getById(id);
+        ConfigurationResponse response = lookupService.getById(id);
+        eventLogger.success(
+            "CONFIGURATION_VIEWED",
+            Map.of("configurationId", response.id(), "name", response.name(), "version", response.version())
+        );
+        return response;
     }
 
     @Transactional
@@ -100,6 +123,11 @@ public class ApplicationConfigurationService {
         );
         ApplicationConfiguration saved = configurationRepository.saveAndFlush(configuration);
         cacheInvalidator.evictAfterCommit(saved.getId(), Set.of(saved.getName()));
+        eventLogger.successAfterCommit(
+            "CONFIGURATION_CREATED",
+            Map.of("configurationId", saved.getId(), "name", saved.getName(),
+                "valueType", saved.getValueType().name(), "tagIds", tagIds(saved.getTags()))
+        );
         return ConfigurationMapper.toResponse(saved);
     }
 
@@ -116,34 +144,45 @@ public class ApplicationConfigurationService {
             configuration, name, request.valueType(), value
         );
         Set<Tag> tags = resolveConfigurationTags(request.tagIds());
-        boolean changed = false;
+        Set<String> changedFields = new LinkedHashSet<>();
 
         if (!configuration.getName().equals(name)) {
             ensureNameAvailable(name, id);
             configuration.rename(name);
-            changed = true;
+            changedFields.add("name");
         }
         if (!Objects.equals(configuration.getDescription(), description)) {
             configuration.changeDescription(description);
-            changed = true;
+            changedFields.add("description");
         }
-        if (configuration.getValueType() != request.valueType()
+        boolean valueTypeChanged = configuration.getValueType() != request.valueType();
+        if (valueTypeChanged
                 || !valuesEqual(request.valueType(), configuration.getValue(), value)) {
             configuration.changeValue(request.valueType(), value);
-            changed = true;
+            changedFields.add("value");
+            if (valueTypeChanged) changedFields.add("valueType");
         }
         if (!tagIds(configuration.getTags()).equals(tagIds(tags))) {
             configuration.replaceTags(tags);
-            changed = true;
+            changedFields.add("tags");
         }
 
-        if (changed) {
+        if (!changedFields.isEmpty()) {
             configurationRepository.flush();
             cacheInvalidator.evictAfterCommit(
                 id,
                 new LinkedHashSet<>(List.of(previousName, configuration.getName()))
             );
         }
+        Map<String, Object> logData = new LinkedHashMap<>();
+        logData.put("configurationId", id);
+        logData.put("name", configuration.getName());
+        logData.put("previousName", previousName);
+        logData.put("valueType", configuration.getValueType().name());
+        logData.put("tagIds", tagIds(configuration.getTags()));
+        logData.put("changed", !changedFields.isEmpty());
+        logData.put("changedFields", changedFields);
+        eventLogger.successAfterCommit("CONFIGURATION_UPDATED", logData);
         return ConfigurationMapper.toResponse(configuration);
     }
 
@@ -156,6 +195,10 @@ public class ApplicationConfigurationService {
         configurationRepository.delete(configuration);
         configurationRepository.flush();
         cacheInvalidator.evictAfterCommit(id, Set.of(name));
+        eventLogger.successAfterCommit(
+            "CONFIGURATION_DELETED",
+            Map.of("configurationId", id, "name", name, "version", version)
+        );
     }
 
     private ApplicationConfiguration find(Long id) {

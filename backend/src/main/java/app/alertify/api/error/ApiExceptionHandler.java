@@ -13,18 +13,21 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import app.alertify.jpa.specification.InvalidFilterException;
+import app.alertify.logging.ApplicationEventLogger;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
+    private final ApplicationEventLogger eventLogger;
+    public ApiExceptionHandler(ApplicationEventLogger eventLogger) { this.eventLogger = eventLogger; }
 
     @ExceptionHandler(ResourceNotFoundException.class)
     ResponseEntity<ApiError> handleNotFound(ResourceNotFoundException exception) {
-        return response(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND", exception.getMessage(), Map.of());
+        return response(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND", exception.getMessage(), Map.of(), exception);
     }
 
     @ExceptionHandler({ ConflictException.class, ObjectOptimisticLockingFailureException.class })
     ResponseEntity<ApiError> handleConflict(RuntimeException exception) {
-        return response(HttpStatus.CONFLICT, "CONFLICT", exception.getMessage(), Map.of());
+        return response(HttpStatus.CONFLICT, "CONFLICT", exception.getMessage(), Map.of(), exception);
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)
@@ -33,13 +36,13 @@ public class ApiExceptionHandler {
             HttpStatus.CONFLICT,
             "DATA_INTEGRITY_CONFLICT",
             "The operation conflicts with existing data",
-            Map.of()
+            Map.of(), exception
         );
     }
 
     @ExceptionHandler(InvalidFilterException.class)
     ResponseEntity<ApiError> handleInvalidFilter(InvalidFilterException exception) {
-        return response(HttpStatus.BAD_REQUEST, "INVALID_FILTER", exception.getMessage(), Map.of());
+        return response(HttpStatus.BAD_REQUEST, "INVALID_FILTER", exception.getMessage(), Map.of(), exception);
     }
 
     @ExceptionHandler(InvalidConfigurationValueException.class)
@@ -48,7 +51,7 @@ public class ApiExceptionHandler {
             HttpStatus.BAD_REQUEST,
             "INVALID_CONFIGURATION_VALUE",
             exception.getMessage(),
-            Map.of()
+            Map.of(), exception
         );
     }
 
@@ -63,15 +66,21 @@ public class ApiExceptionHandler {
             HttpStatus.BAD_REQUEST,
             "VALIDATION_ERROR",
             "Request validation failed",
-            fieldErrors
+            fieldErrors, exception
         );
     }
 
-    private static ResponseEntity<ApiError> response(
+    private ResponseEntity<ApiError> response(
             HttpStatus status,
             String code,
             String message,
-            Map<String, String> fieldErrors) {
+            Map<String, String> fieldErrors, Exception exception) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("status", status.value());
+        data.put("errorCode", code);
+        data.put("errorType", exception.getClass().getSimpleName());
+        if (!fieldErrors.isEmpty()) data.put("fields", fieldErrors.keySet());
+        eventLogger.failure("API_ERROR_SHOWN", data);
         ApiError error = new ApiError(Instant.now(), status.value(), code, message, fieldErrors);
         return ResponseEntity.status(status).body(error);
     }
