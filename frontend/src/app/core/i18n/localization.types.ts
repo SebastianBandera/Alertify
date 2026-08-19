@@ -26,6 +26,8 @@ export type TranslationKey =
   | 'configs.loading'
   | 'configs.search'
   | 'configs.searchPlaceholder'
+  | 'configs.valueSearch'
+  | 'configs.valueSearchPlaceholder'
   | 'configs.filterTag'
   | 'configs.allTags'
   | 'configs.addTagFilter'

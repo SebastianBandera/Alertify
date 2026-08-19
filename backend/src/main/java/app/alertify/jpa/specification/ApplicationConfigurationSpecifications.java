@@ -1,11 +1,14 @@
 package app.alertify.jpa.specification;
 
+import java.util.Locale;
 import java.util.Set;
 
+import org.hibernate.query.criteria.JpaExpression;
 import org.springframework.data.jpa.domain.Specification;
 
 import app.alertify.jpa.entity.ApplicationConfiguration;
 import app.alertify.jpa.entity.Tag;
+import jakarta.persistence.criteria.Expression;
 import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Root;
@@ -14,6 +17,29 @@ import jakarta.persistence.criteria.Subquery;
 public final class ApplicationConfigurationSpecifications {
 
     private ApplicationConfigurationSpecifications() {
+    }
+
+    public static Specification<ApplicationConfiguration> valueContains(String value) {
+        String search = "%" + escapeLikeValue(value.trim()) + "%";
+        return (root, query, cb) -> {
+            JpaExpression<?> jsonValue = (JpaExpression<?>) root.get("value");
+            Expression<String> valueAsText = jsonValue.cast(String.class);
+            Expression<String> normalizedValue =
+                cb.lower(cb.function("unaccent", String.class, valueAsText));
+            Expression<String> normalizedSearch =
+                cb.lower(cb.function("unaccent", String.class, cb.literal(search)));
+            return cb.like(normalizedValue, normalizedSearch, '\\');
+        };
+    }
+
+    public static Specification<ApplicationConfiguration> nameNotEqualIgnoreCase(String name) {
+        String normalizedName = name.toLowerCase(Locale.ROOT);
+        return (root, query, cb) ->
+            cb.notEqual(cb.lower(root.get("name")), normalizedName);
+    }
+
+    private static String escapeLikeValue(String value) {
+        return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
     }
 
     public static Specification<ApplicationConfiguration> hasAnyTagId(Set<Long> tagIds) {

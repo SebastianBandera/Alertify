@@ -79,6 +79,7 @@ export class ConfigurationApiService {
 
   async listConfigurations(
     search: string,
+    valueSearch: string,
     tagIds: readonly number[],
     tagMatchMode: TagMatchMode,
     pageNumber: number,
@@ -90,6 +91,7 @@ export class ConfigurationApiService {
       sort: 'name,asc',
     });
     if (search.trim()) params.set('name', `~*${search.trim()}*`);
+    if (valueSearch.trim()) params.set('valueContains', valueSearch.trim());
     tagIds.forEach((tagId) => params.append('tagId', String(tagId)));
     if (tagIds.length >= 2) params.set('tagOperator', tagMatchMode);
     return this.request<PageResponse<ApplicationConfiguration>>(

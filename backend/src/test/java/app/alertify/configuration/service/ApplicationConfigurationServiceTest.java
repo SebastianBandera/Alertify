@@ -2,6 +2,9 @@ package app.alertify.configuration.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -13,7 +16,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.util.LinkedMultiValueMap;
 
 import app.alertify.api.error.ConflictException;
@@ -140,6 +145,25 @@ class ApplicationConfigurationServiceTest {
             StringNode.valueOf(""), Set.of()
         ))).isInstanceOf(InvalidConfigurationValueException.class)
             .hasMessageContaining("at least one character");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void acceptsValueContainsWithoutLoggingTheSearchedValue() {
+        ApplicationConfigurationService service = service();
+        var params = new LinkedMultiValueMap<String, String>();
+        params.add("valueContains", "internal-value");
+        var pageable = PageRequest.of(0, 20);
+        when(configurationRepository.findAll(any(Specification.class), eq(pageable)))
+            .thenReturn(Page.empty(pageable));
+
+        var result = service.search(params, pageable);
+
+        assertThat(result).isEmpty();
+        verify(eventLogger).successAfterCommit(
+            eq("CONFIGURATION_PAGE_VIEWED"),
+            argThat(data -> !data.containsKey("valueContains") && !data.containsKey("valueFilter"))
+        );
     }
 
     @Test

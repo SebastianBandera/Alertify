@@ -26,6 +26,16 @@
         (keyup.enter)="applySearch()"
       />
     </label>
+    <label class="field field--search">
+      <span>{{ localization.translate('configs.valueSearch') }}</span>
+      <input
+        type="search"
+        [placeholder]="localization.translate('configs.valueSearchPlaceholder')"
+        [ngModel]="valueSearchTerm()"
+        (ngModelChange)="updateValueSearch($event)"
+        (keyup.enter)="applySearch()"
+      />
+    </label>
     <div class="field field--filter">
       <span>{{ localization.translate('configs.filterTag') }}</span>
       <div class="tag-filter">

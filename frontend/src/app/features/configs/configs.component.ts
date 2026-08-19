@@ -66,6 +66,8 @@ export class ConfigsComponent implements OnInit {
   protected readonly error = signal<string | null>(null);
   protected readonly searchTerm = signal('');
   protected readonly appliedSearchTerm = signal('');
+  protected readonly valueSearchTerm = signal('');
+  protected readonly appliedValueSearchTerm = signal('');
   protected readonly selectedTagIds = signal<readonly number[]>([]);
   protected readonly tagMatchMode = signal<TagMatchMode>('OR');
   protected readonly pageIndex = signal(0);
@@ -105,6 +107,7 @@ export class ConfigsComponent implements OnInit {
     try {
       const result = await this.api.listConfigurations(
         this.appliedSearchTerm(),
+        this.appliedValueSearchTerm(),
         this.selectedTagIds(),
         this.tagMatchMode(),
         this.pageIndex(),
@@ -133,8 +136,13 @@ export class ConfigsComponent implements OnInit {
     this.searchTerm.set(value);
   }
 
+  protected updateValueSearch(value: string): void {
+    this.valueSearchTerm.set(value);
+  }
+
   protected applySearch(): void {
     this.appliedSearchTerm.set(this.searchTerm());
+    this.appliedValueSearchTerm.set(this.valueSearchTerm());
     this.pageIndex.set(0);
     void this.loadConfigurations();
   }

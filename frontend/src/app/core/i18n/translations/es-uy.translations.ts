@@ -29,6 +29,8 @@ export const ES_UY_TRANSLATIONS = {
   'configs.loading': 'Cargando configuraciones…',
   'configs.search': 'Buscar',
   'configs.searchPlaceholder': 'Buscar por nombre',
+  'configs.valueSearch': 'Valor contiene',
+  'configs.valueSearchPlaceholder': 'Buscar dentro del valor',
   'configs.filterTag': 'Filtrar por tag',
   'configs.allTags': 'Todos los tags',
   'configs.addTagFilter': 'Agregar tag…',

@@ -29,6 +29,8 @@ export const EN_TRANSLATIONS = {
   'configs.loading': 'Loading configurations…',
   'configs.search': 'Search',
   'configs.searchPlaceholder': 'Search by name',
+  'configs.valueSearch': 'Value contains',
+  'configs.valueSearchPlaceholder': 'Search within the value',
   'configs.filterTag': 'Filter by tag',
   'configs.allTags': 'All tags',
   'configs.addTagFilter': 'Add tag…',

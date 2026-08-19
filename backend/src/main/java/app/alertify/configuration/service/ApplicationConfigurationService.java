@@ -16,6 +16,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 
 import app.alertify.api.error.ConflictException;
@@ -73,8 +74,22 @@ public class ApplicationConfigurationService {
     public Page<ConfigurationResponse> search(
             MultiValueMap<String, String> params, Pageable pageable) {
         SearchValidation.validateSort(pageable, SORT_FIELDS);
+        String valueContains = params.getFirst("valueContains");
+        MultiValueMap<String, String> dynamicParams = new LinkedMultiValueMap<>(params.size());
+        dynamicParams.addAll(params);
+        dynamicParams.remove("valueContains");
+
         Specification<ApplicationConfiguration> specification =
-            DynamicSpecification.from(params, FILTER_ALIASES, FILTER_FIELDS);
+            DynamicSpecification.from(dynamicParams, FILTER_ALIASES, FILTER_FIELDS);
+
+        if (valueContains != null && !valueContains.isBlank()) {
+            // Hidden values must not participate in value searches; otherwise
+            // result membership could be used to infer a secret.
+            specification = specification
+                .and(ApplicationConfigurationSpecifications.valueContains(valueContains))
+                .and(ApplicationConfigurationSpecifications.nameNotEqualIgnoreCase(
+                    SystemConfigurationPolicy.KEY_PART));
+        }
 
         Set<Long> tagIds = parseTagIds(params.get("tagId"));
         boolean matchAllTags = parseMatchAllTags(params.get("tagOperator"));

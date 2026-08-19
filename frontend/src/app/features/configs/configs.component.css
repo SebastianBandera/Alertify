@@ -54,7 +54,7 @@ h2 {
 
 .configs__toolbar {
   display: grid;
-  grid-template-columns: minmax(220px, 0.8fr) minmax(300px, 1.2fr) auto;
+  grid-template-columns: minmax(180px, 0.7fr) minmax(180px, 0.7fr) minmax(300px, 1.2fr) auto;
   align-items: end;
   gap: 14px;
   padding: 18px 26px;
