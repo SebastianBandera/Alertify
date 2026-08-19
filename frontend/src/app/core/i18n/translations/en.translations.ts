@@ -72,8 +72,13 @@ export const EN_TRANSLATIONS = {
   'configs.value.invalidDecimal': 'Enter a valid number.',
   'configs.value.invalidJson': 'Enter valid JSON.',
   'configs.keyPart.warningTitle': 'Sensitive system configuration',
+  'configs.keyPart.hiddenText':
+    'The current value is never shown or returned by the API. This field is empty and only accepts a new value.',
   'configs.keyPart.warningText':
     'Changing KEY_PART changes the encryption key immediately. Existing secrets may no longer be recoverable.',
+  'configs.keyPart.newValue': 'New value',
+  'configs.keyPart.newValuePlaceholder': 'Enter a new value',
+  'configs.keyPart.valueRequired': 'Enter a new value for KEY_PART.',
   'configs.keyPart.confirm': 'I understand that existing secrets may be lost.',
   'configs.keyPart.generate': 'Generate random value',
   'configs.tags.title': 'Configuration tags',

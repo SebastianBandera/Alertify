@@ -120,7 +120,8 @@ class ApplicationConfigurationServiceTest {
             StringNode.valueOf("Ñ"), Set.of()
         ));
 
-        assertThat(response.value().stringValue()).isEqualTo("Ñ");
+        assertThat(response.value()).isNull();
+        assertThat(response.valueHidden()).isTrue();
         verify(configurationRepository).flush();
         verify(cacheInvalidator).evictAfterCommit(1L, Set.of("KEY_PART"));
     }

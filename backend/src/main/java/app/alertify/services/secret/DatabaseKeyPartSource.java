@@ -4,33 +4,32 @@ import java.nio.charset.StandardCharsets;
 
 import org.springframework.stereotype.Component;
 
-import app.alertify.api.error.ResourceNotFoundException;
-import app.alertify.configuration.api.ConfigurationResponse;
-import app.alertify.configuration.service.ApplicationConfigurationLookupService;
+import app.alertify.jpa.entity.ApplicationConfiguration;
 import app.alertify.jpa.entity.ConfigurationValueType;
+import app.alertify.jpa.repository.ApplicationConfigurationRepository;
 
 @Component
 class DatabaseKeyPartSource {
 
     private static final String KEY_PART_NAME = "KEY_PART";
 
-    private final ApplicationConfigurationLookupService configurationLookup;
+    private final ApplicationConfigurationRepository configurationRepository;
 
-    DatabaseKeyPartSource(ApplicationConfigurationLookupService configurationLookup) {
-        this.configurationLookup = configurationLookup;
+    DatabaseKeyPartSource(ApplicationConfigurationRepository configurationRepository) {
+        this.configurationRepository = configurationRepository;
     }
 
     byte[] read() {
         final var configuration = readConfiguration();
 
-        if (configuration.valueType() != ConfigurationValueType.STRING
-                || !configuration.value().isString()) {
+        if (configuration.getValueType() != ConfigurationValueType.STRING
+                || !configuration.getValue().isString()) {
             throw new IllegalStateException(
                 "Required configuration '" + KEY_PART_NAME + "' must have type STRING"
             );
         }
 
-        String keyPart = configuration.value().stringValue();
+        String keyPart = configuration.getValue().stringValue();
         if (keyPart == null || keyPart.isEmpty()) {
             throw new IllegalStateException(
                 "Required configuration '" + KEY_PART_NAME + "' must contain at least one character"
@@ -39,13 +38,10 @@ class DatabaseKeyPartSource {
         return keyPart.getBytes(StandardCharsets.UTF_8);
     }
 
-    private ConfigurationResponse readConfiguration() {
-        try {
-            return configurationLookup.getByName(KEY_PART_NAME);
-        } catch (ResourceNotFoundException exception) {
-            throw new IllegalStateException(
-                "Required configuration '" + KEY_PART_NAME + "' was not found", exception
-            );
-        }
+    private ApplicationConfiguration readConfiguration() {
+        return configurationRepository.findByName(KEY_PART_NAME)
+            .orElseThrow(() -> new IllegalStateException(
+                "Required configuration '" + KEY_PART_NAME + "' was not found"
+            ));
     }
 }

@@ -23,6 +23,10 @@ final class SystemConfigurationPolicy {
         return !isSystemManaged(name);
     }
 
+    static boolean isValueHidden(String name) {
+        return KEY_PART.equalsIgnoreCase(name);
+    }
+
     static ConfigurationWarning warning(String name) {
         return isSystemManaged(name) ? ConfigurationWarning.SECRET_LOSS : null;
     }

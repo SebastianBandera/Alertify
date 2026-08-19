@@ -208,7 +208,9 @@ export class ConfigsComponent implements OnInit {
       name: configuration.name,
       description: configuration.description ?? '',
       valueType: configuration.valueType,
-      rawValue: this.toEditorValue(configuration.valueType, configuration.value),
+      rawValue: configuration.valueHidden
+        ? ''
+        : this.toEditorValue(configuration.valueType, configuration.value),
       tagIds: configuration.tags.map((tag) => tag.id),
     });
     this.sensitiveChangeConfirmed.set(false);
@@ -251,6 +253,10 @@ export class ConfigsComponent implements OnInit {
     this.formError.set(null);
 
     if (!form.name.trim()) return;
+    if (editing?.valueHidden && !form.rawValue) {
+      this.formError.set(this.localization.translate('configs.keyPart.valueRequired'));
+      return;
+    }
     if (editing?.changeWarning === 'SECRET_LOSS' && !this.sensitiveChangeConfirmed()) return;
 
     let value: unknown;
@@ -302,7 +308,7 @@ export class ConfigsComponent implements OnInit {
   }
 
   protected valuePreview(configuration: ApplicationConfiguration): string {
-    if (configuration.changeWarning === 'SECRET_LOSS') return '••••••••••••••••';
+    if (configuration.valueHidden) return '••••••••••••••••';
     if (configuration.valueType === 'JSON') return JSON.stringify(configuration.value);
     return String(configuration.value);
   }

@@ -30,7 +30,8 @@ export interface ApplicationConfiguration {
   readonly name: string;
   readonly description: string | null;
   readonly valueType: ConfigurationValueType;
-  readonly value: unknown;
+  readonly value: unknown | null;
+  readonly valueHidden: boolean;
   readonly tags: readonly ConfigurationTag[];
   readonly systemManaged: boolean;
   readonly deletable: boolean;

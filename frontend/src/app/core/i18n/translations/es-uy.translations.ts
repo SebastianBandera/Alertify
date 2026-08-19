@@ -72,8 +72,13 @@ export const ES_UY_TRANSLATIONS = {
   'configs.value.invalidDecimal': 'Ingresá un número válido.',
   'configs.value.invalidJson': 'Ingresá un JSON válido.',
   'configs.keyPart.warningTitle': 'Configuración sensible del sistema',
+  'configs.keyPart.hiddenText':
+    'El valor actual nunca se muestra ni se devuelve por la API. Este campo está vacío y solo permite ingresar un valor nuevo.',
   'configs.keyPart.warningText':
     'Cambiar KEY_PART modifica inmediatamente la clave de cifrado. Los secretos existentes podrían dejar de recuperarse.',
+  'configs.keyPart.newValue': 'Nuevo valor',
+  'configs.keyPart.newValuePlaceholder': 'Ingresar un nuevo valor',
+  'configs.keyPart.valueRequired': 'Ingresá un nuevo valor para KEY_PART.',
   'configs.keyPart.confirm': 'Entiendo que se podrían perder los secretos existentes.',
   'configs.keyPart.generate': 'Generar valor aleatorio',
   'configs.tags.title': 'Tags de configuraciones',

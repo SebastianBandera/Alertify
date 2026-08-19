@@ -217,6 +217,7 @@
         @if (editingConfiguration()?.changeWarning === 'SECRET_LOSS') {
           <div class="warning" role="alert">
             <strong>{{ localization.translate('configs.keyPart.warningTitle') }}</strong>
+            <p>{{ localization.translate('configs.keyPart.hiddenText') }}</p>
             <p>{{ localization.translate('configs.keyPart.warningText') }}</p>
           </div>
         }
@@ -261,8 +262,21 @@
         </label>
 
         <label class="field">
-          <span>{{ localization.translate('configs.field.value') }}</span>
-          @switch (configurationForm().valueType) {
+          <span>
+            {{ localization.translate(editingConfiguration()?.valueHidden ? 'configs.keyPart.newValue' : 'configs.field.value') }}
+          </span>
+          @if (editingConfiguration()?.valueHidden) {
+            <input
+              required
+              type="password"
+              autocomplete="new-password"
+              [placeholder]="localization.translate('configs.keyPart.newValuePlaceholder')"
+              [ngModel]="configurationForm().rawValue"
+              (ngModelChange)="patchConfigurationForm({ rawValue: $event })"
+              name="configurationValue"
+            />
+          } @else {
+            @switch (configurationForm().valueType) {
             @case ('BOOLEAN') {
               <select
                 [ngModel]="configurationForm().rawValue || 'false'"
@@ -310,6 +324,7 @@
                 (ngModelChange)="patchConfigurationForm({ rawValue: $event })"
                 name="configurationValue"
               />
+            }
             }
           }
         </label>
@@ -362,7 +377,7 @@
           <button
             class="button button--primary"
             type="submit"
-            [disabled]="saving() || !configurationForm().name.trim() || (editingConfiguration()?.changeWarning === 'SECRET_LOSS' && !sensitiveChangeConfirmed())"
+            [disabled]="saving() || !configurationForm().name.trim() || (editingConfiguration()?.valueHidden && !configurationForm().rawValue) || (editingConfiguration()?.changeWarning === 'SECRET_LOSS' && !sensitiveChangeConfirmed())"
           >
             {{ localization.translate(saving() ? 'configs.saving' : 'configs.save') }}
           </button>

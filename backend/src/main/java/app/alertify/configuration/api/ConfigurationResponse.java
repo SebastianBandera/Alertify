@@ -14,6 +14,7 @@ public record ConfigurationResponse(
     String description,
     ConfigurationValueType valueType,
     JsonNode value,
+    boolean valueHidden,
     Set<TagResponse> tags,
     boolean systemManaged,
     boolean deletable,
