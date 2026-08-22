@@ -97,6 +97,7 @@ export const ES_UY_TRANSLATIONS = {
   'configs.tags.edit': 'Editar',
   'configs.tags.delete': 'Eliminar',
   'configs.tags.deleteConfirm': '¿Eliminar este tag? Si está asignado, primero tenés que quitarlo de todas las configuraciones.',
+  'configs.tags.inUse': 'El tag \"{name}\" está asignado a una o más configuraciones.',
   'configs.tags.empty': 'Todavía no hay tags definidos.',
   'secrets.title': 'Secretos',
   'secrets.description': 'Revisá los metadatos de los secretos sin exponer los valores almacenados.',

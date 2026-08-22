@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } 
 import { FormsModule } from '@angular/forms';
 
 import {
+  ApiRequestError,
   ApplicationConfiguration,
   ConfigurationApiService,
   ConfigurationImportResult,
@@ -526,6 +527,11 @@ export class ConfigsComponent implements OnInit {
   }
 
   private errorMessage(error: unknown): string {
+    if (error instanceof ApiRequestError && error.code === 'CONFIGURATION_TAG_IN_USE') {
+      const tagName = error.parameters['tagName'] ?? '';
+      return this.localization.translate('configs.tags.inUse')
+        .replace('{name}', tagName);
+    }
     return error instanceof Error ? error.message : String(error);
   }
 }

@@ -92,6 +92,7 @@ export type TranslationKey =
   | 'configs.tags.edit'
   | 'configs.tags.delete'
   | 'configs.tags.deleteConfirm'
+  | 'configs.tags.inUse'
   | 'configs.tags.empty'
   | 'secrets.title'
   | 'secrets.description'

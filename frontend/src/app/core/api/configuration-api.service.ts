@@ -76,8 +76,21 @@ export interface PageResponse<T> {
 }
 
 interface ApiErrorResponse {
+  readonly code?: string;
   readonly message?: string;
   readonly fieldErrors?: Readonly<Record<string, string>>;
+  readonly parameters?: Readonly<Record<string, string>>;
+}
+
+export class ApiRequestError extends Error {
+  constructor(
+    message: string,
+    readonly code?: string,
+    readonly parameters: Readonly<Record<string, string>> = {},
+  ) {
+    super(message);
+    this.name = 'ApiRequestError';
+  }
 }
 
 @Injectable({ providedIn: 'root' })
@@ -192,6 +205,7 @@ export class ConfigurationApiService {
       const error = (await response.json()) as ApiErrorResponse;
       const fieldMessage = error.fieldErrors ? Object.values(error.fieldErrors)[0] : undefined;
       message = fieldMessage ?? error.message ?? message;
+      return new ApiRequestError(message, error.code, error.parameters);
     } catch {
       // Keep the HTTP status message when the response is not JSON.
     }

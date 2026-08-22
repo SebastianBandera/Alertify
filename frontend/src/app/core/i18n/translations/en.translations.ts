@@ -97,6 +97,7 @@ export const EN_TRANSLATIONS = {
   'configs.tags.edit': 'Edit',
   'configs.tags.delete': 'Delete',
   'configs.tags.deleteConfirm': 'Delete this tag? Assigned tags must first be removed from every configuration.',
+  'configs.tags.inUse': 'The tag \"{name}\" is assigned to one or more configurations.',
   'configs.tags.empty': 'No tags have been defined yet.',
   'secrets.title': 'Secrets',
   'secrets.description': 'Review secret metadata without exposing stored values.',

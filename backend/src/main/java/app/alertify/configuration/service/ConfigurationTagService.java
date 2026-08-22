@@ -122,7 +122,11 @@ public class ConfigurationTagService {
         Tag tag = find(id);
         ApplicationConfigurationService.verifyVersion(tag.getVersion(), version, "Tag");
         if (configurationRepository.existsByTagsId(id)) {
-            throw new ConflictException("Tag " + id + " is assigned to one or more configurations");
+            throw new ConflictException(
+                "CONFIGURATION_TAG_IN_USE",
+                "Tag '" + tag.getName() + "' is assigned to one or more configurations",
+                Map.of("tagName", tag.getName())
+            );
         }
         tagRepository.delete(tag);
         tagRepository.flush();

@@ -25,8 +25,20 @@ public class ApiExceptionHandler {
         return response(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND", exception.getMessage(), Map.of(), exception);
     }
 
-    @ExceptionHandler({ ConflictException.class, ObjectOptimisticLockingFailureException.class })
-    ResponseEntity<ApiError> handleConflict(RuntimeException exception) {
+    @ExceptionHandler(ConflictException.class)
+    ResponseEntity<ApiError> handleConflict(ConflictException exception) {
+        return response(
+            HttpStatus.CONFLICT,
+            exception.getCode(),
+            exception.getMessage(),
+            Map.of(),
+            exception.getParameters(),
+            exception
+        );
+    }
+
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    ResponseEntity<ApiError> handleOptimisticLock(ObjectOptimisticLockingFailureException exception) {
         return response(HttpStatus.CONFLICT, "CONFLICT", exception.getMessage(), Map.of(), exception);
     }
 
@@ -85,13 +97,25 @@ public class ApiExceptionHandler {
             String code,
             String message,
             Map<String, String> fieldErrors, Exception exception) {
+        return response(status, code, message, fieldErrors, Map.of(), exception);
+    }
+
+    private ResponseEntity<ApiError> response(
+            HttpStatus status,
+            String code,
+            String message,
+            Map<String, String> fieldErrors,
+            Map<String, String> parameters,
+            Exception exception) {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("status", status.value());
         data.put("errorCode", code);
         data.put("errorType", exception.getClass().getSimpleName());
         if (!fieldErrors.isEmpty()) data.put("fields", fieldErrors.keySet());
         eventLogger.failure("API_ERROR_SHOWN", data);
-        ApiError error = new ApiError(Instant.now(), status.value(), code, message, fieldErrors);
+        ApiError error = new ApiError(
+            Instant.now(), status.value(), code, message, fieldErrors, parameters
+        );
         return ResponseEntity.status(status).body(error);
     }
 }

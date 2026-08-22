@@ -8,6 +8,7 @@ public record ApiError(
     int status,
     String code,
     String message,
-    Map<String, String> fieldErrors
+    Map<String, String> fieldErrors,
+    Map<String, String> parameters
 ) {
 }
