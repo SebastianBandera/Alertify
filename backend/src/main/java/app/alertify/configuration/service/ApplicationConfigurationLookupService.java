@@ -13,8 +13,7 @@ public class ApplicationConfigurationLookupService {
 
     private final ApplicationConfigurationRepository configurationRepository;
 
-    public ApplicationConfigurationLookupService(
-            ApplicationConfigurationRepository configurationRepository) {
+    public ApplicationConfigurationLookupService(ApplicationConfigurationRepository configurationRepository) {
         this.configurationRepository = configurationRepository;
     }
 
@@ -22,19 +21,23 @@ public class ApplicationConfigurationLookupService {
     @Transactional(readOnly = true)
     public ConfigurationResponse getById(Long id) {
         return configurationRepository.findById(id)
-            .map(ConfigurationMapper::toResponse)
-            .orElseThrow(() -> new ResourceNotFoundException(
-                "Configuration " + id + " was not found"
-            ));
+                .map(ConfigurationMapper::toResponse)
+                .orElseThrow(
+                        () -> new ResourceNotFoundException(
+                                "Configuration " + id + " was not found"
+                        )
+                );
     }
 
     @Cacheable(cacheNames = ConfigurationCacheNames.BY_NAME, key = "#name")
     @Transactional(readOnly = true)
     public ConfigurationResponse getByName(String name) {
         return configurationRepository.findByName(name)
-            .map(ConfigurationMapper::toResponse)
-            .orElseThrow(() -> new ResourceNotFoundException(
-                "Configuration '" + name + "' was not found"
-            ));
+                .map(ConfigurationMapper::toResponse)
+                .orElseThrow(
+                        () -> new ResourceNotFoundException(
+                                "Configuration '" + name + "' was not found"
+                        )
+                );
     }
 }

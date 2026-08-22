@@ -23,7 +23,7 @@ import tools.jackson.databind.json.JsonMapper;
 class ConfigurationCsvCodec {
 
     private static final List<String> HEADER = List.of(
-        "name", "description", "valueType", "value", "tags"
+            "name", "description", "valueType", "value", "tags"
     );
     private static final int MAX_ROWS = 10_000;
     private static final Pattern TAG_COLOR = Pattern.compile("^#[0-9A-Fa-f]{6}$");
@@ -39,40 +39,41 @@ class ConfigurationCsvCodec {
         appendRow(csv, HEADER);
 
         for (ApplicationConfiguration configuration : configurations) {
-            if (SystemConfigurationPolicy.isValueHidden(configuration.getName())) continue;
+            if (SystemConfigurationPolicy.isValueHidden(configuration.getName()))
+                continue;
 
             List<ExportTag> tags = configuration.getTags().stream()
-                .sorted(Comparator.comparing(Tag::getName, String.CASE_INSENSITIVE_ORDER))
-                .map(tag -> new ExportTag(tag.getName(), tag.getColor()))
-                .toList();
-            appendRow(csv, List.of(
-                configuration.getName(),
-                configuration.getDescription() == null ? "" : configuration.getDescription(),
-                configuration.getValueType().name(),
-                exportValue(configuration),
-                writeJson(tags)
-            ));
+                    .sorted(Comparator.comparing(Tag::getName, String.CASE_INSENSITIVE_ORDER))
+                    .map(tag -> new ExportTag(tag.getName(), tag.getColor()))
+                    .toList();
+
+            appendRow(
+                    csv, List.of(
+                            configuration.getName(),
+                            configuration.getDescription() == null ? "" : configuration.getDescription(),
+                            configuration.getValueType().name(),
+                            exportValue(configuration),
+                            writeJson(tags)
+                    )
+            );
         }
         return csv.toString().getBytes(StandardCharsets.UTF_8);
     }
 
     List<ImportRow> read(byte[] content) {
         String csv = new String(content, StandardCharsets.UTF_8);
-        if (csv.startsWith("\uFEFF")) csv = csv.substring(1);
+        if (csv.startsWith("\uFEFF"))
+            csv = csv.substring(1);
 
         List<List<String>> rows = parseCsv(csv);
         if (rows.isEmpty()) {
             throw new InvalidConfigurationImportException("The CSV file is empty");
         }
         if (!rows.getFirst().equals(HEADER)) {
-            throw new InvalidConfigurationImportException(
-                "CSV header must be exactly: " + String.join(",", HEADER)
-            );
+            throw new InvalidConfigurationImportException("CSV header must be exactly: " + String.join(",", HEADER));
         }
         if (rows.size() - 1 > MAX_ROWS) {
-            throw new InvalidConfigurationImportException(
-                "CSV contains more than " + MAX_ROWS + " configurations"
-            );
+            throw new InvalidConfigurationImportException("CSV contains more than " + MAX_ROWS + " configurations");
         }
 
         Map<String, Integer> names = new LinkedHashMap<>();
@@ -85,8 +86,10 @@ class ConfigurationCsvCodec {
             }
 
             String name = fields.get(0).trim();
-            if (name.isEmpty()) throw rowError(rowNumber, "name is required");
-            if (name.length() > 200) throw rowError(rowNumber, "name exceeds 200 characters");
+            if (name.isEmpty())
+                throw rowError(rowNumber, "name is required");
+            if (name.length() > 200)
+                throw rowError(rowNumber, "name exceeds 200 characters");
             String normalizedName = name.toLowerCase(Locale.ROOT);
             Integer previousRow = names.putIfAbsent(normalizedName, rowNumber);
             if (previousRow != null) {
@@ -134,7 +137,8 @@ class ConfigurationCsvCodec {
     }
 
     private List<ImportTag> parseTags(String rawTags, int rowNumber) {
-        if (rawTags.isBlank()) return List.of();
+        if (rawTags.isBlank())
+            return List.of();
 
         JsonNode tagsNode;
         try {
@@ -148,7 +152,8 @@ class ConfigurationCsvCodec {
 
         Map<String, ImportTag> tags = new LinkedHashMap<>();
         for (JsonNode tagNode : tagsNode) {
-            if (!tagNode.isObject()) throw rowError(rowNumber, "each tag must be a JSON object");
+            if (!tagNode.isObject())
+                throw rowError(rowNumber, "each tag must be a JSON object");
             JsonNode nameNode = tagNode.get("name");
             JsonNode colorNode = tagNode.get("color");
             if (nameNode == null || !nameNode.isString()) {
@@ -181,15 +186,15 @@ class ConfigurationCsvCodec {
 
     private static void appendRow(StringBuilder csv, List<String> fields) {
         for (int index = 0; index < fields.size(); index++) {
-            if (index > 0) csv.append(',');
+            if (index > 0)
+                csv.append(',');
             appendField(csv, fields.get(index));
         }
         csv.append("\r\n");
     }
 
     private static void appendField(StringBuilder csv, String value) {
-        boolean quote = value.indexOf(',') >= 0 || value.indexOf('"') >= 0
-            || value.indexOf('\r') >= 0 || value.indexOf('\n') >= 0;
+        boolean quote = value.indexOf(',') >= 0 || value.indexOf('"') >= 0 || value.indexOf('\r') >= 0 || value.indexOf('\n') >= 0;
         if (!quote) {
             csv.append(value);
             return;
@@ -197,7 +202,8 @@ class ConfigurationCsvCodec {
         csv.append('"');
         for (int index = 0; index < value.length(); index++) {
             char character = value.charAt(index);
-            if (character == '"') csv.append('"');
+            if (character == '"')
+                csv.append('"');
             csv.append(character);
         }
         csv.append('"');
@@ -240,7 +246,8 @@ class ConfigurationCsvCodec {
                 row.add(field.toString());
                 field.setLength(0);
                 fieldStarted = false;
-                if (!row.stream().allMatch(String::isBlank)) rows.add(List.copyOf(row));
+                if (!row.stream().allMatch(String::isBlank))
+                    rows.add(List.copyOf(row));
                 row.clear();
                 if (character == '\r' && index + 1 < csv.length() && csv.charAt(index + 1) == '\n') {
                     index++;
@@ -251,10 +258,13 @@ class ConfigurationCsvCodec {
             }
         }
 
-        if (quoted) throw new InvalidConfigurationImportException("Malformed CSV quoting");
+        if (quoted)
+            throw new InvalidConfigurationImportException("Malformed CSV quoting");
+
         if (fieldStarted || field.length() > 0 || !row.isEmpty()) {
             row.add(field.toString());
-            if (!row.stream().allMatch(String::isBlank)) rows.add(List.copyOf(row));
+            if (!row.stream().allMatch(String::isBlank))
+                rows.add(List.copyOf(row));
         }
         return rows;
     }
@@ -263,8 +273,7 @@ class ConfigurationCsvCodec {
         return new InvalidConfigurationImportException("CSV row " + row + ": " + message);
     }
 
-    private static InvalidConfigurationImportException rowError(
-            int row, String message, Exception cause) {
+    private static InvalidConfigurationImportException rowError(int row, String message, Exception cause) {
         return new InvalidConfigurationImportException("CSV row " + row + ": " + message, cause);
     }
 
@@ -278,9 +287,15 @@ class ConfigurationCsvCodec {
     ) {
     }
 
-    record ImportTag(String name, String color) {
+    record ImportTag(
+        String name,
+        String color
+    ) {
     }
 
-    private record ExportTag(String name, String color) {
+    private record ExportTag(
+        String name,
+        String color
+    ) {
     }
 }

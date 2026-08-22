@@ -18,21 +18,19 @@ import app.alertify.configuration.service.ConfigurationCacheNames;
 public class AlertifyRedisCacheConfiguration {
 
     @Bean
-    RedisCacheManagerBuilderCustomizer configurationCacheCustomizer(
-            @Value("${spring.cache.redis.time-to-live}") Duration timeToLive,
-            @Value("${spring.cache.redis.key-prefix}") String keyPrefix) {
-        var valueSerializer = RedisSerializationContext.SerializationPair.fromSerializer(
-            new JacksonJsonRedisSerializer<>(ConfigurationResponse.class)
-        );
+    RedisCacheManagerBuilderCustomizer configurationCacheCustomizer(@Value("${spring.cache.redis.time-to-live}") Duration timeToLive, @Value("${spring.cache.redis.key-prefix}") String keyPrefix) {
+        var valueSerializer = RedisSerializationContext.SerializationPair.fromSerializer(new JacksonJsonRedisSerializer<>(ConfigurationResponse.class));
+
         CacheKeyPrefix prefix = cacheName -> keyPrefix + cacheName + "::";
+
         RedisCacheConfiguration configuration = RedisCacheConfiguration.defaultCacheConfig()
-            .entryTtl(timeToLive)
-            .computePrefixWith(prefix)
-            .serializeValuesWith(valueSerializer)
-            .disableCachingNullValues();
+                .entryTtl(timeToLive)
+                .computePrefixWith(prefix)
+                .serializeValuesWith(valueSerializer)
+                .disableCachingNullValues();
 
         return builder -> builder
-            .withCacheConfiguration(ConfigurationCacheNames.BY_ID, configuration)
-            .withCacheConfiguration(ConfigurationCacheNames.BY_NAME, configuration);
+                .withCacheConfiguration(ConfigurationCacheNames.BY_ID, configuration)
+                .withCacheConfiguration(ConfigurationCacheNames.BY_NAME, configuration);
     }
 }

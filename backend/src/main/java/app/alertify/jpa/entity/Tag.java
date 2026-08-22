@@ -72,13 +72,33 @@ public class Tag {
         this.color = Objects.requireNonNull(color, "color must not be null");
     }
 
-    public Long getId() { return id; }
-    public long getVersion() { return version; }
-    public TagScope getScope() { return scope; }
-    public String getName() { return name; }
-    public String getColor() { return color; }
-    public Instant getCreatedAt() { return createdAt; }
-    public Instant getUpdatedAt() { return updatedAt; }
+    public Long getId() {
+        return id;
+    }
+
+    public long getVersion() {
+        return version;
+    }
+
+    public TagScope getScope() {
+        return scope;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public String getColor() {
+        return color;
+    }
+
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+
+    public Instant getUpdatedAt() {
+        return updatedAt;
+    }
 
     public void rename(String name) {
         this.name = Objects.requireNonNull(name, "name must not be null");
@@ -90,8 +110,10 @@ public class Tag {
 
     @Override
     public boolean equals(Object other) {
-        if (this == other) return true;
-        if (other == null || Hibernate.getClass(this) != Hibernate.getClass(other)) return false;
+        if (this == other)
+            return true;
+        if (other == null || Hibernate.getClass(this) != Hibernate.getClass(other))
+            return false;
         Tag tag = (Tag) other;
         return id != null && id.equals(tag.id);
     }

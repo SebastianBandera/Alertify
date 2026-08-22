@@ -15,9 +15,14 @@ import app.alertify.jpa.entity.TagScope;
 public interface TagRepository extends JpaRepository<Tag, Long>, JpaSpecificationExecutor<Tag> {
 
     Optional<Tag> findByIdAndScope(Long id, TagScope scope);
+
     List<Tag> findAllByIdInAndScope(Collection<Long> ids, TagScope scope);
+
     List<Tag> findAllByScope(TagScope scope);
+
     Page<Tag> findAllByScope(TagScope scope, Pageable pageable);
+
     boolean existsByScopeAndNameIgnoreCase(TagScope scope, String name);
+
     boolean existsByScopeAndNameIgnoreCaseAndIdNot(TagScope scope, String name, Long id);
 }

@@ -26,15 +26,14 @@ class ConfigurationCacheInvalidator {
     }
 
     private void runAfterCommit(Runnable action) {
-        if (TransactionSynchronizationManager.isActualTransactionActive()
-                && TransactionSynchronizationManager.isSynchronizationActive()) {
+        if (TransactionSynchronizationManager.isActualTransactionActive() && TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(
-                new TransactionSynchronization() {
-                    @Override
-                    public void afterCommit() {
-                        action.run();
+                    new TransactionSynchronization() {
+                        @Override
+                        public void afterCommit() {
+                            action.run();
+                        }
                     }
-                }
             );
             return;
         }
@@ -43,16 +42,21 @@ class ConfigurationCacheInvalidator {
 
     private void evict(Long id, Set<String> names) {
         Cache byId = cacheManager.getCache(ConfigurationCacheNames.BY_ID);
-        if (byId != null && id != null) byId.evict(id);
+        if (byId != null && id != null)
+            byId.evict(id);
 
         Cache byName = cacheManager.getCache(ConfigurationCacheNames.BY_NAME);
-        if (byName != null) names.forEach(byName::evict);
+        if (byName != null)
+            names.forEach(byName::evict);
     }
 
     private void clear() {
         Cache byId = cacheManager.getCache(ConfigurationCacheNames.BY_ID);
-        if (byId != null) byId.clear();
+        if (byId != null)
+            byId.clear();
+        
         Cache byName = cacheManager.getCache(ConfigurationCacheNames.BY_NAME);
-        if (byName != null) byName.clear();
+        if (byName != null)
+            byName.clear();
     }
 }

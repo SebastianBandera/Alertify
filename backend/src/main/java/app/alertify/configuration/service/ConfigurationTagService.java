@@ -30,13 +30,13 @@ public class ConfigurationTagService {
 
     private static final TagScope SCOPE = TagScope.CONFIGURATION;
     private static final Map<String, String> FILTER_ALIASES = Map.of(
-        "created", "createdAt", "modified", "updatedAt"
+            "created", "createdAt", "modified", "updatedAt"
     );
     private static final Set<String> FILTER_FIELDS = Set.of(
-        "id", "version", "name", "color", "createdAt", "updatedAt"
+            "id", "version", "name", "color", "createdAt", "updatedAt"
     );
     private static final Set<String> SORT_FIELDS = Set.of(
-        "id", "version", "name", "color", "createdAt", "updatedAt"
+            "id", "version", "name", "color", "createdAt", "updatedAt"
     );
 
     private final TagRepository tagRepository;
@@ -44,11 +44,7 @@ public class ConfigurationTagService {
     private final ConfigurationCacheInvalidator cacheInvalidator;
     private final ApplicationEventLogger eventLogger;
 
-    public ConfigurationTagService(
-            TagRepository tagRepository,
-            ApplicationConfigurationRepository configurationRepository,
-            ConfigurationCacheInvalidator cacheInvalidator,
-            ApplicationEventLogger eventLogger) {
+    public ConfigurationTagService(TagRepository tagRepository, ApplicationConfigurationRepository configurationRepository, ConfigurationCacheInvalidator cacheInvalidator, ApplicationEventLogger eventLogger) {
         this.tagRepository = tagRepository;
         this.configurationRepository = configurationRepository;
         this.cacheInvalidator = cacheInvalidator;
@@ -58,15 +54,15 @@ public class ConfigurationTagService {
     @Transactional(readOnly = true)
     public Page<TagResponse> search(MultiValueMap<String, String> params, Pageable pageable) {
         SearchValidation.validateSort(pageable, SORT_FIELDS);
-        Specification<Tag> scopeSpecification = (root, query, cb) ->
-            cb.equal(root.get("scope"), SCOPE);
+        Specification<Tag> scopeSpecification = (root, _, cb) -> cb.equal(root.get("scope"), SCOPE);
         Specification<Tag> filters = DynamicSpecification.from(params, FILTER_ALIASES, FILTER_FIELDS);
-        return tagRepository.findAll(scopeSpecification.and(filters), pageable)
-            .map(ConfigurationMapper::toResponse);
+        return tagRepository.findAll(scopeSpecification.and(filters), pageable).map(ConfigurationMapper::toResponse);
     }
 
     @Transactional(readOnly = true)
-    public TagResponse get(Long id) { return ConfigurationMapper.toResponse(find(id)); }
+    public TagResponse get(Long id) {
+        return ConfigurationMapper.toResponse(find(id));
+    }
 
     @Transactional
     public TagResponse create(TagCreateRequest request) {
@@ -75,8 +71,8 @@ public class ConfigurationTagService {
         ensureNameAvailable(name, null);
         Tag saved = tagRepository.saveAndFlush(new Tag(SCOPE, name, color));
         eventLogger.successAfterCommit(
-            "CONFIGURATION_TAG_CREATED",
-            Map.of("tagId", saved.getId(), "name", saved.getName(), "color", saved.getColor())
+                "CONFIGURATION_TAG_CREATED",
+                Map.of("tagId", saved.getId(), "name", saved.getName(), "color", saved.getColor())
         );
         return ConfigurationMapper.toResponse(saved);
     }
@@ -123,31 +119,37 @@ public class ConfigurationTagService {
         ApplicationConfigurationService.verifyVersion(tag.getVersion(), version, "Tag");
         if (configurationRepository.existsByTagsId(id)) {
             throw new ConflictException(
-                "CONFIGURATION_TAG_IN_USE",
-                "Tag '" + tag.getName() + "' is assigned to one or more configurations",
-                Map.of("tagName", tag.getName())
+                    "CONFIGURATION_TAG_IN_USE",
+                    "Tag '" + tag.getName() + "' is assigned to one or more configurations",
+                    Map.of("tagName", tag.getName())
             );
         }
         tagRepository.delete(tag);
         tagRepository.flush();
         eventLogger.successAfterCommit(
-            "CONFIGURATION_TAG_DELETED",
-            Map.of("tagId", id, "name", tag.getName(), "color", tag.getColor(), "version", version)
+                "CONFIGURATION_TAG_DELETED",
+                Map.of("tagId", id, "name", tag.getName(), "color", tag.getColor(), "version", version)
         );
     }
 
     private Tag find(Long id) {
         return tagRepository.findByIdAndScope(id, SCOPE)
-            .orElseThrow(() -> new ResourceNotFoundException("Configuration tag " + id + " was not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Configuration tag " + id + " was not found"));
     }
 
     private void ensureNameAvailable(String name, Long currentId) {
         boolean exists = currentId == null
-            ? tagRepository.existsByScopeAndNameIgnoreCase(SCOPE, name)
-            : tagRepository.existsByScopeAndNameIgnoreCaseAndIdNot(SCOPE, name, currentId);
-        if (exists) throw new ConflictException("A configuration tag named '" + name + "' already exists");
+                ? tagRepository.existsByScopeAndNameIgnoreCase(SCOPE, name)
+                : tagRepository.existsByScopeAndNameIgnoreCaseAndIdNot(SCOPE, name, currentId);
+        if (exists)
+            throw new ConflictException("A configuration tag named '" + name + "' already exists");
     }
 
-    private static String normalizeName(String value) { return value.trim(); }
-    private static String normalizeColor(String value) { return value.trim().toUpperCase(Locale.ROOT); }
+    private static String normalizeName(String value) {
+        return value.trim();
+    }
+
+    private static String normalizeColor(String value) {
+        return value.trim().toUpperCase(Locale.ROOT);
+    }
 }

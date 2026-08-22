@@ -46,9 +46,7 @@ public class ApplicationConfigurationController {
     }
 
     @GetMapping
-    public Page<ConfigurationResponse> search(
-            @RequestParam MultiValueMap<String, String> params,
-            @PageableDefault(size = 20, sort = "name") Pageable pageable) {
+    public Page<ConfigurationResponse> search(@RequestParam MultiValueMap<String, String> params, @PageableDefault(size = 20, sort = "name") Pageable pageable) {
         return service.search(params, pageable);
     }
 
@@ -56,12 +54,12 @@ public class ApplicationConfigurationController {
     public ResponseEntity<byte[]> exportCsv() {
         byte[] csv = service.exportCsv();
         return ResponseEntity.ok()
-            .contentType(MediaType.parseMediaType("text/csv;charset=UTF-8"))
-            .header(
-                HttpHeaders.CONTENT_DISPOSITION,
-                ContentDisposition.attachment().filename("alertify-configurations.csv").build().toString()
-            )
-            .body(csv);
+                .contentType(MediaType.parseMediaType("text/csv;charset=UTF-8"))
+                .header(
+                        HttpHeaders.CONTENT_DISPOSITION,
+                        ContentDisposition.attachment().filename("alertify-configurations.csv").build().toString()
+                )
+                .body(csv);
     }
 
     @PostMapping(value = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -70,28 +68,24 @@ public class ApplicationConfigurationController {
     }
 
     @GetMapping("/{id}")
-    public ConfigurationResponse get(@PathVariable Long id) { return service.get(id); }
+    public ConfigurationResponse get(@PathVariable Long id) {
+        return service.get(id);
+    }
 
     @PostMapping
-    public ResponseEntity<ConfigurationResponse> create(
-            @Valid @RequestBody ConfigurationCreateRequest request) {
+    public ResponseEntity<ConfigurationResponse> create(@Valid @RequestBody ConfigurationCreateRequest request) {
         ConfigurationResponse response = service.create(request);
-        URI location = ServletUriComponentsBuilder.fromCurrentRequest()
-            .path("/{id}").buildAndExpand(response.id()).toUri();
+        URI location = ServletUriComponentsBuilder.fromCurrentRequest().path("/{id}").buildAndExpand(response.id()).toUri();
         return ResponseEntity.created(location).body(response);
     }
 
     @PutMapping("/{id}")
-    public ConfigurationResponse update(
-            @PathVariable Long id,
-            @Valid @RequestBody ConfigurationUpdateRequest request) {
+    public ConfigurationResponse update(@PathVariable Long id, @Valid @RequestBody ConfigurationUpdateRequest request) {
         return service.update(id, request);
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(
-            @PathVariable Long id,
-            @RequestParam @PositiveOrZero long version) {
+    public ResponseEntity<Void> delete(@PathVariable Long id, @RequestParam @PositiveOrZero long version) {
         service.delete(id, version);
         return ResponseEntity.noContent().build();
     }

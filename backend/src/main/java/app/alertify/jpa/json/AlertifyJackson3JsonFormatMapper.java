@@ -7,8 +7,7 @@ import org.hibernate.type.format.AbstractJsonFormatMapper;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Bridges Hibernate 7.2 JSON columns with Jackson 3, whose classes live under
- * the {@code tools.jackson} namespace used by Spring Boot 4.
+ * Bridges Hibernate 7.2 JSON columns with Jackson 3, whose classes live under the {@code tools.jackson} namespace used by Spring Boot 4.
  */
 public final class AlertifyJackson3JsonFormatMapper extends AbstractJsonFormatMapper {
 

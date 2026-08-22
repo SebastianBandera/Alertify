@@ -19,7 +19,8 @@ import app.alertify.jpa.entity.ConfigurationValueType;
 public class ConfigurationValueValidator {
 
     public JsonNode validateAndNormalize(ConfigurationValueType type, JsonNode value) {
-        if (type == null) throw new InvalidConfigurationValueException("Configuration value type is required");
+        if (type == null)
+            throw new InvalidConfigurationValueException("Configuration value type is required");
         if (value == null || value.isNull() || value.isMissingNode()) {
             throw new InvalidConfigurationValueException("Configuration value must not be null");
         }
@@ -71,7 +72,7 @@ public class ConfigurationValueValidator {
             return StringNode.valueOf(OffsetDateTime.parse(value.stringValue()).toInstant().toString());
         } catch (RuntimeException exception) {
             throw new InvalidConfigurationValueException(
-                "DATE_TIME must use ISO-8601 format and include an offset", exception
+                    "DATE_TIME must use ISO-8601 format and include an offset", exception
             );
         }
     }
@@ -82,6 +83,7 @@ public class ConfigurationValueValidator {
     }
 
     private static void require(boolean condition, String message) {
-        if (!condition) throw new InvalidConfigurationValueException(message);
+        if (!condition)
+            throw new InvalidConfigurationValueException(message);
     }
 }

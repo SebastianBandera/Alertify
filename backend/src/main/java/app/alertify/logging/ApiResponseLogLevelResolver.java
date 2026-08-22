@@ -5,7 +5,7 @@ import java.util.Set;
 public final class ApiResponseLogLevelResolver {
 
     private static final Set<String> EXPECTED_BUSINESS_ERROR_CODES = Set.of(
-        "CONFIGURATION_TAG_IN_USE"
+            "CONFIGURATION_TAG_IN_USE"
     );
 
     private ApiResponseLogLevelResolver() {
@@ -26,8 +26,8 @@ public final class ApiResponseLogLevelResolver {
 
     static boolean isExpectedBusinessResponse(int status, String errorCode) {
         return status >= 400
-            && status < 500
-            && errorCode != null
-            && EXPECTED_BUSINESS_ERROR_CODES.contains(errorCode);
+                && status < 500
+                && errorCode != null
+                && EXPECTED_BUSINESS_ERROR_CODES.contains(errorCode);
     }
 }

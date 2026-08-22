@@ -23,9 +23,7 @@ public class ApplicationEventLogger {
     private final ApplicationLogWriter writer;
     private final String source;
 
-    ApplicationEventLogger(
-            ApplicationLogWriter writer,
-            @Value("${spring.application.name}") String source) {
+    ApplicationEventLogger(ApplicationLogWriter writer, @Value("${spring.application.name}") String source) {
         this.writer = writer;
         this.source = source;
     }
@@ -48,26 +46,22 @@ public class ApplicationEventLogger {
 
     public void successAfterCommit(String event, Map<String, ?> data) {
         ApplicationLogCommand command = command(
-            ApplicationLogLevel.INFO, event, ApplicationLogOutcome.SUCCESS, data
+                ApplicationLogLevel.INFO, event, ApplicationLogOutcome.SUCCESS, data
         );
         runAfterCommit(() -> write(command));
     }
 
     public void failureAfterCommit(String event, Map<String, ?> data) {
         ApplicationLogCommand command = command(
-            ApplicationLogLevel.WARN, event, ApplicationLogOutcome.FAILURE, data
+                ApplicationLogLevel.WARN, event, ApplicationLogOutcome.FAILURE, data
         );
         runAfterCommit(() -> write(command));
     }
 
-    private ApplicationLogCommand command(
-            ApplicationLogLevel level,
-            String event,
-            ApplicationLogOutcome outcome,
-            Map<String, ?> data) {
+    private ApplicationLogCommand command(ApplicationLogLevel level, String event, ApplicationLogOutcome outcome, Map<String, ?> data) {
         return new ApplicationLogCommand(
-            Instant.now(), level, source, event, outcome, CurrentLogActor.resolve(),
-            currentRequestId(), currentRequestPath(), Map.copyOf(data)
+                Instant.now(), level, source, event, outcome, CurrentLogActor.resolve(),
+                currentRequestId(), currentRequestPath(), Map.copyOf(data)
         );
     }
 
@@ -75,12 +69,12 @@ public class ApplicationEventLogger {
         if (TransactionSynchronizationManager.isActualTransactionActive()
                 && TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(
-                new TransactionSynchronization() {
-                    @Override
-                    public void afterCommit() {
-                        action.run();
+                    new TransactionSynchronization() {
+                        @Override
+                        public void afterCommit() {
+                            action.run();
+                        }
                     }
-                }
             );
             return;
         }
@@ -93,8 +87,8 @@ public class ApplicationEventLogger {
             writer.persist(command);
         } catch (RuntimeException exception) {
             log.error(
-                "Unable to persist application event={} requestId={}",
-                command.event(), command.requestId(), exception
+                    "Unable to persist application event={} requestId={}",
+                    command.event(), command.requestId(), exception
             );
         }
     }
@@ -102,8 +96,8 @@ public class ApplicationEventLogger {
     private static void writeConsole(ApplicationLogCommand command) {
         String template = "event={} outcome={} user={} subject={} requestId={} path={} data={}";
         Object[] arguments = {
-            command.event(), command.outcome(), command.actor().username(),
-            command.actor().subject(), command.requestId(), command.path(), command.data()
+                command.event(), command.outcome(), command.actor().username(),
+                command.actor().subject(), command.requestId(), command.path(), command.data()
         };
         switch (command.level()) {
             case INFO -> log.info(template, arguments);
@@ -114,7 +108,8 @@ public class ApplicationEventLogger {
 
     private static UUID currentRequestId() {
         String requestId = MDC.get(REQUEST_ID_MDC_KEY);
-        if (requestId == null) return null;
+        if (requestId == null)
+            return null;
         try {
             return UUID.fromString(requestId);
         } catch (IllegalArgumentException exception) {

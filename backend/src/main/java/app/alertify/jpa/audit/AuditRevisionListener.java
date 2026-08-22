@@ -15,8 +15,7 @@ public final class AuditRevisionListener implements RevisionListener {
         AuditRevisionEntity revision = (AuditRevisionEntity) revisionObject;
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 
-        if (authentication instanceof JwtAuthenticationToken jwtAuthentication
-                && authentication.isAuthenticated()) {
+        if (authentication instanceof JwtAuthenticationToken jwtAuthentication && authentication.isAuthenticated()) {
             String subject = jwtAuthentication.getToken().getSubject();
             String username = jwtAuthentication.getToken().getClaimAsString(USERNAME_CLAIM);
 
@@ -31,7 +30,8 @@ public final class AuditRevisionListener implements RevisionListener {
 
     private static String firstNonBlank(String... values) {
         for (String value : values) {
-            if (value != null && !value.isBlank()) return value;
+            if (value != null && !value.isBlank())
+                return value;
         }
         return SYSTEM_USER;
     }

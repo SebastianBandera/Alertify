@@ -32,11 +32,27 @@ public class AuditRevisionEntity {
     @Column(nullable = false, length = 255)
     private String username;
 
-    public Long getRevision() { return revision; }
-    public long getRevisionTimestamp() { return revisionTimestamp; }
-    public String getUserSubject() { return userSubject; }
-    public String getUsername() { return username; }
+    public Long getRevision() {
+        return revision;
+    }
 
-    void setUserSubject(String userSubject) { this.userSubject = userSubject; }
-    void setUsername(String username) { this.username = username; }
+    public long getRevisionTimestamp() {
+        return revisionTimestamp;
+    }
+
+    public String getUserSubject() {
+        return userSubject;
+    }
+
+    public String getUsername() {
+        return username;
+    }
+
+    void setUserSubject(String userSubject) {
+        this.userSubject = userSubject;
+    }
+
+    void setUsername(String username) {
+        this.username = username;
+    }
 }

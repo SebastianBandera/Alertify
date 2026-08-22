@@ -104,15 +104,41 @@ public class ApplicationConfiguration {
         replaceTags(tags);
     }
 
-    public Long getId() { return id; }
-    public long getVersion() { return version; }
-    public String getName() { return name; }
-    public String getDescription() { return description; }
-    public ConfigurationValueType getValueType() { return valueType; }
-    public JsonNode getValue() { return value; }
-    public Instant getCreatedAt() { return createdAt; }
-    public Instant getUpdatedAt() { return updatedAt; }
-    public Set<Tag> getTags() { return Collections.unmodifiableSet(tags); }
+    public Long getId() {
+        return id;
+    }
+
+    public long getVersion() {
+        return version;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public ConfigurationValueType getValueType() {
+        return valueType;
+    }
+
+    public JsonNode getValue() {
+        return value;
+    }
+
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+
+    public Instant getUpdatedAt() {
+        return updatedAt;
+    }
+
+    public Set<Tag> getTags() {
+        return Collections.unmodifiableSet(tags);
+    }
 
     public void rename(String name) {
         this.name = Objects.requireNonNull(name, "name must not be null");
@@ -129,6 +155,7 @@ public class ApplicationConfiguration {
 
     public void replaceTags(Set<Tag> tags) {
         this.tags.clear();
-        if (tags != null) this.tags.addAll(tags);
+        if (tags != null)
+            this.tags.addAll(tags);
     }
 }

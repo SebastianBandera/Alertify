@@ -24,12 +24,10 @@ import app.alertify.logging.ApplicationEventLogger;
 public class SecurityConfig {
 
     @Bean
-    JwtAuthenticationConverter jwtAuthenticationConverter(
-            @Value("${security.roles-client-id}") String rolesClientId) {
-
+    JwtAuthenticationConverter jwtAuthenticationConverter(@Value("${security.roles-client-id}") String rolesClientId) {
         var authoritiesConverter = new DelegatingJwtGrantedAuthoritiesConverter(
-            new JwtGrantedAuthoritiesConverter(),
-            new ClientRoleConverter(rolesClientId)
+                new JwtGrantedAuthoritiesConverter(),
+                new ClientRoleConverter(rolesClientId)
         );
 
         var authenticationConverter = new JwtAuthenticationConverter();
@@ -38,8 +36,7 @@ public class SecurityConfig {
     }
 
     @Bean
-    CorsConfigurationSource corsConfigurationSource(
-            @Value("${security.cors.allowed-origin}") String allowedOrigin) {
+    CorsConfigurationSource corsConfigurationSource(@Value("${security.cors.allowed-origin}") String allowedOrigin) {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(List.of(allowedOrigin));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
@@ -53,25 +50,24 @@ public class SecurityConfig {
     }
 
     @Bean
-    SecurityFilterChain securityFilterChain(
-            HttpSecurity http,
-            JwtAuthenticationConverter jwtAuthenticationConverter,
-            ApplicationEventLogger eventLogger) throws Exception {
-
+    SecurityFilterChain securityFilterChain(HttpSecurity http, JwtAuthenticationConverter jwtAuthenticationConverter, ApplicationEventLogger eventLogger) throws Exception {
         http
-            .cors(Customizer.withDefaults())
-            .csrf(csrf -> csrf.disable())
-            .authorizeHttpRequests(authorize -> authorize
-                .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info")
-                .permitAll()
-                .anyRequest()
-                .authenticated())
-            .sessionManagement(session -> session
-                .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-            .oauth2ResourceServer(resourceServer -> resourceServer
-                .jwt(jwt -> jwt
-                    .jwtAuthenticationConverter(jwtAuthenticationConverter)))
-            .addFilterAfter(new ApiRequestLoggingFilter(eventLogger), BearerTokenAuthenticationFilter.class);
+                .cors(Customizer.withDefaults())
+                .csrf(csrf -> csrf.disable())
+                .authorizeHttpRequests(
+                        authorize -> authorize
+                                .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info")
+                                .permitAll()
+                                .anyRequest()
+                                .authenticated()
+                )
+                .sessionManagement(
+                        session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+                )
+                .oauth2ResourceServer(
+                        resourceServer -> resourceServer.jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter))
+                )
+                .addFilterAfter(new ApiRequestLoggingFilter(eventLogger), BearerTokenAuthenticationFilter.class);
 
         return http.build();
     }

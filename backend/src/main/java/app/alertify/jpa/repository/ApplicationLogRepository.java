@@ -9,8 +9,7 @@ import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 
 import app.alertify.jpa.entity.ApplicationLog;
 
-public interface ApplicationLogRepository
-        extends JpaRepository<ApplicationLog, Long>, JpaSpecificationExecutor<ApplicationLog> {
+public interface ApplicationLogRepository extends JpaRepository<ApplicationLog, Long>, JpaSpecificationExecutor<ApplicationLog> {
 
     @Override
     @EntityGraph(attributePaths = { "level", "source", "event" })

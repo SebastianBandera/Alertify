@@ -18,11 +18,10 @@ import jakarta.servlet.http.HttpServletResponse;
 public final class ApiRequestLoggingFilter extends OncePerRequestFilter {
 
     public static final String REQUEST_ID_HEADER = "X-Request-ID";
-    public static final String ERROR_CODE_REQUEST_ATTRIBUTE =
-        ApiRequestLoggingFilter.class.getName() + ".errorCode";
+    public static final String ERROR_CODE_REQUEST_ATTRIBUTE = ApiRequestLoggingFilter.class.getName() + ".errorCode";
     private static final Set<String> SAFE_QUERY_PARAMETERS = Set.of(
-        "page", "size", "sort", "tagId", "tagOperator", "name", "user", "subject",
-        "event", "level", "outcome", "date", "eventAt", "path"
+            "page", "size", "sort", "tagId", "tagOperator", "name", "user", "subject",
+            "event", "level", "outcome", "date", "eventAt", "path"
     );
 
     private final ApplicationEventLogger eventLogger;
@@ -37,10 +36,7 @@ public final class ApiRequestLoggingFilter extends OncePerRequestFilter {
     }
 
     @Override
-    protected void doFilterInternal(
-            HttpServletRequest request,
-            HttpServletResponse response,
-            FilterChain filterChain) throws ServletException, IOException {
+    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
         UUID requestId = UUID.randomUUID();
         long startedAt = System.nanoTime();
         response.setHeader(REQUEST_ID_HEADER, requestId.toString());
@@ -51,12 +47,12 @@ public final class ApiRequestLoggingFilter extends OncePerRequestFilter {
             filterChain.doFilter(request, response);
         } catch (IOException | ServletException | RuntimeException exception) {
             eventLogger.error(
-                "API_UNHANDLED_ERROR",
-                Map.of(
-                    "method", request.getMethod(),
-                    "path", request.getRequestURI(),
-                    "errorType", exception.getClass().getSimpleName()
-                )
+                    "API_UNHANDLED_ERROR",
+                    Map.of(
+                            "method", request.getMethod(),
+                            "path", request.getRequestURI(),
+                            "errorType", exception.getClass().getSimpleName()
+                    )
             );
             throw exception;
         } finally {
@@ -94,7 +90,8 @@ public final class ApiRequestLoggingFilter extends OncePerRequestFilter {
                 query.put(name, values.length == 1 ? values[0] : values);
             }
         });
-        if (!query.isEmpty()) data.put("query", query);
+        if (!query.isEmpty())
+            data.put("query", query);
         return data;
     }
 }

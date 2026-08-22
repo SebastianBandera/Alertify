@@ -28,18 +28,14 @@ public class ApplicationLogController {
     private final ApplicationLogService service;
     private final ApplicationEventLogger eventLogger;
 
-    public ApplicationLogController(
-            ApplicationLogService service,
-            ApplicationEventLogger eventLogger) {
+    public ApplicationLogController(ApplicationLogService service, ApplicationEventLogger eventLogger) {
         this.service = service;
         this.eventLogger = eventLogger;
     }
 
     @GetMapping
     @PreAuthorize("hasRole('ADMIN')")
-    public Page<ApplicationLogResponse> search(
-            @RequestParam MultiValueMap<String, String> params,
-            @PageableDefault(size = 25, sort = "eventAt", direction = Sort.Direction.DESC) Pageable pageable) {
+    public Page<ApplicationLogResponse> search(@RequestParam MultiValueMap<String, String> params, @PageableDefault(size = 25, sort = "eventAt", direction = Sort.Direction.DESC) Pageable pageable) {
         return service.search(params, pageable);
     }
 
@@ -70,7 +66,7 @@ public class ApplicationLogController {
     private static String clientAddress(HttpServletRequest request) {
         String forwarded = request.getHeader("X-Forwarded-For");
         return forwarded == null || forwarded.isBlank()
-            ? request.getRemoteAddr()
-            : forwarded.split(",", 2)[0].trim();
+                ? request.getRemoteAddr()
+                : forwarded.split(",", 2)[0].trim();
     }
 }

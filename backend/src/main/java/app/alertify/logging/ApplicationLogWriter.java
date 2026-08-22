@@ -15,10 +15,7 @@ class ApplicationLogWriter {
     private final ApplicationLogCatalog catalog;
     private final JsonMapper jsonMapper;
 
-    ApplicationLogWriter(
-            ApplicationLogRepository repository,
-            ApplicationLogCatalog catalog,
-            JsonMapper jsonMapper) {
+    ApplicationLogWriter(ApplicationLogRepository repository, ApplicationLogCatalog catalog, JsonMapper jsonMapper) {
         this.repository = repository;
         this.catalog = catalog;
         this.jsonMapper = jsonMapper;
@@ -26,11 +23,13 @@ class ApplicationLogWriter {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void persist(ApplicationLogCommand command) {
-        repository.saveAndFlush(new ApplicationLog(
-            command.eventAt(), catalog.level(command.level()), catalog.source(command.source()),
-            catalog.event(command.event()),
-            command.outcome(), command.actor().subject(), command.actor().username(),
-            command.requestId(), command.path(), jsonMapper.valueToTree(command.data())
-        ));
+        repository.saveAndFlush(
+                new ApplicationLog(
+                        command.eventAt(), catalog.level(command.level()), catalog.source(command.source()),
+                        catalog.event(command.event()),
+                        command.outcome(), command.actor().subject(), command.actor().username(),
+                        command.requestId(), command.path(), jsonMapper.valueToTree(command.data())
+                )
+        );
     }
 }

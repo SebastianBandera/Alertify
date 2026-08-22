@@ -34,31 +34,28 @@ final class SystemConfigurationPolicy {
     static void validateCreation(String name) {
         if (isSystemManaged(name)) {
             throw new ConflictException(
-                "Configuration '" + KEY_PART + "' is created automatically and cannot be created manually"
+                    "Configuration '" + KEY_PART + "' is created automatically and cannot be created manually"
             );
         }
     }
 
-    static void validateUpdate(
-            ApplicationConfiguration configuration,
-            String requestedName,
-            ConfigurationValueType requestedType,
-            JsonNode requestedValue) {
-        if (!isSystemManaged(configuration.getName())) return;
+    static void validateUpdate(ApplicationConfiguration configuration, String requestedName, ConfigurationValueType requestedType, JsonNode requestedValue) {
+        if (!isSystemManaged(configuration.getName()))
+            return;
 
         if (!KEY_PART.equals(requestedName)) {
             throw new ConflictException("Configuration '" + KEY_PART + "' cannot be renamed");
         }
         if (requestedType != ConfigurationValueType.STRING) {
             throw new InvalidConfigurationValueException(
-                "Configuration '" + KEY_PART + "' must have type STRING"
+                    "Configuration '" + KEY_PART + "' must have type STRING"
             );
         }
 
         String value = requestedValue.stringValue();
         if (value == null || value.isEmpty()) {
             throw new InvalidConfigurationValueException(
-                "Configuration '" + KEY_PART + "' must contain at least one character"
+                    "Configuration '" + KEY_PART + "' must contain at least one character"
             );
         }
     }

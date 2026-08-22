@@ -18,11 +18,7 @@ public class SymmetricKeyService {
     private final EnvironmentKeyPartSource environmentKeyPartSource;
     private final Sha256HashService sha256HashService;
 
-    public SymmetricKeyService(
-            DatabaseKeyPartSource databaseKeyPartSource,
-            PrivateClassKeyPartSource privateClassKeyPartSource,
-            EnvironmentKeyPartSource environmentKeyPartSource,
-            Sha256HashService sha256HashService) {
+    public SymmetricKeyService(DatabaseKeyPartSource databaseKeyPartSource, PrivateClassKeyPartSource privateClassKeyPartSource, EnvironmentKeyPartSource environmentKeyPartSource, Sha256HashService sha256HashService) {
         this.databaseKeyPartSource = databaseKeyPartSource;
         this.privateClassKeyPartSource = privateClassKeyPartSource;
         this.environmentKeyPartSource = environmentKeyPartSource;
@@ -34,22 +30,20 @@ public class SymmetricKeyService {
         byte[] privateClassKeyPart = privateClassKeyPartSource.read().getBytes(StandardCharsets.UTF_8);
         byte[] environmentKeyPart = environmentKeyPartSource.read().getBytes(StandardCharsets.UTF_8);
         byte[] keyBytes = sha256HashService.hash(
-            encodeKeyParts(databaseKeyPart, privateClassKeyPart, environmentKeyPart)
+                encodeKeyParts(databaseKeyPart, privateClassKeyPart, environmentKeyPart)
         );
+
         return new SecretKeySpec(keyBytes, KEY_ALGORITHM);
     }
 
-    private static byte[] encodeKeyParts(
-            byte[] databaseKeyPart,
-            byte[] privateClassKeyPart,
-            byte[] environmentKeyPart) {
+    private static byte[] encodeKeyParts(byte[] databaseKeyPart, byte[] privateClassKeyPart, byte[] environmentKeyPart) {
         int privateClassEncodedLength = privateClassKeyPart.length == 0
-            ? 0
-            : Integer.BYTES + privateClassKeyPart.length;
+                ? 0
+                : Integer.BYTES + privateClassKeyPart.length;
         ByteBuffer buffer = ByteBuffer.allocate(
-            Integer.BYTES + databaseKeyPart.length
-                + privateClassEncodedLength
-                + Integer.BYTES + environmentKeyPart.length
+                Integer.BYTES + databaseKeyPart.length
+                        + privateClassEncodedLength
+                        + Integer.BYTES + environmentKeyPart.length
         );
 
         appendKeyPart(buffer, databaseKeyPart);

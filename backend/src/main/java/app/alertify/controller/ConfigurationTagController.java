@@ -35,37 +35,34 @@ public class ConfigurationTagController {
 
     private final ConfigurationTagService service;
 
-    public ConfigurationTagController(ConfigurationTagService service) { this.service = service; }
+    public ConfigurationTagController(ConfigurationTagService service) {
+        this.service = service;
+    }
 
     @GetMapping
-    public Page<TagResponse> search(
-            @RequestParam MultiValueMap<String, String> params,
-            @PageableDefault(size = 50, sort = "name") Pageable pageable) {
+    public Page<TagResponse> search(@RequestParam MultiValueMap<String, String> params, @PageableDefault(size = 50, sort = "name") Pageable pageable) {
         return service.search(params, pageable);
     }
 
     @GetMapping("/{id}")
-    public TagResponse get(@PathVariable Long id) { return service.get(id); }
+    public TagResponse get(@PathVariable Long id) {
+        return service.get(id);
+    }
 
     @PostMapping
     public ResponseEntity<TagResponse> create(@Valid @RequestBody TagCreateRequest request) {
         TagResponse response = service.create(request);
-        URI location = ServletUriComponentsBuilder.fromCurrentRequest()
-            .path("/{id}").buildAndExpand(response.id()).toUri();
+        URI location = ServletUriComponentsBuilder.fromCurrentRequest().path("/{id}").buildAndExpand(response.id()).toUri();
         return ResponseEntity.created(location).body(response);
     }
 
     @PutMapping("/{id}")
-    public TagResponse update(
-            @PathVariable Long id,
-            @Valid @RequestBody TagUpdateRequest request) {
+    public TagResponse update(@PathVariable Long id, @Valid @RequestBody TagUpdateRequest request) {
         return service.update(id, request);
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(
-            @PathVariable Long id,
-            @RequestParam @PositiveOrZero long version) {
+    public ResponseEntity<Void> delete(@PathVariable Long id, @RequestParam @PositiveOrZero long version) {
         service.delete(id, version);
         return ResponseEntity.noContent().build();
     }

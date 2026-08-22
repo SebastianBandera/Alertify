@@ -22,25 +22,25 @@ import app.alertify.logging.api.ApplicationLogResponse;
 public class ApplicationLogService {
 
     private static final Map<String, String> FILTER_ALIASES = Map.of(
-        "user", "username",
-        "subject", "userSubject",
-        "date", "eventAt",
-        "level", "level.code",
-        "source", "source.code",
-        "event", "event.code"
+            "user", "username",
+            "subject", "userSubject",
+            "date", "eventAt",
+            "level", "level.code",
+            "source", "source.code",
+            "event", "event.code"
     );
     private static final Set<String> FILTER_FIELDS = Set.of(
-        "id", "eventAt", "level.code", "source.code", "event.code", "outcome",
-        "userSubject", "username", "requestId", "path"
+            "id", "eventAt", "level.code", "source.code", "event.code", "outcome",
+            "userSubject", "username", "requestId", "path"
     );
     private static final Set<String> SORT_FIELDS = Set.of(
-        "id", "eventAt", "level", "source", "event", "outcome", "userSubject", "username",
-        "path"
+            "id", "eventAt", "level", "source", "event", "outcome", "userSubject", "username",
+            "path"
     );
     private static final Map<String, String> SORT_ALIASES = Map.of(
-        "level", "level.code",
-        "source", "source.code",
-        "event", "event.code"
+            "level", "level.code",
+            "source", "source.code",
+            "event", "event.code"
     );
 
     private final ApplicationLogRepository repository;
@@ -57,34 +57,36 @@ public class ApplicationLogService {
                 throw new InvalidFilterException("sort");
             }
         });
-        Specification<ApplicationLog> specification =
-            DynamicSpecification.from(params, FILTER_ALIASES, FILTER_FIELDS);
+        Specification<ApplicationLog> specification = DynamicSpecification.from(params, FILTER_ALIASES, FILTER_FIELDS);
         Pageable queryPageable = PageRequest.of(
-            pageable.getPageNumber(),
-            pageable.getPageSize(),
-            mapSort(pageable.getSort())
+                pageable.getPageNumber(),
+                pageable.getPageSize(),
+                mapSort(pageable.getSort())
         );
         return repository.findAll(specification, queryPageable)
-            .map(ApplicationLogService::toResponse);
+                .map(ApplicationLogService::toResponse);
     }
 
     private static Sort mapSort(Sort sort) {
-        return Sort.by(sort.stream()
-            .map(order -> {
-                Sort.Order mappedOrder = new Sort.Order(
-                    order.getDirection(),
-                    SORT_ALIASES.getOrDefault(order.getProperty(), order.getProperty())
-                ).with(order.getNullHandling());
-                return order.isIgnoreCase() ? mappedOrder.ignoreCase() : mappedOrder;
-            })
-            .toList());
+        return Sort.by(
+                sort.stream()
+                        .map(order -> {
+                            Sort.Order mappedOrder = new Sort.Order(
+                                    order.getDirection(),
+                                    SORT_ALIASES.getOrDefault(order.getProperty(), order.getProperty())
+                            ).with(order.getNullHandling());
+                            
+                            return order.isIgnoreCase() ? mappedOrder.ignoreCase() : mappedOrder;
+                        })
+                        .toList()
+        );
     }
 
     private static ApplicationLogResponse toResponse(ApplicationLog log) {
         return new ApplicationLogResponse(
-            log.getId(), log.getEventAt(), log.getLevel(), log.getSource(), log.getEvent(),
-            log.getOutcome(), log.getUserSubject(), log.getUsername(), log.getRequestId(),
-            log.getPath(), log.getData().deepCopy()
+                log.getId(), log.getEventAt(), log.getLevel(), log.getSource(), log.getEvent(),
+                log.getOutcome(), log.getUserSubject(), log.getUsername(), log.getRequestId(),
+                log.getPath(), log.getData().deepCopy()
         );
     }
 }

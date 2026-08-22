@@ -44,13 +44,13 @@ import app.alertify.logging.ApplicationEventLogger;
 public class ApplicationConfigurationService {
 
     private static final Map<String, String> FILTER_ALIASES = Map.of(
-        "type", "valueType", "created", "createdAt", "modified", "updatedAt"
+            "type", "valueType", "created", "createdAt", "modified", "updatedAt"
     );
     private static final Set<String> FILTER_FIELDS = Set.of(
-        "id", "version", "name", "description", "valueType", "createdAt", "updatedAt"
+            "id", "version", "name", "description", "valueType", "createdAt", "updatedAt"
     );
     private static final Set<String> SORT_FIELDS = Set.of(
-        "id", "version", "name", "valueType", "createdAt", "updatedAt"
+            "id", "version", "name", "valueType", "createdAt", "updatedAt"
     );
     private static final long MAX_IMPORT_FILE_SIZE = 50L * 1024 * 1024;
 
@@ -62,14 +62,7 @@ public class ApplicationConfigurationService {
     private final ConfigurationCsvCodec csvCodec;
     private final ApplicationEventLogger eventLogger;
 
-    public ApplicationConfigurationService(
-            ApplicationConfigurationRepository configurationRepository,
-            TagRepository tagRepository,
-            ConfigurationValueValidator valueValidator,
-            ApplicationConfigurationLookupService lookupService,
-            ConfigurationCacheInvalidator cacheInvalidator,
-            ConfigurationCsvCodec csvCodec,
-            ApplicationEventLogger eventLogger) {
+    public ApplicationConfigurationService(ApplicationConfigurationRepository configurationRepository, TagRepository tagRepository, ConfigurationValueValidator valueValidator, ApplicationConfigurationLookupService lookupService, ConfigurationCacheInvalidator cacheInvalidator, ConfigurationCsvCodec csvCodec, ApplicationEventLogger eventLogger) {
         this.configurationRepository = configurationRepository;
         this.tagRepository = tagRepository;
         this.valueValidator = valueValidator;
@@ -80,36 +73,39 @@ public class ApplicationConfigurationService {
     }
 
     @Transactional(readOnly = true)
-    public Page<ConfigurationResponse> search(
-            MultiValueMap<String, String> params, Pageable pageable) {
+    public Page<ConfigurationResponse> search(MultiValueMap<String, String> params, Pageable pageable) {
         SearchValidation.validateSort(pageable, SORT_FIELDS);
         String valueContains = params.getFirst("valueContains");
         MultiValueMap<String, String> dynamicParams = new LinkedMultiValueMap<>(params.size());
         dynamicParams.addAll(params);
         dynamicParams.remove("valueContains");
 
-        Specification<ApplicationConfiguration> specification =
-            DynamicSpecification.from(dynamicParams, FILTER_ALIASES, FILTER_FIELDS);
+        Specification<ApplicationConfiguration> specification = DynamicSpecification.from(dynamicParams, FILTER_ALIASES, FILTER_FIELDS);
 
         if (valueContains != null && !valueContains.isBlank()) {
             // Hidden values must not participate in value searches; otherwise
             // result membership could be used to infer a secret.
             specification = specification
-                .and(ApplicationConfigurationSpecifications.valueContains(valueContains))
-                .and(ApplicationConfigurationSpecifications.nameNotEqualIgnoreCase(
-                    SystemConfigurationPolicy.KEY_PART));
+                    .and(ApplicationConfigurationSpecifications.valueContains(valueContains))
+                    .and(
+                            ApplicationConfigurationSpecifications.nameNotEqualIgnoreCase(
+                                    SystemConfigurationPolicy.KEY_PART
+                            )
+                    );
         }
 
         Set<Long> tagIds = parseTagIds(params.get("tagId"));
         boolean matchAllTags = parseMatchAllTags(params.get("tagOperator"));
         if (!tagIds.isEmpty()) {
-            specification = specification.and(matchAllTags
-                ? ApplicationConfigurationSpecifications.hasAllTagIds(tagIds)
-                : ApplicationConfigurationSpecifications.hasAnyTagId(tagIds));
+            specification = specification.and(
+                    matchAllTags
+                            ? ApplicationConfigurationSpecifications.hasAllTagIds(tagIds)
+                            : ApplicationConfigurationSpecifications.hasAnyTagId(tagIds)
+            );
         }
 
-        Page<ConfigurationResponse> result = configurationRepository.findAll(specification, pageable)
-            .map(ConfigurationMapper::toResponse);
+        Page<ConfigurationResponse> result = configurationRepository.findAll(specification, pageable).map(ConfigurationMapper::toResponse);
+
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("page", result.getNumber());
         data.put("size", result.getSize());
@@ -120,7 +116,8 @@ public class ApplicationConfigurationService {
             data.put("tagOperator", matchAllTags ? "AND" : "OR");
         }
         String nameFilter = params.getFirst("name");
-        if (nameFilter != null && !nameFilter.isBlank()) data.put("nameFilter", nameFilter);
+        if (nameFilter != null && !nameFilter.isBlank())
+            data.put("nameFilter", nameFilter);
         eventLogger.successAfterCommit("CONFIGURATION_PAGE_VIEWED", data);
         return result;
     }
@@ -128,10 +125,10 @@ public class ApplicationConfigurationService {
     @Transactional(readOnly = true)
     public byte[] exportCsv() {
         List<ApplicationConfiguration> configurations = configurationRepository
-            .findAll(Sort.by(Sort.Direction.ASC, "name"))
-            .stream()
-            .filter(configuration -> !SystemConfigurationPolicy.isValueHidden(configuration.getName()))
-            .toList();
+                .findAll(Sort.by(Sort.Direction.ASC, "name"))
+                .stream()
+                .filter(configuration -> !SystemConfigurationPolicy.isValueHidden(configuration.getName()))
+                .toList();
         return csvCodec.write(configurations);
     }
 
@@ -152,19 +149,24 @@ public class ApplicationConfigurationService {
         }
 
         Map<String, ApplicationConfiguration> configurationsByName = configurationRepository.findAll().stream()
-            .collect(Collectors.toMap(
-                configuration -> configuration.getName().toLowerCase(Locale.ROOT),
-                configuration -> configuration,
-                (left, right) -> left,
-                LinkedHashMap::new
-            ));
+                .collect(
+                        Collectors.toMap(
+                                configuration -> configuration.getName().toLowerCase(Locale.ROOT),
+                                configuration -> configuration,
+                                (left, _) -> left,
+                                LinkedHashMap::new
+                        )
+                );
+
         Map<String, Tag> tagsByName = tagRepository.findAllByScope(TagScope.CONFIGURATION).stream()
-            .collect(Collectors.toMap(
-                tag -> tag.getName().toLowerCase(Locale.ROOT),
-                tag -> tag,
-                (left, right) -> left,
-                LinkedHashMap::new
-            ));
+                .collect(
+                        Collectors.toMap(
+                                tag -> tag.getName().toLowerCase(Locale.ROOT),
+                                tag -> tag,
+                                (left, _) -> left,
+                                LinkedHashMap::new
+                        )
+                );
 
         int created = 0;
         int updated = 0;
@@ -174,8 +176,7 @@ public class ApplicationConfigurationService {
         for (ConfigurationCsvCodec.ImportRow row : rows) {
             if (SystemConfigurationPolicy.isSystemManaged(row.name())) {
                 throw new InvalidConfigurationImportException(
-                    "CSV row " + row.rowNumber() + ": configuration '"
-                        + SystemConfigurationPolicy.KEY_PART + "' cannot be imported"
+                        "CSV row " + row.rowNumber() + ": configuration '" + SystemConfigurationPolicy.KEY_PART + "' cannot be imported"
                 );
             }
 
@@ -184,8 +185,8 @@ public class ApplicationConfigurationService {
                 value = valueValidator.validateAndNormalize(row.valueType(), row.value());
             } catch (RuntimeException exception) {
                 throw new InvalidConfigurationImportException(
-                    "CSV row " + row.rowNumber() + ": invalid value for " + row.valueType(),
-                    exception
+                        "CSV row " + row.rowNumber() + ": invalid value for " + row.valueType(),
+                        exception
                 );
             }
 
@@ -194,9 +195,11 @@ public class ApplicationConfigurationService {
                 String tagKey = importedTag.name().toLowerCase(Locale.ROOT);
                 Tag tag = tagsByName.get(tagKey);
                 if (tag == null) {
-                    tag = tagRepository.save(new Tag(
-                        TagScope.CONFIGURATION, importedTag.name(), importedTag.color()
-                    ));
+                    tag = tagRepository.save(
+                            new Tag(
+                                    TagScope.CONFIGURATION, importedTag.name(), importedTag.color()
+                            )
+                    );
                     tagsByName.put(tagKey, tag);
                     tagsCreated++;
                 }
@@ -207,9 +210,9 @@ public class ApplicationConfigurationService {
             ApplicationConfiguration configuration = configurationsByName.get(configurationKey);
             if (configuration == null) {
                 ApplicationConfiguration createdConfiguration = configurationRepository.save(
-                    new ApplicationConfiguration(
-                        row.name(), row.description(), row.valueType(), value, tags
-                    )
+                        new ApplicationConfiguration(
+                                row.name(), row.description(), row.valueType(), value, tags
+                        )
                 );
                 configurationsByName.put(configurationKey, createdConfiguration);
                 created++;
@@ -225,8 +228,7 @@ public class ApplicationConfigurationService {
                 configuration.changeDescription(row.description());
                 changed = true;
             }
-            if (configuration.getValueType() != row.valueType()
-                    || !valuesEqual(row.valueType(), configuration.getValue(), value)) {
+            if (configuration.getValueType() != row.valueType() || !valuesEqual(row.valueType(), configuration.getValue(), value)) {
                 configuration.changeValue(row.valueType(), value);
                 changed = true;
             }
@@ -235,8 +237,10 @@ public class ApplicationConfigurationService {
                 changed = true;
             }
 
-            if (changed) updated++;
-            else unchanged++;
+            if (changed)
+                updated++;
+            else
+                unchanged++;
         }
 
         if (created > 0 || updated > 0 || tagsCreated > 0) {
@@ -246,16 +250,17 @@ public class ApplicationConfigurationService {
         }
 
         ConfigurationImportResult result = new ConfigurationImportResult(
-            rows.size(), created, updated, unchanged, tagsCreated
+                rows.size(), created, updated, unchanged, tagsCreated
         );
+
         return result;
     }
 
     public ConfigurationResponse get(Long id) {
         ConfigurationResponse response = lookupService.getById(id);
         eventLogger.success(
-            "CONFIGURATION_VIEWED",
-            Map.of("configurationId", response.id(), "name", response.name(), "version", response.version())
+                "CONFIGURATION_VIEWED",
+                Map.of("configurationId", response.id(), "name", response.name(), "version", response.version())
         );
         return response;
     }
@@ -269,14 +274,16 @@ public class ApplicationConfigurationService {
         JsonNode value = valueValidator.validateAndNormalize(request.valueType(), request.value());
         Set<Tag> tags = resolveConfigurationTags(request.tagIds());
         ApplicationConfiguration configuration = new ApplicationConfiguration(
-            name, normalizeOptional(request.description()), request.valueType(), value, tags
+                name, normalizeOptional(request.description()), request.valueType(), value, tags
         );
         ApplicationConfiguration saved = configurationRepository.saveAndFlush(configuration);
         cacheInvalidator.evictAfterCommit(saved.getId(), Set.of(saved.getName()));
         eventLogger.successAfterCommit(
-            "CONFIGURATION_CREATED",
-            Map.of("configurationId", saved.getId(), "name", saved.getName(),
-                "valueType", saved.getValueType().name(), "tagIds", tagIds(saved.getTags()))
+                "CONFIGURATION_CREATED",
+                Map.of(
+                        "configurationId", saved.getId(), "name", saved.getName(),
+                        "valueType", saved.getValueType().name(), "tagIds", tagIds(saved.getTags())
+                )
         );
         return ConfigurationMapper.toResponse(saved);
     }
@@ -290,9 +297,11 @@ public class ApplicationConfigurationService {
         String name = normalizeRequired(request.name());
         String description = normalizeOptional(request.description());
         JsonNode value = valueValidator.validateAndNormalize(request.valueType(), request.value());
+
         SystemConfigurationPolicy.validateUpdate(
-            configuration, name, request.valueType(), value
+                configuration, name, request.valueType(), value
         );
+
         Set<Tag> tags = resolveConfigurationTags(request.tagIds());
         Set<String> changedFields = new LinkedHashSet<>();
 
@@ -306,11 +315,11 @@ public class ApplicationConfigurationService {
             changedFields.add("description");
         }
         boolean valueTypeChanged = configuration.getValueType() != request.valueType();
-        if (valueTypeChanged
-                || !valuesEqual(request.valueType(), configuration.getValue(), value)) {
+        if (valueTypeChanged || !valuesEqual(request.valueType(), configuration.getValue(), value)) {
             configuration.changeValue(request.valueType(), value);
             changedFields.add("value");
-            if (valueTypeChanged) changedFields.add("valueType");
+            if (valueTypeChanged)
+                changedFields.add("valueType");
         }
         if (!tagIds(configuration.getTags()).equals(tagIds(tags))) {
             configuration.replaceTags(tags);
@@ -320,8 +329,8 @@ public class ApplicationConfigurationService {
         if (!changedFields.isEmpty()) {
             configurationRepository.flush();
             cacheInvalidator.evictAfterCommit(
-                id,
-                new LinkedHashSet<>(List.of(previousName, configuration.getName()))
+                    id,
+                    new LinkedHashSet<>(List.of(previousName, configuration.getName()))
             );
         }
         Map<String, Object> logData = new LinkedHashMap<>();
@@ -346,26 +355,27 @@ public class ApplicationConfigurationService {
         configurationRepository.flush();
         cacheInvalidator.evictAfterCommit(id, Set.of(name));
         eventLogger.successAfterCommit(
-            "CONFIGURATION_DELETED",
-            Map.of("configurationId", id, "name", name, "version", version)
+                "CONFIGURATION_DELETED",
+                Map.of("configurationId", id, "name", name, "version", version)
         );
     }
 
     private ApplicationConfiguration find(Long id) {
-        return configurationRepository.findById(id)
-            .orElseThrow(() -> new ResourceNotFoundException("Configuration " + id + " was not found"));
+        return configurationRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Configuration " + id + " was not found"));
     }
 
     private void ensureNameAvailable(String name, Long currentId) {
         boolean exists = currentId == null
-            ? configurationRepository.existsByNameIgnoreCase(name)
-            : configurationRepository.existsByNameIgnoreCaseAndIdNot(name, currentId);
-        if (exists) throw new ConflictException("A configuration named '" + name + "' already exists");
+                ? configurationRepository.existsByNameIgnoreCase(name)
+                : configurationRepository.existsByNameIgnoreCaseAndIdNot(name, currentId);
+        if (exists)
+            throw new ConflictException("A configuration named '" + name + "' already exists");
     }
 
     private Set<Tag> resolveConfigurationTags(Set<Long> requestedIds) {
         Set<Long> ids = requestedIds == null ? Set.of() : new LinkedHashSet<>(requestedIds);
-        if (ids.isEmpty()) return Set.of();
+        if (ids.isEmpty())
+            return Set.of();
         if (ids.stream().anyMatch(id -> id == null || id <= 0)) {
             throw new ResourceNotFoundException("One or more configuration tags were not found");
         }
@@ -378,22 +388,26 @@ public class ApplicationConfigurationService {
     }
 
     private static Set<Long> parseTagIds(List<String> rawValues) {
-        if (rawValues == null || rawValues.isEmpty()) return Set.of();
+        if (rawValues == null || rawValues.isEmpty())
+            return Set.of();
         try {
             return rawValues.stream()
-                .map(String::trim).map(Long::valueOf)
-                .peek(value -> {
-                    if (value <= 0) throw new NumberFormatException("Tag ID must be positive");
-                })
-                .collect(Collectors.toCollection(LinkedHashSet::new));
+                    .map(String::trim).map(Long::valueOf)
+                    .peek(value -> {
+                        if (value <= 0)
+                            throw new NumberFormatException("Tag ID must be positive");
+                    })
+                    .collect(Collectors.toCollection(LinkedHashSet::new));
         } catch (RuntimeException exception) {
             throw new InvalidFilterException("tagId", exception);
         }
     }
 
     private static boolean parseMatchAllTags(List<String> rawValues) {
-        if (rawValues == null || rawValues.isEmpty()) return false;
-        if (rawValues.size() != 1) throw new InvalidFilterException("tagOperator");
+        if (rawValues == null || rawValues.isEmpty())
+            return false;
+        if (rawValues.size() != 1)
+            throw new InvalidFilterException("tagOperator");
 
         return switch (rawValues.get(0).trim().toUpperCase(Locale.ROOT)) {
             case "OR" -> false;
@@ -406,25 +420,25 @@ public class ApplicationConfigurationService {
         return tags.stream().map(Tag::getId).collect(Collectors.toSet());
     }
 
-    private static boolean valuesEqual(
-            ConfigurationValueType type,
-            JsonNode currentValue,
-            JsonNode requestedValue) {
+    private static boolean valuesEqual(ConfigurationValueType type, JsonNode currentValue, JsonNode requestedValue) {
         return switch (type) {
             case INTEGER -> currentValue.isIntegralNumber()
-                && requestedValue.isIntegralNumber()
-                && currentValue.bigIntegerValue().equals(requestedValue.bigIntegerValue());
+                    && requestedValue.isIntegralNumber()
+                    && currentValue.bigIntegerValue().equals(requestedValue.bigIntegerValue());
             case DECIMAL -> currentValue.isNumber()
-                && requestedValue.isNumber()
-                && currentValue.decimalValue().compareTo(requestedValue.decimalValue()) == 0;
+                    && requestedValue.isNumber()
+                    && currentValue.decimalValue().compareTo(requestedValue.decimalValue()) == 0;
             default -> currentValue.equals(requestedValue);
         };
     }
 
-    private static String normalizeRequired(String value) { return value.trim(); }
+    private static String normalizeRequired(String value) {
+        return value.trim();
+    }
 
     private static String normalizeOptional(String value) {
-        if (value == null) return null;
+        if (value == null)
+            return null;
         String normalized = value.trim();
         return normalized.isEmpty() ? null : normalized;
     }
@@ -432,7 +446,7 @@ public class ApplicationConfigurationService {
     static void verifyVersion(long currentVersion, long requestedVersion, String resourceName) {
         if (currentVersion != requestedVersion) {
             throw new ConflictException(
-                resourceName + " was modified by another request; reload it and try again"
+                    resourceName + " was modified by another request; reload it and try again"
             );
         }
     }

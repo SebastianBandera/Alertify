@@ -43,10 +43,10 @@ final class ClientRoleConverter implements Converter<Jwt, Collection<GrantedAuth
         }
 
         return roles.stream()
-            .filter(String.class::isInstance)
-            .map(String.class::cast)
-            .filter(role -> !role.isBlank())
-            .map(role -> (GrantedAuthority) new SimpleGrantedAuthority(AUTHORITY_PREFIX + role))
-            .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+                .filter(String.class::isInstance)
+                .map(String.class::cast)
+                .filter(role -> !role.isBlank())
+                .map(role -> (GrantedAuthority) new SimpleGrantedAuthority(AUTHORITY_PREFIX + role))
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
     }
 }

@@ -22,17 +22,16 @@ class DatabaseKeyPartSource {
     byte[] read() {
         final var configuration = readConfiguration();
 
-        if (configuration.getValueType() != ConfigurationValueType.STRING
-                || !configuration.getValue().isString()) {
+        if (configuration.getValueType() != ConfigurationValueType.STRING || !configuration.getValue().isString()) {
             throw new IllegalStateException(
-                "Required configuration '" + KEY_PART_NAME + "' must have type STRING"
+                    "Required configuration '" + KEY_PART_NAME + "' must have type STRING"
             );
         }
 
         String keyPart = configuration.getValue().stringValue();
         if (keyPart == null || keyPart.isEmpty()) {
             throw new IllegalStateException(
-                "Required configuration '" + KEY_PART_NAME + "' must contain at least one character"
+                    "Required configuration '" + KEY_PART_NAME + "' must contain at least one character"
             );
         }
         return keyPart.getBytes(StandardCharsets.UTF_8);
@@ -40,8 +39,10 @@ class DatabaseKeyPartSource {
 
     private ApplicationConfiguration readConfiguration() {
         return configurationRepository.findByName(KEY_PART_NAME)
-            .orElseThrow(() -> new IllegalStateException(
-                "Required configuration '" + KEY_PART_NAME + "' was not found"
-            ));
+                .orElseThrow(
+                        () -> new IllegalStateException(
+                                "Required configuration '" + KEY_PART_NAME + "' was not found"
+                        )
+                );
     }
 }

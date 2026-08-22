@@ -21,21 +21,18 @@ public final class ApplicationConfigurationSpecifications {
 
     public static Specification<ApplicationConfiguration> valueContains(String value) {
         String search = "%" + escapeLikeValue(value.trim()) + "%";
-        return (root, query, cb) -> {
+        return (root, _, cb) -> {
             JpaExpression<?> jsonValue = (JpaExpression<?>) root.get("value");
             Expression<String> valueAsText = jsonValue.cast(String.class);
-            Expression<String> normalizedValue =
-                cb.lower(cb.function("unaccent", String.class, valueAsText));
-            Expression<String> normalizedSearch =
-                cb.lower(cb.function("unaccent", String.class, cb.literal(search)));
+            Expression<String> normalizedValue = cb.lower(cb.function("unaccent", String.class, valueAsText));
+            Expression<String> normalizedSearch = cb.lower(cb.function("unaccent", String.class, cb.literal(search)));
             return cb.like(normalizedValue, normalizedSearch, '\\');
         };
     }
 
     public static Specification<ApplicationConfiguration> nameNotEqualIgnoreCase(String name) {
         String normalizedName = name.toLowerCase(Locale.ROOT);
-        return (root, query, cb) ->
-            cb.notEqual(cb.lower(root.get("name")), normalizedName);
+        return (root, _, cb) -> cb.notEqual(cb.lower(root.get("name")), normalizedName);
     }
 
     private static String escapeLikeValue(String value) {
@@ -43,7 +40,7 @@ public final class ApplicationConfigurationSpecifications {
     }
 
     public static Specification<ApplicationConfiguration> hasAnyTagId(Set<Long> tagIds) {
-        return (root, query, cb) -> {
+        return (root, query, _) -> {
             query.distinct(true);
             Join<ApplicationConfiguration, Tag> tags = root.join("tags", JoinType.INNER);
             return tags.get("id").in(tagIds);
@@ -53,15 +50,13 @@ public final class ApplicationConfigurationSpecifications {
     public static Specification<ApplicationConfiguration> hasAllTagIds(Set<Long> tagIds) {
         return (root, query, cb) -> {
             Subquery<Long> matchingTagCount = query.subquery(Long.class);
-            Root<ApplicationConfiguration> configuration =
-                matchingTagCount.from(ApplicationConfiguration.class);
-            Join<ApplicationConfiguration, Tag> tags =
-                configuration.join("tags", JoinType.INNER);
+            Root<ApplicationConfiguration> configuration = matchingTagCount.from(ApplicationConfiguration.class);
+            Join<ApplicationConfiguration, Tag> tags = configuration.join("tags", JoinType.INNER);
 
             matchingTagCount.select(cb.countDistinct(tags.get("id")));
             matchingTagCount.where(
-                cb.equal(configuration.get("id"), root.get("id")),
-                tags.get("id").in(tagIds)
+                    cb.equal(configuration.get("id"), root.get("id")),
+                    tags.get("id").in(tagIds)
             );
             return cb.equal(matchingTagCount, (long) tagIds.size());
         };

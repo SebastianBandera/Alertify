@@ -1,6 +1,13 @@
 package app.alertify.api.error;
 
 public class InvalidConfigurationValueException extends RuntimeException {
-    public InvalidConfigurationValueException(String message) { super(message); }
-    public InvalidConfigurationValueException(String message, Throwable cause) { super(message, cause); }
+    private static final long serialVersionUID = 1L;
+
+    public InvalidConfigurationValueException(String message) {
+        super(message);
+    }
+
+    public InvalidConfigurationValueException(String message, Throwable cause) {
+        super(message, cause);
+    }
 }

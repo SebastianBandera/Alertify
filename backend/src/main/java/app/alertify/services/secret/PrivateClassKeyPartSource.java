@@ -8,8 +8,7 @@ import org.springframework.stereotype.Component;
 @Component
 class PrivateClassKeyPartSource {
 
-    private static final String DEFAULT_CLASS_NAME =
-        "app.alertify.services.secret.key.PrivateKeyPart";
+    private static final String DEFAULT_CLASS_NAME = "app.alertify.services.secret.key.PrivateKeyPart";
     private static final String DEFAULT_FIELD_NAME = "KEY_PART";
 
     private final String className;
@@ -44,8 +43,7 @@ class PrivateClassKeyPartSource {
             return "";
         } catch (IllegalAccessException e) {
             throw new IllegalStateException(
-                "The private symmetric-key part could not be read",
-                e
+                    "The private symmetric-key part could not be read", e
             );
         }
     }

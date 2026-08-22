@@ -21,16 +21,16 @@ final class CurrentLogActor {
             String subject = jwtAuthentication.getToken().getSubject();
             String username = jwtAuthentication.getToken().getClaimAsString(USERNAME_CLAIM);
             return new LogActor(
-                firstNonBlankOr(
-                    UNKNOWN_AUTHENTICATED_SUBJECT,
-                    subject,
-                    authentication.getName()
-                ),
-                firstNonBlankOr(
-                    UNKNOWN_AUTHENTICATED_USER,
-                    username,
-                    authentication.getName()
-                )
+                    firstNonBlankOr(
+                            UNKNOWN_AUTHENTICATED_SUBJECT,
+                            subject,
+                            authentication.getName()
+                    ),
+                    firstNonBlankOr(
+                            UNKNOWN_AUTHENTICATED_USER,
+                            username,
+                            authentication.getName()
+                    )
             );
         }
         return new LogActor(SYSTEM, SYSTEM);
@@ -38,7 +38,8 @@ final class CurrentLogActor {
 
     private static String firstNonBlankOr(String fallback, String... values) {
         for (String value : values) {
-            if (value != null && !value.isBlank()) return value;
+            if (value != null && !value.isBlank())
+                return value;
         }
         return fallback;
     }
