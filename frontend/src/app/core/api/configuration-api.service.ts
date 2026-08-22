@@ -40,6 +40,14 @@ export interface ApplicationConfiguration {
   readonly updatedAt: string;
 }
 
+export interface ConfigurationImportResult {
+  readonly total: number;
+  readonly created: number;
+  readonly updated: number;
+  readonly unchanged: number;
+  readonly tagsCreated: number;
+}
+
 export interface ConfigurationWriteRequest {
   readonly version?: number;
   readonly name: string;
@@ -99,6 +107,28 @@ export class ConfigurationApiService {
     );
   }
 
+  async exportConfigurations(): Promise<Blob> {
+    const token = await this.authService.getAccessToken();
+    const response = await fetch(`${this.apiBaseUrl}/api/configurations/export`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) throw await this.responseError(response);
+    return response.blob();
+  }
+
+  async importConfigurations(file: File): Promise<ConfigurationImportResult> {
+    const token = await this.authService.getAccessToken();
+    const body = new FormData();
+    body.append('file', file);
+    const response = await fetch(`${this.apiBaseUrl}/api/configurations/import`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body,
+    });
+    if (!response.ok) throw await this.responseError(response);
+    return (await response.json()) as ConfigurationImportResult;
+  }
+
   async createConfiguration(request: ConfigurationWriteRequest): Promise<ApplicationConfiguration> {
     return this.request('/api/configurations', { method: 'POST', body: JSON.stringify(request) });
   }
@@ -150,19 +180,21 @@ export class ConfigurationApiService {
       headers,
     });
 
-    if (!response.ok) {
-      let message = `Request failed with status ${response.status}.`;
-      try {
-        const error = (await response.json()) as ApiErrorResponse;
-        const fieldMessage = error.fieldErrors ? Object.values(error.fieldErrors)[0] : undefined;
-        message = fieldMessage ?? error.message ?? message;
-      } catch {
-        // Keep the HTTP status message when the response is not JSON.
-      }
-      throw new Error(message);
-    }
+    if (!response.ok) throw await this.responseError(response);
 
     if (response.status === 204) return undefined as T;
     return (await response.json()) as T;
+  }
+
+  private async responseError(response: Response): Promise<Error> {
+    let message = `Request failed with status ${response.status}.`;
+    try {
+      const error = (await response.json()) as ApiErrorResponse;
+      const fieldMessage = error.fieldErrors ? Object.values(error.fieldErrors)[0] : undefined;
+      message = fieldMessage ?? error.message ?? message;
+    } catch {
+      // Keep the HTTP status message when the response is not JSON.
+    }
+    return new Error(message);
   }
 }

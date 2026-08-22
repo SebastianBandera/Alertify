@@ -9,6 +9,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
@@ -18,10 +19,13 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.util.LinkedMultiValueMap;
 
 import app.alertify.api.error.ConflictException;
+import app.alertify.api.error.InvalidConfigurationImportException;
 import app.alertify.api.error.InvalidConfigurationValueException;
 import app.alertify.configuration.api.ConfigurationCreateRequest;
 import app.alertify.configuration.api.ConfigurationUpdateRequest;
@@ -41,6 +45,7 @@ class ApplicationConfigurationServiceTest {
     @Mock private TagRepository tagRepository;
     @Mock private ApplicationConfigurationLookupService lookupService;
     @Mock private ConfigurationCacheInvalidator cacheInvalidator;
+    @Mock private ConfigurationCsvCodec csvCodec;
     @Mock private ApplicationEventLogger eventLogger;
 
     @Test
@@ -80,6 +85,52 @@ class ApplicationConfigurationServiceTest {
 
         verify(configurationRepository).flush();
         verify(cacheInvalidator).evictAfterCommit(10L, Set.of("notification.retry-count"));
+    }
+
+
+    @Test
+    void exportNeverIncludesKeyPart() {
+        ApplicationConfiguration keyPart = new ApplicationConfiguration(
+            "KEY_PART", null, ConfigurationValueType.STRING,
+            StringNode.valueOf("must-never-leave-the-backend"), Set.of()
+        );
+        ApplicationConfiguration visible = new ApplicationConfiguration(
+            "notification.url", null, ConfigurationValueType.STRING,
+            StringNode.valueOf("https://example.test"), Set.of()
+        );
+        when(configurationRepository.findAll(any(Sort.class))).thenReturn(List.of(keyPart, visible));
+        when(csvCodec.write(any())).thenReturn(new byte[] { 1 });
+        ApplicationConfigurationService service = service();
+
+        service.exportCsv();
+
+        verify(csvCodec).write(argThat(configurations ->
+            configurations.size() == 1 && configurations.getFirst() == visible
+        ));
+    }
+
+    @Test
+    void importRejectsKeyPart() {
+        when(csvCodec.read(any(byte[].class))).thenReturn(List.of(
+            new ConfigurationCsvCodec.ImportRow(
+                2, "KEY_PART", null, ConfigurationValueType.STRING,
+                StringNode.valueOf("replacement"), List.of()
+            )
+        ));
+        when(configurationRepository.findAll()).thenReturn(List.of());
+        when(tagRepository.findAllByScope(app.alertify.jpa.entity.TagScope.CONFIGURATION))
+            .thenReturn(List.of());
+        ApplicationConfigurationService service = service();
+        MockMultipartFile file = new MockMultipartFile(
+            "file", "configs.csv", "text/csv", "content".getBytes()
+        );
+
+        assertThatThrownBy(() -> service.importCsv(file))
+            .isInstanceOf(InvalidConfigurationImportException.class)
+            .hasMessageContaining("KEY_PART")
+            .hasMessageContaining("cannot be imported");
+
+        verify(configurationRepository, never()).save(any());
     }
 
     @Test
@@ -181,7 +232,7 @@ class ApplicationConfigurationServiceTest {
     private ApplicationConfigurationService service() {
         return new ApplicationConfigurationService(
             configurationRepository, tagRepository, new ConfigurationValueValidator(),
-            lookupService, cacheInvalidator, eventLogger
+            lookupService, cacheInvalidator, csvCodec, eventLogger
         );
     }
 }

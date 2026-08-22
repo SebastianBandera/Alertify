@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import {
   ApplicationConfiguration,
   ConfigurationApiService,
+  ConfigurationImportResult,
   ConfigurationTag,
   ConfigurationValueType,
   TagMatchMode,
@@ -63,7 +64,10 @@ export class ConfigsComponent implements OnInit {
   protected readonly tags = signal<readonly ConfigurationTag[]>([]);
   protected readonly loading = signal(true);
   protected readonly saving = signal(false);
+  protected readonly exporting = signal(false);
+  protected readonly importing = signal(false);
   protected readonly error = signal<string | null>(null);
+  protected readonly notice = signal<string | null>(null);
   protected readonly searchTerm = signal('');
   protected readonly appliedSearchTerm = signal('');
   protected readonly valueSearchTerm = signal('');
@@ -129,6 +133,62 @@ export class ConfigsComponent implements OnInit {
       this.tags.set(await this.api.listTags());
     } catch (error) {
       this.error.set(this.errorMessage(error));
+    }
+  }
+
+  protected async exportConfigurations(): Promise<void> {
+    if (this.exporting()) return;
+    this.exporting.set(true);
+    this.error.set(null);
+    this.notice.set(null);
+    try {
+      const blob = await this.api.exportConfigurations();
+      const url = URL.createObjectURL(blob);
+      try {
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'alertify-configurations.csv';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    } catch (error) {
+      this.error.set(this.errorMessage(error));
+    } finally {
+      this.exporting.set(false);
+    }
+  }
+
+  protected chooseImportFile(fileInput: HTMLInputElement): void {
+    if (this.importing()) return;
+    fileInput.value = '';
+    fileInput.click();
+  }
+
+  protected async importConfigurations(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.item(0);
+    if (!file) return;
+    if (!window.confirm(this.localization.translate('configs.importConfirm'))) {
+      input.value = '';
+      return;
+    }
+
+    this.importing.set(true);
+    this.error.set(null);
+    this.notice.set(null);
+    try {
+      const result = await this.api.importConfigurations(file);
+      this.notice.set(this.importSuccessMessage(result));
+      this.pageIndex.set(0);
+      await Promise.all([this.loadConfigurations(), this.loadTags()]);
+    } catch (error) {
+      this.error.set(this.errorMessage(error));
+    } finally {
+      input.value = '';
+      this.importing.set(false);
     }
   }
 
@@ -455,6 +515,14 @@ export class ConfigsComponent implements OnInit {
       rawValue: '',
       tagIds: [],
     };
+  }
+
+  private importSuccessMessage(result: ConfigurationImportResult): string {
+    return this.localization.translate('configs.importSuccess')
+      .replace('{created}', String(result.created))
+      .replace('{updated}', String(result.updated))
+      .replace('{unchanged}', String(result.unchanged))
+      .replace('{tagsCreated}', String(result.tagsCreated));
   }
 
   private errorMessage(error: unknown): string {

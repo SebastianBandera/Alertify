@@ -2,6 +2,10 @@ package app.alertify.configuration.api;
 
 import java.net.URI;
 
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
@@ -17,6 +21,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
@@ -41,6 +46,23 @@ public class ApplicationConfigurationController {
             @RequestParam MultiValueMap<String, String> params,
             @PageableDefault(size = 20, sort = "name") Pageable pageable) {
         return service.search(params, pageable);
+    }
+
+    @GetMapping(value = "/export", produces = "text/csv")
+    public ResponseEntity<byte[]> exportCsv() {
+        byte[] csv = service.exportCsv();
+        return ResponseEntity.ok()
+            .contentType(MediaType.parseMediaType("text/csv;charset=UTF-8"))
+            .header(
+                HttpHeaders.CONTENT_DISPOSITION,
+                ContentDisposition.attachment().filename("alertify-configurations.csv").build().toString()
+            )
+            .body(csv);
+    }
+
+    @PostMapping(value = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ConfigurationImportResult importCsv(@RequestParam("file") MultipartFile file) {
+        return service.importCsv(file);
     }
 
     @GetMapping("/{id}")

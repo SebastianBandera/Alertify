@@ -45,6 +45,16 @@ public class ApiExceptionHandler {
         return response(HttpStatus.BAD_REQUEST, "INVALID_FILTER", exception.getMessage(), Map.of(), exception);
     }
 
+    @ExceptionHandler(InvalidConfigurationImportException.class)
+    ResponseEntity<ApiError> handleInvalidImport(InvalidConfigurationImportException exception) {
+        return response(
+            HttpStatus.BAD_REQUEST,
+            "INVALID_CONFIGURATION_IMPORT",
+            exception.getMessage(),
+            Map.of(), exception
+        );
+    }
+
     @ExceptionHandler(InvalidConfigurationValueException.class)
     ResponseEntity<ApiError> handleInvalidValue(InvalidConfigurationValueException exception) {
         return response(

@@ -52,6 +52,15 @@ h2 {
   gap: 10px;
 }
 
+.configs__header-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.file-input {
+  display: none;
+}
+
 .configs__toolbar {
   display: grid;
   grid-template-columns: minmax(180px, 0.7fr) minmax(180px, 0.7fr) minmax(300px, 1.2fr) auto;
@@ -443,6 +452,12 @@ td small {
   border: 1px solid #fecdca;
   background: #fef3f2;
   color: #b42318;
+}
+
+.alert--success {
+  border: 1px solid #abefc6;
+  background: #ecfdf3;
+  color: #067647;
 }
 
 .modal-backdrop {

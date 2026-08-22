@@ -1,5 +1,6 @@
 package app.alertify.configuration.service;
 
+import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -13,15 +14,19 @@ import tools.jackson.databind.JsonNode;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
+import org.springframework.web.multipart.MultipartFile;
 
 import app.alertify.api.error.ConflictException;
+import app.alertify.api.error.InvalidConfigurationImportException;
 import app.alertify.api.error.ResourceNotFoundException;
 import app.alertify.configuration.api.ConfigurationCreateRequest;
+import app.alertify.configuration.api.ConfigurationImportResult;
 import app.alertify.configuration.api.ConfigurationResponse;
 import app.alertify.configuration.api.ConfigurationUpdateRequest;
 import app.alertify.jpa.entity.ApplicationConfiguration;
@@ -47,12 +52,14 @@ public class ApplicationConfigurationService {
     private static final Set<String> SORT_FIELDS = Set.of(
         "id", "version", "name", "valueType", "createdAt", "updatedAt"
     );
+    private static final long MAX_IMPORT_FILE_SIZE = 50L * 1024 * 1024;
 
     private final ApplicationConfigurationRepository configurationRepository;
     private final TagRepository tagRepository;
     private final ConfigurationValueValidator valueValidator;
     private final ApplicationConfigurationLookupService lookupService;
     private final ConfigurationCacheInvalidator cacheInvalidator;
+    private final ConfigurationCsvCodec csvCodec;
     private final ApplicationEventLogger eventLogger;
 
     public ApplicationConfigurationService(
@@ -61,12 +68,14 @@ public class ApplicationConfigurationService {
             ConfigurationValueValidator valueValidator,
             ApplicationConfigurationLookupService lookupService,
             ConfigurationCacheInvalidator cacheInvalidator,
+            ConfigurationCsvCodec csvCodec,
             ApplicationEventLogger eventLogger) {
         this.configurationRepository = configurationRepository;
         this.tagRepository = tagRepository;
         this.valueValidator = valueValidator;
         this.lookupService = lookupService;
         this.cacheInvalidator = cacheInvalidator;
+        this.csvCodec = csvCodec;
         this.eventLogger = eventLogger;
     }
 
@@ -113,6 +122,132 @@ public class ApplicationConfigurationService {
         String nameFilter = params.getFirst("name");
         if (nameFilter != null && !nameFilter.isBlank()) data.put("nameFilter", nameFilter);
         eventLogger.successAfterCommit("CONFIGURATION_PAGE_VIEWED", data);
+        return result;
+    }
+
+    @Transactional(readOnly = true)
+    public byte[] exportCsv() {
+        List<ApplicationConfiguration> configurations = configurationRepository
+            .findAll(Sort.by(Sort.Direction.ASC, "name"))
+            .stream()
+            .filter(configuration -> !SystemConfigurationPolicy.isValueHidden(configuration.getName()))
+            .toList();
+        return csvCodec.write(configurations);
+    }
+
+    @Transactional
+    public ConfigurationImportResult importCsv(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new InvalidConfigurationImportException("A non-empty CSV file is required");
+        }
+        if (file.getSize() > MAX_IMPORT_FILE_SIZE) {
+            throw new InvalidConfigurationImportException("CSV file exceeds the 50 MB limit");
+        }
+
+        List<ConfigurationCsvCodec.ImportRow> rows;
+        try {
+            rows = csvCodec.read(file.getBytes());
+        } catch (IOException exception) {
+            throw new InvalidConfigurationImportException("Unable to read the CSV file", exception);
+        }
+
+        Map<String, ApplicationConfiguration> configurationsByName = configurationRepository.findAll().stream()
+            .collect(Collectors.toMap(
+                configuration -> configuration.getName().toLowerCase(Locale.ROOT),
+                configuration -> configuration,
+                (left, right) -> left,
+                LinkedHashMap::new
+            ));
+        Map<String, Tag> tagsByName = tagRepository.findAllByScope(TagScope.CONFIGURATION).stream()
+            .collect(Collectors.toMap(
+                tag -> tag.getName().toLowerCase(Locale.ROOT),
+                tag -> tag,
+                (left, right) -> left,
+                LinkedHashMap::new
+            ));
+
+        int created = 0;
+        int updated = 0;
+        int unchanged = 0;
+        int tagsCreated = 0;
+
+        for (ConfigurationCsvCodec.ImportRow row : rows) {
+            if (SystemConfigurationPolicy.isSystemManaged(row.name())) {
+                throw new InvalidConfigurationImportException(
+                    "CSV row " + row.rowNumber() + ": configuration '"
+                        + SystemConfigurationPolicy.KEY_PART + "' cannot be imported"
+                );
+            }
+
+            JsonNode value;
+            try {
+                value = valueValidator.validateAndNormalize(row.valueType(), row.value());
+            } catch (RuntimeException exception) {
+                throw new InvalidConfigurationImportException(
+                    "CSV row " + row.rowNumber() + ": invalid value for " + row.valueType(),
+                    exception
+                );
+            }
+
+            Set<Tag> tags = new LinkedHashSet<>();
+            for (ConfigurationCsvCodec.ImportTag importedTag : row.tags()) {
+                String tagKey = importedTag.name().toLowerCase(Locale.ROOT);
+                Tag tag = tagsByName.get(tagKey);
+                if (tag == null) {
+                    tag = tagRepository.save(new Tag(
+                        TagScope.CONFIGURATION, importedTag.name(), importedTag.color()
+                    ));
+                    tagsByName.put(tagKey, tag);
+                    tagsCreated++;
+                }
+                tags.add(tag);
+            }
+
+            String configurationKey = row.name().toLowerCase(Locale.ROOT);
+            ApplicationConfiguration configuration = configurationsByName.get(configurationKey);
+            if (configuration == null) {
+                ApplicationConfiguration createdConfiguration = configurationRepository.save(
+                    new ApplicationConfiguration(
+                        row.name(), row.description(), row.valueType(), value, tags
+                    )
+                );
+                configurationsByName.put(configurationKey, createdConfiguration);
+                created++;
+                continue;
+            }
+
+            boolean changed = false;
+            if (!configuration.getName().equals(row.name())) {
+                configuration.rename(row.name());
+                changed = true;
+            }
+            if (!Objects.equals(configuration.getDescription(), row.description())) {
+                configuration.changeDescription(row.description());
+                changed = true;
+            }
+            if (configuration.getValueType() != row.valueType()
+                    || !valuesEqual(row.valueType(), configuration.getValue(), value)) {
+                configuration.changeValue(row.valueType(), value);
+                changed = true;
+            }
+            if (!tagIds(configuration.getTags()).equals(tagIds(tags))) {
+                configuration.replaceTags(tags);
+                changed = true;
+            }
+
+            if (changed) updated++;
+            else unchanged++;
+        }
+
+        if (created > 0 || updated > 0 || tagsCreated > 0) {
+            configurationRepository.flush();
+            tagRepository.flush();
+            cacheInvalidator.clearAfterCommit();
+        }
+
+        ConfigurationImportResult result = new ConfigurationImportResult(
+            rows.size(), created, updated, unchanged, tagsCreated
+        );
         return result;
     }
 

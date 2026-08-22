@@ -5,6 +5,29 @@
       <p>{{ localization.translate('configs.description') }}</p>
     </div>
     <div class="configs__header-actions">
+      <input
+        #importFileInput
+        class="file-input"
+        type="file"
+        accept=".csv,text/csv"
+        (change)="importConfigurations($event)"
+      />
+      <button
+        class="button button--secondary"
+        type="button"
+        [disabled]="exporting() || importing()"
+        (click)="exportConfigurations()"
+      >
+        {{ localization.translate(exporting() ? 'configs.exporting' : 'configs.export') }}
+      </button>
+      <button
+        class="button button--secondary"
+        type="button"
+        [disabled]="importing() || exporting()"
+        (click)="chooseImportFile(importFileInput)"
+      >
+        {{ localization.translate(importing() ? 'configs.importing' : 'configs.import') }}
+      </button>
       <button class="button button--secondary" type="button" (click)="openTagManager()">
         {{ localization.translate('configs.manageTags') }}
       </button>
@@ -92,6 +115,10 @@
       {{ localization.translate('configs.refresh') }}
     </button>
   </section>
+
+  @if (notice()) {
+    <div class="alert alert--success" role="status">{{ notice() }}</div>
+  }
 
   @if (error()) {
     <div class="alert alert--error" role="alert">{{ error() }}</div>
