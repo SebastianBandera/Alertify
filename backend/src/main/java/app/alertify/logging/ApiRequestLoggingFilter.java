@@ -18,6 +18,8 @@ import jakarta.servlet.http.HttpServletResponse;
 public final class ApiRequestLoggingFilter extends OncePerRequestFilter {
 
     public static final String REQUEST_ID_HEADER = "X-Request-ID";
+    public static final String ERROR_CODE_REQUEST_ATTRIBUTE =
+        ApiRequestLoggingFilter.class.getName() + ".errorCode";
     private static final Set<String> SAFE_QUERY_PARAMETERS = Set.of(
         "page", "size", "sort", "tagId", "tagOperator", "name", "user", "subject",
         "event", "level", "outcome", "date", "eventAt", "path"
@@ -62,16 +64,23 @@ public final class ApiRequestLoggingFilter extends OncePerRequestFilter {
             data.put("status", response.getStatus());
             data.put("durationMs", TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt));
 
-            if (response.getStatus() >= 500) {
-                eventLogger.error("API_REQUEST", data);
-            } else if (response.getStatus() >= 400) {
-                eventLogger.failure("API_REQUEST", data);
+            int status = response.getStatus();
+            String errorCode = errorCode(request);
+            ApplicationLogLevel level = ApiResponseLogLevelResolver.resolve(status, errorCode);
+
+            if (status >= 400) {
+                eventLogger.failure("API_REQUEST", level, data);
             } else {
                 eventLogger.success("API_REQUEST", data);
             }
             MDC.remove(ApplicationEventLogger.REQUEST_ID_MDC_KEY);
             MDC.remove(ApplicationEventLogger.REQUEST_PATH_MDC_KEY);
         }
+    }
+
+    private static String errorCode(HttpServletRequest request) {
+        Object value = request.getAttribute(ERROR_CODE_REQUEST_ATTRIBUTE);
+        return value instanceof String code ? code : null;
     }
 
     private static Map<String, Object> requestData(HttpServletRequest request) {

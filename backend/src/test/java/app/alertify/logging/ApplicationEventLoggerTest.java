@@ -61,4 +61,23 @@ class ApplicationEventLoggerTest {
         org.assertj.core.api.Assertions.assertThat(command.getValue().actor().username())
             .isEqualTo("system");
     }
+    @Test
+    void canPersistExpectedBusinessFailureAtInfoLevel() {
+        ApplicationEventLogger logger = new ApplicationEventLogger(writer, "test-app");
+
+        logger.failure(
+            "API_ERROR_SHOWN",
+            ApplicationLogLevel.INFO,
+            Map.of("errorCode", "CONFIGURATION_TAG_IN_USE")
+        );
+
+        ArgumentCaptor<ApplicationLogCommand> command =
+            ArgumentCaptor.forClass(ApplicationLogCommand.class);
+        verify(writer).persist(command.capture());
+        org.assertj.core.api.Assertions.assertThat(command.getValue().level())
+            .isEqualTo(ApplicationLogLevel.INFO);
+        org.assertj.core.api.Assertions.assertThat(command.getValue().outcome())
+            .isEqualTo(ApplicationLogOutcome.FAILURE);
+    }
+
 }

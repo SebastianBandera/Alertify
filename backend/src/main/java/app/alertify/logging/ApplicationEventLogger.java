@@ -35,7 +35,11 @@ public class ApplicationEventLogger {
     }
 
     public void failure(String event, Map<String, ?> data) {
-        write(command(ApplicationLogLevel.WARN, event, ApplicationLogOutcome.FAILURE, data));
+        failure(event, ApplicationLogLevel.WARN, data);
+    }
+
+    public void failure(String event, ApplicationLogLevel level, Map<String, ?> data) {
+        write(command(level, event, ApplicationLogOutcome.FAILURE, data));
     }
 
     public void error(String event, Map<String, ?> data) {
