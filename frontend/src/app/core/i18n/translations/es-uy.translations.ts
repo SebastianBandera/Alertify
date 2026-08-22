@@ -16,8 +16,6 @@ export const ES_UY_TRANSLATIONS = {
   'navigation.logs': 'Registros',
   'user.authenticated': 'Autenticado',
   'action.signOut': 'Cerrar sesión',
-  'workspace.eyebrow': 'Espacio de trabajo',
-  'workspace.title': 'Administración del monitoreo',
   'language.label': 'Idioma',
   'dashboard.description': 'Revisá el estado actual de la aplicación y de los servicios de monitoreo.',
   'dashboard.empty': 'Todavía no hay datos disponibles en el tablero',

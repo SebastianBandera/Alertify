@@ -14,8 +14,6 @@ export type TranslationKey =
   | 'navigation.logs'
   | 'user.authenticated'
   | 'action.signOut'
-  | 'workspace.eyebrow'
-  | 'workspace.title'
   | 'language.label'
   | 'dashboard.description'
   | 'dashboard.empty'
