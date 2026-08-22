@@ -5,7 +5,7 @@ import java.util.Set;
 public final class ApiResponseLogLevelResolver {
 
     private static final Set<String> EXPECTED_BUSINESS_ERROR_CODES = Set.of(
-            "CONFIGURATION_TAG_IN_USE"
+            "CONFIGURATION_TAG_IN_USE", "SECRET_TAG_IN_USE"
     );
 
     private ApiResponseLogLevelResolver() {

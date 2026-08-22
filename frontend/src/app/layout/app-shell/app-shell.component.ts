@@ -41,7 +41,9 @@ export class AppShellComponent {
     ...(this.authService.isAdmin
       ? [{ labelKey: 'navigation.configs' as const, path: '/configs', icon: 'configs' as const }]
       : []),
-    { labelKey: 'navigation.secrets', path: '/secrets', icon: 'secrets' },
+    ...(this.authService.isAdmin
+      ? [{ labelKey: 'navigation.secrets' as const, path: '/secrets', icon: 'secrets' as const }]
+      : []),
     ...(this.authService.isAdmin
       ? [{ labelKey: 'navigation.logs' as const, path: '/logs', icon: 'logs' as const }]
       : []),

@@ -62,10 +62,15 @@ public class ApiExceptionHandler {
         return response(HttpStatus.BAD_REQUEST, "INVALID_CONFIGURATION_VALUE", exception.getMessage(), Map.of(), exception, request);
     }
 
+    @ExceptionHandler(InvalidSecretValueException.class)
+    ResponseEntity<ApiError> handleInvalidSecretValue(InvalidSecretValueException exception, HttpServletRequest request) {
+        return response(HttpStatus.BAD_REQUEST, "INVALID_SECRET_VALUE", exception.getMessage(), Map.of(), exception, request);
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     ResponseEntity<ApiError> handleValidation(MethodArgumentNotValidException exception, HttpServletRequest request) {
         Map<String, String> fieldErrors = new LinkedHashMap<>();
-        
+
         exception.getBindingResult().getFieldErrors().forEach(error -> fieldErrors.putIfAbsent(error.getField(), error.getDefaultMessage()));
 
         return response(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "Request validation failed", fieldErrors, exception, request);
@@ -80,10 +85,10 @@ public class ApiExceptionHandler {
         data.put("status", status.value());
         data.put("errorCode", code);
         data.put("errorType", exception.getClass().getSimpleName());
-        
+
         if (!fieldErrors.isEmpty())
             data.put("fields", fieldErrors.keySet());
-        
+
         request.setAttribute(ApiRequestLoggingFilter.ERROR_CODE_REQUEST_ATTRIBUTE, code);
         eventLogger.failure("API_ERROR_SHOWN", ApiResponseLogLevelResolver.resolve(status.value(), code), data);
         ApiError error = new ApiError(Instant.now(), status.value(), code, message, fieldErrors, parameters);

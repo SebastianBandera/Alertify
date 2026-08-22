@@ -28,6 +28,7 @@ export const routes: Routes = [
       {
         path: 'secrets',
         title: 'Secrets | Alertify',
+        canActivate: [adminGuard],
         loadComponent: () =>
           import('./features/secrets/secrets.component').then(
             (component) => component.SecretsComponent,
