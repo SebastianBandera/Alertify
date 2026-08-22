@@ -1,4 +1,4 @@
-package app.alertify.logging.api;
+package app.alertify.controller;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import app.alertify.logging.api.ApplicationLogResponse;
 import app.alertify.logging.ApplicationEventLogger;
 import app.alertify.logging.ApplicationLogService;
 import jakarta.servlet.http.HttpServletRequest;

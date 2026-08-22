@@ -1,4 +1,4 @@
-package app.alertify.configuration.api;
+package app.alertify.controller;
 
 import java.net.URI;
 
@@ -25,6 +25,10 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
+import app.alertify.configuration.api.ConfigurationCreateRequest;
+import app.alertify.configuration.api.ConfigurationImportResult;
+import app.alertify.configuration.api.ConfigurationResponse;
+import app.alertify.configuration.api.ConfigurationUpdateRequest;
 import app.alertify.configuration.service.ApplicationConfigurationService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.PositiveOrZero;

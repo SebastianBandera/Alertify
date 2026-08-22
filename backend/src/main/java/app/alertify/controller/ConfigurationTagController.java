@@ -1,4 +1,4 @@
-package app.alertify.configuration.api;
+package app.alertify.controller;
 
 import java.net.URI;
 
@@ -20,6 +20,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
+import app.alertify.configuration.api.TagCreateRequest;
+import app.alertify.configuration.api.TagResponse;
+import app.alertify.configuration.api.TagUpdateRequest;
 import app.alertify.configuration.service.ConfigurationTagService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.PositiveOrZero;
