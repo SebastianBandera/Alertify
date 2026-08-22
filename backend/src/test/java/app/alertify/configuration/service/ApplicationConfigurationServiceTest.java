@@ -46,6 +46,7 @@ class ApplicationConfigurationServiceTest {
     @Mock private ApplicationConfigurationLookupService lookupService;
     @Mock private ConfigurationCacheInvalidator cacheInvalidator;
     @Mock private ConfigurationCsvCodec csvCodec;
+    @Mock private ConfigurationExpressionService expressionService;
     @Mock private ApplicationEventLogger eventLogger;
 
     @Test
@@ -232,7 +233,7 @@ class ApplicationConfigurationServiceTest {
     private ApplicationConfigurationService service() {
         return new ApplicationConfigurationService(
             configurationRepository, tagRepository, new ConfigurationValueValidator(),
-            lookupService, cacheInvalidator, csvCodec, eventLogger
+            lookupService, cacheInvalidator, csvCodec, expressionService, eventLogger
         );
     }
 }

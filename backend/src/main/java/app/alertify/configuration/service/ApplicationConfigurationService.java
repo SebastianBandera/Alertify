@@ -60,15 +60,17 @@ public class ApplicationConfigurationService {
     private final ApplicationConfigurationLookupService lookupService;
     private final ConfigurationCacheInvalidator cacheInvalidator;
     private final ConfigurationCsvCodec csvCodec;
+    private final ConfigurationExpressionService expressionService;
     private final ApplicationEventLogger eventLogger;
 
-    public ApplicationConfigurationService(ApplicationConfigurationRepository configurationRepository, TagRepository tagRepository, ConfigurationValueValidator valueValidator, ApplicationConfigurationLookupService lookupService, ConfigurationCacheInvalidator cacheInvalidator, ConfigurationCsvCodec csvCodec, ApplicationEventLogger eventLogger) {
+    public ApplicationConfigurationService(ApplicationConfigurationRepository configurationRepository, TagRepository tagRepository, ConfigurationValueValidator valueValidator, ApplicationConfigurationLookupService lookupService, ConfigurationCacheInvalidator cacheInvalidator, ConfigurationCsvCodec csvCodec, ConfigurationExpressionService expressionService, ApplicationEventLogger eventLogger) {
         this.configurationRepository = configurationRepository;
         this.tagRepository = tagRepository;
         this.valueValidator = valueValidator;
         this.lookupService = lookupService;
         this.cacheInvalidator = cacheInvalidator;
         this.csvCodec = csvCodec;
+        this.expressionService = expressionService;
         this.eventLogger = eventLogger;
     }
 
@@ -246,6 +248,7 @@ public class ApplicationConfigurationService {
         if (created > 0 || updated > 0 || tagsCreated > 0) {
             configurationRepository.flush();
             tagRepository.flush();
+            configurationsByName.values().forEach(expressionService::synchronizeDependencies);
             cacheInvalidator.clearAfterCommit();
         }
 
@@ -277,6 +280,7 @@ public class ApplicationConfigurationService {
                 name, normalizeOptional(request.description()), request.valueType(), value, tags
         );
         ApplicationConfiguration saved = configurationRepository.saveAndFlush(configuration);
+        expressionService.synchronizeDependencies(saved);
         cacheInvalidator.evictAfterCommit(saved.getId(), Set.of(saved.getName()));
         eventLogger.successAfterCommit(
                 "CONFIGURATION_CREATED",
@@ -306,6 +310,7 @@ public class ApplicationConfigurationService {
         Set<String> changedFields = new LinkedHashSet<>();
 
         if (!configuration.getName().equals(name)) {
+            expressionService.ensureNotReferenced(configuration, "renamed");
             ensureNameAvailable(name, id);
             configuration.rename(name);
             changedFields.add("name");
@@ -328,6 +333,8 @@ public class ApplicationConfigurationService {
 
         if (!changedFields.isEmpty()) {
             configurationRepository.flush();
+            if (changedFields.contains("value"))
+                expressionService.synchronizeDependencies(configuration);
             cacheInvalidator.evictAfterCommit(
                     id,
                     new LinkedHashSet<>(List.of(previousName, configuration.getName()))
@@ -350,6 +357,7 @@ public class ApplicationConfigurationService {
         ApplicationConfiguration configuration = find(id);
         verifyVersion(configuration.getVersion(), version, "Configuration");
         SystemConfigurationPolicy.validateDeletion(configuration);
+        expressionService.ensureNotReferenced(configuration, "deleted");
         String name = configuration.getName();
         configurationRepository.delete(configuration);
         configurationRepository.flush();

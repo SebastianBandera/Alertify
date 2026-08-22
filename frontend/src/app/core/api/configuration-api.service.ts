@@ -5,6 +5,7 @@ import { RUNTIME_CONFIG } from '../config/runtime-config';
 
 export type ConfigurationValueType =
   | 'STRING'
+  | 'EXPRESSION'
   | 'INTEGER'
   | 'DECIMAL'
   | 'BOOLEAN'
@@ -55,6 +56,21 @@ export interface ConfigurationWriteRequest {
   readonly valueType: ConfigurationValueType;
   readonly value: unknown;
   readonly tagIds: readonly number[];
+}
+
+export interface ConfigurationExpressionSuggestions {
+  readonly configurations: readonly string[];
+  readonly environmentVariables: readonly string[];
+}
+
+export interface ConfigurationExpressionEvaluationRequest {
+  readonly configurationId?: number;
+  readonly configurationName: string;
+  readonly expression: string;
+}
+
+export interface ConfigurationExpressionEvaluationResponse {
+  readonly value: string;
 }
 
 export interface TagWriteRequest {
@@ -155,6 +171,20 @@ export class ConfigurationApiService {
 
   async deleteConfiguration(id: number, version: number): Promise<void> {
     await this.request<void>(`/api/configurations/${id}?version=${version}`, { method: 'DELETE' });
+  }
+
+  async getExpressionSuggestions(): Promise<ConfigurationExpressionSuggestions> {
+    return this.request('/api/configurations/expression-suggestions');
+  }
+
+  async evaluateExpression(
+    request: ConfigurationExpressionEvaluationRequest,
+  ): Promise<ConfigurationExpressionEvaluationResponse> {
+    return this.request('/api/configurations/evaluate-expression', {
+      method: 'POST',
+      body: JSON.stringify(request),
+      cache: 'no-store',
+    });
   }
 
   async listTags(): Promise<readonly ConfigurationTag[]> {

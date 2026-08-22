@@ -25,6 +25,13 @@ interface TagForm {
   color: string;
 }
 
+interface ExpressionCompletion {
+  readonly label: string;
+  readonly replacement: string;
+  readonly replacementStart: number;
+  readonly replacementEnd: number;
+}
+
 const VALUE_TYPES: readonly ConfigurationValueType[] = [
   'STRING',
   'INTEGER',
@@ -33,6 +40,7 @@ const VALUE_TYPES: readonly ConfigurationValueType[] = [
   'DATE',
   'DATE_TIME',
   'JSON',
+  'EXPRESSION',
 ];
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100, 250, 500, 1000] as const;
@@ -96,6 +104,12 @@ export class ConfigsComponent implements OnInit {
   protected readonly configurationForm = signal<ConfigurationForm>(this.emptyConfigurationForm());
   protected readonly sensitiveChangeConfirmed = signal(false);
   protected readonly formError = signal<string | null>(null);
+  protected readonly evaluatingExpression = signal(false);
+  protected readonly evaluatedExpression = signal<string | null>(null);
+  protected readonly expressionConfigurationNames = signal<readonly string[]>([]);
+  protected readonly expressionEnvironmentNames = signal<readonly string[]>([]);
+  protected readonly expressionCompletions = signal<readonly ExpressionCompletion[]>([]);
+  protected readonly selectedExpressionCompletion = signal(0);
 
   protected readonly tagDialogOpen = signal(false);
   protected readonly editingTag = signal<ConfigurationTag | null>(null);
@@ -103,7 +117,7 @@ export class ConfigsComponent implements OnInit {
   protected readonly tagError = signal<string | null>(null);
 
   async ngOnInit(): Promise<void> {
-    await Promise.all([this.loadConfigurations(), this.loadTags()]);
+    await Promise.all([this.loadConfigurations(), this.loadTags(), this.loadExpressionSuggestions()]);
   }
 
   protected async loadConfigurations(): Promise<void> {
@@ -132,6 +146,16 @@ export class ConfigsComponent implements OnInit {
   protected async loadTags(): Promise<void> {
     try {
       this.tags.set(await this.api.listTags());
+    } catch (error) {
+      this.error.set(this.errorMessage(error));
+    }
+  }
+
+  protected async loadExpressionSuggestions(): Promise<void> {
+    try {
+      const suggestions = await this.api.getExpressionSuggestions();
+      this.expressionConfigurationNames.set(suggestions.configurations);
+      this.expressionEnvironmentNames.set(suggestions.environmentVariables);
     } catch (error) {
       this.error.set(this.errorMessage(error));
     }
@@ -268,6 +292,7 @@ export class ConfigsComponent implements OnInit {
     this.configurationForm.set(this.emptyConfigurationForm());
     this.sensitiveChangeConfirmed.set(false);
     this.formError.set(null);
+    this.resetExpressionEditorState();
     this.editorOpen.set(true);
   }
 
@@ -284,16 +309,106 @@ export class ConfigsComponent implements OnInit {
     });
     this.sensitiveChangeConfirmed.set(false);
     this.formError.set(null);
+    this.resetExpressionEditorState();
     this.editorOpen.set(true);
   }
 
   protected closeEditor(): void {
-    if (!this.saving()) this.editorOpen.set(false);
+    if (!this.saving()) {
+      this.editorOpen.set(false);
+      this.resetExpressionEditorState();
+    }
   }
 
   protected patchConfigurationForm(patch: Partial<ConfigurationForm>): void {
     this.configurationForm.update((form) => ({ ...form, ...patch }));
     this.formError.set(null);
+    if (patch.rawValue !== undefined || patch.name !== undefined || patch.valueType !== undefined) {
+      this.evaluatedExpression.set(null);
+    }
+  }
+
+  protected updateExpressionValue(event: Event): void {
+    const textarea = event.target as HTMLTextAreaElement;
+    this.patchConfigurationForm({ rawValue: textarea.value });
+    this.refreshExpressionCompletions(textarea);
+  }
+
+  protected refreshExpressionCompletions(textarea: HTMLTextAreaElement): void {
+    if (this.configurationForm().valueType !== 'EXPRESSION') {
+      this.closeExpressionCompletions();
+      return;
+    }
+
+    const value = textarea.value;
+    const cursor = textarea.selectionStart ?? value.length;
+    const opening = value.lastIndexOf('{{', cursor - 1);
+    const lastClosing = value.lastIndexOf('}}', cursor - 1);
+    if (opening < 0 || opening < lastClosing) {
+      this.closeExpressionCompletions();
+      return;
+    }
+
+    const fragment = value.slice(opening + 2, cursor);
+    if (/[{}\s]/.test(fragment)) {
+      this.closeExpressionCompletions();
+      return;
+    }
+
+    const completions = this.buildExpressionCompletions(fragment, opening + 2, cursor, value.slice(cursor));
+    this.expressionCompletions.set(completions);
+    this.selectedExpressionCompletion.set(0);
+  }
+
+  protected handleExpressionKeydown(event: KeyboardEvent, textarea: HTMLTextAreaElement): void {
+    const completions = this.expressionCompletions();
+    if (completions.length === 0) return;
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      this.selectedExpressionCompletion.update((index) => (index + 1) % completions.length);
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      this.selectedExpressionCompletion.update((index) => (index - 1 + completions.length) % completions.length);
+    } else if (event.key === 'Tab' || event.key === 'Enter') {
+      event.preventDefault();
+      this.applyExpressionCompletion(textarea, this.selectedExpressionCompletion());
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      this.closeExpressionCompletions();
+    }
+  }
+
+  protected chooseExpressionCompletion(textarea: HTMLTextAreaElement, index: number, event: MouseEvent): void {
+    event.preventDefault();
+    this.applyExpressionCompletion(textarea, index);
+  }
+
+  protected closeExpressionCompletions(): void {
+    this.expressionCompletions.set([]);
+    this.selectedExpressionCompletion.set(0);
+  }
+
+  protected async evaluateExpression(): Promise<void> {
+    const form = this.configurationForm();
+    if (this.evaluatingExpression() || form.valueType !== 'EXPRESSION') return;
+
+    this.evaluatingExpression.set(true);
+    this.evaluatedExpression.set(null);
+    this.formError.set(null);
+    this.closeExpressionCompletions();
+    try {
+      const response = await this.api.evaluateExpression({
+        ...(this.editingConfiguration() ? { configurationId: this.editingConfiguration()!.id } : {}),
+        configurationName: form.name.trim(),
+        expression: form.rawValue,
+      });
+      this.evaluatedExpression.set(response.value);
+    } catch (error) {
+      this.formError.set(this.errorMessage(error));
+    } finally {
+      this.evaluatingExpression.set(false);
+    }
   }
 
   protected toggleConfigurationTag(tagId: number, checked: boolean): void {
@@ -351,6 +466,7 @@ export class ConfigsComponent implements OnInit {
       } else {
         await this.api.createConfiguration(request);
       }
+      this.resetExpressionEditorState();
       this.editorOpen.set(false);
       await this.loadConfigurations();
     } catch (error) {
@@ -378,6 +494,9 @@ export class ConfigsComponent implements OnInit {
 
   protected valuePreview(configuration: ApplicationConfiguration): string {
     if (configuration.valueHidden) return '••••••••••••••••';
+    if (configuration.valueType === 'EXPRESSION') {
+      return this.localization.translate('configs.expression.onDemand');
+    }
     if (configuration.valueType === 'JSON') return JSON.stringify(configuration.value);
     return String(configuration.value);
   }
@@ -496,6 +615,69 @@ export class ConfigsComponent implements OnInit {
       default:
         return rawValue;
     }
+  }
+
+  private buildExpressionCompletions(
+    fragment: string,
+    replacementStart: number,
+    replacementEnd: number,
+    remainingValue: string,
+  ): readonly ExpressionCompletion[] {
+    const normalizedFragment = fragment.toLowerCase();
+    if (!fragment.includes('.')) {
+      return ['configs', 'env']
+        .filter((scope) => scope.startsWith(normalizedFragment))
+        .map((scope) => ({
+          label: scope,
+          replacement: `${scope}.`,
+          replacementStart,
+          replacementEnd,
+        }));
+    }
+
+    const separator = fragment.indexOf('.');
+    const scope = fragment.slice(0, separator).toLowerCase();
+    const prefix = fragment.slice(separator + 1);
+    const names = scope === 'configs'
+      ? this.expressionConfigurationNames()
+      : scope === 'env'
+        ? this.expressionEnvironmentNames()
+        : [];
+    const closing = remainingValue.startsWith('}}') ? '' : '}}';
+    return names
+      .filter((name) => name.toLowerCase().startsWith(prefix.toLowerCase()))
+      .slice(0, 50)
+      .map((name) => ({
+        label: `${scope}.${name}`,
+        replacement: `${scope}.${name}${closing}`,
+        replacementStart,
+        replacementEnd,
+      }));
+  }
+
+  private applyExpressionCompletion(textarea: HTMLTextAreaElement, index: number): void {
+    const completion = this.expressionCompletions()[index];
+    if (!completion) return;
+
+    const currentValue = textarea.value;
+    const value = currentValue.slice(0, completion.replacementStart)
+      + completion.replacement
+      + currentValue.slice(completion.replacementEnd);
+    const cursor = completion.replacementStart + completion.replacement.length;
+    textarea.value = value;
+    this.patchConfigurationForm({ rawValue: value });
+    this.closeExpressionCompletions();
+    queueMicrotask(() => {
+      textarea.focus();
+      textarea.setSelectionRange(cursor, cursor);
+      if (completion.replacement.endsWith('.')) this.refreshExpressionCompletions(textarea);
+    });
+  }
+
+  private resetExpressionEditorState(): void {
+    this.evaluatingExpression.set(false);
+    this.evaluatedExpression.set(null);
+    this.closeExpressionCompletions();
   }
 
   private toEditorValue(type: ConfigurationValueType, value: unknown): string {

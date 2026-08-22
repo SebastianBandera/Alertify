@@ -18,6 +18,16 @@ class ConfigurationValueValidatorTest {
     private final ConfigurationValueValidator validator = new ConfigurationValueValidator();
 
     @Test
+    void acceptsExpressionAsString() {
+        var value = validator.validateAndNormalize(
+            ConfigurationValueType.EXPRESSION,
+            StringNode.valueOf("{{configs.HOST}}:{{env.PORT}}")
+        );
+
+        assertThat(value.stringValue()).isEqualTo("{{configs.HOST}}:{{env.PORT}}");
+    }
+
+    @Test
     void normalizesDateTimeToUtcInstant() {
         var result = validator.validateAndNormalize(
             ConfigurationValueType.DATE_TIME,

@@ -298,7 +298,7 @@
           ></textarea>
         </label>
 
-        <label class="field">
+        <div class="field">
           <span>
             {{ localization.translate(editingConfiguration()?.valueHidden ? 'configs.keyPart.newValue' : 'configs.field.value') }}
           </span>
@@ -314,6 +314,64 @@
             />
           } @else {
             @switch (configurationForm().valueType) {
+            @case ('EXPRESSION') {
+              <div class="expression-editor">
+                <textarea
+                  #expressionValue
+                  required
+                  rows="6"
+                  class="code-input expression-editor__input"
+                  autocomplete="off"
+                  spellcheck="false"
+                  [placeholder]="localization.translate('configs.expression.placeholder')"
+                  [ngModel]="configurationForm().rawValue"
+                  (input)="updateExpressionValue($event)"
+                  (click)="refreshExpressionCompletions(expressionValue)"
+                  (keydown)="handleExpressionKeydown($event, expressionValue)"
+                  (blur)="closeExpressionCompletions()"
+                  name="configurationValue"
+                  role="combobox"
+                  aria-autocomplete="list"
+                  [attr.aria-expanded]="expressionCompletions().length > 0"
+                  aria-controls="configuration-expression-completions"
+                ></textarea>
+                @if (expressionCompletions().length > 0) {
+                  <div
+                    id="configuration-expression-completions"
+                    class="expression-completions"
+                    role="listbox"
+                  >
+                    @for (completion of expressionCompletions(); track completion.label; let index = $index) {
+                      <button
+                        class="expression-completion"
+                        [class.expression-completion--selected]="selectedExpressionCompletion() === index"
+                        type="button"
+                        role="option"
+                        [attr.aria-selected]="selectedExpressionCompletion() === index"
+                        (mousedown)="chooseExpressionCompletion(expressionValue, index, $event)"
+                      >{{ completion.label }}</button>
+                    }
+                  </div>
+                }
+              </div>
+              <div class="expression-actions">
+                <button
+                  class="button button--secondary"
+                  type="button"
+                  [disabled]="evaluatingExpression() || !configurationForm().rawValue.trim()"
+                  (click)="evaluateExpression()"
+                >
+                  {{ localization.translate(evaluatingExpression() ? 'configs.expression.evaluating' : 'configs.expression.evaluate') }}
+                </button>
+                <small>{{ localization.translate('configs.expression.help') }}</small>
+              </div>
+              @if (evaluatedExpression() !== null) {
+                <section class="expression-result" aria-live="polite">
+                  <strong>{{ localization.translate('configs.expression.result') }}</strong>
+                  <pre>{{ evaluatedExpression() }}</pre>
+                </section>
+              }
+            }
             @case ('BOOLEAN') {
               <select
                 [ngModel]="configurationForm().rawValue || 'false'"
@@ -364,7 +422,7 @@
             }
             }
           }
-        </label>
+        </div>
 
         @if (editingConfiguration()?.changeWarning === 'SECRET_LOSS') {
           <button class="button button--secondary generate-button" type="button" (click)="generateKeyPart()">

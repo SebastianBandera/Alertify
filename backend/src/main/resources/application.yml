@@ -85,3 +85,6 @@ security:
     allowed-origin: ${APP_PUBLIC_URL}
   symmetric-key:
     environment-part: ${KEY_ENV_PART}
+
+configuration-expressions:
+  allowed-environment-variables: ${CONFIGURATION_EXPRESSION_ALLOWED_ENVIRONMENT_VARIABLES:}

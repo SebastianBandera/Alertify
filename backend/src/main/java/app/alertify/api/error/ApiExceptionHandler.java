@@ -62,6 +62,11 @@ public class ApiExceptionHandler {
         return response(HttpStatus.BAD_REQUEST, "INVALID_CONFIGURATION_VALUE", exception.getMessage(), Map.of(), exception, request);
     }
 
+    @ExceptionHandler(InvalidConfigurationExpressionException.class)
+    ResponseEntity<ApiError> handleInvalidExpression(InvalidConfigurationExpressionException exception, HttpServletRequest request) {
+        return response(HttpStatus.BAD_REQUEST, "INVALID_CONFIGURATION_EXPRESSION", exception.getMessage(), Map.of(), exception, request);
+    }
+
     @ExceptionHandler(InvalidSecretValueException.class)
     ResponseEntity<ApiError> handleInvalidSecretValue(InvalidSecretValueException exception, HttpServletRequest request) {
         return response(HttpStatus.BAD_REQUEST, "INVALID_SECRET_VALUE", exception.getMessage(), Map.of(), exception, request);

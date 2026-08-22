@@ -118,6 +118,7 @@ class ConfigurationCsvCodec {
 
     private JsonNode parseValue(String rawValue, ConfigurationValueType valueType, int rowNumber) {
         if (valueType == ConfigurationValueType.STRING
+                || valueType == ConfigurationValueType.EXPRESSION
                 || valueType == ConfigurationValueType.DATE
                 || valueType == ConfigurationValueType.DATE_TIME) {
             return StringNode.valueOf(rawValue);
@@ -131,7 +132,7 @@ class ConfigurationCsvCodec {
 
     private String exportValue(ApplicationConfiguration configuration) {
         return switch (configuration.getValueType()) {
-            case STRING, DATE, DATE_TIME -> configuration.getValue().stringValue();
+            case STRING, EXPRESSION, DATE, DATE_TIME -> configuration.getValue().stringValue();
             default -> writeJson(configuration.getValue());
         };
     }

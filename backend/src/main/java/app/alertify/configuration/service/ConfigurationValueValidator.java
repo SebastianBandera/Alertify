@@ -26,7 +26,8 @@ public class ConfigurationValueValidator {
         }
 
         return switch (type) {
-            case STRING -> validateString(value);
+            case STRING -> validateString(value, "STRING");
+            case EXPRESSION -> validateString(value, "EXPRESSION");
             case INTEGER -> validateInteger(value);
             case DECIMAL -> validateDecimal(value);
             case BOOLEAN -> validateBoolean(value);
@@ -36,8 +37,8 @@ public class ConfigurationValueValidator {
         };
     }
 
-    private static JsonNode validateString(JsonNode value) {
-        require(value.isString(), "STRING requires a JSON string");
+    private static JsonNode validateString(JsonNode value, String type) {
+        require(value.isString(), type + " requires a JSON string");
         return StringNode.valueOf(value.stringValue());
     }
 

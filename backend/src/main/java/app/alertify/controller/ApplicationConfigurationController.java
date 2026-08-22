@@ -3,6 +3,7 @@ package app.alertify.controller;
 import java.net.URI;
 
 import org.springframework.http.ContentDisposition;
+import org.springframework.http.CacheControl;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 
@@ -26,10 +27,14 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import app.alertify.configuration.api.ConfigurationCreateRequest;
+import app.alertify.configuration.api.ConfigurationExpressionEvaluationRequest;
+import app.alertify.configuration.api.ConfigurationExpressionEvaluationResponse;
+import app.alertify.configuration.api.ConfigurationExpressionSuggestionsResponse;
 import app.alertify.configuration.api.ConfigurationImportResult;
 import app.alertify.configuration.api.ConfigurationResponse;
 import app.alertify.configuration.api.ConfigurationUpdateRequest;
 import app.alertify.configuration.service.ApplicationConfigurationService;
+import app.alertify.configuration.service.ConfigurationExpressionService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.PositiveOrZero;
 
@@ -40,9 +45,11 @@ import jakarta.validation.constraints.PositiveOrZero;
 public class ApplicationConfigurationController {
 
     private final ApplicationConfigurationService service;
+    private final ConfigurationExpressionService expressionService;
 
-    public ApplicationConfigurationController(ApplicationConfigurationService service) {
+    public ApplicationConfigurationController(ApplicationConfigurationService service, ConfigurationExpressionService expressionService) {
         this.service = service;
+        this.expressionService = expressionService;
     }
 
     @GetMapping
@@ -65,6 +72,18 @@ public class ApplicationConfigurationController {
     @PostMapping(value = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ConfigurationImportResult importCsv(@RequestParam("file") MultipartFile file) {
         return service.importCsv(file);
+    }
+
+    @GetMapping("/expression-suggestions")
+    public ConfigurationExpressionSuggestionsResponse expressionSuggestions() {
+        return expressionService.suggestions();
+    }
+
+    @PostMapping("/evaluate-expression")
+    public ResponseEntity<ConfigurationExpressionEvaluationResponse> evaluateExpression(@Valid @RequestBody ConfigurationExpressionEvaluationRequest request) {
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .body(expressionService.evaluate(request));
     }
 
     @GetMapping("/{id}")

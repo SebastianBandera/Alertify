@@ -2,6 +2,7 @@ package app.alertify.jpa.entity;
 
 public enum ConfigurationValueType {
     STRING,
+    EXPRESSION,
     INTEGER,
     DECIMAL,
     BOOLEAN,
