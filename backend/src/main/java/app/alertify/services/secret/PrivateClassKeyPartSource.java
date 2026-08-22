@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 class PrivateClassKeyPartSource {
 
     private static final String DEFAULT_CLASS_NAME =
-        "app.alertify.services.secret.nogit.PrivateKeyPart";
+        "app.alertify.services.secret.key.PrivateKeyPart";
     private static final String DEFAULT_FIELD_NAME = "KEY_PART";
 
     private final String className;
