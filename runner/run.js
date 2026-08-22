@@ -7,6 +7,9 @@ const { spawnSync } = require('node:child_process');
 
 const SECRET_PATTERN = /<GENERATE_([A-Z][A-Z0-9_]*)>/g;
 const ASSIGNMENT_PATTERN = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/;
+const PRIVATE_KEY_PART_SOURCE = path.join(
+  'backend', 'src', 'main', 'java', 'app', 'alertify', 'services', 'secret', 'nogit', 'PrivateKeyPart.java',
+);
 
 function parseDocument(content, sourceName) {
   const lines = content.split(/\r?\n/);
@@ -66,6 +69,66 @@ function placeholders(rawValue) {
 
 function generateSecret() {
   return crypto.randomBytes(32).toString('base64url');
+}
+
+function renderPrivateKeyPartSource(value) {
+  return `package app.alertify.services.secret.nogit;
+
+final class PrivateKeyPart {
+
+    private static final String KEY_PART = "${value}";
+
+    private PrivateKeyPart() {
+    }
+}
+`;
+}
+
+function ensurePrivateKeyPartClass(environment, projectDirectory) {
+  if (mode(environment, 'BACKEND_MODE') !== 'local') {
+    return { status: 'not-applicable', path: null };
+  }
+
+  const sourcePath = path.join(projectDirectory, PRIVATE_KEY_PART_SOURCE);
+  if (!booleanValue(environment, 'CREATE_PRIVATE_KEY_PART_CLASS')) {
+    return {
+      status: fs.existsSync(sourcePath) ? 'preserved' : 'disabled',
+      path: sourcePath,
+    };
+  }
+
+  if (fs.existsSync(sourcePath)) {
+    return { status: 'reused', path: sourcePath };
+  }
+
+  fs.mkdirSync(path.dirname(sourcePath), { recursive: true });
+  fs.writeFileSync(sourcePath, renderPrivateKeyPartSource(generateSecret()), {
+    encoding: 'utf8',
+    flag: 'wx',
+    mode: 0o600,
+  });
+  return { status: 'created', path: sourcePath };
+}
+
+function printPrivateKeyPartClassResult(result, projectDirectory) {
+  if (result.status === 'not-applicable') {
+    return;
+  }
+
+  const displayPath = path.relative(projectDirectory, result.path);
+  if (result.status === 'created') {
+    console.log(
+      `Private symmetric-key source created at ${displayPath} without displaying its value.`,
+    );
+  } else if (result.status === 'reused') {
+    console.log(`Private symmetric-key source already exists at ${displayPath}; its value was preserved.`);
+  } else if (result.status === 'preserved') {
+    console.log(
+      `CREATE_PRIVATE_KEY_PART_CLASS=false; existing ${displayPath} was preserved and will still be compiled.`,
+    );
+  } else {
+    console.log('CREATE_PRIVATE_KEY_PART_CLASS=false; no private symmetric-key source was created.');
+  }
 }
 
 function resolveSecretValues(templateAssignments, existingValues) {
@@ -419,6 +482,7 @@ function buildPlan(environment) {
     required(environment, 'DATABASE_USER');
     required(environment, 'DATABASE_PASSWORD');
     required(environment, 'KEY_ENV_PART');
+    booleanValue(environment, 'CREATE_PRIVATE_KEY_PART_CLASS');
     required(environment, 'REDIS_HOST');
     required(environment, 'REDIS_PORT');
     booleanValue(environment, 'REDIS_SSL_ENABLED');
@@ -627,6 +691,8 @@ function main(argv = process.argv.slice(2), projectDirectory = path.resolve(__di
   }
 
   const plan = buildPlan(result.environment);
+  const privateKeyPartClassResult = ensurePrivateKeyPartClass(result.environment, projectDirectory);
+  printPrivateKeyPartClassResult(privateKeyPartClassResult, projectDirectory);
   printPlan(plan, result.environment);
 
   if (argv.includes('--configure-only')) {
@@ -649,6 +715,7 @@ if (require.main === module) {
 
 module.exports = {
   buildPlan,
+  ensurePrivateKeyPartClass,
   main,
   parseExistingEnvironment,
   reconcileEnvironment,

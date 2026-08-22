@@ -121,6 +121,7 @@ nb-configuration.xml
 _.code-workspace
 
 nogit/
+/backend/src/main/java/app/alertify/services/secret/nogit/
 remake/README.md
 README.md
 
