@@ -71,6 +71,14 @@ h2 {
   background: var(--surface-muted);
 }
 
+.configs__toolbar--secrets {
+  grid-template-columns: minmax(220px, 0.8fr) minmax(300px, 1.5fr) auto;
+}
+
+.configs__toolbar--secrets .toolbar-button {
+  justify-self: end;
+}
+
 .field {
   display: flex;
   flex-direction: column;
@@ -370,6 +378,12 @@ td small {
   color: #475467;
 }
 
+.type-badge--danger {
+  border: 1px solid #fecdca;
+  background: #fef3f2;
+  color: #b42318;
+}
+
 .value-preview {
   display: block;
   max-width: 240px;
@@ -656,6 +670,11 @@ td small {
 
   .toolbar-button {
     grid-column: 1 / -1;
+  }
+
+  .configs__toolbar--secrets .toolbar-button {
+    grid-column: auto;
+    justify-self: start;
   }
 }
 
