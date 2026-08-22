@@ -470,7 +470,7 @@ export class ConfigsComponent implements OnInit {
       this.editorOpen.set(false);
       await this.loadConfigurations();
     } catch (error) {
-      this.formError.set(this.errorMessage(error));
+      this.formError.set(this.errorMessage(error, 'rename'));
     } finally {
       this.saving.set(false);
     }
@@ -488,7 +488,7 @@ export class ConfigsComponent implements OnInit {
       }
       await this.loadConfigurations();
     } catch (error) {
-      this.error.set(this.errorMessage(error));
+      this.error.set(this.errorMessage(error, 'delete'));
     }
   }
 
@@ -708,12 +708,32 @@ export class ConfigsComponent implements OnInit {
       .replace('{tagsCreated}', String(result.tagsCreated));
   }
 
-  private errorMessage(error: unknown): string {
+  private errorMessage(error: unknown, referencedOperation?: 'delete' | 'rename'): string {
+    if (error instanceof ApiRequestError && error.code === 'CONFIGURATION_REFERENCED_BY_EXPRESSION') {
+      const name = error.parameters['configurationName'] ?? '';
+      const dependents = this.referencedConfigurationNames(error)
+        ?? this.localization.translate('configs.expression.referencedUnknown');
+      const key = referencedOperation === 'rename'
+        ? 'configs.expression.referencedRename'
+        : 'configs.expression.referencedDelete';
+      return this.localization.translate(key)
+        .replace('{name}', name)
+        .replace('{dependents}', dependents);
+    }
     if (error instanceof ApiRequestError && error.code === 'CONFIGURATION_TAG_IN_USE') {
       const tagName = error.parameters['tagName'] ?? '';
       return this.localization.translate('configs.tags.inUse')
         .replace('{name}', tagName);
     }
     return error instanceof Error ? error.message : String(error);
+  }
+
+  private referencedConfigurationNames(error: ApiRequestError): string | null {
+    const marker = 'because it is referenced by:';
+    const markerIndex = error.message.lastIndexOf(marker);
+    if (markerIndex < 0) return null;
+
+    const names = error.message.slice(markerIndex + marker.length).trim();
+    return names.replace(/\.$/, '') || null;
   }
 }

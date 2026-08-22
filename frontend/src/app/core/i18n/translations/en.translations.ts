@@ -83,6 +83,9 @@ export const EN_TRANSLATIONS = {
   'configs.expression.evaluate': 'Evaluate',
   'configs.expression.evaluating': 'Evaluating…',
   'configs.expression.result': 'Current result',
+  'configs.expression.referencedDelete': 'Configuration "{name}" cannot be deleted because it is referenced by: {dependents}.',
+  'configs.expression.referencedRename': 'Configuration "{name}" cannot be renamed because it is referenced by: {dependents}.',
+  'configs.expression.referencedUnknown': 'one or more expressions',
   'configs.keyPart.warningTitle': 'Sensitive system configuration',
   'configs.keyPart.hiddenText':
     'The current value is never shown or returned by the API. This field is empty and only accepts a new value.',

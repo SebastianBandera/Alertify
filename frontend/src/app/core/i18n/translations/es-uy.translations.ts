@@ -83,6 +83,9 @@ export const ES_UY_TRANSLATIONS = {
   'configs.expression.evaluate': 'Evaluar',
   'configs.expression.evaluating': 'Evaluando…',
   'configs.expression.result': 'Resultado actual',
+  'configs.expression.referencedDelete': 'No se puede eliminar la configuración "{name}" porque es utilizada por: {dependents}.',
+  'configs.expression.referencedRename': 'No se puede renombrar la configuración "{name}" porque es utilizada por: {dependents}.',
+  'configs.expression.referencedUnknown': 'una o más expresiones',
   'configs.keyPart.warningTitle': 'Configuración sensible del sistema',
   'configs.keyPart.hiddenText':
     'El valor actual nunca se muestra ni se devuelve por la API. Este campo está vacío y solo permite ingresar un valor nuevo.',
