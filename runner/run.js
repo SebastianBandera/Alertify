@@ -8,7 +8,8 @@ const { spawnSync } = require('node:child_process');
 const SECRET_PATTERN = /<GENERATE_([A-Z][A-Z0-9_]*)>/g;
 const ASSIGNMENT_PATTERN = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/;
 const PRIVATE_KEY_PART_SOURCE = path.join(
-  'backend', 'src', 'main', 'java', 'app', 'alertify', 'services', 'secret', 'key', 'PrivateKeyPart.java',
+  'backend', 'core', 'src', 'main', 'java', 'app', 'alertify', 'services', 'secret', 'key',
+  'PrivateKeyPart.java',
 );
 
 function parseDocument(content, sourceName) {
