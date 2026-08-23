@@ -7,6 +7,9 @@ WORKDIR /build
 
 COPY . .
 RUN mvn --batch-mode --no-transfer-progress package -DskipTests
+RUN cp -R core/src /runtime-src \
+    && rm -f \
+        /runtime-src/main/java/app/alertify/services/secret/key/PrivateKeyPart.java
 
 FROM ${BACKEND_RUNTIME_IMAGE}
 
@@ -18,6 +21,10 @@ WORKDIR /application
 COPY --from=builder --chown=application:application \
     /build/core/target/alertify-backend.jar \
     /application/alertify-backend.jar
+
+COPY --from=builder --chown=application:application \
+    /runtime-src \
+    /application/src
 
 COPY --chown=application:application start-backend.sh /application/start-backend.sh
 
