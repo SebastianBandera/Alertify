@@ -18,6 +18,10 @@ import app.alertify.jpa.specification.DynamicSpecification;
 import app.alertify.jpa.specification.InvalidFilterException;
 import app.alertify.logging.api.ApplicationLogResponse;
 
+/**
+ * Provides the filtered and paginated log view used by the administration
+ * frontend, including aliases for normalized level, source and event fields.
+ */
 @Service
 public class ApplicationLogService {
 

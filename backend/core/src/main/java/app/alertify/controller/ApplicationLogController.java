@@ -21,6 +21,10 @@ import app.alertify.logging.ApplicationEventLogger;
 import app.alertify.logging.ApplicationLogService;
 import jakarta.servlet.http.HttpServletRequest;
 
+/**
+ * HTTP API for searching immutable application log entries and recording
+ * frontend-reported session events such as login and logout.
+ */
 @RestController
 @RequestMapping("/api/logs")
 public class ApplicationLogController {

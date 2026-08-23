@@ -19,6 +19,11 @@ import app.alertify.logging.ApiRequestLoggingFilter;
 import app.alertify.logging.ApiResponseLogLevelResolver;
 import app.alertify.logging.ApplicationEventLogger;
 
+/**
+ * Converts domain, validation and persistence exceptions into the stable API
+ * error format, exposes localization parameters and records the displayed
+ * error code for request-level logging.
+ */
 @RestControllerAdvice
 public class ApiExceptionHandler {
     private final ApplicationEventLogger eventLogger;

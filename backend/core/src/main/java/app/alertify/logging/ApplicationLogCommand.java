@@ -4,6 +4,10 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 
+/**
+ * Internal immutable command passed from event collection to independent log
+ * persistence.
+ */
 record ApplicationLogCommand(
     Instant eventAt,
     ApplicationLogLevel level,

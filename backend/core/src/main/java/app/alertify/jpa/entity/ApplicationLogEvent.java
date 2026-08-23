@@ -7,6 +7,10 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
+/**
+ * Normalized catalog entry identifying the kind of application event stored
+ * in the log.
+ */
 @Entity
 @Table(name = "log_events", schema = "audit")
 public class ApplicationLogEvent {

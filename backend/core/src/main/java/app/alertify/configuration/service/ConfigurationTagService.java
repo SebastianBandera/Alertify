@@ -25,6 +25,10 @@ import app.alertify.jpa.repository.TagRepository;
 import app.alertify.jpa.specification.DynamicSpecification;
 import app.alertify.logging.ApplicationEventLogger;
 
+/**
+ * Manages tags in the configuration scope and coordinates cache invalidation
+ * when tag changes affect configuration responses.
+ */
 @Service
 public class ConfigurationTagService {
 

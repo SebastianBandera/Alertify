@@ -12,6 +12,11 @@ import app.alertify.jpa.entity.ApplicationSecret;
 import app.alertify.jpa.repository.ApplicationSecretRepository;
 import app.alertify.logging.ApplicationEventLogger;
 
+/**
+ * Internal read boundary for consumers that need secret metadata or a
+ * decrypted value by name. Every catalog or value access is recorded in the
+ * application log, while public controllers never expose the value.
+ */
 @Service
 public class SecretAccessService {
 

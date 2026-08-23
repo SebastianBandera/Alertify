@@ -11,6 +11,10 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
+/**
+ * Envers revision entity that records the authenticated subject and username
+ * responsible for all audited changes in one revision.
+ */
 @Entity
 @RevisionEntity(AuditRevisionListener.class)
 @Table(name = "revinfo", schema = "audit")

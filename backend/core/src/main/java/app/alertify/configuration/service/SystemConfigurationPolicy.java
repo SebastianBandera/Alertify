@@ -8,6 +8,11 @@ import app.alertify.configuration.api.ConfigurationWarning;
 import app.alertify.jpa.entity.ApplicationConfiguration;
 import app.alertify.jpa.entity.ConfigurationValueType;
 
+/**
+ * Central security policy for system-managed configurations. It protects
+ * {@code KEY_PART} from creation, deletion, renaming, export and value
+ * disclosure while allowing controlled replacement of its value.
+ */
 final class SystemConfigurationPolicy {
 
     static final String KEY_PART = "KEY_PART";

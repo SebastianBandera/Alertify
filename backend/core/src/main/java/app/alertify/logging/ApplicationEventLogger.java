@@ -12,6 +12,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+/**
+ * Primary entry point for structured application events. It enriches events
+ * with the current actor and request context, writes them to the console and
+ * delegates durable persistence without breaking the business operation if
+ * logging fails.
+ */
 @Service
 public class ApplicationEventLogger {
 

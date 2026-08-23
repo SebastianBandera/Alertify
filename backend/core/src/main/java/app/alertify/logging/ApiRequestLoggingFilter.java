@@ -15,6 +15,11 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
+/**
+ * Adds a request ID to every API response and records request duration, status
+ * and a small allow-list of safe query parameters without logging request
+ * bodies or arbitrary parameters that may contain sensitive data.
+ */
 public final class ApiRequestLoggingFilter extends OncePerRequestFilter {
 
     public static final String REQUEST_ID_HEADER = "X-Request-ID";

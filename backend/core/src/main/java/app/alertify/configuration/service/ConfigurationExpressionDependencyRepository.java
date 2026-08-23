@@ -6,6 +6,11 @@ import java.util.Set;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
+/**
+ * Maintains the normalized dependency graph between expression
+ * configurations. JDBC is used because this table represents graph edges and
+ * has no independent domain lifecycle.
+ */
 @Repository
 class ConfigurationExpressionDependencyRepository {
 

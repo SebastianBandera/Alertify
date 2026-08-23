@@ -5,6 +5,11 @@ import java.lang.reflect.Modifier;
 
 import org.springframework.stereotype.Component;
 
+/**
+ * Loads the source-code-owned key part from the compiled private
+ * {@code PrivateKeyPart} class through reflection. A missing or invalid class
+ * contributes no key material.
+ */
 @Component
 class PrivateClassKeyPartSource {
 

@@ -14,6 +14,10 @@ import org.springframework.data.redis.serializer.RedisSerializationContext;
 import app.alertify.configuration.api.ConfigurationResponse;
 import app.alertify.configuration.service.ConfigurationCacheNames;
 
+/**
+ * Configures the two public configuration caches in Redis with the shared TTL,
+ * key prefix and Jackson serializer. Secrets are intentionally not cached.
+ */
 @Configuration(proxyBeanMethods = false)
 public class AlertifyRedisCacheConfiguration {
 

@@ -6,6 +6,10 @@ import org.springframework.data.domain.Pageable;
 
 import app.alertify.jpa.specification.InvalidFilterException;
 
+/**
+ * Rejects unsupported sort properties before they reach Spring Data query
+ * construction.
+ */
 final class SearchValidation {
 
     private SearchValidation() {

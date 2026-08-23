@@ -8,6 +8,10 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+/**
+ * Evicts cached configuration responses only after a successful transaction
+ * commit, preventing Redis from observing data that may still roll back.
+ */
 @Component
 class ConfigurationCacheInvalidator {
 

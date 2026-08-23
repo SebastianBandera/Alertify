@@ -9,6 +9,10 @@ import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 
 import app.alertify.jpa.entity.ApplicationLog;
 
+/**
+ * Persistence gateway used to append and search structured application log
+ * entries.
+ */
 public interface ApplicationLogRepository extends JpaRepository<ApplicationLog, Long>, JpaSpecificationExecutor<ApplicationLog> {
 
     @Override

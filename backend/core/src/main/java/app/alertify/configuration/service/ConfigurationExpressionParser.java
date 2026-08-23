@@ -10,6 +10,11 @@ import org.springframework.stereotype.Component;
 
 import app.alertify.api.error.InvalidConfigurationExpressionException;
 
+/**
+ * Parses {@code {{configs.NAME}}} and {@code {{env.NAME}}} references without
+ * evaluating them, producing the dependency metadata used for validation and
+ * resolution.
+ */
 @Component
 public class ConfigurationExpressionParser {
 

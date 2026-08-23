@@ -7,6 +7,11 @@ import tools.jackson.databind.JsonNode;
 
 import app.alertify.jpa.entity.ConfigurationValueType;
 
+/**
+ * Public configuration representation. Sensitive system values are returned
+ * as {@code null} with {@code valueHidden=true}, so they cannot enter the API
+ * response or Redis cache.
+ */
 public record ConfigurationResponse(
     Long id,
     long version,

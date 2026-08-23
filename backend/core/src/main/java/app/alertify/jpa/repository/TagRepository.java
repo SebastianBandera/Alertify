@@ -12,6 +12,10 @@ import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import app.alertify.jpa.entity.Tag;
 import app.alertify.jpa.entity.TagScope;
 
+/**
+ * Persistence gateway for tags with queries that always preserve their
+ * configuration or secret scope.
+ */
 public interface TagRepository extends JpaRepository<Tag, Long>, JpaSpecificationExecutor<Tag> {
 
     Optional<Tag> findByIdAndScope(Long id, TagScope scope);

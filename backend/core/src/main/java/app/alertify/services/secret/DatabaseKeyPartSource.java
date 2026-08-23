@@ -8,6 +8,11 @@ import app.alertify.jpa.entity.ApplicationConfiguration;
 import app.alertify.jpa.entity.ConfigurationValueType;
 import app.alertify.jpa.repository.ApplicationConfigurationRepository;
 
+/**
+ * Reads the database-owned {@code KEY_PART} configuration used to derive the
+ * symmetric encryption key. The value remains internal and is never mapped to
+ * a public configuration response.
+ */
 @Component
 class DatabaseKeyPartSource {
 

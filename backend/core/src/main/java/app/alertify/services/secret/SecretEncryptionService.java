@@ -15,6 +15,11 @@ import org.springframework.stereotype.Service;
 import app.alertify.api.error.InvalidSecretValueException;
 import app.alertify.jpa.entity.ApplicationSecret;
 
+/**
+ * Encrypts secret values with AES-GCM and verifies decrypted bytes against a
+ * salted SHA-256 hash. A verification or key-version failure is reported as
+ * an unrecoverable secret rather than returning untrusted plaintext.
+ */
 @Service
 public class SecretEncryptionService {
 

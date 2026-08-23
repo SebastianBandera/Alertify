@@ -8,6 +8,10 @@ import app.alertify.configuration.api.TagResponse;
 import app.alertify.jpa.entity.ApplicationConfiguration;
 import app.alertify.jpa.entity.Tag;
 
+/**
+ * Converts configuration entities to public responses and enforces the final
+ * value-hiding boundary for system-managed sensitive configurations.
+ */
 final class ConfigurationMapper {
 
     private ConfigurationMapper() {

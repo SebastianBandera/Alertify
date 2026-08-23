@@ -2,6 +2,10 @@ package app.alertify.logging;
 
 import java.util.Set;
 
+/**
+ * Maps HTTP outcomes to application log severity, treating selected expected
+ * business conflicts as informational instead of operational warnings.
+ */
 public final class ApiResponseLogLevelResolver {
 
     private static final Set<String> EXPECTED_BUSINESS_ERROR_CODES = Set.of(

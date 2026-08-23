@@ -19,6 +19,11 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.StringNode;
 import tools.jackson.databind.json.JsonMapper;
 
+/**
+ * Encodes and validates the configuration CSV import/export format. Hidden
+ * system configurations such as {@code KEY_PART} are deliberately excluded
+ * from exports.
+ */
 @Component
 class ConfigurationCsvCodec {
 

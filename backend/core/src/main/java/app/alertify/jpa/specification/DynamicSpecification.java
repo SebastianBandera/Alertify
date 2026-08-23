@@ -16,6 +16,10 @@ import jakarta.persistence.criteria.Expression;
 import jakarta.persistence.criteria.Path;
 import jakarta.persistence.criteria.Predicate;
 
+/**
+ * Builds allow-listed Spring Data specifications from HTTP query parameters,
+ * providing a shared filtering language.
+ */
 public final class DynamicSpecification {
 
     private static final Set<String> RESERVED_PARAMS = Set.of(

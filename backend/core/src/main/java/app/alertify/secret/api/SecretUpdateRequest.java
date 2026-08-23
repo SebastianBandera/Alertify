@@ -8,6 +8,10 @@ import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
 
+/**
+ * Write-only update contract that always replaces a secret with a newly
+ * supplied value; the existing plaintext can never be requested by a client.
+ */
 public record SecretUpdateRequest(
     @NotNull @PositiveOrZero Long version,
     @NotBlank @Size(max = 200) String name,

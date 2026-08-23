@@ -12,6 +12,10 @@ import app.alertify.jpa.repository.ApplicationLogEventRepository;
 import app.alertify.jpa.repository.ApplicationLogLevelDefinitionRepository;
 import app.alertify.jpa.repository.ApplicationLogSourceRepository;
 
+/**
+ * Resolves normalized log level, source and event rows and caches those stable
+ * catalog entries in memory to avoid repeated database lookups.
+ */
 @Component
 class ApplicationLogCatalog {
 

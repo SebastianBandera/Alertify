@@ -9,6 +9,10 @@ import org.springframework.data.jpa.repository.Query;
 
 import app.alertify.jpa.entity.ApplicationConfiguration;
 
+/**
+ * Persistence gateway for configurations, including case-insensitive name
+ * lookups, expression suggestions and tag-assignment checks.
+ */
 public interface ApplicationConfigurationRepository extends JpaRepository<ApplicationConfiguration, Long>, JpaSpecificationExecutor<ApplicationConfiguration> {
 
     boolean existsByNameIgnoreCase(String name);

@@ -26,6 +26,10 @@ import app.alertify.jpa.specification.DynamicSpecification;
 import app.alertify.jpa.specification.InvalidFilterException;
 import app.alertify.logging.ApplicationEventLogger;
 
+/**
+ * Manages tags in the secret scope and prevents their deletion while they are
+ * assigned to one or more secrets.
+ */
 @Service
 public class SecretTagService {
 

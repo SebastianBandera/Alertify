@@ -4,6 +4,10 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 
+/**
+ * Extracts a stable subject and username from the current JWT authentication,
+ * with explicit fallbacks for scheduled or unauthenticated system work.
+ */
 final class CurrentLogActor {
 
     private static final String SYSTEM = "system";
@@ -16,31 +20,31 @@ final class CurrentLogActor {
 
     static LogActor resolve() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication instanceof JwtAuthenticationToken jwtAuthentication
-                && authentication.isAuthenticated()) {
+        if (authentication instanceof JwtAuthenticationToken jwtAuthentication && authentication.isAuthenticated()) {
             String subject = jwtAuthentication.getToken().getSubject();
             String username = jwtAuthentication.getToken().getClaimAsString(USERNAME_CLAIM);
+
             return new LogActor(
-                    firstNonBlankOr(
-                            UNKNOWN_AUTHENTICATED_SUBJECT,
+                    firstNonBlank(
                             subject,
-                            authentication.getName()
+                            authentication.getName(),
+                            UNKNOWN_AUTHENTICATED_SUBJECT
                     ),
-                    firstNonBlankOr(
-                            UNKNOWN_AUTHENTICATED_USER,
+                    firstNonBlank(
                             username,
-                            authentication.getName()
+                            authentication.getName(),
+                            UNKNOWN_AUTHENTICATED_USER
                     )
             );
         }
         return new LogActor(SYSTEM, SYSTEM);
     }
 
-    private static String firstNonBlankOr(String fallback, String... values) {
-        for (String value : values) {
+    private static String firstNonBlank(String... valuesByPrecedence) {
+        for (String value : valuesByPrecedence) {
             if (value != null && !value.isBlank())
                 return value;
         }
-        return fallback;
+        throw new IllegalArgumentException("At least one non-blank value is required");
     }
 }

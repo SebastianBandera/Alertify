@@ -7,6 +7,10 @@ import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 
 import app.alertify.jpa.entity.ApplicationSecret;
 
+/**
+ * Persistence gateway for encrypted secrets and their metadata, including
+ * case-insensitive name and tag-assignment queries.
+ */
 public interface ApplicationSecretRepository extends JpaRepository<ApplicationSecret, Long>, JpaSpecificationExecutor<ApplicationSecret> {
 
     boolean existsByNameIgnoreCase(String name);

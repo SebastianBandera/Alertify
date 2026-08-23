@@ -27,6 +27,9 @@ import app.alertify.services.secret.SecretTagService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.PositiveOrZero;
 
+/**
+ * Administrative HTTP API for tags belonging exclusively to secret records.
+ */
 @RestController
 @RequestMapping("/api/secret-tags")
 @PreAuthorize("hasRole('ADMIN')")

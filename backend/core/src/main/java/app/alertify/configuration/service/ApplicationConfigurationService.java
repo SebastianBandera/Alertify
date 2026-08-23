@@ -40,6 +40,11 @@ import app.alertify.jpa.specification.DynamicSpecification;
 import app.alertify.jpa.specification.InvalidFilterException;
 import app.alertify.logging.ApplicationEventLogger;
 
+/**
+ * Implements the administrative lifecycle of application configurations,
+ * including search, validation, CSV import/export, tags, expressions, cache
+ * invalidation and audit-oriented event logging.
+ */
 @Service
 public class ApplicationConfigurationService {
 

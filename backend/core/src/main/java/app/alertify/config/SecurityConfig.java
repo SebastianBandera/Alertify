@@ -20,6 +20,11 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import app.alertify.logging.ApiRequestLoggingFilter;
 import app.alertify.logging.ApplicationEventLogger;
 
+/**
+ * Configures the stateless OAuth2 resource server, Keycloak client-role
+ * conversion, API CORS policy and request logging filter. Health and info
+ * actuator endpoints are the only unauthenticated routes.
+ */
 @Configuration
 public class SecurityConfig {
 

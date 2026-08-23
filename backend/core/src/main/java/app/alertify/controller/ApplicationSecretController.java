@@ -27,6 +27,10 @@ import app.alertify.services.secret.ApplicationSecretService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.PositiveOrZero;
 
+/**
+ * Administrative HTTP API for secret metadata and write-only secret values.
+ * No endpoint in this controller returns decrypted or encrypted value bytes.
+ */
 @RestController
 @RequestMapping("/api/secrets")
 @PreAuthorize("hasRole('ADMIN')")

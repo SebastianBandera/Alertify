@@ -8,6 +8,10 @@ import app.alertify.jpa.entity.ApplicationLog;
 import app.alertify.jpa.repository.ApplicationLogRepository;
 import tools.jackson.databind.json.JsonMapper;
 
+/**
+ * Persists one structured application event in an independent transaction so
+ * log writes do not join or alter the caller's business transaction.
+ */
 @Service
 class ApplicationLogWriter {
 

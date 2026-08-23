@@ -10,6 +10,10 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.jwt.Jwt;
 
+/**
+ * Converts Keycloak client roles from the JWT {@code resource_access} claim
+ * into Spring Security {@code ROLE_} authorities for the configured client.
+ */
 final class ClientRoleConverter implements Converter<Jwt, Collection<GrantedAuthority>> {
 
     private static final String RESOURCE_ACCESS_CLAIM = "resource_access";

@@ -13,6 +13,10 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 @EnableMethodSecurity
 @EnableSpringDataWebSupport(pageSerializationMode = VIA_DTO)
 @SpringBootApplication(exclude = UserDetailsServiceAutoConfiguration.class)
+/**
+ * Main Spring Boot entry point for the Alertify backend. Component, entity and
+ * repository scanning starts from the {@code app.alertify} root package.
+ */
 public class AlertifyApplication {
 
     public static void main(String[] args) {

@@ -27,6 +27,10 @@ import app.alertify.configuration.service.ConfigurationTagService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.PositiveOrZero;
 
+/**
+ * Administrative HTTP API for tags belonging exclusively to configuration
+ * records.
+ */
 @RestController
 @RequestMapping("/api/configuration-tags")
 @PreAuthorize("hasRole('ADMIN')")

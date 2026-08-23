@@ -6,6 +6,10 @@ import java.security.NoSuchAlgorithmException;
 
 import org.springframework.stereotype.Service;
 
+/**
+ * Centralizes SHA-256 hashing for key derivation and secret integrity checks
+ * so cryptographic callers use the same algorithm implementation.
+ */
 @Service
 public class Sha256HashService {
 

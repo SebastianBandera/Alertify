@@ -14,6 +14,10 @@ import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Root;
 import jakarta.persistence.criteria.Subquery;
 
+/**
+ * Configuration-specific query predicates for value searches and tag filters,
+ * kept separate from the generic dynamic filter builder.
+ */
 public final class ApplicationConfigurationSpecifications {
 
     private ApplicationConfigurationSpecifications() {

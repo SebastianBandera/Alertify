@@ -21,6 +21,10 @@ import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import jakarta.persistence.Version;
 
+/**
+ * Reusable label isolated by {@link TagScope}; database constraints prevent a
+ * configuration tag from being attached to a secret or vice versa.
+ */
 @Entity
 @Audited
 @AuditTable(value = "tags_aud", schema = "audit")

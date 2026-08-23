@@ -7,6 +7,10 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
+/**
+ * Normalized catalog entry for the severity assigned to an application log
+ * event.
+ */
 @Entity
 @Table(name = "log_levels", schema = "audit")
 public class ApplicationLogLevelDefinition {

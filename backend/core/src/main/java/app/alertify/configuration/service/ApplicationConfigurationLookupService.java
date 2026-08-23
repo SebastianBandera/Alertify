@@ -8,6 +8,11 @@ import app.alertify.api.error.ResourceNotFoundException;
 import app.alertify.configuration.api.ConfigurationResponse;
 import app.alertify.jpa.repository.ApplicationConfigurationRepository;
 
+/**
+ * Provides cached configuration lookups by ID or name. It returns public
+ * response objects, so system-managed hidden values are removed by the mapper
+ * before an entry can reach Redis or an API consumer.
+ */
 @Service
 public class ApplicationConfigurationLookupService {
 

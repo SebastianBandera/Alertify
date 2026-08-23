@@ -5,6 +5,10 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 
+/**
+ * Populates each Envers revision with the current authenticated actor so audit
+ * history identifies who performed a change.
+ */
 public final class AuditRevisionListener implements RevisionListener {
 
     private static final String SYSTEM_USER = "system";

@@ -38,6 +38,10 @@ import app.alertify.configuration.service.ConfigurationExpressionService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.PositiveOrZero;
 
+/**
+ * Administrative HTTP API for searching, viewing, creating, updating,
+ * deleting, importing, exporting and evaluating application configurations.
+ */
 @RestController
 @RequestMapping("/api/configurations")
 @PreAuthorize("hasRole('ADMIN')")

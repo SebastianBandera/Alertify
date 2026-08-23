@@ -11,6 +11,10 @@ import app.alertify.jpa.entity.Tag;
 import app.alertify.secret.api.SecretRecoveryStatus;
 import app.alertify.secret.api.SecretResponse;
 
+/**
+ * Maps secret entities to metadata-only API responses and checks whether each
+ * encrypted value is recoverable with the current symmetric key.
+ */
 @Component
 class SecretMapper {
 

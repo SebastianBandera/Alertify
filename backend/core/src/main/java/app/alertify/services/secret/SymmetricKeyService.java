@@ -8,6 +8,11 @@ import javax.crypto.spec.SecretKeySpec;
 
 import org.springframework.stereotype.Service;
 
+/**
+ * Derives the AES key from length-delimited database, source-code and
+ * environment key parts, then hashes the combined material to a fixed-size
+ * key. Changing any part can make previously stored secrets unrecoverable.
+ */
 @Service
 public class SymmetricKeyService {
 

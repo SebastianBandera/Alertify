@@ -11,6 +11,10 @@ import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Root;
 import jakarta.persistence.criteria.Subquery;
 
+/**
+ * Secret-specific query predicates for matching any or all selected secret
+ * tags without inspecting encrypted values.
+ */
 public final class ApplicationSecretSpecifications {
 
     private ApplicationSecretSpecifications() {

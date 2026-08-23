@@ -1,5 +1,9 @@
 package app.alertify.services.secret;
 
+/**
+ * Immutable result of secret encryption. Byte arrays are defensively copied
+ * on construction and access to prevent callers from mutating key material.
+ */
 public record EncryptedSecretValue(
     byte[] encryptedValue,
     byte[] encryptionIv,

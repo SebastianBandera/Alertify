@@ -26,6 +26,11 @@ import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import jakarta.persistence.Version;
 
+/**
+ * Persistent secret metadata plus encrypted value material. The original
+ * plaintext is never stored, and Envers audits metadata and revision numbers
+ * without keeping historical secret values.
+ */
 @Entity
 @Audited
 @AuditTable(value = "secrets_aud", schema = "audit")

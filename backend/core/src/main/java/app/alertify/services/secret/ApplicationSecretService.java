@@ -31,6 +31,11 @@ import app.alertify.secret.api.SecretCreateRequest;
 import app.alertify.secret.api.SecretResponse;
 import app.alertify.secret.api.SecretUpdateRequest;
 
+/**
+ * Implements the administrative lifecycle of secrets, including filtering,
+ * encryption, optimistic locking, tag assignment and security event logging.
+ * Secret values are accepted on writes but never included in responses.
+ */
 @Service
 public class ApplicationSecretService {
 

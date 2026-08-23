@@ -15,6 +15,10 @@ import org.springframework.stereotype.Component;
 import app.alertify.api.error.InvalidConfigurationValueException;
 import app.alertify.jpa.entity.ConfigurationValueType;
 
+/**
+ * Validates configuration JSON against its declared value type and returns a
+ * canonical representation suitable for persistence and comparison.
+ */
 @Component
 public class ConfigurationValueValidator {
 

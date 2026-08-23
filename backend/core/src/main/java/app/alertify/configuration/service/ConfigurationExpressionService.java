@@ -23,6 +23,11 @@ import app.alertify.jpa.repository.ApplicationConfigurationRepository;
 import app.alertify.logging.ApplicationEventLogger;
 import tools.jackson.databind.JsonNode;
 
+/**
+ * Evaluates expression configurations on demand, resolves nested references,
+ * enforces depth and output limits, and keeps the persisted dependency graph
+ * synchronized and acyclic.
+ */
 @Service
 public class ConfigurationExpressionService {
 

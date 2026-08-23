@@ -6,6 +6,10 @@ import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
 
+/**
+ * Spring Boot startup hook that runs required synchronous initialization after
+ * the application context has been created.
+ */
 @Component
 public class StartupComponent implements ApplicationRunner {
 

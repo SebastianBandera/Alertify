@@ -11,6 +11,10 @@ import org.springframework.stereotype.Component;
 
 import app.alertify.api.error.InvalidConfigurationExpressionException;
 
+/**
+ * Resolves only explicitly allow-listed environment variables for expression
+ * configurations and permanently blocks variables containing key material.
+ */
 @Component
 class EnvironmentVariableResolver {
 

@@ -32,6 +32,11 @@ import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import jakarta.persistence.Version;
 
+/**
+ * Persistent application configuration containing a typed JSON value and
+ * configuration-scoped tags. Envers audits changes to its business fields
+ * and tag associations, excluding technical version and timestamp fields.
+ */
 @Entity
 @Audited
 @AuditTable(value = "configurations_aud", schema = "audit")

@@ -22,6 +22,10 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import tools.jackson.databind.JsonNode;
 
+/**
+ * Immutable structured application event linked to normalized level, source
+ * and event catalogs and enriched with actor and request context.
+ */
 @Entity
 @Table(name = "logs", schema = "audit")
 public class ApplicationLog {
