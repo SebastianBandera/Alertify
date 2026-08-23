@@ -72,17 +72,7 @@ public class ApplicationLog {
     protected ApplicationLog() {
     }
 
-    public ApplicationLog(
-            Instant eventAt,
-            ApplicationLogLevelDefinition level,
-            ApplicationLogSource source,
-            ApplicationLogEvent event,
-            ApplicationLogOutcome outcome,
-            String userSubject,
-            String username,
-            UUID requestId,
-            String path,
-            JsonNode data) {
+    public ApplicationLog(Instant eventAt, ApplicationLogLevelDefinition level, ApplicationLogSource source, ApplicationLogEvent event, ApplicationLogOutcome outcome, String userSubject, String username, UUID requestId, String path, JsonNode data) {
         this.eventAt = Objects.requireNonNull(eventAt);
         this.level = Objects.requireNonNull(level);
         this.source = Objects.requireNonNull(source);

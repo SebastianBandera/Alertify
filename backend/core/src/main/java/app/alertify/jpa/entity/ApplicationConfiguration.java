@@ -96,12 +96,7 @@ public class ApplicationConfiguration {
     protected ApplicationConfiguration() {
     }
 
-    public ApplicationConfiguration(
-            String name,
-            String description,
-            ConfigurationValueType valueType,
-            JsonNode value,
-            Set<Tag> tags) {
+    public ApplicationConfiguration(String name, String description, ConfigurationValueType valueType, JsonNode value, Set<Tag> tags) {
         this.name = Objects.requireNonNull(name, "name must not be null");
         this.description = description;
         this.valueType = Objects.requireNonNull(valueType, "valueType must not be null");

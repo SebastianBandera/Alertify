@@ -54,8 +54,7 @@ public class ApplicationLogService {
     }
 
     @Transactional(readOnly = true)
-    public Page<ApplicationLogResponse> search(
-            MultiValueMap<String, String> params, Pageable pageable) {
+    public Page<ApplicationLogResponse> search(MultiValueMap<String, String> params, Pageable pageable) {
         pageable.getSort().forEach(order -> {
             if (!SORT_FIELDS.contains(order.getProperty())) {
                 throw new InvalidFilterException("sort");
