@@ -1,0 +1,13 @@
+spring:
+  application:
+    name: alertify-worker-standard
+  main:
+    keep-alive: true
+    web-application-type: none
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+
+worker-standard:
+  grpc:
+    port: ${WORKER_STANDARD_GRPC_PORT:9090}
+    shutdown-grace-period: 10s

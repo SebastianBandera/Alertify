@@ -88,3 +88,13 @@ security:
 
 configuration-expressions:
   allowed-environment-variables: ${CONFIGURATION_EXPRESSION_ALLOWED_ENVIRONMENT_VARIABLES:}
+
+worker-standard:
+  grpc:
+    host: ${WORKER_STANDARD_GRPC_HOST:localhost}
+    port: ${WORKER_STANDARD_GRPC_PORT:9090}
+    startup-health-check:
+      enabled: ${WORKER_STANDARD_STARTUP_HEALTH_CHECK_ENABLED:true}
+      attempts: 10
+      timeout: 2s
+      delay: 1s

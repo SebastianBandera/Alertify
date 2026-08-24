@@ -436,6 +436,8 @@ function buildPlan(environment) {
     backendDebugEnabled: false,
     backendDebugPort: null,
     backendDebugSuspend: null,
+    workerStandardGrpcHost: null,
+    workerStandardGrpcPort: null,
     identityDatabaseMode: null,
     applicationDatabaseMode: null,
     services: [],
@@ -490,6 +492,11 @@ function buildPlan(environment) {
     required(environment, 'OIDC_ISSUER_URI');
     required(environment, 'OIDC_JWK_SET_URI');
     required(environment, 'OIDC_BACKEND_AUDIENCE');
+    required(environment, 'WORKER_STANDARD_IMAGE');
+    required(environment, 'WORKER_STANDARD_CONTAINER_MEMORY');
+    plan.workerStandardGrpcHost = required(environment, 'WORKER_STANDARD_GRPC_HOST');
+    plan.workerStandardGrpcPort = portValue(environment, 'WORKER_STANDARD_GRPC_PORT');
+    booleanValue(environment, 'WORKER_STANDARD_STARTUP_HEALTH_CHECK_ENABLED');
     validateUrlPort(environment, 'BACKEND_PUBLIC_URL', publicPort);
     if (keycloakMode === 'local') {
       validateUrlPort(environment, 'OIDC_ISSUER_URI', publicPort);
@@ -512,6 +519,7 @@ function buildPlan(environment) {
       }
       plan.services.push({ name: 'database', build: true });
     }
+    plan.services.push({ name: 'worker-standard', build: true });
     plan.services.push({ name: 'backend', build: true });
   }
 
@@ -532,6 +540,7 @@ function buildPlan(environment) {
     ['identity-database', 10],
     ['database', 20],
     ['cache', 30],
+    ['worker-standard', 35],
     ['identity', 40],
     ['backend', 50],
     ['frontend', 60],
@@ -572,6 +581,9 @@ function printPlan(plan, environment) {
     console.log('  - Application database: not managed because the backend is external');
   } else {
     console.log(`  - Backend: local (${redactUrl(plan.backendUrl)})`);
+    console.log(
+      `  - Standard worker: local gRPC (${plan.workerStandardGrpcHost}:${plan.workerStandardGrpcPort})`,
+    );
     if (plan.backendDebugEnabled) {
       console.log(
         `  - Java remote debug: enabled on port ${plan.backendDebugPort} ` +

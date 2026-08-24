@@ -1,0 +1,35 @@
+ARG BACKEND_BUILD_IMAGE
+ARG BACKEND_RUNTIME_IMAGE
+
+FROM ${BACKEND_BUILD_IMAGE} AS builder
+
+WORKDIR /build
+
+COPY . .
+RUN mvn --batch-mode --no-transfer-progress -pl worker-standard -am package -DskipTests
+RUN cp -R worker-standard/src /runtime-src
+
+FROM ${BACKEND_RUNTIME_IMAGE}
+
+RUN addgroup -S application \
+    && adduser -S -G application application
+
+WORKDIR /application
+
+COPY --from=builder --chown=application:application \
+    /build/worker-standard/target/alertify-worker-standard.jar \
+    /application/alertify-worker-standard.jar
+
+COPY --from=builder --chown=application:application \
+    /runtime-src \
+    /application/src
+
+COPY --chown=application:application start-worker-standard.sh /application/start-worker-standard.sh
+
+RUN chmod 0755 /application/start-worker-standard.sh
+
+USER application
+
+EXPOSE 9090
+
+ENTRYPOINT ["/application/start-worker-standard.sh"]

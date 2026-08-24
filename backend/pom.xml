@@ -21,9 +21,23 @@
     <properties>
         <java.version>25</java.version>
         <maven.compiler.parameters>true</maven.compiler.parameters>
+        <grpc.version>1.83.1</grpc.version>
     </properties>
 
     <modules>
         <module>core</module>
+        <module>worker-standard</module>
     </modules>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>io.grpc</groupId>
+                <artifactId>grpc-bom</artifactId>
+                <version>${grpc.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 </project>

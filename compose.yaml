@@ -167,6 +167,27 @@ services:
     mem_limit: ${DATABASE_CONTAINER_MEMORY:?Set DATABASE_CONTAINER_MEMORY in .env}
     restart: unless-stopped
 
+  worker-standard:
+    profiles:
+      - local-worker-standard
+      - local-backend
+    container_name: ${COMPOSE_PROJECT_NAME}-worker-standard
+    build:
+      context: ./backend
+      dockerfile: worker-standard/Dockerfile
+      args:
+        BACKEND_BUILD_IMAGE: ${BACKEND_BUILD_IMAGE:?Set BACKEND_BUILD_IMAGE in .env}
+        BACKEND_RUNTIME_IMAGE: ${BACKEND_RUNTIME_IMAGE:?Set BACKEND_RUNTIME_IMAGE in .env}
+    image: ${WORKER_STANDARD_IMAGE:?Set WORKER_STANDARD_IMAGE in .env}
+    pull_policy: build
+    environment:
+      WORKER_STANDARD_GRPC_PORT: ${WORKER_STANDARD_GRPC_PORT:?Set WORKER_STANDARD_GRPC_PORT in .env}
+      TZ: ${TIME_ZONE:?Set TIME_ZONE in .env}
+    expose:
+      - "${WORKER_STANDARD_GRPC_PORT:?Set WORKER_STANDARD_GRPC_PORT in .env}"
+    mem_limit: ${WORKER_STANDARD_CONTAINER_MEMORY:?Set WORKER_STANDARD_CONTAINER_MEMORY in .env}
+    restart: unless-stopped
+
   backend:
     profiles:
       - local-backend
@@ -197,12 +218,18 @@ services:
       JAVA_DEBUG_ENABLED: ${BACKEND_DEBUG_ENABLED:?Set BACKEND_DEBUG_ENABLED in .env}
       JAVA_DEBUG_PORT: ${BACKEND_DEBUG_PORT:?Set BACKEND_DEBUG_PORT in .env}
       JAVA_DEBUG_SUSPEND: ${BACKEND_DEBUG_SUSPEND:?Set BACKEND_DEBUG_SUSPEND in .env}
+      WORKER_STANDARD_GRPC_HOST: ${WORKER_STANDARD_GRPC_HOST:?Set WORKER_STANDARD_GRPC_HOST in .env}
+      WORKER_STANDARD_GRPC_PORT: ${WORKER_STANDARD_GRPC_PORT:?Set WORKER_STANDARD_GRPC_PORT in .env}
+      WORKER_STANDARD_STARTUP_HEALTH_CHECK_ENABLED: ${WORKER_STANDARD_STARTUP_HEALTH_CHECK_ENABLED:?Set WORKER_STANDARD_STARTUP_HEALTH_CHECK_ENABLED in .env}
       TZ: ${TIME_ZONE:?Set TIME_ZONE in .env}
     ports:
       - "${BIND_ADDRESS:?Set BIND_ADDRESS in .env}:${BACKEND_DEBUG_PORT:?Set BACKEND_DEBUG_PORT in .env}:${BACKEND_DEBUG_PORT:?Set BACKEND_DEBUG_PORT in .env}"
     mem_limit: ${BACKEND_CONTAINER_MEMORY:?Set BACKEND_CONTAINER_MEMORY in .env}
     extra_hosts:
       - host.docker.internal:host-gateway
+    depends_on:
+      worker-standard:
+        condition: service_started
     healthcheck:
       test:
         - CMD-SHELL

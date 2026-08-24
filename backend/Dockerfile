@@ -6,7 +6,7 @@ FROM ${BACKEND_BUILD_IMAGE} AS builder
 WORKDIR /build
 
 COPY . .
-RUN mvn --batch-mode --no-transfer-progress package -DskipTests
+RUN mvn --batch-mode --no-transfer-progress -pl core -am package -DskipTests
 RUN cp -R core/src /runtime-src \
     && rm -f \
         /runtime-src/main/java/app/alertify/services/secret/key/PrivateKeyPart.java
