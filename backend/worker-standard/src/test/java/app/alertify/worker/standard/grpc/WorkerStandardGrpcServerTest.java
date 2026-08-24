@@ -17,7 +17,7 @@ class WorkerStandardGrpcServerTest {
 
     @Test
     void exposesStandardGrpcHealthService() {
-        WorkerStandardGrpcServer server = new WorkerStandardGrpcServer(new WorkerStandardGrpcServerProperties(0, Duration.ofSeconds(1)));
+        WorkerStandardGrpcServer server = new WorkerStandardGrpcServer(new WorkerStandardGrpcServerProperties(0, Duration.ofSeconds(1)), new TemporaryGrpcHealthLoggingInterceptor());
         server.start();
         ManagedChannel channel = NettyChannelBuilder.forAddress("127.0.0.1", server.port()).usePlaintext().build();
         try {

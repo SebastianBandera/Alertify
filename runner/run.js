@@ -415,19 +415,25 @@ function redactUrl(value) {
   }
 }
 
-function buildPlan(environment) {
+function buildPlan(environment, options = {}) {
   const redisMode = mode(environment, 'REDIS_MODE');
   const keycloakMode = mode(environment, 'KEYCLOAK_MODE');
   const backendMode = mode(environment, 'BACKEND_MODE');
   const frontendMode = mode(environment, 'FRONTEND_MODE');
   const publicPort = portValue(environment, 'PUBLIC_PORT');
+  const skipKeycloak = options.skipKeycloak === true;
+  const skipRedis = options.skipRedis === true;
+  const skipDatabase = options.skipDatabase === true;
   const plan = {
     redisMode,
     redisUrl: required(environment, 'REDIS_URL'),
+    skipRedis,
     keycloakMode,
     keycloakUrl: required(environment, 'KEYCLOAK_PUBLIC_URL'),
+    skipKeycloak,
     backendMode,
     backendUrl: required(environment, 'BACKEND_PUBLIC_URL'),
+    skipDatabase,
     frontendMode,
     frontendUrl: required(environment, 'APP_PUBLIC_URL'),
     publicPort,
@@ -455,7 +461,9 @@ function buildPlan(environment) {
     required(environment, 'CACHE_PASSWORD');
     required(environment, 'CACHE_MAX_MEMORY');
     required(environment, 'CACHE_CONTAINER_MEMORY');
-    plan.services.push({ name: 'cache', build: true });
+    if (!skipRedis) {
+      plan.services.push({ name: 'cache', build: true });
+    }
   }
 
   if (keycloakMode === 'local') {
@@ -471,10 +479,12 @@ function buildPlan(environment) {
     validateUrlPort(environment, 'KEYCLOAK_ADMIN_URL', keycloakAdminPort);
     validateUrlPort(environment, 'KEYCLOAK_PUBLIC_URL', publicPort);
 
-    if (plan.identityDatabaseMode === 'local') {
+    if (plan.identityDatabaseMode === 'local' && !skipKeycloak) {
       plan.services.push({ name: 'identity-database', build: false });
     }
-    plan.services.push({ name: 'identity', build: true });
+    if (!skipKeycloak) {
+      plan.services.push({ name: 'identity', build: true });
+    }
   }
 
   if (backendMode === 'local') {
@@ -517,7 +527,9 @@ function buildPlan(environment) {
       if (bootstrapUser === required(environment, 'DATABASE_USER')) {
         throw new Error('DATABASE_BOOTSTRAP_USER must be different from DATABASE_USER.');
       }
-      plan.services.push({ name: 'database', build: true });
+      if (!skipDatabase) {
+        plan.services.push({ name: 'database', build: true });
+      }
     }
     plan.services.push({ name: 'worker-standard', build: true });
     plan.services.push({ name: 'backend', build: true });
@@ -556,7 +568,14 @@ function buildPlan(environment) {
 function printPlan(plan, environment) {
   console.log('\nSelected components:');
   if (plan.redisMode === 'local') {
-    console.log(`  - Redis: local (${redactUrl(plan.redisUrl)})`);
+    if (plan.skipRedis) {
+      console.log(
+        `  - Redis: local, reusing the existing container without rebuild or restart ` +
+          `(${redactUrl(plan.redisUrl)})`,
+      );
+    } else {
+      console.log(`  - Redis: local (${redactUrl(plan.redisUrl)})`);
+    }
   } else {
     console.log(`  - Redis: external, reusing ${redactUrl(plan.redisUrl)}`);
   }
@@ -565,9 +584,22 @@ function printPlan(plan, environment) {
     console.log(`  - Keycloak: external, reusing ${redactUrl(plan.keycloakUrl)}`);
     console.log('  - Keycloak database: not managed because Keycloak is external');
   } else {
-    console.log(`  - Keycloak: local (${redactUrl(plan.keycloakUrl)})`);
+    if (plan.skipKeycloak) {
+      console.log(
+        `  - Keycloak: local, reusing the existing container without rebuild or restart ` +
+          `(${redactUrl(plan.keycloakUrl)})`,
+      );
+    } else {
+      console.log(`  - Keycloak: local (${redactUrl(plan.keycloakUrl)})`);
+    }
     if (plan.identityDatabaseMode === 'local') {
-      console.log('  - Keycloak database: local PostgreSQL');
+      if (plan.skipKeycloak) {
+        console.log(
+          '  - Keycloak database: local PostgreSQL, reusing the existing container without restart',
+        );
+      } else {
+        console.log('  - Keycloak database: local PostgreSQL');
+      }
     } else {
       const host = required(environment, 'IDENTITY_DB_HOST');
       const port = required(environment, 'IDENTITY_DB_PORT');
@@ -593,7 +625,13 @@ function printPlan(plan, environment) {
       console.log('  - Java remote debug: disabled');
     }
     if (plan.applicationDatabaseMode === 'local') {
-      console.log('  - Application database: local PostgreSQL');
+      if (plan.skipDatabase) {
+        console.log(
+          '  - Application database: local PostgreSQL, reusing the existing container without rebuild or restart',
+        );
+      } else {
+        console.log('  - Application database: local PostgreSQL');
+      }
     } else {
       const host = required(environment, 'DATABASE_HOST');
       const port = required(environment, 'DATABASE_PORT');
@@ -650,10 +688,13 @@ function startLocalServices(plan, projectDirectory) {
 }
 
 function printHelp() {
-  console.log(`Usage: run.bat [--configure-only]\n       ./run.sh [--configure-only]\n\n` +
-    '  No options            Reconcile .env and start local components.\n' +
-    '  --configure-only     Reconcile .env and show the plan without starting services.\n' +
-    '  --help               Show this help.');
+  console.log(`Usage: run.bat [options]\n       ./run.sh [options]\n\n` +
+    '  No options          Reconcile .env and start local components.\n' +
+    '  --configure-only   Reconcile .env and show the plan without starting services.\n' +
+    '  --skip-keycloak    Do not rebuild or restart Keycloak or its local database.\n' +
+    '  --skip-redis       Do not rebuild or restart the local Redis service.\n' +
+    '  --skip-database    Do not rebuild or restart the local application database.\n' +
+    '  --help             Show this help.');
 }
 
 function main(argv = process.argv.slice(2), projectDirectory = path.resolve(__dirname, '..')) {
@@ -662,7 +703,13 @@ function main(argv = process.argv.slice(2), projectDirectory = path.resolve(__di
     throw new Error(`Node.js 18 or later is required; detected version: ${process.versions.node}.`);
   }
 
-  const allowed = new Set(['--configure-only', '--help']);
+  const allowed = new Set([
+    '--configure-only',
+    '--skip-keycloak',
+    '--skip-redis',
+    '--skip-database',
+    '--help',
+  ]);
   const unknown = argv.filter((argument) => !allowed.has(argument));
   if (unknown.length > 0) {
     throw new Error(`Unknown option: ${unknown.join(', ')}. Use --help to list the available options.`);
@@ -703,7 +750,11 @@ function main(argv = process.argv.slice(2), projectDirectory = path.resolve(__di
     );
   }
 
-  const plan = buildPlan(result.environment);
+  const plan = buildPlan(result.environment, {
+    skipKeycloak: argv.includes('--skip-keycloak'),
+    skipRedis: argv.includes('--skip-redis'),
+    skipDatabase: argv.includes('--skip-database'),
+  });
   const privateKeyPartClassResult = ensurePrivateKeyPartClass(result.environment, projectDirectory);
   printPrivateKeyPartClassResult(privateKeyPartClassResult, projectDirectory);
   printPlan(plan, result.environment);

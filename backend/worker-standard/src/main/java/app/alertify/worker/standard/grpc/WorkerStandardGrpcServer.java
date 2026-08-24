@@ -12,6 +12,7 @@ import org.springframework.context.SmartLifecycle;
 import org.springframework.stereotype.Component;
 
 import io.grpc.Server;
+import io.grpc.ServerInterceptors;
 import io.grpc.protobuf.services.HealthStatusManager;
 import io.grpc.netty.shaded.io.grpc.netty.NettyServerBuilder;
 
@@ -25,13 +26,15 @@ public class WorkerStandardGrpcServer implements SmartLifecycle {
     private static final Logger LOGGER = LoggerFactory.getLogger(WorkerStandardGrpcServer.class);
 
     private final WorkerStandardGrpcServerProperties properties;
+    private final TemporaryGrpcHealthLoggingInterceptor healthLoggingInterceptor;
     private final HealthStatusManager healthStatusManager = new HealthStatusManager();
 
     private volatile boolean running;
     private Server server;
 
-    public WorkerStandardGrpcServer(WorkerStandardGrpcServerProperties properties) {
+    public WorkerStandardGrpcServer(WorkerStandardGrpcServerProperties properties, TemporaryGrpcHealthLoggingInterceptor healthLoggingInterceptor) {
         this.properties = properties;
+        this.healthLoggingInterceptor = healthLoggingInterceptor;
     }
 
     @Override
@@ -42,7 +45,12 @@ public class WorkerStandardGrpcServer implements SmartLifecycle {
         try {
             healthStatusManager.setStatus("", SERVING);
             server = NettyServerBuilder.forPort(properties.port())
-                    .addService(healthStatusManager.getHealthService())
+                    .addService(
+                            ServerInterceptors.intercept(
+                                    healthStatusManager.getHealthService(),
+                                    healthLoggingInterceptor
+                            )
+                    )
                     .build()
                     .start();
             running = true;
