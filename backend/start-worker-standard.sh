@@ -1,4 +1,4 @@
 #!/usr/bin/env sh
 set -eu
 
-exec java "$@" -jar /application/alertify-worker-standard.jar
+exec java --sun-misc-unsafe-memory-access=allow "$@" -jar /application/alertify-worker-standard.jar
