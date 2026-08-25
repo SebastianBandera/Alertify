@@ -687,6 +687,21 @@ function startLocalServices(plan, projectDirectory) {
   }
 }
 
+function cleanupDockerResources(projectDirectory) {
+  runCommand(
+    'docker',
+    ['image', 'prune', '-a', '-f'],
+    projectDirectory,
+    'Removing unused Docker images...',
+  );
+  runCommand(
+    'docker',
+    ['builder', 'prune', '-a', '-f'],
+    projectDirectory,
+    'Removing Docker build cache...',
+  );
+}
+
 function printHelp() {
   console.log(`Usage: run.bat [options]\n       ./run.sh [options]\n\n` +
     '  No options          Reconcile .env and start local components.\n' +
@@ -694,6 +709,7 @@ function printHelp() {
     '  --skip-keycloak    Do not rebuild or restart Keycloak or its local database.\n' +
     '  --skip-redis       Do not rebuild or restart the local Redis service.\n' +
     '  --skip-database    Do not rebuild or restart the local application database.\n' +
+    '  --cleanup-docker   Remove all unused Docker images and build cache after a successful startup.\n' +
     '  --help             Show this help.');
 }
 
@@ -708,6 +724,7 @@ function main(argv = process.argv.slice(2), projectDirectory = path.resolve(__di
     '--skip-keycloak',
     '--skip-redis',
     '--skip-database',
+    '--cleanup-docker',
     '--help',
   ]);
   const unknown = argv.filter((argument) => !allowed.has(argument));
@@ -717,6 +734,9 @@ function main(argv = process.argv.slice(2), projectDirectory = path.resolve(__di
   if (argv.includes('--help')) {
     printHelp();
     return;
+  }
+  if (argv.includes('--configure-only') && argv.includes('--cleanup-docker')) {
+    throw new Error('--cleanup-docker cannot be combined with --configure-only.');
   }
 
   const templatePath = path.join(projectDirectory, '.env.template');
@@ -765,6 +785,9 @@ function main(argv = process.argv.slice(2), projectDirectory = path.resolve(__di
   }
 
   startLocalServices(plan, projectDirectory);
+  if (argv.includes('--cleanup-docker')) {
+    cleanupDockerResources(projectDirectory);
+  }
   console.log('\nStartup completed successfully.');
 }
 
