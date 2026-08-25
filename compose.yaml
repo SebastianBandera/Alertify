@@ -181,6 +181,7 @@ services:
     pull_policy: build
     environment:
       WORKER_GRPC_PORT: ${WORKER_GRPC_PORT:?Set WORKER_GRPC_PORT in .env}
+      WORKER_GRPC_TLS_ENABLED: ${WORKER_GRPC_TLS_ENABLED:?Set WORKER_GRPC_TLS_ENABLED in .env}
       WORKER_STANDARD_CAPABILITIES: ${WORKER_STANDARD_CAPABILITIES:?Set WORKER_STANDARD_CAPABILITIES in .env}
       TZ: ${TIME_ZONE:?Set TIME_ZONE in .env}
     expose:
@@ -191,6 +192,8 @@ services:
           - ${WORKER_GRPC_HOST:?Set WORKER_GRPC_HOST in .env}
     deploy:
       replicas: ${WORKER_STANDARD_REPLICAS:?Set WORKER_STANDARD_REPLICAS in .env}
+    volumes:
+      - grpc_worker_tls:/run/alertify-grpc-tls:ro
     mem_limit: ${WORKER_STANDARD_CONTAINER_MEMORY:?Set WORKER_STANDARD_CONTAINER_MEMORY in .env}
     restart: unless-stopped
 
@@ -208,6 +211,7 @@ services:
     pull_policy: build
     environment:
       WORKER_GRPC_PORT: ${WORKER_GRPC_PORT:?Set WORKER_GRPC_PORT in .env}
+      WORKER_GRPC_TLS_ENABLED: ${WORKER_GRPC_TLS_ENABLED:?Set WORKER_GRPC_TLS_ENABLED in .env}
       WORKER_PLAYWRIGHT_CAPABILITIES: ${WORKER_PLAYWRIGHT_CAPABILITIES:?Set WORKER_PLAYWRIGHT_CAPABILITIES in .env}
       TZ: ${TIME_ZONE:?Set TIME_ZONE in .env}
     expose:
@@ -218,6 +222,8 @@ services:
           - ${WORKER_GRPC_HOST:?Set WORKER_GRPC_HOST in .env}
     deploy:
       replicas: ${WORKER_PLAYWRIGHT_REPLICAS:?Set WORKER_PLAYWRIGHT_REPLICAS in .env}
+    volumes:
+      - grpc_worker_tls:/run/alertify-grpc-tls:ro
     mem_limit: ${WORKER_PLAYWRIGHT_CONTAINER_MEMORY:?Set WORKER_PLAYWRIGHT_CONTAINER_MEMORY in .env}
     restart: unless-stopped
 
@@ -253,12 +259,16 @@ services:
       JAVA_DEBUG_SUSPEND: ${BACKEND_DEBUG_SUSPEND:?Set BACKEND_DEBUG_SUSPEND in .env}
       WORKER_GRPC_HOST: ${WORKER_GRPC_HOST:?Set WORKER_GRPC_HOST in .env}
       WORKER_GRPC_PORT: ${WORKER_GRPC_PORT:?Set WORKER_GRPC_PORT in .env}
+      WORKER_GRPC_TLS_ENABLED: ${WORKER_GRPC_TLS_ENABLED:?Set WORKER_GRPC_TLS_ENABLED in .env}
+      WORKER_GRPC_TLS_SERVER_NAME: ${WORKER_GRPC_TLS_SERVER_NAME:?Set WORKER_GRPC_TLS_SERVER_NAME in .env}
       WORKER_DISCOVERY_ENABLED: ${WORKER_DISCOVERY_ENABLED:?Set WORKER_DISCOVERY_ENABLED in .env}
       WORKER_DISCOVERY_INTERVAL: ${WORKER_DISCOVERY_INTERVAL:?Set WORKER_DISCOVERY_INTERVAL in .env}
       WORKER_HEALTH_TIMEOUT: ${WORKER_HEALTH_TIMEOUT:?Set WORKER_HEALTH_TIMEOUT in .env}
       TZ: ${TIME_ZONE:?Set TIME_ZONE in .env}
     ports:
       - "${BIND_ADDRESS:?Set BIND_ADDRESS in .env}:${BACKEND_DEBUG_PORT:?Set BACKEND_DEBUG_PORT in .env}:${BACKEND_DEBUG_PORT:?Set BACKEND_DEBUG_PORT in .env}"
+    volumes:
+      - grpc_backend_tls:/run/alertify-grpc-tls:ro
     mem_limit: ${BACKEND_CONTAINER_MEMORY:?Set BACKEND_CONTAINER_MEMORY in .env}
     extra_hosts:
       - host.docker.internal:host-gateway
@@ -305,3 +315,9 @@ services:
 volumes:
   identity_database_data:
   database_data:
+  grpc_ca:
+    name: ${COMPOSE_PROJECT_NAME:?Set COMPOSE_PROJECT_NAME in .env}-grpc-ca
+  grpc_backend_tls:
+    name: ${COMPOSE_PROJECT_NAME:?Set COMPOSE_PROJECT_NAME in .env}-grpc-backend-tls
+  grpc_worker_tls:
+    name: ${COMPOSE_PROJECT_NAME:?Set COMPOSE_PROJECT_NAME in .env}-grpc-worker-tls

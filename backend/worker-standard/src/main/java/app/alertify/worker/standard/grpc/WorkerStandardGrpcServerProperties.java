@@ -1,5 +1,6 @@
 package app.alertify.worker.standard.grpc;
 
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Set;
 
@@ -14,6 +15,15 @@ import app.alertify.worker.contract.WorkerCapability;
 public record WorkerStandardGrpcServerProperties(
     int port,
     Duration shutdownGracePeriod,
-    Set<WorkerCapability> capabilities
+    Set<WorkerCapability> capabilities,
+    Tls tls
 ) {
+
+    public record Tls(
+        boolean enabled,
+        Path certificateChain,
+        Path privateKey,
+        Path clientCaCertificate
+    ) {
+    }
 }

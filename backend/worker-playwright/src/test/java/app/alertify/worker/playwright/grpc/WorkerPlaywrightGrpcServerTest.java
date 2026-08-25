@@ -19,7 +19,8 @@ class WorkerPlaywrightGrpcServerTest {
 
     @Test
     void exposesPlaywrightCapabilityThroughGrpcHealthService() {
-        WorkerPlaywrightGrpcServer server = new WorkerPlaywrightGrpcServer(new WorkerPlaywrightGrpcServerProperties(0, Duration.ofSeconds(1), Set.of(WorkerCapability.PLAYWRIGHT)), new TemporaryGrpcHealthLoggingInterceptor());
+        WorkerPlaywrightGrpcServerProperties.Tls tls = new WorkerPlaywrightGrpcServerProperties.Tls(false, null, null, null);
+        WorkerPlaywrightGrpcServer server = new WorkerPlaywrightGrpcServer(new WorkerPlaywrightGrpcServerProperties(0, Duration.ofSeconds(1), Set.of(WorkerCapability.PLAYWRIGHT), tls), new TemporaryGrpcHealthLoggingInterceptor());
         server.start();
         ManagedChannel channel = NettyChannelBuilder.forAddress("127.0.0.1", server.port()).usePlaintext().build();
         try {

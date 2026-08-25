@@ -1,5 +1,6 @@
 package app.alertify.grpc;
 
+import java.nio.file.Path;
 import java.time.Duration;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -11,8 +12,18 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record WorkerGrpcProperties(
     String host,
     int port,
+    Tls tls,
     Discovery discovery
 ) {
+
+    public record Tls(
+        boolean enabled,
+        String serverName,
+        Path certificateChain,
+        Path privateKey,
+        Path serverCaCertificate
+    ) {
+    }
 
     public record Discovery(
         boolean enabled,

@@ -3,6 +3,7 @@ package app.alertify.worker.standard.grpc;
 import static io.grpc.health.v1.HealthCheckResponse.ServingStatus.SERVING;
 
 import java.io.IOException;
+import java.nio.file.Files;
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 
@@ -14,12 +15,13 @@ import org.springframework.stereotype.Component;
 import app.alertify.worker.contract.WorkerCapability;
 import io.grpc.Server;
 import io.grpc.ServerInterceptors;
-import io.grpc.protobuf.services.HealthStatusManager;
+import io.grpc.TlsServerCredentials;
 import io.grpc.netty.shaded.io.grpc.netty.NettyServerBuilder;
+import io.grpc.protobuf.services.HealthStatusManager;
 
 /**
- * Owns the worker's native Netty gRPC server and integrates its startup and
- * graceful shutdown with the Spring application lifecycle.
+ * Owns the worker's native Netty gRPC server, requires a backend certificate
+ * through mTLS and integrates shutdown with the Spring application lifecycle.
  */
 @Component
 public class WorkerStandardGrpcServer implements SmartLifecycle {
@@ -48,7 +50,8 @@ public class WorkerStandardGrpcServer implements SmartLifecycle {
             for (WorkerCapability capability : properties.capabilities()) {
                 healthStatusManager.setStatus(capability.healthServiceName(), SERVING);
             }
-            server = NettyServerBuilder.forPort(properties.port())
+            NettyServerBuilder serverBuilder = NettyServerBuilder.forPort(properties.port(), serverCredentials());
+            server = serverBuilder
                     .addService(
                             ServerInterceptors.intercept(
                                     healthStatusManager.getHealthService(),
@@ -63,6 +66,30 @@ public class WorkerStandardGrpcServer implements SmartLifecycle {
             healthStatusManager.enterTerminalState();
             throw new IllegalStateException("The standard worker gRPC server could not be started", exception);
         }
+    }
+
+    private io.grpc.ServerCredentials serverCredentials() {
+        WorkerStandardGrpcServerProperties.Tls tls = properties.tls();
+        if (tls == null || !tls.enabled())
+            return io.grpc.InsecureServerCredentials.create();
+
+        requireReadableFile(tls.certificateChain(), "worker-standard.grpc.tls.certificate-chain");
+        requireReadableFile(tls.privateKey(), "worker-standard.grpc.tls.private-key");
+        requireReadableFile(tls.clientCaCertificate(), "worker-standard.grpc.tls.client-ca-certificate");
+        try {
+            return TlsServerCredentials.newBuilder()
+                    .keyManager(tls.certificateChain().toFile(), tls.privateKey().toFile())
+                    .trustManager(tls.clientCaCertificate().toFile())
+                    .clientAuth(TlsServerCredentials.ClientAuth.REQUIRE)
+                    .build();
+        } catch (IOException exception) {
+            throw new IllegalStateException("The standard worker gRPC mTLS credentials could not be loaded", exception);
+        }
+    }
+
+    private static void requireReadableFile(java.nio.file.Path path, String property) {
+        if (path == null || !Files.isRegularFile(path) || !Files.isReadable(path))
+            throw new IllegalStateException(property + " must reference a readable file");
     }
 
     @Override

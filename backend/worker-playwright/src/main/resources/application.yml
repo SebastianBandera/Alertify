@@ -12,3 +12,8 @@ worker-playwright:
     port: ${WORKER_GRPC_PORT:9090}
     shutdown-grace-period: 10s
     capabilities: ${WORKER_PLAYWRIGHT_CAPABILITIES:PLAYWRIGHT}
+    tls:
+      enabled: ${WORKER_GRPC_TLS_ENABLED:true}
+      certificate-chain: /run/alertify-grpc-tls/current/worker-server.crt
+      private-key: /run/alertify-grpc-tls/current/worker-server.key
+      client-ca-certificate: /run/alertify-grpc-tls/current/backend-client-ca.crt

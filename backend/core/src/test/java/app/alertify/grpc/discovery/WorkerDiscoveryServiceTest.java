@@ -115,7 +115,8 @@ class WorkerDiscoveryServiceTest {
         WorkerGrpcProperties.Discovery discovery = new WorkerGrpcProperties.Discovery(
             true, Duration.ofSeconds(30), Duration.ZERO, Duration.ofSeconds(2)
         );
-        WorkerGrpcProperties properties = new WorkerGrpcProperties("worker", 9090, discovery);
+        WorkerGrpcProperties.Tls tls = new WorkerGrpcProperties.Tls(false, null, null, null, null);
+        WorkerGrpcProperties properties = new WorkerGrpcProperties("worker", 9090, tls, discovery);
         return new WorkerDiscoveryService(properties, dnsResolver, healthProbe, availabilityService, eventLogger);
     }
 

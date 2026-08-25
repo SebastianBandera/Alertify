@@ -93,6 +93,12 @@ worker:
   grpc:
     host: ${WORKER_GRPC_HOST:localhost}
     port: ${WORKER_GRPC_PORT:9090}
+    tls:
+      enabled: ${WORKER_GRPC_TLS_ENABLED:true}
+      server-name: ${WORKER_GRPC_TLS_SERVER_NAME:worker}
+      certificate-chain: /run/alertify-grpc-tls/current/backend-client.crt
+      private-key: /run/alertify-grpc-tls/current/backend-client.key
+      server-ca-certificate: /run/alertify-grpc-tls/current/worker-server-ca.crt
     discovery:
       enabled: ${WORKER_DISCOVERY_ENABLED:true}
       interval: ${WORKER_DISCOVERY_INTERVAL:30s}

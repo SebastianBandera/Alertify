@@ -20,7 +20,8 @@ class WorkerStandardGrpcServerTest {
 
     @Test
     void exposesHealthForEveryConfiguredCapability() {
-        WorkerStandardGrpcServer server = new WorkerStandardGrpcServer(new WorkerStandardGrpcServerProperties(0, Duration.ofSeconds(1), Set.of(WorkerCapability.STANDARD, WorkerCapability.PLAYWRIGHT)), new TemporaryGrpcHealthLoggingInterceptor());
+        WorkerStandardGrpcServerProperties.Tls tls = new WorkerStandardGrpcServerProperties.Tls(false, null, null, null);
+        WorkerStandardGrpcServer server = new WorkerStandardGrpcServer(new WorkerStandardGrpcServerProperties(0, Duration.ofSeconds(1), Set.of(WorkerCapability.STANDARD, WorkerCapability.PLAYWRIGHT), tls), new TemporaryGrpcHealthLoggingInterceptor());
         server.start();
         ManagedChannel channel = NettyChannelBuilder.forAddress("127.0.0.1", server.port()).usePlaintext().build();
         try {

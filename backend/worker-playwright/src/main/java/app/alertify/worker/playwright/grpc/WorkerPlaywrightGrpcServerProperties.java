@@ -1,5 +1,6 @@
 package app.alertify.worker.playwright.grpc;
 
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Set;
 
@@ -15,6 +16,15 @@ import app.alertify.worker.contract.WorkerCapability;
 public record WorkerPlaywrightGrpcServerProperties(
     int port,
     Duration shutdownGracePeriod,
-    Set<WorkerCapability> capabilities
+    Set<WorkerCapability> capabilities,
+    Tls tls
 ) {
+
+    public record Tls(
+        boolean enabled,
+        Path certificateChain,
+        Path privateKey,
+        Path clientCaCertificate
+    ) {
+    }
 }

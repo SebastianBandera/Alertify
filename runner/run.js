@@ -403,6 +403,14 @@ function workerCapabilitiesValue(environment, key) {
   return [...new Set(values)];
 }
 
+function dnsNameValue(environment, key) {
+  const value = required(environment, key);
+  if (!/^[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?$/.test(value)) {
+    throw new Error(`${key} must be a valid DNS name; received: ${value}.`);
+  }
+  return value;
+}
+
 function validateUrlPort(environment, key, expectedPort) {
   const rawValue = required(environment, key);
   let url;
@@ -446,6 +454,9 @@ function buildPlan(environment, options = {}) {
   const skipKeycloak = options.skipKeycloak === true;
   const skipRedis = options.skipRedis === true;
   const skipDatabase = options.skipDatabase === true;
+  const skipBackend = options.skipBackend === true;
+  const skipWorkerStandard = options.skipWorkerStandard === true;
+  const skipWorkerPlaywright = options.skipWorkerPlaywright === true;
   const plan = {
     redisMode,
     redisUrl: required(environment, 'REDIS_URL'),
@@ -455,6 +466,7 @@ function buildPlan(environment, options = {}) {
     skipKeycloak,
     backendMode,
     backendUrl: required(environment, 'BACKEND_PUBLIC_URL'),
+    skipBackend,
     skipDatabase,
     frontendMode,
     frontendUrl: required(environment, 'APP_PUBLIC_URL'),
@@ -466,6 +478,12 @@ function buildPlan(environment, options = {}) {
     backendDebugSuspend: null,
     workerGrpcHost: null,
     workerGrpcPort: null,
+    workerGrpcTlsEnabled: false,
+    workerGrpcTlsServerName: null,
+    grpcCertificateValidityDays: null,
+    rotateGrpcCertificates: false,
+    skipWorkerStandard,
+    skipWorkerPlaywright,
     workerStandardReplicas: null,
     workerStandardCapabilities: null,
     workerPlaywrightReplicas: null,
@@ -530,8 +548,17 @@ function buildPlan(environment, options = {}) {
     required(environment, 'OIDC_BACKEND_AUDIENCE');
     required(environment, 'WORKER_STANDARD_IMAGE');
     required(environment, 'WORKER_STANDARD_CONTAINER_MEMORY');
+    required(environment, 'GRPC_CERTIFICATE_GENERATOR_IMAGE');
+    required(environment, 'GRPC_OPENSSL_IMAGE');
     plan.workerGrpcHost = required(environment, 'WORKER_GRPC_HOST');
     plan.workerGrpcPort = portValue(environment, 'WORKER_GRPC_PORT');
+    plan.workerGrpcTlsEnabled = booleanValue(environment, 'WORKER_GRPC_TLS_ENABLED');
+    if (!plan.workerGrpcTlsEnabled) {
+      throw new Error('WORKER_GRPC_TLS_ENABLED must be true for local backend and worker communication.');
+    }
+    plan.workerGrpcTlsServerName = dnsNameValue(environment, 'WORKER_GRPC_TLS_SERVER_NAME');
+    plan.grpcCertificateValidityDays = positiveIntegerValue(environment, 'GRPC_CERTIFICATE_VALIDITY_DAYS');
+    plan.rotateGrpcCertificates = !skipBackend && !skipWorkerStandard && !skipWorkerPlaywright;
     booleanValue(environment, 'WORKER_DISCOVERY_ENABLED');
     required(environment, 'WORKER_DISCOVERY_INTERVAL');
     required(environment, 'WORKER_HEALTH_TIMEOUT');
@@ -565,9 +592,15 @@ function buildPlan(environment, options = {}) {
         plan.services.push({ name: 'database', build: true });
       }
     }
-    plan.services.push({ name: 'worker-standard', build: true, scale: plan.workerStandardReplicas });
-    plan.services.push({ name: 'worker-playwright', build: true, scale: plan.workerPlaywrightReplicas });
-    plan.services.push({ name: 'backend', build: true });
+    if (!skipWorkerStandard) {
+      plan.services.push({ name: 'worker-standard', build: true, scale: plan.workerStandardReplicas });
+    }
+    if (!skipWorkerPlaywright) {
+      plan.services.push({ name: 'worker-playwright', build: true, scale: plan.workerPlaywrightReplicas });
+    }
+    if (!skipBackend) {
+      plan.services.push({ name: 'backend', build: true });
+    }
   }
 
   if (frontendMode === 'local') {
@@ -649,17 +682,27 @@ function printPlan(plan, environment) {
     console.log('  - Application database: not managed because the backend is external');
   } else {
     console.log(`  - Backend: local (${redactUrl(plan.backendUrl)})`);
+    if (plan.skipBackend) {
+      console.log('  - Backend process: reusing the existing container without rebuild or restart');
+    }
     console.log(
       `  - Standard worker: ${plan.workerStandardReplicas} local gRPC ` +
         `${plan.workerStandardReplicas === 1 ? 'replica' : 'replicas'} ` +
         `published under ${plan.workerGrpcHost}:${plan.workerGrpcPort} ` +
-        `(capabilities: ${plan.workerStandardCapabilities.join(', ')})`,
+        `(capabilities: ${plan.workerStandardCapabilities.join(', ')}; ` +
+        `${plan.skipWorkerStandard ? 'reused without restart' : 'rebuilt and restarted'})`,
     );
     console.log(
       `  - Playwright worker: ${plan.workerPlaywrightReplicas} local gRPC ` +
         `${plan.workerPlaywrightReplicas === 1 ? 'replica' : 'replicas'} ` +
         `published under ${plan.workerGrpcHost}:${plan.workerGrpcPort} ` +
-        `(capabilities: ${plan.workerPlaywrightCapabilities.join(', ')})`,
+        `(capabilities: ${plan.workerPlaywrightCapabilities.join(', ')}; ` +
+        `${plan.skipWorkerPlaywright ? 'reused without restart' : 'rebuilt and restarted'})`,
+    );
+    console.log(
+      `  - Worker gRPC security: mutual TLS, server name ${plan.workerGrpcTlsServerName}, ` +
+        `certificate validity ${plan.grpcCertificateValidityDays} days; ` +
+        `${plan.rotateGrpcCertificates ? 'leaf certificates will be renewed' : 'existing certificates will be reused without modification'}`,
     );
     if (plan.backendDebugEnabled) {
       console.log(
@@ -710,6 +753,73 @@ function runCommand(command, args, cwd, label) {
   }
 }
 
+function commandSucceeds(command, args, cwd) {
+  const result = spawnSync(command, args, { cwd, stdio: 'ignore', shell: false });
+  return !result.error && result.status === 0;
+}
+
+function prepareGrpcCertificates(plan, environment, projectDirectory) {
+  if (plan.backendMode !== 'local' || !plan.workerGrpcTlsEnabled) {
+    return;
+  }
+
+  const generatorImage = required(environment, 'GRPC_CERTIFICATE_GENERATOR_IMAGE');
+  const opensslImage = required(environment, 'GRPC_OPENSSL_IMAGE');
+  const projectName = required(environment, 'COMPOSE_PROJECT_NAME');
+  const volumes = {
+    ca: `${projectName}-grpc-ca`,
+    backend: `${projectName}-grpc-backend-tls`,
+    worker: `${projectName}-grpc-worker-tls`,
+  };
+
+  runCommand(
+    'docker',
+    [
+      'build',
+      '--build-arg', `GRPC_OPENSSL_IMAGE=${opensslImage}`,
+      '--file', path.join('grpc', 'Dockerfile'),
+      '--tag', generatorImage,
+      'grpc',
+    ],
+    projectDirectory,
+    'Preparing the gRPC certificate generator...',
+  );
+
+  if (plan.rotateGrpcCertificates) {
+    for (const [role, volume] of Object.entries(volumes)) {
+      runCommand('docker', ['volume', 'create', volume], projectDirectory, `Preparing the gRPC ${role} certificate volume...`);
+    }
+  } else {
+    const missingVolumes = Object.values(volumes).filter(
+      (volume) => !commandSucceeds('docker', ['volume', 'inspect', volume], projectDirectory),
+    );
+    if (missingVolumes.length > 0) {
+      throw new Error(
+        'gRPC mTLS certificates cannot be reused because their Docker volumes do not exist. ' +
+          'Run once without --skip-backend, --skip-worker-standard or --skip-worker-playwright.',
+      );
+    }
+  }
+
+  runCommand(
+    'docker',
+    [
+      'run', '--rm',
+      '--volume', `${volumes.ca}:/ca`,
+      '--volume', `${volumes.backend}:/backend`,
+      '--volume', `${volumes.worker}:/worker`,
+      '--env', `GRPC_CERTIFICATE_VALIDITY_DAYS=${plan.grpcCertificateValidityDays}`,
+      '--env', `WORKER_GRPC_TLS_SERVER_NAME=${plan.workerGrpcTlsServerName}`,
+      generatorImage,
+      plan.rotateGrpcCertificates ? 'rotate' : 'validate',
+    ],
+    projectDirectory,
+    plan.rotateGrpcCertificates
+      ? 'Renewing backend and worker gRPC mTLS certificates...'
+      : 'Validating existing gRPC mTLS certificates without modifying them...',
+  );
+}
+
 function startLocalServices(plan, projectDirectory) {
   if (plan.services.length === 0) {
     console.log('\nNo local application components need to be started.');
@@ -755,6 +865,9 @@ function printHelp() {
     '  --skip-keycloak    Do not rebuild or restart Keycloak or its local database.\n' +
     '  --skip-redis       Do not rebuild or restart the local Redis service.\n' +
     '  --skip-database    Do not rebuild or restart the local application database.\n' +
+    '  --skip-backend     Do not rebuild or restart the local backend.\n' +
+    '  --skip-worker-standard    Do not rebuild or restart standard workers.\n' +
+    '  --skip-worker-playwright  Do not rebuild or restart Playwright workers.\n' +
     '  --cleanup-docker   Remove all unused Docker images and build cache after a successful startup.\n' +
     '  --help             Show this help.');
 }
@@ -770,6 +883,9 @@ function main(argv = process.argv.slice(2), projectDirectory = path.resolve(__di
     '--skip-keycloak',
     '--skip-redis',
     '--skip-database',
+    '--skip-backend',
+    '--skip-worker-standard',
+    '--skip-worker-playwright',
     '--cleanup-docker',
     '--help',
   ]);
@@ -820,6 +936,9 @@ function main(argv = process.argv.slice(2), projectDirectory = path.resolve(__di
     skipKeycloak: argv.includes('--skip-keycloak'),
     skipRedis: argv.includes('--skip-redis'),
     skipDatabase: argv.includes('--skip-database'),
+    skipBackend: argv.includes('--skip-backend'),
+    skipWorkerStandard: argv.includes('--skip-worker-standard'),
+    skipWorkerPlaywright: argv.includes('--skip-worker-playwright'),
   });
   const privateKeyPartClassResult = ensurePrivateKeyPartClass(result.environment, projectDirectory);
   printPrivateKeyPartClassResult(privateKeyPartClassResult, projectDirectory);
@@ -830,6 +949,7 @@ function main(argv = process.argv.slice(2), projectDirectory = path.resolve(__di
     return;
   }
 
+  prepareGrpcCertificates(plan, result.environment, projectDirectory);
   startLocalServices(plan, projectDirectory);
   if (argv.includes('--cleanup-docker')) {
     cleanupDockerResources(projectDirectory);
@@ -851,6 +971,7 @@ module.exports = {
   ensurePrivateKeyPartClass,
   main,
   parseExistingEnvironment,
+  prepareGrpcCertificates,
   reconcileEnvironment,
   resolveSecretValues,
 };
