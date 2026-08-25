@@ -1,6 +1,7 @@
 package app.alertify.configuration.service;
 
 import java.nio.charset.StandardCharsets;
+import java.time.ZonedDateTime;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -38,20 +39,22 @@ public class ConfigurationExpressionService {
     private final ConfigurationExpressionDependencyRepository dependencyRepository;
     private final ConfigurationExpressionParser parser;
     private final EnvironmentVariableResolver environmentVariables;
+    private final ConfigurationExpressionUtilityResolver utilities;
     private final ApplicationEventLogger eventLogger;
 
-    public ConfigurationExpressionService(ApplicationConfigurationRepository configurationRepository, ConfigurationExpressionDependencyRepository dependencyRepository, ConfigurationExpressionParser parser, EnvironmentVariableResolver environmentVariables, ApplicationEventLogger eventLogger) {
+    public ConfigurationExpressionService(ApplicationConfigurationRepository configurationRepository, ConfigurationExpressionDependencyRepository dependencyRepository, ConfigurationExpressionParser parser, EnvironmentVariableResolver environmentVariables, ConfigurationExpressionUtilityResolver utilities, ApplicationEventLogger eventLogger) {
         this.configurationRepository = configurationRepository;
         this.dependencyRepository = dependencyRepository;
         this.parser = parser;
         this.environmentVariables = environmentVariables;
+        this.utilities = utilities;
         this.eventLogger = eventLogger;
     }
 
     @Transactional(readOnly = true)
     public String getResolvedValueByName(String name) {
         ApplicationConfiguration configuration = findByName(name);
-        return resolveConfiguration(configuration, null, new LinkedHashSet<>(), 0);
+        return resolveConfiguration(configuration, null, new LinkedHashSet<>(), 0, utilities.snapshot());
     }
 
     @Transactional(readOnly = true)
@@ -60,7 +63,7 @@ public class ConfigurationExpressionService {
                 normalizeOptional(request.configurationName()), request.expression()
         );
         ConfigurationExpressionParser.ParsedExpression parsed = parser.parse(request.expression());
-        String value = resolveExpression(parsed, draft, new LinkedHashSet<>(), 0);
+        String value = resolveExpression(parsed, draft, new LinkedHashSet<>(), 0, utilities.snapshot());
 
         Map<String, Object> data = new LinkedHashMap<>();
         if (request.configurationId() != null)
@@ -69,6 +72,7 @@ public class ConfigurationExpressionService {
             data.put("name", draft.name());
         data.put("configurationReferenceCount", parsed.configurationNames().size());
         data.put("environmentReferenceCount", parsed.environmentNames().size());
+        data.put("utilityReferenceCount", parsed.utilityNames().size());
         eventLogger.success("CONFIGURATION_EXPRESSION_EVALUATED", data);
         return new ConfigurationExpressionEvaluationResponse(value);
     }
@@ -79,7 +83,7 @@ public class ConfigurationExpressionService {
                 .filter(name -> !SystemConfigurationPolicy.isValueHidden(name))
                 .toList();
         return new ConfigurationExpressionSuggestionsResponse(
-                configurations, environmentVariables.allowedNames()
+                configurations, environmentVariables.allowedNames(), utilities.names()
         );
     }
 
@@ -98,6 +102,7 @@ public class ConfigurationExpressionService {
             referencedIds.add(referenced.getId());
         }
         parsed.environmentNames().forEach(environmentVariables::ensureAllowed);
+        parsed.utilityNames().forEach(utilities::ensureSupported);
 
         dependencyRepository.replace(configuration.getId(), referencedIds);
         ensureAcyclic(configuration.getId(), new LinkedHashSet<>(), 0);
@@ -118,7 +123,7 @@ public class ConfigurationExpressionService {
         );
     }
 
-    private String resolveConfiguration(ApplicationConfiguration configuration, DraftExpression draft, Set<String> path, int depth) {
+    private String resolveConfiguration(ApplicationConfiguration configuration, DraftExpression draft, Set<String> path, int depth, ZonedDateTime now) {
         if (SystemConfigurationPolicy.isValueHidden(configuration.getName())) {
             throw new InvalidConfigurationExpressionException(
                     "Configuration '" + SystemConfigurationPolicy.KEY_PART + "' cannot be referenced by expressions"
@@ -129,7 +134,7 @@ public class ConfigurationExpressionService {
         enter(path, key, configuration.getName(), depth);
         try {
             if (configuration.getValueType() == ConfigurationValueType.EXPRESSION) {
-                return resolveExpression(parser.parse(configuration.getValue().stringValue()), draft, path, depth + 1);
+                return resolveExpression(parser.parse(configuration.getValue().stringValue()), draft, path, depth + 1, now);
             }
             return checkedValue(configurationValueAsString(configuration.getValue()), configuration.getName());
         } finally {
@@ -137,7 +142,7 @@ public class ConfigurationExpressionService {
         }
     }
 
-    private String resolveExpression(ConfigurationExpressionParser.ParsedExpression parsed, DraftExpression draft, Set<String> path, int depth) {
+    private String resolveExpression(ConfigurationExpressionParser.ParsedExpression parsed, DraftExpression draft, Set<String> path, int depth, ZonedDateTime now) {
         if (depth > MAX_DEPTH)
             throw new InvalidConfigurationExpressionException("Configuration expression exceeds the maximum resolution depth of " + MAX_DEPTH);
 
@@ -146,8 +151,9 @@ public class ConfigurationExpressionService {
         for (ConfigurationExpressionParser.ExpressionReference reference : parsed.references()) {
             appendChecked(result, parsed.source().substring(cursor, reference.start()));
             String value = switch (reference.type()) {
-                case CONFIGURATION -> resolveConfigurationReference(reference.name(), draft, path, depth);
+                case CONFIGURATION -> resolveConfigurationReference(reference.name(), draft, path, depth, now);
                 case ENVIRONMENT -> environmentVariables.resolve(reference.name());
+                case UTILITY -> utilities.resolve(reference.name(), now);
             };
             appendChecked(result, value);
             cursor = reference.end();
@@ -156,17 +162,17 @@ public class ConfigurationExpressionService {
         return checkedValue(result.toString(), "expression");
     }
 
-    private String resolveConfigurationReference(String name, DraftExpression draft, Set<String> path, int depth) {
+    private String resolveConfigurationReference(String name, DraftExpression draft, Set<String> path, int depth, ZonedDateTime now) {
         if (draft != null && draft.name() != null && draft.name().equalsIgnoreCase(name)) {
             String key = normalizedKey(draft.name());
             enter(path, key, draft.name(), depth);
             try {
-                return resolveExpression(parser.parse(draft.expression()), draft, path, depth + 1);
+                return resolveExpression(parser.parse(draft.expression()), draft, path, depth + 1, now);
             } finally {
                 path.remove(key);
             }
         }
-        return resolveConfiguration(findByName(name), draft, path, depth);
+        return resolveConfiguration(findByName(name), draft, path, depth, now);
     }
 
     private void ensureAcyclic(Long configurationId, Set<Long> path, int depth) {

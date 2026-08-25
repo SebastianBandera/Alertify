@@ -12,14 +12,15 @@ class ConfigurationExpressionParserTest {
     private final ConfigurationExpressionParser parser = new ConfigurationExpressionParser();
 
     @Test
-    void parsesConfigurationAndEnvironmentReferences() {
+    void parsesConfigurationEnvironmentAndUtilityReferences() {
         var parsed = parser.parse(
-                "{{configs.NAME1}}_{{configs.NAME2}}__{{env.ENVIRONMENT_VAR_NAME}}"
+                "{{configs.NAME1}}_{{configs.NAME2}}__{{env.ENVIRONMENT_VAR_NAME}}__{{utils.YEAR}}"
         );
 
         assertThat(parsed.configurationNames()).containsExactlyInAnyOrder("NAME1", "NAME2");
         assertThat(parsed.environmentNames()).containsExactly("ENVIRONMENT_VAR_NAME");
-        assertThat(parsed.references()).hasSize(3);
+        assertThat(parsed.utilityNames()).containsExactly("YEAR");
+        assertThat(parsed.references()).hasSize(4);
     }
 
     @Test
@@ -34,6 +35,13 @@ class ConfigurationExpressionParserTest {
         assertThatThrownBy(() -> parser.parse("{{configs.KEY_PART}}"))
                 .isInstanceOf(InvalidConfigurationExpressionException.class)
                 .hasMessageContaining("cannot be referenced");
+    }
+
+    @Test
+    void rejectsInvalidUtilityName() {
+        assertThatThrownBy(() -> parser.parse("{{utils.year}}"))
+                .isInstanceOf(InvalidConfigurationExpressionException.class)
+                .hasMessageContaining("Invalid utility");
     }
 
     @Test
