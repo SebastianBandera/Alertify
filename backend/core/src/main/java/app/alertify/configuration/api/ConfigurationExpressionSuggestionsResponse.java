@@ -4,6 +4,7 @@ import java.util.List;
 
 public record ConfigurationExpressionSuggestionsResponse(
     List<String> configurations,
-    List<String> environmentVariables
+    List<String> environmentVariables,
+    List<String> utilities
 ) {
 }

@@ -108,6 +108,7 @@ export class ConfigsComponent implements OnInit {
   protected readonly evaluatedExpression = signal<string | null>(null);
   protected readonly expressionConfigurationNames = signal<readonly string[]>([]);
   protected readonly expressionEnvironmentNames = signal<readonly string[]>([]);
+  protected readonly expressionUtilityNames = signal<readonly string[]>([]);
   protected readonly expressionCompletions = signal<readonly ExpressionCompletion[]>([]);
   protected readonly selectedExpressionCompletion = signal(0);
 
@@ -156,6 +157,7 @@ export class ConfigsComponent implements OnInit {
       const suggestions = await this.api.getExpressionSuggestions();
       this.expressionConfigurationNames.set(suggestions.configurations);
       this.expressionEnvironmentNames.set(suggestions.environmentVariables);
+      this.expressionUtilityNames.set(suggestions.utilities);
     } catch (error) {
       this.error.set(this.errorMessage(error));
     }
@@ -625,7 +627,7 @@ export class ConfigsComponent implements OnInit {
   ): readonly ExpressionCompletion[] {
     const normalizedFragment = fragment.toLowerCase();
     if (!fragment.includes('.')) {
-      return ['configs', 'env']
+      return ['configs', 'env', 'utils']
         .filter((scope) => scope.startsWith(normalizedFragment))
         .map((scope) => ({
           label: scope,
@@ -642,7 +644,9 @@ export class ConfigsComponent implements OnInit {
       ? this.expressionConfigurationNames()
       : scope === 'env'
         ? this.expressionEnvironmentNames()
-        : [];
+        : scope === 'utils'
+          ? this.expressionUtilityNames()
+          : [];
     const closing = remainingValue.startsWith('}}') ? '' : '}}';
     return names
       .filter((name) => name.toLowerCase().startsWith(prefix.toLowerCase()))

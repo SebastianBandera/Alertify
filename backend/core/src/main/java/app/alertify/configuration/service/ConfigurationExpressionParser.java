@@ -11,14 +11,15 @@ import org.springframework.stereotype.Component;
 import app.alertify.api.error.InvalidConfigurationExpressionException;
 
 /**
- * Parses {@code {{configs.NAME}}} and {@code {{env.NAME}}} references without
- * evaluating them, producing the dependency metadata used for validation and
- * resolution.
+ * Parses {@code {{configs.NAME}}}, {@code {{env.NAME}}} and
+ * {@code {{utils.NAME}}} references without evaluating them, producing the
+ * dependency metadata used for validation and resolution.
  */
 @Component
 public class ConfigurationExpressionParser {
 
     private static final Pattern ENVIRONMENT_NAME = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*");
+    private static final Pattern UTILITY_NAME = Pattern.compile("[A-Z][A-Z0-9_]*");
 
     public ParsedExpression parse(String expression) {
         if (expression == null)
@@ -27,6 +28,7 @@ public class ConfigurationExpressionParser {
         List<ExpressionReference> references = new ArrayList<>();
         Set<String> configurationNames = new LinkedHashSet<>();
         Set<String> environmentNames = new LinkedHashSet<>();
+        Set<String> utilityNames = new LinkedHashSet<>();
         int cursor = 0;
 
         while (cursor < expression.length()) {
@@ -49,15 +51,20 @@ public class ConfigurationExpressionParser {
             String token = expression.substring(opening + 2, closing);
             ExpressionReference reference = parseReference(token, opening, closing + 2);
             references.add(reference);
-            if (reference.type() == ReferenceType.CONFIGURATION)
-                configurationNames.add(reference.name());
-            else
-                environmentNames.add(reference.name());
+            switch (reference.type()) {
+                case CONFIGURATION -> configurationNames.add(reference.name());
+                case ENVIRONMENT -> environmentNames.add(reference.name());
+                case UTILITY -> utilityNames.add(reference.name());
+            }
             cursor = closing + 2;
         }
 
         return new ParsedExpression(
-                expression, List.copyOf(references), Set.copyOf(configurationNames), Set.copyOf(environmentNames)
+                expression,
+                List.copyOf(references),
+                Set.copyOf(configurationNames),
+                Set.copyOf(environmentNames),
+                Set.copyOf(utilityNames)
         );
     }
 
@@ -82,8 +89,15 @@ public class ConfigurationExpressionParser {
             }
             return new ExpressionReference(ReferenceType.ENVIRONMENT, name, start, end);
         }
+        if (token.startsWith("utils.")) {
+            String name = token.substring("utils.".length());
+            if (!UTILITY_NAME.matcher(name).matches()) {
+                throw new InvalidConfigurationExpressionException("Invalid utility reference '{{" + token + "}}'");
+            }
+            return new ExpressionReference(ReferenceType.UTILITY, name, start, end);
+        }
         throw new InvalidConfigurationExpressionException(
-                "Unsupported expression reference '{{" + token + "}}'; use configs.NAME or env.NAME"
+                "Unsupported expression reference '{{" + token + "}}'; use configs.NAME, env.NAME or utils.NAME"
         );
     }
 
@@ -91,7 +105,8 @@ public class ConfigurationExpressionParser {
         String source,
         List<ExpressionReference> references,
         Set<String> configurationNames,
-        Set<String> environmentNames
+        Set<String> environmentNames,
+        Set<String> utilityNames
     ) {
     }
 
@@ -105,6 +120,7 @@ public class ConfigurationExpressionParser {
 
     public enum ReferenceType {
         CONFIGURATION,
-        ENVIRONMENT
+        ENVIRONMENT,
+        UTILITY
     }
 }
