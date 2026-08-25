@@ -316,8 +316,11 @@ volumes:
   identity_database_data:
   database_data:
   grpc_ca:
+    external: true
     name: ${COMPOSE_PROJECT_NAME:?Set COMPOSE_PROJECT_NAME in .env}-grpc-ca
   grpc_backend_tls:
+    external: true
     name: ${COMPOSE_PROJECT_NAME:?Set COMPOSE_PROJECT_NAME in .env}-grpc-backend-tls
   grpc_worker_tls:
+    external: true
     name: ${COMPOSE_PROJECT_NAME:?Set COMPOSE_PROJECT_NAME in .env}-grpc-worker-tls
