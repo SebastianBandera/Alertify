@@ -93,8 +93,8 @@ worker-standard:
   grpc:
     host: ${WORKER_STANDARD_GRPC_HOST:localhost}
     port: ${WORKER_STANDARD_GRPC_PORT:9090}
-    startup-health-check:
-      enabled: ${WORKER_STANDARD_STARTUP_HEALTH_CHECK_ENABLED:true}
-      attempts: 10
-      timeout: 2s
-      delay: 1s
+    discovery:
+      enabled: ${WORKER_STANDARD_DISCOVERY_ENABLED:true}
+      interval: ${WORKER_STANDARD_DISCOVERY_INTERVAL:30s}
+      initial-delay: 0s
+      health-timeout: ${WORKER_STANDARD_HEALTH_TIMEOUT:2s}

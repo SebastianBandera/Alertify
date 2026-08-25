@@ -381,6 +381,18 @@ function portValue(environment, key) {
   return value;
 }
 
+function positiveIntegerValue(environment, key) {
+  const rawValue = required(environment, key);
+  if (!/^\d+$/.test(rawValue)) {
+    throw new Error(`${key} must be a positive integer; received: ${rawValue}.`);
+  }
+  const value = Number(rawValue);
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new Error(`${key} must be a positive integer; received: ${rawValue}.`);
+  }
+  return value;
+}
+
 function validateUrlPort(environment, key, expectedPort) {
   const rawValue = required(environment, key);
   let url;
@@ -444,6 +456,7 @@ function buildPlan(environment, options = {}) {
     backendDebugSuspend: null,
     workerStandardGrpcHost: null,
     workerStandardGrpcPort: null,
+    workerStandardReplicas: null,
     identityDatabaseMode: null,
     applicationDatabaseMode: null,
     services: [],
@@ -506,7 +519,10 @@ function buildPlan(environment, options = {}) {
     required(environment, 'WORKER_STANDARD_CONTAINER_MEMORY');
     plan.workerStandardGrpcHost = required(environment, 'WORKER_STANDARD_GRPC_HOST');
     plan.workerStandardGrpcPort = portValue(environment, 'WORKER_STANDARD_GRPC_PORT');
-    booleanValue(environment, 'WORKER_STANDARD_STARTUP_HEALTH_CHECK_ENABLED');
+    plan.workerStandardReplicas = positiveIntegerValue(environment, 'WORKER_STANDARD_REPLICAS');
+    booleanValue(environment, 'WORKER_STANDARD_DISCOVERY_ENABLED');
+    required(environment, 'WORKER_STANDARD_DISCOVERY_INTERVAL');
+    required(environment, 'WORKER_STANDARD_HEALTH_TIMEOUT');
     validateUrlPort(environment, 'BACKEND_PUBLIC_URL', publicPort);
     if (keycloakMode === 'local') {
       validateUrlPort(environment, 'OIDC_ISSUER_URI', publicPort);
@@ -531,7 +547,7 @@ function buildPlan(environment, options = {}) {
         plan.services.push({ name: 'database', build: true });
       }
     }
-    plan.services.push({ name: 'worker-standard', build: true });
+    plan.services.push({ name: 'worker-standard', build: true, scale: plan.workerStandardReplicas });
     plan.services.push({ name: 'backend', build: true });
   }
 
@@ -614,7 +630,8 @@ function printPlan(plan, environment) {
   } else {
     console.log(`  - Backend: local (${redactUrl(plan.backendUrl)})`);
     console.log(
-      `  - Standard worker: local gRPC (${plan.workerStandardGrpcHost}:${plan.workerStandardGrpcPort})`,
+      `  - Standard worker: ${plan.workerStandardReplicas} local gRPC replicas ` +
+        `discovered through ${plan.workerStandardGrpcHost}:${plan.workerStandardGrpcPort}`,
     );
     if (plan.backendDebugEnabled) {
       console.log(
@@ -682,6 +699,7 @@ function startLocalServices(plan, projectDirectory) {
   for (const service of plan.services) {
     const args = ['compose', '--env-file', '.env', 'up', '--detach'];
     if (service.build) args.push('--build');
+    if (service.scale) args.push('--scale', `${service.name}=${service.scale}`);
     args.push('--wait', service.name);
     runCommand('docker', args, projectDirectory, `Starting ${service.name}...`);
   }

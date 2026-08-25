@@ -5,20 +5,20 @@ import java.time.Duration;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
- * Connection and startup-probe settings for the standard worker gRPC client.
+ * Connection and periodic-discovery settings for standard worker gRPC nodes.
  */
 @ConfigurationProperties("worker-standard.grpc")
 public record WorkerStandardGrpcProperties(
     String host,
     int port,
-    StartupHealthCheck startupHealthCheck
+    Discovery discovery
 ) {
 
-    public record StartupHealthCheck(
+    public record Discovery(
         boolean enabled,
-        int attempts,
-        Duration timeout,
-        Duration delay
+        Duration interval,
+        Duration initialDelay,
+        Duration healthTimeout
     ) {
     }
 }

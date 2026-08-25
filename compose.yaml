@@ -171,7 +171,6 @@ services:
     profiles:
       - local-worker-standard
       - local-backend
-    container_name: ${COMPOSE_PROJECT_NAME}-worker-standard
     build:
       context: ./backend
       dockerfile: worker-standard/Dockerfile
@@ -185,6 +184,8 @@ services:
       TZ: ${TIME_ZONE:?Set TIME_ZONE in .env}
     expose:
       - "${WORKER_STANDARD_GRPC_PORT:?Set WORKER_STANDARD_GRPC_PORT in .env}"
+    deploy:
+      replicas: ${WORKER_STANDARD_REPLICAS:?Set WORKER_STANDARD_REPLICAS in .env}
     mem_limit: ${WORKER_STANDARD_CONTAINER_MEMORY:?Set WORKER_STANDARD_CONTAINER_MEMORY in .env}
     restart: unless-stopped
 
@@ -220,16 +221,15 @@ services:
       JAVA_DEBUG_SUSPEND: ${BACKEND_DEBUG_SUSPEND:?Set BACKEND_DEBUG_SUSPEND in .env}
       WORKER_STANDARD_GRPC_HOST: ${WORKER_STANDARD_GRPC_HOST:?Set WORKER_STANDARD_GRPC_HOST in .env}
       WORKER_STANDARD_GRPC_PORT: ${WORKER_STANDARD_GRPC_PORT:?Set WORKER_STANDARD_GRPC_PORT in .env}
-      WORKER_STANDARD_STARTUP_HEALTH_CHECK_ENABLED: ${WORKER_STANDARD_STARTUP_HEALTH_CHECK_ENABLED:?Set WORKER_STANDARD_STARTUP_HEALTH_CHECK_ENABLED in .env}
+      WORKER_STANDARD_DISCOVERY_ENABLED: ${WORKER_STANDARD_DISCOVERY_ENABLED:?Set WORKER_STANDARD_DISCOVERY_ENABLED in .env}
+      WORKER_STANDARD_DISCOVERY_INTERVAL: ${WORKER_STANDARD_DISCOVERY_INTERVAL:?Set WORKER_STANDARD_DISCOVERY_INTERVAL in .env}
+      WORKER_STANDARD_HEALTH_TIMEOUT: ${WORKER_STANDARD_HEALTH_TIMEOUT:?Set WORKER_STANDARD_HEALTH_TIMEOUT in .env}
       TZ: ${TIME_ZONE:?Set TIME_ZONE in .env}
     ports:
       - "${BIND_ADDRESS:?Set BIND_ADDRESS in .env}:${BACKEND_DEBUG_PORT:?Set BACKEND_DEBUG_PORT in .env}:${BACKEND_DEBUG_PORT:?Set BACKEND_DEBUG_PORT in .env}"
     mem_limit: ${BACKEND_CONTAINER_MEMORY:?Set BACKEND_CONTAINER_MEMORY in .env}
     extra_hosts:
       - host.docker.internal:host-gateway
-    depends_on:
-      worker-standard:
-        condition: service_started
     healthcheck:
       test:
         - CMD-SHELL
