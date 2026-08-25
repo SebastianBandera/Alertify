@@ -11,9 +11,9 @@
         <relativePath>../pom.xml</relativePath>
     </parent>
 
-    <artifactId>alertify-worker-standard</artifactId>
-    <name>Alertify Standard Worker</name>
-    <description>Standard Alertify worker and gRPC server</description>
+    <artifactId>alertify-worker-playwright</artifactId>
+    <name>Alertify Playwright Worker</name>
+    <description>Alertify worker prepared for browser-based alert execution</description>
 
     <dependencies>
         <dependency>
@@ -38,6 +38,11 @@
             <artifactId>grpc-services</artifactId>
         </dependency>
         <dependency>
+            <groupId>com.microsoft.playwright</groupId>
+            <artifactId>playwright</artifactId>
+            <version>${playwright.version}</version>
+        </dependency>
+        <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
@@ -45,7 +50,7 @@
     </dependencies>
 
     <build>
-        <finalName>alertify-worker-standard</finalName>
+        <finalName>alertify-worker-playwright</finalName>
         <plugins>
             <plugin>
                 <groupId>org.springframework.boot</groupId>

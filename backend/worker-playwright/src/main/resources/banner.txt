@@ -1,0 +1,16 @@
+    _    _           _   _  __
+   / \  | | ___ _ __| |_(_)/ _|_   _
+  / _ \ | |/ _ \ '__| __| | |_| | | |
+ / ___ \| |  __/ |  | |_| |  _| |_| |
+/_/   \_\_|\___|_|   \__|_|_|  \__, |
+                                |___/
+                       PLAYWRIGHT WORKER
+
+Application : ${spring.application.name}
+Version     : ${application.version}
+Spring Boot : ${spring-boot.version}
+Java        : ${java.version} (${java.vendor})
+JVM         : ${java.vm.name} ${java.vm.version}
+OS          : ${os.name} ${os.version} (${os.arch})
+Time zone   : ${user.timezone}
+gRPC port   : ${worker-playwright.grpc.port}

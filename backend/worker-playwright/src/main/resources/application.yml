@@ -1,14 +1,14 @@
 spring:
   application:
-    name: alertify-worker-standard
+    name: alertify-worker-playwright
   main:
     keep-alive: true
     web-application-type: none
   lifecycle:
     timeout-per-shutdown-phase: 30s
 
-worker-standard:
+worker-playwright:
   grpc:
     port: ${WORKER_GRPC_PORT:9090}
     shutdown-grace-period: 10s
-    capabilities: ${WORKER_STANDARD_CAPABILITIES:STANDARD}
+    capabilities: ${WORKER_PLAYWRIGHT_CAPABILITIES:PLAYWRIGHT}

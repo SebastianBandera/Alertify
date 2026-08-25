@@ -393,6 +393,16 @@ function positiveIntegerValue(environment, key) {
   return value;
 }
 
+function workerCapabilitiesValue(environment, key) {
+  const rawValue = required(environment, key);
+  const values = rawValue.split(',').map((value) => value.trim().toUpperCase()).filter(Boolean);
+  const allowedValues = new Set(['STANDARD', 'PLAYWRIGHT']);
+  if (values.length === 0 || values.some((value) => !allowedValues.has(value))) {
+    throw new Error(`${key} must contain STANDARD and/or PLAYWRIGHT; received: ${rawValue}.`);
+  }
+  return [...new Set(values)];
+}
+
 function validateUrlPort(environment, key, expectedPort) {
   const rawValue = required(environment, key);
   let url;
@@ -454,9 +464,12 @@ function buildPlan(environment, options = {}) {
     backendDebugEnabled: false,
     backendDebugPort: null,
     backendDebugSuspend: null,
-    workerStandardGrpcHost: null,
-    workerStandardGrpcPort: null,
+    workerGrpcHost: null,
+    workerGrpcPort: null,
     workerStandardReplicas: null,
+    workerStandardCapabilities: null,
+    workerPlaywrightReplicas: null,
+    workerPlaywrightCapabilities: null,
     identityDatabaseMode: null,
     applicationDatabaseMode: null,
     services: [],
@@ -517,12 +530,17 @@ function buildPlan(environment, options = {}) {
     required(environment, 'OIDC_BACKEND_AUDIENCE');
     required(environment, 'WORKER_STANDARD_IMAGE');
     required(environment, 'WORKER_STANDARD_CONTAINER_MEMORY');
-    plan.workerStandardGrpcHost = required(environment, 'WORKER_STANDARD_GRPC_HOST');
-    plan.workerStandardGrpcPort = portValue(environment, 'WORKER_STANDARD_GRPC_PORT');
+    plan.workerGrpcHost = required(environment, 'WORKER_GRPC_HOST');
+    plan.workerGrpcPort = portValue(environment, 'WORKER_GRPC_PORT');
+    booleanValue(environment, 'WORKER_DISCOVERY_ENABLED');
+    required(environment, 'WORKER_DISCOVERY_INTERVAL');
+    required(environment, 'WORKER_HEALTH_TIMEOUT');
     plan.workerStandardReplicas = positiveIntegerValue(environment, 'WORKER_STANDARD_REPLICAS');
-    booleanValue(environment, 'WORKER_STANDARD_DISCOVERY_ENABLED');
-    required(environment, 'WORKER_STANDARD_DISCOVERY_INTERVAL');
-    required(environment, 'WORKER_STANDARD_HEALTH_TIMEOUT');
+    plan.workerStandardCapabilities = workerCapabilitiesValue(environment, 'WORKER_STANDARD_CAPABILITIES');
+    required(environment, 'WORKER_PLAYWRIGHT_IMAGE');
+    required(environment, 'WORKER_PLAYWRIGHT_CONTAINER_MEMORY');
+    plan.workerPlaywrightReplicas = positiveIntegerValue(environment, 'WORKER_PLAYWRIGHT_REPLICAS');
+    plan.workerPlaywrightCapabilities = workerCapabilitiesValue(environment, 'WORKER_PLAYWRIGHT_CAPABILITIES');
     validateUrlPort(environment, 'BACKEND_PUBLIC_URL', publicPort);
     if (keycloakMode === 'local') {
       validateUrlPort(environment, 'OIDC_ISSUER_URI', publicPort);
@@ -548,6 +566,7 @@ function buildPlan(environment, options = {}) {
       }
     }
     plan.services.push({ name: 'worker-standard', build: true, scale: plan.workerStandardReplicas });
+    plan.services.push({ name: 'worker-playwright', build: true, scale: plan.workerPlaywrightReplicas });
     plan.services.push({ name: 'backend', build: true });
   }
 
@@ -569,6 +588,7 @@ function buildPlan(environment, options = {}) {
     ['database', 20],
     ['cache', 30],
     ['worker-standard', 35],
+    ['worker-playwright', 36],
     ['identity', 40],
     ['backend', 50],
     ['frontend', 60],
@@ -630,8 +650,16 @@ function printPlan(plan, environment) {
   } else {
     console.log(`  - Backend: local (${redactUrl(plan.backendUrl)})`);
     console.log(
-      `  - Standard worker: ${plan.workerStandardReplicas} local gRPC replicas ` +
-        `discovered through ${plan.workerStandardGrpcHost}:${plan.workerStandardGrpcPort}`,
+      `  - Standard worker: ${plan.workerStandardReplicas} local gRPC ` +
+        `${plan.workerStandardReplicas === 1 ? 'replica' : 'replicas'} ` +
+        `published under ${plan.workerGrpcHost}:${plan.workerGrpcPort} ` +
+        `(capabilities: ${plan.workerStandardCapabilities.join(', ')})`,
+    );
+    console.log(
+      `  - Playwright worker: ${plan.workerPlaywrightReplicas} local gRPC ` +
+        `${plan.workerPlaywrightReplicas === 1 ? 'replica' : 'replicas'} ` +
+        `published under ${plan.workerGrpcHost}:${plan.workerGrpcPort} ` +
+        `(capabilities: ${plan.workerPlaywrightCapabilities.join(', ')})`,
     );
     if (plan.backendDebugEnabled) {
       console.log(
