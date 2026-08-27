@@ -3,10 +3,8 @@ package app.alertify.alerts.model;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
-import java.util.Set;
 
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.JdbcTypeCode;
@@ -16,7 +14,6 @@ import org.hibernate.envers.Audited;
 import org.hibernate.envers.NotAudited;
 import org.hibernate.type.SqlTypes;
 
-import app.alertify.alerts.template.annotation.AlertParameterSource;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -71,12 +68,14 @@ public class AlertTemplateParameterDefinition {
     private String javaType;
 
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "allowed_sources", nullable = false, columnDefinition = "jsonb")
-    private Set<AlertParameterSource> allowedSources = new LinkedHashSet<>();
-
-    @JdbcTypeCode(SqlTypes.JSON)
     @Column(nullable = false, columnDefinition = "jsonb")
     private List<String> options = new ArrayList<>();
+
+    @Column(name = "binding_allowed", nullable = false)
+    private boolean bindingAllowed;
+
+    @Column(name = "default_value", columnDefinition = "text")
+    private String defaultValue;
 
     @Column(name = "parameter_order", nullable = false)
     private int parameterOrder;
@@ -97,10 +96,13 @@ public class AlertTemplateParameterDefinition {
     protected AlertTemplateParameterDefinition() {
     }
 
-    public AlertTemplateParameterDefinition(AlertTemplateDefinition template, String parameterKey, String labelKey, String descriptionKey, String javaType, Set<AlertParameterSource> allowedSources, List<String> options, int parameterOrder, boolean required) {
+    public AlertTemplateParameterDefinition(AlertTemplateDefinition template, String parameterKey, String labelKey, String descriptionKey, String javaType, List<String> options, boolean bindingAllowed, String defaultValue, int parameterOrder, boolean required) {
         this.template = Objects.requireNonNull(template, "template must not be null");
         this.parameterKey = Objects.requireNonNull(parameterKey, "parameterKey must not be null");
-        synchronize(labelKey, descriptionKey, javaType, allowedSources, options, parameterOrder, required);
+        synchronize(
+            labelKey, descriptionKey, javaType, options, bindingAllowed,
+            defaultValue, parameterOrder, required
+        );
     }
 
     public Long getId() {
@@ -131,12 +133,16 @@ public class AlertTemplateParameterDefinition {
         return javaType;
     }
 
-    public Set<AlertParameterSource> getAllowedSources() {
-        return Collections.unmodifiableSet(allowedSources);
-    }
-
     public List<String> getOptions() {
         return Collections.unmodifiableList(options);
+    }
+
+    public boolean isBindingAllowed() {
+        return bindingAllowed;
+    }
+
+    public String getDefaultValue() {
+        return defaultValue;
     }
 
     public int getParameterOrder() {
@@ -155,29 +161,33 @@ public class AlertTemplateParameterDefinition {
         return updatedAt;
     }
 
-    public void synchronize(String labelKey, String descriptionKey, String javaType, Set<AlertParameterSource> allowedSources, List<String> options, int parameterOrder, boolean required) {
+    public void synchronize(String labelKey, String descriptionKey, String javaType, List<String> options, boolean bindingAllowed, String defaultValue, int parameterOrder, boolean required) {
         this.labelKey = Objects.requireNonNull(labelKey, "labelKey must not be null");
         this.descriptionKey = Objects.requireNonNull(descriptionKey, "descriptionKey must not be null");
         this.javaType = Objects.requireNonNull(javaType, "javaType must not be null");
-        replaceAllowedSources(allowedSources);
         replaceOptions(options);
+        this.bindingAllowed = bindingAllowed;
+        this.defaultValue = defaultValue;
+        validateBindingMetadata();
         if (parameterOrder < 0)
             throw new IllegalArgumentException("parameterOrder must not be negative");
         this.parameterOrder = parameterOrder;
         this.required = required;
     }
 
-    private void replaceAllowedSources(Set<AlertParameterSource> allowedSources) {
-        Objects.requireNonNull(allowedSources, "allowedSources must not be null");
-        if (allowedSources.isEmpty())
-            throw new IllegalArgumentException("allowedSources must not be empty");
-        this.allowedSources.clear();
-        this.allowedSources.addAll(allowedSources);
-    }
-
     private void replaceOptions(List<String> options) {
         this.options.clear();
         if (options != null)
             this.options.addAll(options);
+    }
+
+    private void validateBindingMetadata() {
+        if (!bindingAllowed && options.isEmpty())
+            throw new IllegalArgumentException("options must not be empty when binding is disabled");
+        if (!bindingAllowed && defaultValue != null && !options.contains(defaultValue)) {
+            throw new IllegalArgumentException(
+                "defaultValue must be one of options when binding is disabled"
+            );
+        }
     }
 }

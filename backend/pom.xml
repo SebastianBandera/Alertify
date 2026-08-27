@@ -27,6 +27,7 @@
 
     <modules>
         <module>worker-contract</module>
+        <module>alert-templates</module>
         <module>core</module>
         <module>worker-standard</module>
         <module>worker-playwright</module>

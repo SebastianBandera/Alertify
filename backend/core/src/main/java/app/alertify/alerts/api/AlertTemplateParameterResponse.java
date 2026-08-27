@@ -2,10 +2,11 @@ package app.alertify.alerts.api;
 
 import java.time.Instant;
 import java.util.List;
-import java.util.Set;
 
-import app.alertify.alerts.template.annotation.AlertParameterSource;
-
+/**
+ * Parameter metadata exposed by the backend. Options are suggestions when
+ * binding is allowed and an exhaustive list when it is disabled.
+ */
 public record AlertTemplateParameterResponse(
     Long id,
     long version,
@@ -13,8 +14,9 @@ public record AlertTemplateParameterResponse(
     String labelKey,
     String descriptionKey,
     String javaType,
-    Set<AlertParameterSource> allowedSources,
     List<String> options,
+    boolean bindingAllowed,
+    String defaultValue,
     int order,
     boolean required,
     Instant createdAt,

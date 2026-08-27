@@ -3,14 +3,12 @@ package app.alertify.alerts.model;
 import static app.alertify.alerts.execution.AlertExecutionStatus.ERROR;
 import static app.alertify.alerts.execution.AlertExecutionStatus.SUCCESS;
 import static app.alertify.alerts.execution.AlertExecutionStatus.WARN;
-import static app.alertify.alerts.template.annotation.AlertParameterSource.CONFIGURATION;
 import static app.alertify.alerts.template.annotation.AlertParameterSource.TEXT;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 
 import java.time.Instant;
 import java.util.List;
-import java.util.Set;
 
 import org.junit.jupiter.api.Test;
 
@@ -26,7 +24,7 @@ class AlertModelTest {
         AlertTemplateDefinition template = template();
         AlertTemplateParameterDefinition parameter = new AlertTemplateParameterDefinition(
                 template, "endpoint", "endpoint.label", "endpoint.description", String.class.getName(),
-                Set.of(TEXT, CONFIGURATION), List.of("google", "cloudflare"), 1, true
+                List.of("google", "cloudflare"), true, "google", 1, true
         );
         Alert alert = new Alert(template, "Internet", null, "0 */5 * * * *", true);
 
@@ -39,16 +37,42 @@ class AlertModelTest {
     }
 
     @Test
-    void rejectsAParameterSourceThatTheTemplateDoesNotAllow() {
+    void rejectsBindingWhenTheTemplateParameterDoesNotAllowIt() {
         AlertTemplateDefinition template = template();
         AlertTemplateParameterDefinition parameter = new AlertTemplateParameterDefinition(
                 template, "endpoint", "endpoint.label", "endpoint.description", String.class.getName(),
-                Set.of(TEXT), List.of(), 1, true
+                List.of("google", "cloudflare"), false, "google", 1, true
         );
         Alert alert = new Alert(template, "Internet", null, "0 */5 * * * *", true);
 
         assertThatIllegalArgumentException()
                 .isThrownBy(() -> valueWithDisallowedConfiguration(alert, parameter));
+    }
+
+    @Test
+    void rejectsDirectValueOutsideOptionsWhenBindingIsDisabled() {
+        AlertTemplateDefinition template = template();
+        AlertTemplateParameterDefinition parameter = new AlertTemplateParameterDefinition(
+                template, "endpoint", "endpoint.label", "endpoint.description", String.class.getName(),
+                List.of("google", "cloudflare"), false, "google", 1, true
+        );
+        Alert alert = new Alert(template, "Internet", null, "0 */5 * * * *", true);
+
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> AlertParameterValue.text(alert, parameter, "other"));
+    }
+
+    @Test
+    void rejectsDefaultOutsideOptionsWhenBindingIsDisabled() {
+        AlertTemplateDefinition template = template();
+
+        assertThatIllegalArgumentException().isThrownBy(
+            () -> new AlertTemplateParameterDefinition(
+                template, "endpoint", "endpoint.label", "endpoint.description",
+                String.class.getName(), List.of("google", "cloudflare"),
+                false, "other", 1, true
+            )
+        );
     }
 
     @Test

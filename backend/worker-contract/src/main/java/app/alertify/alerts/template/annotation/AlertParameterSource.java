@@ -1,7 +1,8 @@
 package app.alertify.alerts.template.annotation;
 
 /**
- * Source from which one configured alert parameter obtains its runtime value.
+ * Source selected by an alert instance for one parameter value. This describes
+ * the configured value, not a restriction declared by the template.
  */
 public enum AlertParameterSource {
 

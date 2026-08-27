@@ -154,15 +154,22 @@ public class AlertParameterValue {
     }
 
     public void replaceWithText(String value) {
-        requireAllowed(AlertParameterSource.TEXT);
+        Objects.requireNonNull(value, "value must not be null");
+        if (!templateParameter.isBindingAllowed()
+                && !templateParameter.getOptions().contains(value)) {
+            throw new IllegalArgumentException(
+                "value must be one of the declared options for parameter "
+                    + templateParameter.getParameterKey()
+            );
+        }
         source = AlertParameterSource.TEXT;
-        textValue = Objects.requireNonNull(value, "value must not be null");
+        textValue = value;
         configuration = null;
         secret = null;
     }
 
     public void replaceWithConfiguration(ApplicationConfiguration configuration) {
-        requireAllowed(AlertParameterSource.CONFIGURATION);
+        requireBindingAllowed();
         source = AlertParameterSource.CONFIGURATION;
         textValue = null;
         this.configuration = Objects.requireNonNull(configuration, "configuration must not be null");
@@ -170,15 +177,18 @@ public class AlertParameterValue {
     }
 
     public void replaceWithSecret(ApplicationSecret secret) {
-        requireAllowed(AlertParameterSource.SECRET);
+        requireBindingAllowed();
         source = AlertParameterSource.SECRET;
         textValue = null;
         configuration = null;
         this.secret = Objects.requireNonNull(secret, "secret must not be null");
     }
 
-    private void requireAllowed(AlertParameterSource source) {
-        if (!templateParameter.getAllowedSources().contains(source))
-            throw new IllegalArgumentException(source + " is not allowed for parameter " + templateParameter.getParameterKey());
+    private void requireBindingAllowed() {
+        if (!templateParameter.isBindingAllowed()) {
+            throw new IllegalArgumentException(
+                "binding is not allowed for parameter " + templateParameter.getParameterKey()
+            );
+        }
     }
 }

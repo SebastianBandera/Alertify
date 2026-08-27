@@ -19,9 +19,23 @@ public @interface AlertParameter {
 
     String descriptionKey();
 
-    AlertParameterSource[] sources();
-
+    /**
+     * Suggested direct values. When binding is disabled this becomes the
+     * exhaustive list of accepted values.
+     */
     String[] options() default {};
+
+    /**
+     * Whether an alert instance may bind this parameter to a configuration or
+     * secret. Direct text remains available; when false it must match an option.
+     */
+    boolean bindingAllowed() default true;
+
+    /**
+     * Direct value used when the alert instance does not provide one. An empty
+     * value means that the parameter has no declared default.
+     */
+    String defaultValue() default "";
 
     int order() default Integer.MAX_VALUE;
 
