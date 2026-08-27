@@ -242,6 +242,13 @@ INSERT INTO audit.log_sources (code) VALUES
     ('alertify-backend');
 
 INSERT INTO audit.log_events (code) VALUES
+    ('ALERT_BINDING_CATALOG_ACCESSED'),
+    ('ALERT_CREATED'),
+    ('ALERT_DELETED'),
+    ('ALERT_EXECUTION_HISTORY_VIEWED'),
+    ('ALERT_PAGE_VIEWED'),
+    ('ALERT_TEMPLATE_CATALOG_VIEWED'),
+    ('ALERT_UPDATED'),
     ('API_ERROR_SHOWN'),
     ('API_REQUEST'),
     ('API_UNHANDLED_ERROR'),

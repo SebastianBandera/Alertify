@@ -77,6 +77,11 @@ public class ApiExceptionHandler {
         return response(HttpStatus.BAD_REQUEST, "INVALID_SECRET_VALUE", exception.getMessage(), Map.of(), exception, request);
     }
 
+    @ExceptionHandler(InvalidAlertRequestException.class)
+    ResponseEntity<ApiError> handleInvalidAlertRequest(InvalidAlertRequestException exception, HttpServletRequest request) {
+        return response(HttpStatus.BAD_REQUEST, "INVALID_ALERT_REQUEST", exception.getMessage(), Map.of(), exception, request);
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     ResponseEntity<ApiError> handleValidation(MethodArgumentNotValidException exception, HttpServletRequest request) {
         Map<String, String> fieldErrors = new LinkedHashMap<>();

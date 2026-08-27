@@ -12,4 +12,6 @@ import app.alertify.alerts.model.AlertTemplateParameterDefinition;
 public interface AlertTemplateParameterDefinitionRepository extends JpaRepository<AlertTemplateParameterDefinition, Long> {
 
     List<AlertTemplateParameterDefinition> findAllByTemplate_TemplateKey(String templateKey);
+
+    List<AlertTemplateParameterDefinition> findAllByTemplate_IdOrderByParameterOrderAscIdAsc(Long templateId);
 }

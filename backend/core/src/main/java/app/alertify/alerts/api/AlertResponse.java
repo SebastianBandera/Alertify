@@ -8,6 +8,7 @@ public record AlertResponse(
     long version,
     Long templateId,
     String templateKey,
+    String templateNameKey,
     String name,
     String description,
     String cronExpression,

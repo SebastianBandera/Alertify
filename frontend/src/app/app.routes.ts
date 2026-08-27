@@ -17,6 +17,15 @@ export const routes: Routes = [
           ),
       },
       {
+        path: 'alerts',
+        title: 'Alerts | Alertify',
+        canActivate: [adminGuard],
+        loadComponent: () =>
+          import('./features/alerts/alerts.component').then(
+            (component) => component.AlertsComponent,
+          ),
+      },
+      {
         path: 'configs',
         title: 'Configs | Alertify',
         canActivate: [adminGuard],

@@ -1,0 +1,317 @@
+<section class="alerts-page">
+  <header class="page-header">
+    <div>
+      <h1>{{ localization.translate('alerts.title') }}</h1>
+      <p>{{ localization.translate('alerts.description') }}</p>
+    </div>
+    <button class="button button--primary" type="button" (click)="openCreate()" [disabled]="!templates().length">
+      {{ localization.translate('alerts.create') }}
+    </button>
+  </header>
+
+  <nav class="tabs" [attr.aria-label]="localization.translate('alerts.tabs.label')">
+    <button type="button" [class.active]="activeTab() === 'alerts'" (click)="selectTab('alerts')">
+      {{ localization.translate('alerts.tabs.alerts') }}
+      <span>{{ alertTotalElements() }}</span>
+    </button>
+    <button type="button" [class.active]="activeTab() === 'templates'" (click)="selectTab('templates')">
+      {{ localization.translate('alerts.tabs.templates') }}
+      <span>{{ templates().length }}</span>
+    </button>
+    <button type="button" [class.active]="activeTab() === 'history'" (click)="selectTab('history')">
+      {{ localization.translate('alerts.tabs.history') }}
+      <span>{{ historyTotalElements() }}</span>
+    </button>
+  </nav>
+
+  @if (error()) { <p class="state state--error" role="alert">{{ error() }}</p> }
+
+  @if (activeTab() === 'alerts') {
+    <div class="toolbar">
+      <label class="search-field">
+        <span>{{ localization.translate('alerts.search') }}</span>
+        <input
+          type="search"
+          [ngModel]="search()"
+          (ngModelChange)="search.set($event)"
+          (keyup.enter)="applySearch()"
+          [placeholder]="localization.translate('alerts.searchPlaceholder')"
+        >
+      </label>
+      <button class="button button--secondary" type="button" (click)="applySearch()">
+        {{ localization.translate('alerts.searchAction') }}
+      </button>
+      <button class="button button--secondary" type="button" (click)="loadAlerts()">
+        {{ localization.translate('alerts.refresh') }}
+      </button>
+    </div>
+
+    @if (loading()) {
+      <p class="state">{{ localization.translate('alerts.loading') }}</p>
+    } @else if (!alerts().length) {
+      <p class="state">{{ localization.translate('alerts.empty') }}</p>
+    } @else {
+      <div class="table-shell">
+        <table>
+          <thead><tr>
+            <th>{{ localization.translate('alerts.column.name') }}</th>
+            <th>{{ localization.translate('alerts.column.template') }}</th>
+            <th>{{ localization.translate('alerts.column.schedule') }}</th>
+            <th>{{ localization.translate('alerts.column.status') }}</th>
+            <th>{{ localization.translate('alerts.column.updatedAt') }}</th>
+            <th>{{ localization.translate('alerts.column.actions') }}</th>
+          </tr></thead>
+          <tbody>
+            @for (alert of alerts(); track alert.id) {
+              <tr>
+                <td><strong>{{ alert.name }}</strong><small>{{ alert.description || '—' }}</small></td>
+                <td><strong>{{ dynamic(alert.templateNameKey) }}</strong><small class="mono">{{ alert.templateKey }}</small></td>
+                <td><code>{{ alert.cronExpression }}</code></td>
+                <td>
+                  <span class="badge" [class.badge--disabled]="!alert.enabled">
+                    {{ localization.translate(alert.enabled ? 'alerts.status.enabled' : 'alerts.status.disabled') }}
+                  </span>
+                </td>
+                <td>{{ alert.updatedAt | date:'medium' }}</td>
+                <td class="actions">
+                  <button type="button" (click)="openEdit(alert)">{{ localization.translate('alerts.edit') }}</button>
+                  <button class="danger" type="button" (click)="deleteAlert(alert)">{{ localization.translate('alerts.delete') }}</button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+
+    <footer class="pagination">
+      <span>{{ alertTotalElements() }} {{ localization.translate('alerts.records') }}</span>
+      <div>
+        <button type="button" (click)="alertPageTo(alertPage() - 1)" [disabled]="alertPage() <= 0">‹</button>
+        <span>{{ localization.translate('alerts.page') }} {{ alertTotalPages() ? alertPage() + 1 : 0 }} {{ localization.translate('alerts.of') }} {{ alertTotalPages() }}</span>
+        <button type="button" (click)="alertPageTo(alertPage() + 1)" [disabled]="alertPage() + 1 >= alertTotalPages()">›</button>
+      </div>
+    </footer>
+  }
+
+  @if (activeTab() === 'templates') {
+    @if (!templates().length) {
+      <p class="state">{{ localization.translate('alerts.templates.empty') }}</p>
+    } @else {
+      <div class="table-shell">
+        <table>
+          <thead><tr>
+            <th>{{ localization.translate('alerts.templates.column.name') }}</th>
+            <th>{{ localization.translate('alerts.templates.column.key') }}</th>
+            <th>{{ localization.translate('alerts.templates.column.capability') }}</th>
+            <th>{{ localization.translate('alerts.templates.column.parameters') }}</th>
+            <th>{{ localization.translate('alerts.column.actions') }}</th>
+          </tr></thead>
+          <tbody>
+            @for (template of templates(); track template.id) {
+              <tr>
+                <td><strong>{{ dynamic(template.nameKey) }}</strong><small>{{ dynamic(template.descriptionKey) }}</small></td>
+                <td><code class="template-key">{{ template.templateKey }}</code><small>#{{ template.id }}</small></td>
+                <td><span class="badge badge--capability">{{ template.requiredCapability }}</span></td>
+                <td>
+                  <details>
+                    <summary>{{ template.parameters.length }} {{ localization.translate('alerts.templates.parameters') }}</summary>
+                    <div class="parameter-summary">
+                      @for (parameter of template.parameters; track parameter.id) {
+                        <div>
+                          <strong>{{ dynamic(parameter.labelKey) }}</strong>
+                          <small>{{ parameter.javaType }}</small>
+                          @if (parameter.bindingAllowed) {
+                            <span>{{ localization.translate('alerts.binding.allowed') }}</span>
+                          } @else {
+                            <span>{{ localization.translate('alerts.binding.optionsOnly') }}</span>
+                          }
+                        </div>
+                      }
+                    </div>
+                  </details>
+                </td>
+                <td class="actions"><button type="button" (click)="openCreate(template.id)">{{ localization.translate('alerts.useTemplate') }}</button></td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  }
+
+  @if (activeTab() === 'history') {
+    <div class="toolbar history-filters">
+      <label>
+        <span>{{ localization.translate('alerts.history.alert') }}</span>
+        <select [ngModel]="historyAlertId()" (ngModelChange)="historyAlertId.set($event)">
+          <option [ngValue]="null">{{ localization.translate('alerts.history.allAlerts') }}</option>
+          @for (alert of alerts(); track alert.id) { <option [ngValue]="alert.id">{{ alert.name }}</option> }
+        </select>
+      </label>
+      <label>
+        <span>{{ localization.translate('alerts.history.status') }}</span>
+        <select [ngModel]="historyStatus()" (ngModelChange)="historyStatus.set($event)">
+          <option value="">{{ localization.translate('alerts.history.allStatuses') }}</option>
+          <option value="SUCCESS">SUCCESS</option>
+          <option value="WARN">WARN</option>
+          <option value="ERROR">ERROR</option>
+        </select>
+      </label>
+      <button class="button button--secondary" type="button" (click)="applyHistoryFilters()">{{ localization.translate('alerts.history.apply') }}</button>
+    </div>
+    @if (loading()) {
+      <p class="state">{{ localization.translate('alerts.history.loading') }}</p>
+    } @else if (!executions().length) {
+      <p class="state">{{ localization.translate('alerts.history.empty') }}</p>
+    } @else {
+      <div class="table-shell">
+        <table>
+          <thead><tr>
+            <th>{{ localization.translate('alerts.history.startedAt') }}</th>
+            <th>{{ localization.translate('alerts.history.alert') }}</th>
+            <th>{{ localization.translate('alerts.history.status') }}</th>
+            <th>{{ localization.translate('alerts.history.duration') }}</th>
+            <th>{{ localization.translate('alerts.history.message') }}</th>
+          </tr></thead>
+          <tbody>
+            @for (execution of executions(); track execution.id) {
+              <tr>
+                <td>{{ execution.startedAt | date:'medium' }}</td>
+                <td><strong>{{ execution.alertName }}</strong><small>#{{ execution.alertId }}</small></td>
+                <td><span class="badge" [class.badge--warn]="execution.status === 'WARN'" [class.badge--error]="execution.status === 'ERROR'">{{ execution.status }}</span></td>
+                <td>{{ execution.durationMillis }} ms</td>
+                <td class="execution-message">{{ statusMessage(execution) }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+    <footer class="pagination">
+      <span>{{ historyTotalElements() }} {{ localization.translate('alerts.records') }}</span>
+      <div>
+        <button type="button" (click)="historyPageTo(historyPage() - 1)" [disabled]="historyPage() <= 0">‹</button>
+        <span>{{ localization.translate('alerts.page') }} {{ historyTotalPages() ? historyPage() + 1 : 0 }} {{ localization.translate('alerts.of') }} {{ historyTotalPages() }}</span>
+        <button type="button" (click)="historyPageTo(historyPage() + 1)" [disabled]="historyPage() + 1 >= historyTotalPages()">›</button>
+      </div>
+    </footer>
+  }
+</section>
+
+@if (editorOpen()) {
+  <div class="modal-backdrop" (mousedown)="closeEditor()">
+    <section class="modal" role="dialog" aria-modal="true" [attr.aria-label]="localization.translate(editingAlert() ? 'alerts.form.editTitle' : 'alerts.form.createTitle')" (mousedown)="$event.stopPropagation()">
+      <header>
+        <div>
+          <h2>{{ localization.translate(editingAlert() ? 'alerts.form.editTitle' : 'alerts.form.createTitle') }}</h2>
+          <p>{{ localization.translate('alerts.form.description') }}</p>
+        </div>
+        <button class="close" type="button" (click)="closeEditor()" aria-label="Close">×</button>
+      </header>
+      <form (ngSubmit)="save()">
+        <div class="form-grid">
+          <label class="full">
+            <span>{{ localization.translate('alerts.form.template') }}</span>
+            <select [ngModel]="form().templateId" (ngModelChange)="changeTemplate($event)" name="template" [disabled]="!!editingAlert()" required>
+              @for (template of templates(); track template.id) { <option [ngValue]="template.id">{{ dynamic(template.nameKey) }}</option> }
+            </select>
+          </label>
+          <label>
+            <span>{{ localization.translate('alerts.form.name') }}</span>
+            <input [ngModel]="form().name" (ngModelChange)="patchForm({ name: $event })" name="name" maxlength="200" required>
+          </label>
+          <label>
+            <span>{{ localization.translate('alerts.form.cron') }}</span>
+            <input class="mono" [ngModel]="form().cronExpression" (ngModelChange)="patchForm({ cronExpression: $event })" name="cron" maxlength="255" required>
+            <small>{{ localization.translate('alerts.form.cronHelp') }}</small>
+          </label>
+          <label class="full">
+            <span>{{ localization.translate('alerts.form.alertDescription') }}</span>
+            <textarea [ngModel]="form().description" (ngModelChange)="patchForm({ description: $event })" name="description" maxlength="2000" rows="3"></textarea>
+          </label>
+          <label class="checkbox full">
+            <input type="checkbox" [ngModel]="form().enabled" (ngModelChange)="patchForm({ enabled: $event })" name="enabled">
+            <span>{{ localization.translate('alerts.form.enabled') }}</span>
+          </label>
+        </div>
+
+        @if (selectedTemplate(); as template) {
+          <section class="parameters-editor">
+            <h3>{{ localization.translate('alerts.form.parameters') }}</h3>
+            @for (parameter of template.parameters; track parameter.id) {
+              <article class="parameter-card" [class.parameter-card--off]="!parameterForm(parameter.key).configured">
+                <div class="parameter-card__heading">
+                  <div>
+                    <strong>{{ dynamic(parameter.labelKey) }}</strong>
+                    <p>{{ dynamic(parameter.descriptionKey) }}</p>
+                  </div>
+                  @if (!parameter.required && parameter.defaultValue === null && parameter.bindingAllowed) {
+                    <label class="checkbox compact">
+                      <input type="checkbox" [ngModel]="parameterForm(parameter.key).configured" (ngModelChange)="patchParameter(parameter.key, { configured: $event })" [name]="'configured-' + parameter.id">
+                      <span>{{ localization.translate('alerts.form.configure') }}</span>
+                    </label>
+                  }
+                </div>
+
+                @if (parameterForm(parameter.key).configured) {
+                  <div class="parameter-fields">
+                    @if (parameter.bindingAllowed) {
+                      <label>
+                        <span>{{ localization.translate('alerts.form.source') }}</span>
+                        <select [ngModel]="parameterForm(parameter.key).source" (ngModelChange)="patchParameter(parameter.key, { source: $event })" [name]="'source-' + parameter.id">
+                          <option value="TEXT">{{ localization.translate('alerts.source.text') }}</option>
+                          <option value="CONFIGURATION">{{ localization.translate('alerts.source.configuration') }}</option>
+                          <option value="SECRET">{{ localization.translate('alerts.source.secret') }}</option>
+                        </select>
+                      </label>
+                    }
+
+                    @if (parameterForm(parameter.key).source === 'TEXT') {
+                      <label [class.full]="parameter.bindingAllowed">
+                        <span>{{ localization.translate(parameter.bindingAllowed ? 'alerts.form.value' : 'alerts.form.option') }}</span>
+                        @if (parameter.bindingAllowed) {
+                          <input [ngModel]="parameterForm(parameter.key).textValue" (ngModelChange)="patchParameter(parameter.key, { textValue: $event })" [name]="'text-' + parameter.id" [attr.list]="parameter.options.length ? 'options-' + parameter.id : null">
+                          @if (parameter.options.length) {
+                            <datalist [id]="'options-' + parameter.id">@for (option of parameter.options; track option) { <option [value]="option"></option> }</datalist>
+                            <small>{{ localization.translate('alerts.form.suggestions') }}</small>
+                          }
+                        } @else {
+                          <select [ngModel]="parameterForm(parameter.key).textValue" (ngModelChange)="patchParameter(parameter.key, { textValue: $event })" [name]="'option-' + parameter.id">
+                            @for (option of parameter.options; track option) { <option [value]="option">{{ option }}</option> }
+                          </select>
+                        }
+                      </label>
+                    } @else if (parameterForm(parameter.key).source === 'CONFIGURATION') {
+                      <label class="full">
+                        <span>{{ localization.translate('alerts.form.configuration') }}</span>
+                        <select [ngModel]="parameterForm(parameter.key).configurationId" (ngModelChange)="patchParameter(parameter.key, { configurationId: $event })" [name]="'configuration-' + parameter.id" required>
+                          <option [ngValue]="null" disabled>{{ localization.translate('alerts.form.selectConfiguration') }}</option>
+                          @for (option of bindings().configurations; track option.id) { <option [ngValue]="option.id">{{ option.name }}</option> }
+                        </select>
+                      </label>
+                    } @else {
+                      <label class="full">
+                        <span>{{ localization.translate('alerts.form.secret') }}</span>
+                        <select [ngModel]="parameterForm(parameter.key).secretId" (ngModelChange)="patchParameter(parameter.key, { secretId: $event })" [name]="'secret-' + parameter.id" required>
+                          <option [ngValue]="null" disabled>{{ localization.translate('alerts.form.selectSecret') }}</option>
+                          @for (option of bindings().secrets; track option.id) { <option [ngValue]="option.id">{{ option.name }}</option> }
+                        </select>
+                      </label>
+                    }
+                  </div>
+                }
+              </article>
+            }
+          </section>
+        }
+
+        @if (formError()) { <p class="form-error" role="alert">{{ formError() }}</p> }
+        <footer>
+          <button class="button button--secondary" type="button" (click)="closeEditor()">{{ localization.translate('alerts.cancel') }}</button>
+          <button class="button button--primary" type="submit" [disabled]="saving()">{{ localization.translate(saving() ? 'alerts.saving' : 'alerts.save') }}</button>
+        </footer>
+      </form>
+    </section>
+  </div>
+}

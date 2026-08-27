@@ -20,7 +20,7 @@ import { TranslationKey } from '../../core/i18n/localization.types';
 interface NavigationItem {
   readonly labelKey: TranslationKey;
   readonly path: string;
-  readonly icon: 'dashboard' | 'configs' | 'secrets' | 'logs';
+  readonly icon: 'dashboard' | 'alerts' | 'configs' | 'secrets' | 'logs';
 }
 
 @Component({
@@ -38,6 +38,9 @@ export class AppShellComponent {
   private readonly title = inject(Title);
   protected readonly navigationItems: readonly NavigationItem[] = [
     { labelKey: 'navigation.dashboard', path: '/dashboard', icon: 'dashboard' },
+    ...(this.authService.isAdmin
+      ? [{ labelKey: 'navigation.alerts' as const, path: '/alerts', icon: 'alerts' as const }]
+      : []),
     ...(this.authService.isAdmin
       ? [{ labelKey: 'navigation.configs' as const, path: '/configs', icon: 'configs' as const }]
       : []),
@@ -90,6 +93,9 @@ export class AppShellComponent {
   }
 
   private titleKeyForUrl(url: string): TranslationKey {
+    if (url.startsWith('/alerts')) {
+      return 'navigation.alerts';
+    }
     if (url.startsWith('/configs')) {
       return 'navigation.configs';
     }

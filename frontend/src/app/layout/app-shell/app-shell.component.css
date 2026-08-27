@@ -170,6 +170,11 @@
   -webkit-mask-image: url('/icons/dashboard.svg');
 }
 
+.navigation__icon--alerts {
+  mask-image: url('/icons/alerts.svg');
+  -webkit-mask-image: url('/icons/alerts.svg');
+}
+
 .navigation__icon--configs {
   mask-image: url('/icons/configs.svg');
   -webkit-mask-image: url('/icons/configs.svg');
@@ -390,7 +395,7 @@
   }
 
   .navigation {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 
   .navigation__item {

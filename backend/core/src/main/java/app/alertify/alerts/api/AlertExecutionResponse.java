@@ -8,6 +8,7 @@ import tools.jackson.databind.JsonNode;
 public record AlertExecutionResponse(
     Long id,
     Long alertId,
+    String alertName,
     AlertExecutionStatus status,
     Instant startedAt,
     Instant finishedAt,

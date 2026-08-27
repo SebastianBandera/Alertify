@@ -53,6 +53,11 @@ export class LocalizationService {
     return TRANSLATIONS[this.locale()][key];
   }
 
+  translateDynamic(key: string): string {
+    const dictionary = TRANSLATIONS[this.locale()] as Readonly<Record<string, string>>;
+    return dictionary[key] ?? key;
+  }
+
   setLocale(locale: string): void {
     if (!isAppLocale(locale)) {
       return;
