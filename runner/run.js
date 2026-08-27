@@ -852,9 +852,9 @@ function cleanupDockerResources(projectDirectory) {
   );
   runCommand(
     'docker',
-    ['builder', 'prune', '-a', '-f'],
+    ['buildx', 'prune', '--all', '--force', '--filter', 'type!=exec.cachemount'],
     projectDirectory,
-    'Removing Docker build cache...',
+    'Removing Docker build cache while preserving dependency cache mounts...',
   );
 }
 
@@ -868,7 +868,7 @@ function printHelp() {
     '  --skip-backend     Do not rebuild or restart the local backend.\n' +
     '  --skip-worker-standard    Do not rebuild or restart standard workers.\n' +
     '  --skip-worker-playwright  Do not rebuild or restart Playwright workers.\n' +
-    '  --cleanup-docker   Remove all unused Docker images and build cache after a successful startup.\n' +
+    '  --cleanup-docker   Remove unused Docker images and build cache, preserving dependency cache mounts.\n' +
     '  --help             Show this help.');
 }
 
