@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1
+
 ARG FRONTEND_BUILD_IMAGE
 ARG FRONTEND_RUNTIME_IMAGE
 
@@ -6,7 +8,8 @@ FROM ${FRONTEND_BUILD_IMAGE} AS builder
 WORKDIR /build
 
 COPY package.json package-lock.json ./
-RUN npm ci --no-audit --no-fund
+RUN --mount=type=cache,id=alertify-npm,target=/root/.npm,sharing=locked \
+    npm ci --no-audit --no-fund
 
 COPY angular.json tsconfig.json tsconfig.app.json ./
 COPY public ./public

@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1
+
 ARG BACKEND_BUILD_IMAGE
 ARG BACKEND_RUNTIME_IMAGE
 
@@ -6,7 +8,8 @@ FROM ${BACKEND_BUILD_IMAGE} AS builder
 WORKDIR /build
 
 COPY . .
-RUN mvn --batch-mode --no-transfer-progress -pl core -am package -DskipTests
+RUN --mount=type=cache,id=alertify-maven,target=/root/.m2,sharing=locked \
+    mvn --batch-mode --no-transfer-progress -pl core -am package -DskipTests
 RUN cp -R core/src /runtime-src \
     && rm -f \
         /runtime-src/main/java/app/alertify/services/secret/key/PrivateKeyPart.java
