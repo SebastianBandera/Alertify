@@ -3,6 +3,7 @@ package app.alertify.alerts.service;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -12,6 +13,7 @@ import app.alertify.alerts.api.AlertBindingOptionResponse;
 import app.alertify.alerts.api.AlertBindingOptionsResponse;
 import app.alertify.alerts.api.AlertTemplateResponse;
 import app.alertify.jpa.entity.ApplicationConfiguration;
+import app.alertify.jpa.repository.AlertRepository;
 import app.alertify.jpa.repository.AlertTemplateDefinitionRepository;
 import app.alertify.jpa.repository.AlertTemplateParameterDefinitionRepository;
 import app.alertify.jpa.repository.ApplicationConfigurationRepository;
@@ -25,13 +27,15 @@ public class AlertCatalogService {
 
     private final AlertTemplateDefinitionRepository templateRepository;
     private final AlertTemplateParameterDefinitionRepository parameterRepository;
+    private final AlertRepository alertRepository;
     private final ApplicationConfigurationRepository configurationRepository;
     private final ApplicationSecretRepository secretRepository;
     private final ApplicationEventLogger eventLogger;
 
-    public AlertCatalogService(AlertTemplateDefinitionRepository templateRepository, AlertTemplateParameterDefinitionRepository parameterRepository, ApplicationConfigurationRepository configurationRepository, ApplicationSecretRepository secretRepository, ApplicationEventLogger eventLogger) {
+    public AlertCatalogService(AlertTemplateDefinitionRepository templateRepository, AlertTemplateParameterDefinitionRepository parameterRepository, AlertRepository alertRepository, ApplicationConfigurationRepository configurationRepository, ApplicationSecretRepository secretRepository, ApplicationEventLogger eventLogger) {
         this.templateRepository = templateRepository;
         this.parameterRepository = parameterRepository;
+        this.alertRepository = alertRepository;
         this.configurationRepository = configurationRepository;
         this.secretRepository = secretRepository;
         this.eventLogger = eventLogger;
@@ -39,12 +43,19 @@ public class AlertCatalogService {
 
     @Transactional(readOnly = true)
     public List<AlertTemplateResponse> templates() {
+        Map<Long, Long> alertCounts = alertRepository.countAlertsByTemplate()
+                .stream()
+                .collect(Collectors.toMap(
+                        AlertRepository.TemplateAlertCount::getTemplateId,
+                        AlertRepository.TemplateAlertCount::getAlertCount
+                ));
         List<AlertTemplateResponse> result = templateRepository
                 .findAll(Sort.by(Sort.Direction.ASC, "templateKey"))
                 .stream()
                 .map(template -> AlertMapper.toTemplate(
                         template,
-                        parameterRepository.findAllByTemplate_IdOrderByParameterOrderAscIdAsc(template.getId())
+                        parameterRepository.findAllByTemplate_IdOrderByParameterOrderAscIdAsc(template.getId()),
+                        alertCounts.getOrDefault(template.getId(), 0L)
                 ))
                 .toList();
 

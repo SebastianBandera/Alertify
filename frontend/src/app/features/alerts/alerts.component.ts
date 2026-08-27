@@ -16,10 +16,11 @@ import {
 import { LocalizationService } from '../../core/i18n/localization.service';
 
 type AlertTab = 'alerts' | 'templates' | 'history';
+type ParameterFormSource = AlertParameterSource | 'OPTION';
 
 interface ParameterForm {
   configured: boolean;
-  source: AlertParameterSource;
+  source: ParameterFormSource;
   textValue: string;
   configurationId: number | null;
   secretId: number | null;
@@ -69,9 +70,20 @@ export class AlertsComponent implements OnInit {
   protected readonly editorOpen = signal(false);
   protected readonly editingAlert = signal<Alert | null>(null);
   protected readonly form = signal<AlertForm>(this.emptyForm());
+  protected readonly templateSearch = signal('');
+  protected readonly templatePickerOpen = signal(false);
   protected readonly selectedTemplate = computed(() =>
     this.templates().find((template) => template.id === this.form().templateId) ?? null,
   );
+  protected readonly filteredTemplates = computed(() => {
+    const query = this.templateSearch().trim().toLocaleLowerCase();
+    if (!query) return this.templates();
+    return this.templates().filter((template) =>
+      this.dynamic(template.nameKey).toLocaleLowerCase().includes(query)
+      || this.dynamic(template.descriptionKey).toLocaleLowerCase().includes(query)
+      || template.templateKey.toLocaleLowerCase().includes(query),
+    );
+  });
 
   async ngOnInit(): Promise<void> {
     await Promise.all([this.loadAlerts(), this.loadTemplates(), this.loadBindings(), this.loadHistory()]);
@@ -148,6 +160,8 @@ export class AlertsComponent implements OnInit {
     this.editingAlert.set(null);
     const template = this.templates().find((item) => item.id === templateId) ?? this.templates()[0] ?? null;
     this.form.set(this.formForTemplate(template));
+    this.templateSearch.set(template ? this.dynamic(template.nameKey) : '');
+    this.templatePickerOpen.set(false);
     this.formError.set(null);
     this.editorOpen.set(true);
   }
@@ -157,9 +171,12 @@ export class AlertsComponent implements OnInit {
     const form = this.formForTemplate(template);
     const parameters = { ...form.parameters };
     for (const value of alert.parameters) {
+      const definition = template?.parameters.find((parameter) => parameter.key === value.parameterKey);
       parameters[value.parameterKey] = {
         configured: true,
-        source: value.source,
+        source: value.source === 'TEXT' && definition?.options.includes(value.textValue ?? '')
+          ? 'OPTION'
+          : value.source,
         textValue: value.textValue ?? '',
         configurationId: value.configurationId,
         secretId: value.secretId,
@@ -174,19 +191,39 @@ export class AlertsComponent implements OnInit {
       enabled: alert.enabled,
       parameters,
     });
+    this.templateSearch.set(template ? this.dynamic(template.nameKey) : alert.templateKey);
+    this.templatePickerOpen.set(false);
     this.formError.set(null);
     this.editorOpen.set(true);
   }
 
   protected closeEditor(): void {
-    if (!this.saving()) this.editorOpen.set(false);
+    if (!this.saving()) {
+      this.editorOpen.set(false);
+      this.templatePickerOpen.set(false);
+    }
   }
 
-  protected changeTemplate(templateId: string | number): void {
-    const id = Number(templateId);
-    const template = this.templates().find((item) => item.id === id) ?? null;
+  protected selectTemplate(template: AlertTemplate): void {
     const current = this.form();
-    this.form.set({ ...this.formForTemplate(template), name: current.name, description: current.description, cronExpression: current.cronExpression, enabled: current.enabled });
+    this.form.set({
+      ...this.formForTemplate(template),
+      name: current.name,
+      description: current.description,
+      cronExpression: current.cronExpression,
+      enabled: current.enabled,
+    });
+    this.templateSearch.set(this.dynamic(template.nameKey));
+    this.templatePickerOpen.set(false);
+  }
+
+  protected updateTemplateSearch(value: string): void {
+    this.templateSearch.set(value);
+    this.templatePickerOpen.set(true);
+    const selected = this.selectedTemplate();
+    if (selected && value !== this.dynamic(selected.nameKey)) {
+      this.form.update((form) => ({ ...form, templateId: null, parameters: {} }));
+    }
   }
 
   protected patchForm(patch: Partial<Omit<AlertForm, 'parameters'>>): void {
@@ -213,12 +250,13 @@ export class AlertsComponent implements OnInit {
     for (const definition of template.parameters) {
       const value = form.parameters[definition.key];
       if (!value?.configured) continue;
+      const source: AlertParameterSource = value.source === 'OPTION' ? 'TEXT' : value.source;
       parameters.push({
         parameterKey: definition.key,
-        source: value.source,
-        textValue: value.source === 'TEXT' ? value.textValue : null,
-        configurationId: value.source === 'CONFIGURATION' ? value.configurationId : null,
-        secretId: value.source === 'SECRET' ? value.secretId : null,
+        source,
+        textValue: source === 'TEXT' ? value.textValue : null,
+        configurationId: source === 'CONFIGURATION' ? value.configurationId : null,
+        secretId: source === 'SECRET' ? value.secretId : null,
       });
     }
 
@@ -236,7 +274,7 @@ export class AlertsComponent implements OnInit {
       if (editing) await this.api.updateAlert(editing.id, request);
       else await this.api.createAlert(request);
       this.editorOpen.set(false);
-      await this.loadAlerts();
+      await Promise.all([this.loadAlerts(), this.loadTemplates()]);
     } catch (error) {
       this.formError.set(this.errorMessage(error));
     } finally {
@@ -249,7 +287,7 @@ export class AlertsComponent implements OnInit {
     this.error.set(null);
     try {
       await this.api.deleteAlert(alert.id, alert.version);
-      await this.loadAlerts();
+      await Promise.all([this.loadAlerts(), this.loadTemplates()]);
     } catch (error) {
       this.error.set(this.errorMessage(error));
     }
@@ -282,7 +320,7 @@ export class AlertsComponent implements OnInit {
   }
 
   private emptyForm(): AlertForm {
-    return { templateId: null, name: '', description: '', cronExpression: '0 */5 * * * *', enabled: true, parameters: {} };
+    return { templateId: null, name: '', description: '', cronExpression: '0 0 * * * *', enabled: true, parameters: {} };
   }
 
   private formForTemplate(template: AlertTemplate | null): AlertForm {
@@ -297,8 +335,8 @@ export class AlertsComponent implements OnInit {
   private defaultParameterForm(parameter: AlertTemplateParameter): ParameterForm {
     return {
       configured: parameter.required || parameter.defaultValue !== null || !parameter.bindingAllowed,
-      source: 'TEXT',
-      textValue: parameter.defaultValue ?? (!parameter.bindingAllowed ? parameter.options[0] ?? '' : ''),
+      source: parameter.options.length ? 'OPTION' : 'TEXT',
+      textValue: parameter.defaultValue ?? parameter.options[0] ?? '',
       configurationId: null,
       secretId: null,
     };

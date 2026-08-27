@@ -105,6 +105,7 @@
             <th>{{ localization.translate('alerts.templates.column.key') }}</th>
             <th>{{ localization.translate('alerts.templates.column.capability') }}</th>
             <th>{{ localization.translate('alerts.templates.column.parameters') }}</th>
+            <th>{{ localization.translate('alerts.templates.column.alerts') }}</th>
             <th>{{ localization.translate('alerts.column.actions') }}</th>
           </tr></thead>
           <tbody>
@@ -122,7 +123,7 @@
                           <strong>{{ dynamic(parameter.labelKey) }}</strong>
                           <small>{{ parameter.javaType }}</small>
                           @if (parameter.bindingAllowed) {
-                            <span>{{ localization.translate('alerts.binding.allowed') }}</span>
+                            <span>{{ localization.translate(parameter.options.length ? 'alerts.binding.allowedWithOptions' : 'alerts.binding.allowed') }}</span>
                           } @else {
                             <span>{{ localization.translate('alerts.binding.optionsOnly') }}</span>
                           }
@@ -131,6 +132,7 @@
                     </div>
                   </details>
                 </td>
+                <td><strong>{{ template.alertCount }}</strong></td>
                 <td class="actions"><button type="button" (click)="openCreate(template.id)">{{ localization.translate('alerts.useTemplate') }}</button></td>
               </tr>
             }
@@ -211,12 +213,47 @@
       </header>
       <form (ngSubmit)="save()">
         <div class="form-grid">
-          <label class="full">
-            <span>{{ localization.translate('alerts.form.template') }}</span>
-            <select [ngModel]="form().templateId" (ngModelChange)="changeTemplate($event)" name="template" [disabled]="!!editingAlert()" required>
-              @for (template of templates(); track template.id) { <option [ngValue]="template.id">{{ dynamic(template.nameKey) }}</option> }
-            </select>
-          </label>
+          <div class="template-field full">
+            <label for="alert-template-search">
+              <span>{{ localization.translate('alerts.form.template') }}</span>
+              <input
+                id="alert-template-search"
+                type="search"
+                autocomplete="off"
+                role="combobox"
+                aria-autocomplete="list"
+                [attr.aria-expanded]="templatePickerOpen()"
+                [ngModel]="templateSearch()"
+                (ngModelChange)="updateTemplateSearch($event)"
+                (focus)="templatePickerOpen.set(!editingAlert())"
+                (blur)="templatePickerOpen.set(false)"
+                (keydown.escape)="templatePickerOpen.set(false)"
+                name="templateSearch"
+                [placeholder]="localization.translate('alerts.form.templateSearchPlaceholder')"
+                [disabled]="!!editingAlert()"
+                required
+              >
+            </label>
+            @if (templatePickerOpen() && !editingAlert()) {
+              <div class="template-options" role="listbox">
+                @for (template of filteredTemplates(); track template.id) {
+                  <button
+                    type="button"
+                    role="option"
+                    [attr.aria-selected]="form().templateId === template.id"
+                    (mousedown)="$event.preventDefault()"
+                    (click)="selectTemplate(template)"
+                  >
+                    <strong>{{ dynamic(template.nameKey) }}</strong>
+                    <small>{{ dynamic(template.descriptionKey) }}</small>
+                    <code>{{ template.templateKey }}</code>
+                  </button>
+                } @empty {
+                  <p>{{ localization.translate('alerts.form.noTemplatesFound') }}</p>
+                }
+              </div>
+            }
+          </div>
           <label>
             <span>{{ localization.translate('alerts.form.name') }}</span>
             <input [ngModel]="form().name" (ngModelChange)="patchForm({ name: $event })" name="name" maxlength="200" required>
@@ -256,31 +293,33 @@
 
                 @if (parameterForm(parameter.key).configured) {
                   <div class="parameter-fields">
-                    @if (parameter.bindingAllowed) {
+                    @if (parameter.bindingAllowed || parameter.options.length) {
                       <label>
                         <span>{{ localization.translate('alerts.form.source') }}</span>
                         <select [ngModel]="parameterForm(parameter.key).source" (ngModelChange)="patchParameter(parameter.key, { source: $event })" [name]="'source-' + parameter.id">
-                          <option value="TEXT">{{ localization.translate('alerts.source.text') }}</option>
-                          <option value="CONFIGURATION">{{ localization.translate('alerts.source.configuration') }}</option>
-                          <option value="SECRET">{{ localization.translate('alerts.source.secret') }}</option>
+                          @if (parameter.options.length) {
+                            <option value="OPTION">{{ localization.translate('alerts.source.option') }}</option>
+                          }
+                          @if (parameter.bindingAllowed) {
+                            <option value="TEXT">{{ localization.translate('alerts.source.text') }}</option>
+                            <option value="CONFIGURATION">{{ localization.translate('alerts.source.configuration') }}</option>
+                            <option value="SECRET">{{ localization.translate('alerts.source.secret') }}</option>
+                          }
                         </select>
                       </label>
                     }
 
                     @if (parameterForm(parameter.key).source === 'TEXT') {
-                      <label [class.full]="parameter.bindingAllowed">
-                        <span>{{ localization.translate(parameter.bindingAllowed ? 'alerts.form.value' : 'alerts.form.option') }}</span>
-                        @if (parameter.bindingAllowed) {
-                          <input [ngModel]="parameterForm(parameter.key).textValue" (ngModelChange)="patchParameter(parameter.key, { textValue: $event })" [name]="'text-' + parameter.id" [attr.list]="parameter.options.length ? 'options-' + parameter.id : null">
-                          @if (parameter.options.length) {
-                            <datalist [id]="'options-' + parameter.id">@for (option of parameter.options; track option) { <option [value]="option"></option> }</datalist>
-                            <small>{{ localization.translate('alerts.form.suggestions') }}</small>
-                          }
-                        } @else {
-                          <select [ngModel]="parameterForm(parameter.key).textValue" (ngModelChange)="patchParameter(parameter.key, { textValue: $event })" [name]="'option-' + parameter.id">
-                            @for (option of parameter.options; track option) { <option [value]="option">{{ option }}</option> }
-                          </select>
-                        }
+                      <label class="full">
+                        <span>{{ localization.translate('alerts.form.value') }}</span>
+                        <input type="text" [ngModel]="parameterForm(parameter.key).textValue" (ngModelChange)="patchParameter(parameter.key, { textValue: $event })" [name]="'text-' + parameter.id" required>
+                      </label>
+                    } @else if (parameterForm(parameter.key).source === 'OPTION') {
+                      <label class="full">
+                        <span>{{ localization.translate('alerts.form.option') }}</span>
+                        <select [ngModel]="parameterForm(parameter.key).textValue" (ngModelChange)="patchParameter(parameter.key, { textValue: $event })" [name]="'option-' + parameter.id" required>
+                          @for (option of parameter.options; track option) { <option [value]="option">{{ option }}</option> }
+                        </select>
                       </label>
                     } @else if (parameterForm(parameter.key).source === 'CONFIGURATION') {
                       <label class="full">
@@ -290,7 +329,7 @@
                           @for (option of bindings().configurations; track option.id) { <option [ngValue]="option.id">{{ option.name }}</option> }
                         </select>
                       </label>
-                    } @else {
+                    } @else if (parameterForm(parameter.key).source === 'SECRET') {
                       <label class="full">
                         <span>{{ localization.translate('alerts.form.secret') }}</span>
                         <select [ngModel]="parameterForm(parameter.key).secretId" (ngModelChange)="patchParameter(parameter.key, { secretId: $event })" [name]="'secret-' + parameter.id" required>

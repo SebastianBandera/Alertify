@@ -31,6 +31,7 @@ export interface AlertTemplate {
   readonly nameKey: string;
   readonly descriptionKey: string;
   readonly requiredCapability: WorkerCapability;
+  readonly alertCount: number;
   readonly parameters: readonly AlertTemplateParameter[];
   readonly createdAt: string;
   readonly updatedAt: string;

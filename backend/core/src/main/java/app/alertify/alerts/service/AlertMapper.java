@@ -19,10 +19,11 @@ final class AlertMapper {
     private AlertMapper() {
     }
 
-    static AlertTemplateResponse toTemplate(AlertTemplateDefinition template, List<AlertTemplateParameterDefinition> parameters) {
+    static AlertTemplateResponse toTemplate(AlertTemplateDefinition template, List<AlertTemplateParameterDefinition> parameters, long alertCount) {
         return new AlertTemplateResponse(
                 template.getId(), template.getVersion(), template.getTemplateKey(),
                 template.getNameKey(), template.getDescriptionKey(), template.getRequiredCapability(),
+                alertCount,
                 parameters.stream().map(AlertMapper::toTemplateParameter).toList(),
                 template.getCreatedAt(), template.getUpdatedAt()
         );
