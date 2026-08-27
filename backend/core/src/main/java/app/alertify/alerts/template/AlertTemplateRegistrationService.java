@@ -24,7 +24,7 @@ import app.alertify.alerts.model.AlertTemplateDefinition;
 import app.alertify.alerts.model.AlertTemplateParameterDefinition;
 import app.alertify.alerts.template.annotation.AlertParameter;
 import app.alertify.alerts.template.annotation.AlertTemplate;
-import app.alertify.alerts.template.annotation.AlertTemplateIdentifier;
+import app.alertify.alerts.template.annotation.AlertTemplateKey;
 import app.alertify.jpa.repository.AlertTemplateDefinitionRepository;
 import app.alertify.jpa.repository.AlertTemplateParameterDefinitionRepository;
 
@@ -101,8 +101,8 @@ public class AlertTemplateRegistrationService {
         validateTemplateClass(templateClass);
 
         AlertTemplate metadata = templateClass.getAnnotation(AlertTemplate.class);
-        String templateId = AlertTemplateIdentifier.of(templateClass);
-        AlertTemplateDefinition template = templateRepository.findById(templateId)
+        String templateKey = AlertTemplateKey.of(templateClass);
+        AlertTemplateDefinition template = templateRepository.findByTemplateKey(templateKey)
             .orElseGet(() -> AlertTemplateDefinition.from(templateClass));
         template.synchronize(
             metadata.nameKey(), metadata.descriptionKey(), metadata.capability()
@@ -111,7 +111,7 @@ public class AlertTemplateRegistrationService {
 
         Map<String, AlertTemplateParameterDefinition> existingParameters = new LinkedHashMap<>();
         for (AlertTemplateParameterDefinition parameter
-                : parameterRepository.findAllByTemplate_Id(templateId)) {
+                : parameterRepository.findAllByTemplate_TemplateKey(templateKey)) {
             existingParameters.put(parameter.getParameterKey(), parameter);
         }
 
@@ -119,7 +119,7 @@ public class AlertTemplateRegistrationService {
         for (Field field : parameterFields)
             synchronizeParameter(template, field, existingParameters.get(field.getName()));
 
-        log.info("Registered alert template {} with {} parameters", templateId, parameterFields.size());
+        log.info("Registered alert template {} with {} parameters", templateKey, parameterFields.size());
         return parameterFields.size();
     }
 

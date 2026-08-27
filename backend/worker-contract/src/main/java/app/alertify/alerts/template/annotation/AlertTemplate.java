@@ -11,9 +11,10 @@ import app.alertify.worker.contract.WorkerCapability;
 /**
  * Marks an alert evaluator implementation as a discoverable template.
  *
- * <p>The stable template identifier is deliberately not configurable: it is
- * derived from the annotated class package and name through
- * {@link AlertTemplateIdentifier#of(Class)}.</p>
+ * <p>The stable template key is deliberately not configurable: it is derived
+ * from the annotated class package and name through
+ * {@link AlertTemplateKey#of(Class)}. Persistence uses a separate numeric
+ * primary key.</p>
  */
 @Documented
 @Retention(RetentionPolicy.RUNTIME)

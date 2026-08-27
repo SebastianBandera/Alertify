@@ -6,8 +6,9 @@ import java.util.List;
 import app.alertify.worker.contract.WorkerCapability;
 
 public record AlertTemplateResponse(
-    String id,
+    Long id,
     long version,
+    String templateKey,
     String nameKey,
     String descriptionKey,
     WorkerCapability requiredCapability,

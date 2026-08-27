@@ -10,15 +10,15 @@ import org.junit.jupiter.api.Test;
 
 import app.alertify.alerts.template.annotation.AlertParameter;
 import app.alertify.alerts.template.annotation.AlertTemplate;
-import app.alertify.alerts.template.annotation.AlertTemplateIdentifier;
+import app.alertify.alerts.template.annotation.AlertTemplateKey;
 
 class InternetConnectionAlertTemplateTest {
 
     @Test
-    void derivesItsIdentifierFromThePackageAndClassName() {
+    void derivesItsAlternateKeyFromThePackageAndClassName() {
         assertEquals(
             InternetConnectionAlertTemplate.class.getName(),
-            AlertTemplateIdentifier.of(InternetConnectionAlertTemplate.class)
+            AlertTemplateKey.of(InternetConnectionAlertTemplate.class)
         );
     }
 

@@ -91,7 +91,7 @@ public class AlertParameterValue {
     private AlertParameterValue(Alert alert, AlertTemplateParameterDefinition templateParameter) {
         this.alert = Objects.requireNonNull(alert, "alert must not be null");
         this.templateParameter = Objects.requireNonNull(templateParameter, "templateParameter must not be null");
-        if (!alert.getTemplate().getId().equals(templateParameter.getTemplate().getId()))
+        if (!alert.getTemplate().getTemplateKey().equals(templateParameter.getTemplate().getTemplateKey()))
             throw new IllegalArgumentException("templateParameter does not belong to the alert template");
     }
 

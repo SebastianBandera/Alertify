@@ -10,29 +10,43 @@ import org.hibernate.envers.Audited;
 import org.hibernate.envers.NotAudited;
 
 import app.alertify.alerts.template.annotation.AlertTemplate;
-import app.alertify.alerts.template.annotation.AlertTemplateIdentifier;
+import app.alertify.alerts.template.annotation.AlertTemplateKey;
 import app.alertify.worker.contract.WorkerCapability;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import jakarta.persistence.Version;
 
 /**
  * Persistent catalog entry synchronized from one class annotated as an alert
- * template. Its identifier is the template class fully qualified name.
+ * template. Its stable alternate key is the template class fully qualified
+ * name, while persistence uses a generated numeric primary key.
  */
 @Entity
 @Audited
 @AuditTable(value = "alert_templates_aud", schema = "audit")
-@Table(name = "alert_templates", schema = "core")
+@Table(
+    name = "alert_templates",
+    schema = "core",
+    uniqueConstraints = @UniqueConstraint(
+        name = "uq_alert_templates_template_key",
+        columnNames = "template_key"
+    )
+)
 public class AlertTemplateDefinition {
 
     @Id
-    @Column(columnDefinition = "text", updatable = false)
-    private String id;
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = "template_key", nullable = false, columnDefinition = "text", updatable = false)
+    private String templateKey;
 
     @Version
     @NotAudited
@@ -62,21 +76,25 @@ public class AlertTemplateDefinition {
     protected AlertTemplateDefinition() {
     }
 
-    public AlertTemplateDefinition(String id, String nameKey, String descriptionKey, WorkerCapability requiredCapability) {
-        this.id = Objects.requireNonNull(id, "id must not be null");
+    public AlertTemplateDefinition(String templateKey, String nameKey, String descriptionKey, WorkerCapability requiredCapability) {
+        this.templateKey = Objects.requireNonNull(templateKey, "templateKey must not be null");
         synchronize(nameKey, descriptionKey, requiredCapability);
     }
 
     public static AlertTemplateDefinition from(Class<?> templateClass) {
-        String id = AlertTemplateIdentifier.of(templateClass);
+        String templateKey = AlertTemplateKey.of(templateClass);
         AlertTemplate metadata = templateClass.getAnnotation(AlertTemplate.class);
         return new AlertTemplateDefinition(
-                id, metadata.nameKey(), metadata.descriptionKey(), metadata.capability()
+                templateKey, metadata.nameKey(), metadata.descriptionKey(), metadata.capability()
         );
     }
 
-    public String getId() {
+    public Long getId() {
         return id;
+    }
+
+    public String getTemplateKey() {
+        return templateKey;
     }
 
     public long getVersion() {

@@ -30,9 +30,9 @@ class AlertTemplateRegistrationServiceTest {
 
     @Test
     void discoversAndPersistsTheSharedInternetTemplate() {
-        String templateId = InternetConnectionAlertTemplate.class.getName();
-        when(templateRepository.findById(templateId)).thenReturn(Optional.empty());
-        when(parameterRepository.findAllByTemplate_Id(templateId)).thenReturn(List.of());
+        String templateKey = InternetConnectionAlertTemplate.class.getName();
+        when(templateRepository.findByTemplateKey(templateKey)).thenReturn(Optional.empty());
+        when(parameterRepository.findAllByTemplate_TemplateKey(templateKey)).thenReturn(List.of());
         var service = new AlertTemplateRegistrationService(
             templateRepository, parameterRepository, new DefaultResourceLoader()
         );
@@ -46,7 +46,7 @@ class AlertTemplateRegistrationServiceTest {
             ArgumentCaptor.forClass(AlertTemplateDefinition.class);
         verify(templateRepository).save(templateCaptor.capture());
         AlertTemplateDefinition template = templateCaptor.getValue();
-        assertEquals(templateId, template.getId());
+        assertEquals(templateKey, template.getTemplateKey());
         assertEquals("alerts.template.internet.name", template.getNameKey());
 
         ArgumentCaptor<AlertTemplateParameterDefinition> parameterCaptor =

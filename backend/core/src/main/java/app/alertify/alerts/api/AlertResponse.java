@@ -6,7 +6,8 @@ import java.util.List;
 public record AlertResponse(
     Long id,
     long version,
-    String templateId,
+    Long templateId,
+    String templateKey,
     String name,
     String description,
     String cronExpression,

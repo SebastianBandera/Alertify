@@ -17,7 +17,7 @@ import app.alertify.worker.contract.WorkerCapability;
 
 class AlertModelTest {
 
-    private static final String TEMPLATE_ID = SampleAlertTemplate.class.getName();
+    private static final String TEMPLATE_KEY = SampleAlertTemplate.class.getName();
 
     @Test
     void createsAConfiguredTextParameterWithoutPopulatingReferenceFields() {
@@ -101,7 +101,8 @@ class AlertModelTest {
 
     private static AlertTemplateDefinition template() {
         AlertTemplateDefinition template = AlertTemplateDefinition.from(SampleAlertTemplate.class);
-        assertThat(template.getId()).isEqualTo(TEMPLATE_ID);
+        assertThat(template.getId()).isNull();
+        assertThat(template.getTemplateKey()).isEqualTo(TEMPLATE_KEY);
         return template;
     }
 

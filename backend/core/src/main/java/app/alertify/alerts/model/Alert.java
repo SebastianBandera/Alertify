@@ -47,7 +47,7 @@ public class Alert {
     private long version;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "alert_template_id", nullable = false, columnDefinition = "text", updatable = false)
+    @JoinColumn(name = "alert_template_id", nullable = false, updatable = false)
     private AlertTemplateDefinition template;
 
     @Column(nullable = false, columnDefinition = "text")

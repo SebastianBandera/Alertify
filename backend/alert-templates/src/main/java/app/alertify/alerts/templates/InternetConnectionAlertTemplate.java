@@ -17,7 +17,7 @@ import app.alertify.alerts.template.annotation.AlertTemplate;
 
 /**
  * Standard alert that checks whether a public HTTP endpoint can be reached.
- * Its stable identifier is this class' fully qualified name.
+ * Its stable alternate key is this class' fully qualified name.
  */
 @AlertTemplate(
     nameKey = "alerts.template.internet.name",
