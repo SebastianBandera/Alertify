@@ -210,7 +210,11 @@ export class ConfigsComponent implements OnInit {
       const result = await this.api.importConfigurations(file);
       this.notice.set(this.importSuccessMessage(result));
       this.pageIndex.set(0);
-      await Promise.all([this.loadConfigurations(), this.loadTags()]);
+      await Promise.all([
+        this.loadConfigurations(),
+        this.loadTags(),
+        this.loadExpressionSuggestions(),
+      ]);
     } catch (error) {
       this.error.set(this.errorMessage(error));
     } finally {
@@ -352,7 +356,10 @@ export class ConfigsComponent implements OnInit {
     }
 
     const fragment = value.slice(opening + 2, cursor);
-    if (/[{}\s]/.test(fragment)) {
+    const separator = fragment.indexOf('.');
+    const scope = separator < 0 ? '' : fragment.slice(0, separator).toLowerCase();
+    const allowsSpaces = scope === 'configs';
+    if (/[{}]/.test(fragment) || (!allowsSpaces && /\s/.test(fragment))) {
       this.closeExpressionCompletions();
       return;
     }
@@ -470,7 +477,10 @@ export class ConfigsComponent implements OnInit {
       }
       this.resetExpressionEditorState();
       this.editorOpen.set(false);
-      await this.loadConfigurations();
+      await Promise.all([
+        this.loadConfigurations(),
+        this.loadExpressionSuggestions(),
+      ]);
     } catch (error) {
       this.formError.set(this.errorMessage(error, 'rename'));
     } finally {
@@ -488,7 +498,10 @@ export class ConfigsComponent implements OnInit {
       if (this.configurations().length === 1 && this.pageIndex() > 0) {
         this.pageIndex.update((pageIndex) => pageIndex - 1);
       }
-      await this.loadConfigurations();
+      await Promise.all([
+        this.loadConfigurations(),
+        this.loadExpressionSuggestions(),
+      ]);
     } catch (error) {
       this.error.set(this.errorMessage(error, 'delete'));
     }
