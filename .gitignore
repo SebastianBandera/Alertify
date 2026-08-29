@@ -121,10 +121,8 @@ nb-configuration.xml
 _.code-workspace
 
 nogit/
-remake/README.md
-README.md
+*.md
 
 /*.bat
 !/run.bat
 /*.zip
-RUNNING.md
