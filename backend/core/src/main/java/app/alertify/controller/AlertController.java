@@ -27,6 +27,7 @@ import app.alertify.alerts.api.AlertUpdateRequest;
 import app.alertify.alerts.service.AlertCatalogService;
 import app.alertify.alerts.service.AlertManagementService;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.PositiveOrZero;
 
 @RestController
@@ -44,8 +45,10 @@ public class AlertController {
     }
 
     @GetMapping
-    public Page<AlertResponse> search(@RequestParam(required = false) String name, @PageableDefault(size = 20, sort = "name") Pageable pageable) {
-        return service.search(name, pageable);
+    public Page<AlertResponse> search(@RequestParam(required = false) String name,
+            @RequestParam(required = false) @Positive Long templateId,
+            @PageableDefault(size = 20, sort = "name") Pageable pageable) {
+        return service.search(name, templateId, pageable);
     }
 
     @GetMapping("/binding-options")

@@ -23,6 +23,14 @@ public interface AlertRepository extends JpaRepository<Alert, Long> {
     @EntityGraph(attributePaths = "template")
     Page<Alert> findAllByNameContainingIgnoreCase(String name, Pageable pageable);
 
+    @EntityGraph(attributePaths = "template")
+    Page<Alert> findAllByTemplate_Id(Long templateId, Pageable pageable);
+
+    @EntityGraph(attributePaths = "template")
+    Page<Alert> findAllByTemplate_IdAndNameContainingIgnoreCase(
+            Long templateId, String name, Pageable pageable
+    );
+
     @Query("""
         select alert.template.id as templateId, count(alert.id) as alertCount
         from Alert alert

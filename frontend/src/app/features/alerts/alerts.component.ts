@@ -59,6 +59,7 @@ export class AlertsComponent implements OnInit {
   protected readonly error = signal<string | null>(null);
   protected readonly formError = signal<string | null>(null);
   protected readonly search = signal('');
+  protected readonly templateFilterId = signal<number | null>(null);
   protected readonly alertPage = signal(0);
   protected readonly alertTotalPages = signal(0);
   protected readonly alertTotalElements = signal(0);
@@ -100,7 +101,9 @@ export class AlertsComponent implements OnInit {
     this.loading.set(true);
     this.error.set(null);
     try {
-      const page = await this.api.listAlerts(this.search(), this.alertPage(), PAGE_SIZE);
+      const page = await this.api.listAlerts(
+        this.search(), this.templateFilterId(), this.alertPage(), PAGE_SIZE,
+      );
       this.alerts.set(page.content);
       this.alertPage.set(page.page.number);
       this.alertTotalPages.set(page.page.totalPages);
@@ -147,6 +150,14 @@ export class AlertsComponent implements OnInit {
   }
 
   protected applySearch(): void {
+    this.alertPage.set(0);
+    void this.loadAlerts();
+  }
+
+  protected showTemplateAlerts(template: AlertTemplate): void {
+    this.activeTab.set('alerts');
+    this.search.set('');
+    this.templateFilterId.set(template.id);
     this.alertPage.set(0);
     void this.loadAlerts();
   }

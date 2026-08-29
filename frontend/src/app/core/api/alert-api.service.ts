@@ -120,9 +120,15 @@ export class AlertApiService {
   private readonly authService = inject(AuthService);
   private readonly apiBaseUrl = inject(RUNTIME_CONFIG).apiBaseUrl;
 
-  async listAlerts(name: string, page: number, size: number): Promise<PageResponse<Alert>> {
+  async listAlerts(
+    name: string,
+    templateId: number | null,
+    page: number,
+    size: number,
+  ): Promise<PageResponse<Alert>> {
     const params = new URLSearchParams({ page: String(page), size: String(size), sort: 'name,asc' });
     if (name.trim()) params.set('name', name.trim());
+    if (templateId !== null) params.set('templateId', String(templateId));
     return this.request(`/api/alerts?${params.toString()}`);
   }
 

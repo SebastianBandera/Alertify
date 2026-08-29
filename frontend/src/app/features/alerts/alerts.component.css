@@ -15,6 +15,7 @@ h3 { font-size: 14px; }
 
 .toolbar { display: flex; align-items: end; gap: 10px; padding: 16px 26px; border-bottom: 1px solid var(--border); background: var(--surface-muted); }
 .search-field { flex: 1; max-width: 420px; }
+.template-filter { width: min(300px, 35vw); }
 .history-filters label { min-width: 220px; }
 label { display: flex; flex-direction: column; gap: 7px; color: #344054; font-size: 12px; font-weight: 650; }
 input, select, textarea { width: 100%; min-height: 40px; padding: 8px 11px; border: 1px solid #d0d5dd; border-radius: 9px; outline: none; background: white; color: var(--text); font: inherit; font-size: 13px; }
@@ -47,6 +48,8 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monosp
 .actions { white-space: nowrap; }
 .actions button { padding: 4px 6px; border: 0; background: transparent; color: var(--primary-strong); cursor: pointer; font: inherit; font-weight: 700; }
 .actions .danger { color: #b42318; }
+.template-count { min-width: 30px; padding: 3px 8px; border: 0; border-radius: 7px; background: #f4f3ff; color: var(--primary-strong); cursor: pointer; font: inherit; font-weight: 750; text-decoration: underline; text-underline-offset: 2px; }
+.template-count:hover { background: #ebe9fe; }
 details summary { color: var(--primary-strong); cursor: pointer; font-weight: 700; }
 .parameter-summary { min-width: 270px; margin-top: 9px; }
 .parameter-summary div { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; padding: 8px 0; border-top: 1px solid var(--border); }
@@ -89,6 +92,7 @@ details summary { color: var(--primary-strong); cursor: pointer; font-weight: 70
 
 @media (max-width: 720px) {
   .page-header, .pagination, .toolbar { align-items: stretch; flex-direction: column; }
+  .template-filter { width: 100%; }
   .tabs { padding: 0 10px; overflow-x: auto; }
   .form-grid, .parameter-fields { grid-template-columns: 1fr; }
   .modal-backdrop { padding: 0; }

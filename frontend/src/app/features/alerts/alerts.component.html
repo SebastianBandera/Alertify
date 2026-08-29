@@ -38,11 +38,17 @@
           [placeholder]="localization.translate('alerts.searchPlaceholder')"
         >
       </label>
+      <label class="template-filter">
+        <span>{{ localization.translate('alerts.templateFilter') }}</span>
+        <select [ngModel]="templateFilterId()" (ngModelChange)="templateFilterId.set($event)">
+          <option [ngValue]="null">{{ localization.translate('alerts.allTemplates') }}</option>
+          @for (template of templates(); track template.id) {
+            <option [ngValue]="template.id">{{ dynamic(template.nameKey) }}</option>
+          }
+        </select>
+      </label>
       <button class="button button--secondary" type="button" (click)="applySearch()">
         {{ localization.translate('alerts.searchAction') }}
-      </button>
-      <button class="button button--secondary" type="button" (click)="loadAlerts()">
-        {{ localization.translate('alerts.refresh') }}
       </button>
     </div>
 
@@ -132,7 +138,15 @@
                     </div>
                   </details>
                 </td>
-                <td><strong>{{ template.alertCount }}</strong></td>
+                <td>
+                  @if (template.alertCount > 0) {
+                    <button class="template-count" type="button" (click)="showTemplateAlerts(template)">
+                      {{ template.alertCount }}
+                    </button>
+                  } @else {
+                    <strong>0</strong>
+                  }
+                </td>
                 <td class="actions"><button type="button" (click)="openCreate(template.id)">{{ localization.translate('alerts.useTemplate') }}</button></td>
               </tr>
             }

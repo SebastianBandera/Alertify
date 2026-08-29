@@ -78,11 +78,20 @@ public class AlertManagementService {
     }
 
     @Transactional(readOnly = true)
-    public Page<AlertResponse> search(String name, Pageable pageable) {
+    public Page<AlertResponse> search(String name, Long templateId, Pageable pageable) {
         SearchValidation.validateSort(pageable, SORT_FIELDS);
-        Page<Alert> alerts = name == null || name.isBlank()
-                ? alertRepository.findAll(pageable)
-                : alertRepository.findAllByNameContainingIgnoreCase(name.trim(), pageable);
+        String normalizedName = name == null || name.isBlank() ? null : name.trim();
+        Page<Alert> alerts;
+        if (templateId == null && normalizedName == null)
+            alerts = alertRepository.findAll(pageable);
+        else if (templateId == null)
+            alerts = alertRepository.findAllByNameContainingIgnoreCase(normalizedName, pageable);
+        else if (normalizedName == null)
+            alerts = alertRepository.findAllByTemplate_Id(templateId, pageable);
+        else
+            alerts = alertRepository.findAllByTemplate_IdAndNameContainingIgnoreCase(
+                    templateId, normalizedName, pageable
+            );
         Page<AlertResponse> result = alerts.map(
                 alert -> AlertMapper.toAlert(alert, parameterValueRepository.findAllByAlertIdOrdered(alert.getId()))
         );
