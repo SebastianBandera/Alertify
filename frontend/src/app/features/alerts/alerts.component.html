@@ -90,12 +90,18 @@
       </div>
     }
 
-    <footer class="pagination">
+    <footer class="pagination" [attr.aria-label]="localization.translate('alerts.pagination.label')">
       <span>{{ alertTotalElements() }} {{ localization.translate('alerts.records') }}</span>
-      <div>
-        <button type="button" (click)="alertPageTo(alertPage() - 1)" [disabled]="alertPage() <= 0">‹</button>
-        <span>{{ localization.translate('alerts.page') }} {{ alertTotalPages() ? alertPage() + 1 : 0 }} {{ localization.translate('alerts.of') }} {{ alertTotalPages() }}</span>
-        <button type="button" (click)="alertPageTo(alertPage() + 1)" [disabled]="alertPage() + 1 >= alertTotalPages()">›</button>
+      <div class="pagination__controls">
+        <label>
+          <span>{{ localization.translate('alerts.pagination.rowsPerPage') }}</span>
+          <select [ngModel]="pageSize()" (ngModelChange)="updatePageSize($event)">
+            @for (option of pageSizeOptions; track option) { <option [value]="option">{{ option }}</option> }
+          </select>
+        </label>
+        <span class="pagination__page">{{ localization.translate('alerts.page') }} {{ alertTotalPages() ? alertPage() + 1 : 0 }} {{ localization.translate('alerts.of') }} {{ alertTotalPages() }}</span>
+        <button type="button" (click)="alertPageTo(alertPage() - 1)" [disabled]="alertPage() <= 0" [attr.aria-label]="localization.translate('alerts.pagination.previous')" [title]="localization.translate('alerts.pagination.previous')">‹</button>
+        <button type="button" (click)="alertPageTo(alertPage() + 1)" [disabled]="alertPage() + 1 >= alertTotalPages()" [attr.aria-label]="localization.translate('alerts.pagination.next')" [title]="localization.translate('alerts.pagination.next')">›</button>
       </div>
     </footer>
   }
@@ -115,7 +121,7 @@
             <th>{{ localization.translate('alerts.column.actions') }}</th>
           </tr></thead>
           <tbody>
-            @for (template of templates(); track template.id) {
+            @for (template of pagedTemplates(); track template.id) {
               <tr>
                 <td><strong>{{ dynamic(template.nameKey) }}</strong><small>{{ dynamic(template.descriptionKey) }}</small></td>
                 <td><code class="template-key">{{ template.templateKey }}</code><small>#{{ template.id }}</small></td>
@@ -153,6 +159,22 @@
           </tbody>
         </table>
       </div>
+    }
+    @if (templates().length) {
+      <footer class="pagination" [attr.aria-label]="localization.translate('alerts.pagination.label')">
+        <span>{{ templates().length }} {{ localization.translate('alerts.records') }}</span>
+        <div class="pagination__controls">
+          <label>
+            <span>{{ localization.translate('alerts.pagination.rowsPerPage') }}</span>
+            <select [ngModel]="pageSize()" (ngModelChange)="updatePageSize($event)">
+              @for (option of pageSizeOptions; track option) { <option [value]="option">{{ option }}</option> }
+            </select>
+          </label>
+          <span class="pagination__page">{{ localization.translate('alerts.page') }} {{ templateTotalPages() ? templatePage() + 1 : 0 }} {{ localization.translate('alerts.of') }} {{ templateTotalPages() }}</span>
+          <button type="button" (click)="templatePageTo(templatePage() - 1)" [disabled]="templatePage() <= 0" [attr.aria-label]="localization.translate('alerts.pagination.previous')" [title]="localization.translate('alerts.pagination.previous')">‹</button>
+          <button type="button" (click)="templatePageTo(templatePage() + 1)" [disabled]="templatePage() + 1 >= templateTotalPages()" [attr.aria-label]="localization.translate('alerts.pagination.next')" [title]="localization.translate('alerts.pagination.next')">›</button>
+        </div>
+      </footer>
     }
   }
 
@@ -204,12 +226,18 @@
         </table>
       </div>
     }
-    <footer class="pagination">
+    <footer class="pagination" [attr.aria-label]="localization.translate('alerts.pagination.label')">
       <span>{{ historyTotalElements() }} {{ localization.translate('alerts.records') }}</span>
-      <div>
-        <button type="button" (click)="historyPageTo(historyPage() - 1)" [disabled]="historyPage() <= 0">‹</button>
-        <span>{{ localization.translate('alerts.page') }} {{ historyTotalPages() ? historyPage() + 1 : 0 }} {{ localization.translate('alerts.of') }} {{ historyTotalPages() }}</span>
-        <button type="button" (click)="historyPageTo(historyPage() + 1)" [disabled]="historyPage() + 1 >= historyTotalPages()">›</button>
+      <div class="pagination__controls">
+        <label>
+          <span>{{ localization.translate('alerts.pagination.rowsPerPage') }}</span>
+          <select [ngModel]="pageSize()" (ngModelChange)="updatePageSize($event)">
+            @for (option of pageSizeOptions; track option) { <option [value]="option">{{ option }}</option> }
+          </select>
+        </label>
+        <span class="pagination__page">{{ localization.translate('alerts.page') }} {{ historyTotalPages() ? historyPage() + 1 : 0 }} {{ localization.translate('alerts.of') }} {{ historyTotalPages() }}</span>
+        <button type="button" (click)="historyPageTo(historyPage() - 1)" [disabled]="historyPage() <= 0" [attr.aria-label]="localization.translate('alerts.pagination.previous')" [title]="localization.translate('alerts.pagination.previous')">‹</button>
+        <button type="button" (click)="historyPageTo(historyPage() + 1)" [disabled]="historyPage() + 1 >= historyTotalPages()" [attr.aria-label]="localization.translate('alerts.pagination.next')" [title]="localization.translate('alerts.pagination.next')">›</button>
       </div>
     </footer>
   }

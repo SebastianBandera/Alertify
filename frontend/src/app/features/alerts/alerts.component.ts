@@ -35,8 +35,18 @@ interface AlertForm {
   parameters: Readonly<Record<string, ParameterForm>>;
 }
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100, 250, 500, 1000] as const;
+const PAGE_SIZE_STORAGE_KEY = 'alertify.alerts.page-size';
 const EMPTY_BINDINGS: AlertBindingOptions = { configurations: [], secrets: [] };
+
+function readStoredPageSize(): number {
+  try {
+    const storedValue = Number(localStorage.getItem(PAGE_SIZE_STORAGE_KEY));
+    return PAGE_SIZE_OPTIONS.some((pageSize) => pageSize === storedValue) ? storedValue : 10;
+  } catch {
+    return 10;
+  }
+}
 
 @Component({
   selector: 'app-alerts',
@@ -47,6 +57,7 @@ const EMPTY_BINDINGS: AlertBindingOptions = { configurations: [], secrets: [] };
 })
 export class AlertsComponent implements OnInit {
   protected readonly localization = inject(LocalizationService);
+  protected readonly pageSizeOptions = PAGE_SIZE_OPTIONS;
   private readonly api = inject(AlertApiService);
 
   protected readonly activeTab = signal<AlertTab>('alerts');
@@ -60,12 +71,21 @@ export class AlertsComponent implements OnInit {
   protected readonly formError = signal<string | null>(null);
   protected readonly search = signal('');
   protected readonly templateFilterId = signal<number | null>(null);
+  protected readonly pageSize = signal(readStoredPageSize());
   protected readonly alertPage = signal(0);
   protected readonly alertTotalPages = signal(0);
   protected readonly alertTotalElements = signal(0);
   protected readonly historyPage = signal(0);
   protected readonly historyTotalPages = signal(0);
   protected readonly historyTotalElements = signal(0);
+  protected readonly templatePage = signal(0);
+  protected readonly templateTotalPages = computed(() =>
+    Math.ceil(this.templates().length / this.pageSize()),
+  );
+  protected readonly pagedTemplates = computed(() => {
+    const start = this.templatePage() * this.pageSize();
+    return this.templates().slice(start, start + this.pageSize());
+  });
   protected readonly historyAlertId = signal<number | null>(null);
   protected readonly historyStatus = signal<AlertExecutionStatus | ''>('');
   protected readonly editorOpen = signal(false);
@@ -102,7 +122,7 @@ export class AlertsComponent implements OnInit {
     this.error.set(null);
     try {
       const page = await this.api.listAlerts(
-        this.search(), this.templateFilterId(), this.alertPage(), PAGE_SIZE,
+        this.search(), this.templateFilterId(), this.alertPage(), this.pageSize(),
       );
       this.alerts.set(page.content);
       this.alertPage.set(page.page.number);
@@ -118,6 +138,8 @@ export class AlertsComponent implements OnInit {
   protected async loadTemplates(): Promise<void> {
     try {
       this.templates.set(await this.api.listTemplates());
+      if (this.templatePage() >= this.templateTotalPages())
+        this.templatePage.set(Math.max(0, this.templateTotalPages() - 1));
     } catch (error) {
       this.error.set(this.errorMessage(error));
     }
@@ -136,7 +158,7 @@ export class AlertsComponent implements OnInit {
     this.error.set(null);
     try {
       const page = await this.api.listExecutions(
-        this.historyAlertId(), this.historyStatus(), this.historyPage(), PAGE_SIZE,
+        this.historyAlertId(), this.historyStatus(), this.historyPage(), this.pageSize(),
       );
       this.executions.set(page.content);
       this.historyPage.set(page.page.number);
@@ -165,6 +187,24 @@ export class AlertsComponent implements OnInit {
   protected applyHistoryFilters(): void {
     this.historyPage.set(0);
     void this.loadHistory();
+  }
+
+  protected updatePageSize(value: string | number): void {
+    const pageSize = Number(value);
+    if (!PAGE_SIZE_OPTIONS.some((option) => option === pageSize)) return;
+
+    this.pageSize.set(pageSize);
+    this.alertPage.set(0);
+    this.templatePage.set(0);
+    this.historyPage.set(0);
+    try {
+      localStorage.setItem(PAGE_SIZE_STORAGE_KEY, String(pageSize));
+    } catch {
+      // The selection still applies to this page when browser storage is unavailable.
+    }
+
+    if (this.activeTab() === 'alerts') void this.loadAlerts();
+    if (this.activeTab() === 'history') void this.loadHistory();
   }
 
   protected openCreate(templateId?: number): void {
@@ -308,6 +348,11 @@ export class AlertsComponent implements OnInit {
     if (page < 0 || page >= this.alertTotalPages()) return;
     this.alertPage.set(page);
     void this.loadAlerts();
+  }
+
+  protected templatePageTo(page: number): void {
+    if (page < 0 || page >= this.templateTotalPages() || page === this.templatePage()) return;
+    this.templatePage.set(page);
   }
 
   protected historyPageTo(page: number): void {
