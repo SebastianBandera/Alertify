@@ -54,7 +54,7 @@ export const EN_TRANSLATIONS = {
   'alerts.templates.empty': 'No alert templates were discovered at startup.',
   'alerts.templates.column.name': 'Template',
   'alerts.templates.column.key': 'Alternate key / ID',
-  'alerts.templates.column.capability': 'Worker capability',
+  'alerts.templates.column.capability': 'Required capability',
   'alerts.templates.column.parameters': 'Parameters',
   'alerts.templates.column.alerts': 'Associated alerts',
   'alerts.templates.parameters': 'parameters',

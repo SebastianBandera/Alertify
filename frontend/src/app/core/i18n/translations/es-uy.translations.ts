@@ -54,7 +54,7 @@ export const ES_UY_TRANSLATIONS = {
   'alerts.templates.empty': 'No se descubrieron templates de alerta durante el inicio.',
   'alerts.templates.column.name': 'Template',
   'alerts.templates.column.key': 'Clave alterna / ID',
-  'alerts.templates.column.capability': 'Capacidad del worker',
+  'alerts.templates.column.capability': 'Capacidad requerida',
   'alerts.templates.column.parameters': 'Parámetros',
   'alerts.templates.column.alerts': 'Alertas asociadas',
   'alerts.templates.parameters': 'parámetros',
