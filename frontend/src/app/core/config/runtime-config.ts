@@ -22,7 +22,7 @@ function requiredString(value: unknown, property: string): string {
 }
 
 export async function loadRuntimeConfig(): Promise<RuntimeConfig> {
-  const response = await fetch('/config/runtime-config.json', { cache: 'no-store' });
+  const response = await fetch(new URL('config/runtime-config.json', document.baseURI), { cache: 'no-store' });
   if (!response.ok) {
     throw new Error(`Runtime configuration request failed with status ${response.status}.`);
   }

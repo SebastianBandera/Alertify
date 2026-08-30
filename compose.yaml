@@ -15,6 +15,7 @@ services:
     environment:
       NGINX_ENVSUBST_FILTER: ^(PUBLIC_PORT|PUBLISHER_)
       PUBLIC_PORT: ${PUBLIC_PORT:?Set PUBLIC_PORT in .env}
+      APP_CONTEXT_PATH: ${APP_CONTEXT_PATH:?Set APP_CONTEXT_PATH in .env}
       PUBLISHER_FRONTEND_UPSTREAM: ${PUBLISHER_FRONTEND_UPSTREAM:?Set PUBLISHER_FRONTEND_UPSTREAM in .env}
       PUBLISHER_BACKEND_UPSTREAM: ${PUBLISHER_BACKEND_UPSTREAM:?Set PUBLISHER_BACKEND_UPSTREAM in .env}
       PUBLISHER_IDENTITY_UPSTREAM: ${PUBLISHER_IDENTITY_UPSTREAM:?Set PUBLISHER_IDENTITY_UPSTREAM in .env}
@@ -89,6 +90,7 @@ services:
       dockerfile: Dockerfile
       args:
         KEYCLOAK_IMAGE: ${KEYCLOAK_IMAGE:?Set KEYCLOAK_IMAGE in .env}
+        KEYCLOAK_RELATIVE_PATH: ${KEYCLOAK_RELATIVE_PATH:?Derived from APP_CONTEXT_PATH by the runner}
     image: ${KEYCLOAK_OPTIMIZED_IMAGE:?Set KEYCLOAK_OPTIMIZED_IMAGE in .env}
     pull_policy: build
     command:
@@ -106,7 +108,8 @@ services:
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?Set KEYCLOAK_ADMIN_PASSWORD in .env}
       KC_HTTP_ENABLED: "true"
       KC_HOSTNAME_STRICT: "false"
-      KC_HTTP_RELATIVE_PATH: /identity
+      APP_CONTEXT_PATH: ${APP_CONTEXT_PATH:?Set APP_CONTEXT_PATH in .env}
+      KC_HTTP_RELATIVE_PATH: ${KEYCLOAK_RELATIVE_PATH:?Derived from APP_CONTEXT_PATH by the runner}
       KC_PROXY_HEADERS: xforwarded
       OIDC_REALM: ${OIDC_REALM:?Set OIDC_REALM in .env}
       APP_DISPLAY_NAME: ${APP_DISPLAY_NAME:?Set APP_DISPLAY_NAME in .env}
@@ -133,7 +136,7 @@ services:
         - >-
           test -f /tmp/permanent-admin-ready;
           exec 3<>/dev/tcp/127.0.0.1/9000;
-          printf 'GET /identity/health/ready HTTP/1.0\r\n\r\n' >&3;
+          printf 'GET %s/health/ready HTTP/1.0\r\n\r\n' "$${KC_HTTP_RELATIVE_PATH}" >&3;
           grep -q '200 OK' <&3
       interval: 10s
       timeout: 5s
@@ -250,6 +253,7 @@ services:
       REDIS_PORT: ${REDIS_PORT:?Set REDIS_PORT in .env}
       REDIS_PASSWORD: ${CACHE_PASSWORD:?Set CACHE_PASSWORD in .env}
       REDIS_SSL_ENABLED: ${REDIS_SSL_ENABLED:?Set REDIS_SSL_ENABLED in .env}
+      APP_CONTEXT_PATH: ${APP_CONTEXT_PATH:?Set APP_CONTEXT_PATH in .env}
       OIDC_ISSUER_URI: ${OIDC_ISSUER_URI:?Set OIDC_ISSUER_URI in .env}
       OIDC_JWK_SET_URI: ${OIDC_JWK_SET_URI:?Set OIDC_JWK_SET_URI in .env}
       OIDC_BACKEND_AUDIENCE: ${OIDC_BACKEND_AUDIENCE:?Set OIDC_BACKEND_AUDIENCE in .env}
@@ -275,7 +279,7 @@ services:
     healthcheck:
       test:
         - CMD-SHELL
-        - wget --quiet --output-document=- http://127.0.0.1:8080/actuator/health | grep -q '"status":"UP"'
+        - context_path="$${APP_CONTEXT_PATH%/}"; if [ "$${context_path}" = "/" ]; then context_path=; fi; wget --quiet --output-document=- "http://127.0.0.1:8080$${context_path}/actuator/health" | grep -q '"status":"UP"'
       interval: 5s
       timeout: 3s
       retries: 30

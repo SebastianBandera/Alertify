@@ -1,11 +1,14 @@
 ARG KEYCLOAK_IMAGE
+ARG KEYCLOAK_RELATIVE_PATH
 
 FROM ${KEYCLOAK_IMAGE} AS builder
+
+ARG KEYCLOAK_RELATIVE_PATH
 
 # These are non-secret build-time options persisted in the optimized image.
 ENV KC_DB=postgres
 ENV KC_HEALTH_ENABLED=true
-ENV KC_HTTP_RELATIVE_PATH=/identity
+ENV KC_HTTP_RELATIVE_PATH=${KEYCLOAK_RELATIVE_PATH}
 
 RUN /opt/keycloak/bin/kc.sh build
 

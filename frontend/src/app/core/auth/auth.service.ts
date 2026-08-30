@@ -65,6 +65,6 @@ export class AuthService {
   }
 
   logout(): Promise<void> {
-    return this.keycloak.logout({ redirectUri: window.location.origin });
+    return this.keycloak.logout({ redirectUri: document.baseURI });
   }
 }

@@ -3,6 +3,8 @@ set -Eeuo pipefail
 
 : "${OIDC_REALM:?OIDC_REALM is required}"
 : "${OIDC_BACKEND_AUDIENCE:?OIDC_BACKEND_AUDIENCE is required}"
+: "${APP_CONTEXT_PATH:?APP_CONTEXT_PATH is required}"
+: "${KC_HTTP_RELATIVE_PATH:?KC_HTTP_RELATIVE_PATH is required}"
 
 if [[ ! "$OIDC_REALM" =~ ^[A-Za-z0-9_-]+$ ]]; then
   echo "OIDC_REALM may contain only letters, numbers, hyphens, and underscores." >&2

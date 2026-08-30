@@ -8,6 +8,7 @@ set -Eeuo pipefail
 : "${OIDC_REALM:?OIDC_REALM is required}"
 : "${OIDC_FRONTEND_CLIENT_ID:?OIDC_FRONTEND_CLIENT_ID is required}"
 : "${APP_PUBLIC_URL:?APP_PUBLIC_URL is required}"
+: "${KC_HTTP_RELATIVE_PATH:?KC_HTTP_RELATIVE_PATH is required}"
 
 if [[ "$KC_BOOTSTRAP_ADMIN_USERNAME" == "$KEYCLOAK_ADMIN_USERNAME" ]]; then
   echo "The bootstrap and permanent administrator usernames must be different." >&2
@@ -31,7 +32,7 @@ authenticate() {
   rm -f "$kcadm_config"
   /opt/keycloak/bin/kcadm.sh config credentials \
     --config "$kcadm_config" \
-    --server http://127.0.0.1:8080/identity \
+    --server "http://127.0.0.1:8080${KC_HTTP_RELATIVE_PATH}" \
     --realm master \
     --user "$username" \
     --password "$password" >/dev/null 2>&1

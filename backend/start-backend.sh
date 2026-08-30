@@ -4,6 +4,20 @@ set -eu
 debug_enabled=${JAVA_DEBUG_ENABLED:-false}
 debug_port=${JAVA_DEBUG_PORT:-5005}
 debug_suspend=${JAVA_DEBUG_SUSPEND:-n}
+application_context_path=${APP_CONTEXT_PATH:-/}
+
+case "$application_context_path" in
+  /)
+    ;;
+  /*)
+    application_context_path=${application_context_path%/}
+    set -- "-Dserver.servlet.context-path=$application_context_path" "$@"
+    ;;
+  *)
+    echo "ERROR: APP_CONTEXT_PATH must be / or start with /." >&2
+    exit 1
+    ;;
+esac
 
 case "$debug_enabled" in
   true|false)

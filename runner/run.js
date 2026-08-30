@@ -411,6 +411,53 @@ function dnsNameValue(environment, key) {
   return value;
 }
 
+function applicationContextPath(environment) {
+  const value = required(environment, 'APP_CONTEXT_PATH');
+  if (value === '/') {
+    return '';
+  }
+  if (!/^\/(?:[A-Za-z0-9._~-]+(?:\/[A-Za-z0-9._~-]+)*)$/.test(value)) {
+    throw new Error(
+      `APP_CONTEXT_PATH must be / or a path such as /alertify without a trailing slash; received: ${value}.`,
+    );
+  }
+  return value;
+}
+
+function applyApplicationContext(environment) {
+  const contextualEnvironment = new Map(environment);
+  const contextPath = applicationContextPath(environment);
+  contextualEnvironment.set('APP_CONTEXT_PATH', contextPath || '/');
+  contextualEnvironment.set('KEYCLOAK_RELATIVE_PATH', `${contextPath}/identity`);
+
+  if (!contextPath) {
+    return contextualEnvironment;
+  }
+
+  const contextualUrlKeys = [
+    'APP_PUBLIC_URL',
+    'BACKEND_PUBLIC_URL',
+    'KEYCLOAK_PUBLIC_URL',
+    'KEYCLOAK_ADMIN_URL',
+    'OIDC_ISSUER_URI',
+    'OIDC_JWK_SET_URI',
+  ];
+  for (const key of contextualUrlKeys) {
+    const rawValue = required(environment, key);
+    let url;
+    try {
+      url = new URL(rawValue);
+    } catch {
+      throw new Error(`${key} must be an absolute URL; received: ${rawValue}.`);
+    }
+    const configuredPath = url.pathname === '/' ? '' : url.pathname.replace(/\/$/, '');
+    url.pathname = `${contextPath}${configuredPath}`;
+    contextualEnvironment.set(key, url.toString().replace(/\/$/, ''));
+  }
+
+  return contextualEnvironment;
+}
+
 function validateUrlPort(environment, key, expectedPort) {
   const rawValue = required(environment, key);
   let url;
@@ -742,9 +789,22 @@ function printPlan(plan, environment) {
   }
 }
 
-function runCommand(command, args, cwd, label) {
+function runCommand(command, args, cwd, label, environment) {
   console.log(`\n${label}`);
-  const result = spawnSync(command, args, { cwd, stdio: 'inherit', shell: false });
+  const childEnvironment = environment
+    ? {
+        ...process.env,
+        ...Object.fromEntries(
+          [...environment.entries()].map(([key, value]) => [key, plainValue(value)]),
+        ),
+      }
+    : process.env;
+  const result = spawnSync(command, args, {
+    cwd,
+    stdio: 'inherit',
+    shell: false,
+    env: childEnvironment,
+  });
   if (result.error) {
     throw new Error(`${label}: ${result.error.message}`);
   }
@@ -820,18 +880,19 @@ function prepareGrpcCertificates(plan, environment, projectDirectory) {
   );
 }
 
-function startLocalServices(plan, projectDirectory) {
+function startLocalServices(plan, environment, projectDirectory) {
   if (plan.services.length === 0) {
     console.log('\nNo local application components need to be started.');
     return;
   }
 
-  runCommand('docker', ['compose', 'version'], projectDirectory, 'Checking Docker Compose...');
+  runCommand('docker', ['compose', 'version'], projectDirectory, 'Checking Docker Compose...', environment);
   runCommand(
     'docker',
     ['compose', '--env-file', '.env', 'config', '--quiet'],
     projectDirectory,
     'Validating compose.yaml...',
+    environment,
   );
 
   for (const service of plan.services) {
@@ -839,7 +900,7 @@ function startLocalServices(plan, projectDirectory) {
     if (service.build) args.push('--build');
     if (service.scale) args.push('--scale', `${service.name}=${service.scale}`);
     args.push('--wait', service.name);
-    runCommand('docker', args, projectDirectory, `Starting ${service.name}...`);
+    runCommand('docker', args, projectDirectory, `Starting ${service.name}...`, environment);
   }
 }
 
@@ -932,7 +993,8 @@ function main(argv = process.argv.slice(2), projectDirectory = path.resolve(__di
     );
   }
 
-  const plan = buildPlan(result.environment, {
+  const effectiveEnvironment = applyApplicationContext(result.environment);
+  const plan = buildPlan(effectiveEnvironment, {
     skipKeycloak: argv.includes('--skip-keycloak'),
     skipRedis: argv.includes('--skip-redis'),
     skipDatabase: argv.includes('--skip-database'),
@@ -940,17 +1002,17 @@ function main(argv = process.argv.slice(2), projectDirectory = path.resolve(__di
     skipWorkerStandard: argv.includes('--skip-worker-standard'),
     skipWorkerPlaywright: argv.includes('--skip-worker-playwright'),
   });
-  const privateKeyPartClassResult = ensurePrivateKeyPartClass(result.environment, projectDirectory);
+  const privateKeyPartClassResult = ensurePrivateKeyPartClass(effectiveEnvironment, projectDirectory);
   printPrivateKeyPartClassResult(privateKeyPartClassResult, projectDirectory);
-  printPlan(plan, result.environment);
+  printPlan(plan, effectiveEnvironment);
 
   if (argv.includes('--configure-only')) {
     console.log('\nConfiguration completed; no application containers were started.');
     return;
   }
 
-  prepareGrpcCertificates(plan, result.environment, projectDirectory);
-  startLocalServices(plan, projectDirectory);
+  prepareGrpcCertificates(plan, effectiveEnvironment, projectDirectory);
+  startLocalServices(plan, effectiveEnvironment, projectDirectory);
   if (argv.includes('--cleanup-docker')) {
     cleanupDockerResources(projectDirectory);
   }
@@ -967,6 +1029,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  applyApplicationContext,
   buildPlan,
   ensurePrivateKeyPartClass,
   main,

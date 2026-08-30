@@ -1,6 +1,7 @@
 server {
     listen 8080;
     server_name _;
+    absolute_redirect off;
 
     add_header X-Content-Type-Options "nosniff" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
@@ -11,18 +12,20 @@ server {
         return 200 "UP\n";
     }
 
+    ${PUBLISHER_CONTEXT_GUARDS}
+
     # The Keycloak master realm is intentionally unavailable through the
     # general publisher. Other realms keep their normal public endpoints.
-    location = /identity/admin/master { return 404; }
-    location ^~ /identity/admin/master/ { return 404; }
-    location = /identity/admin/realms/master { return 404; }
-    location ^~ /identity/admin/realms/master/ { return 404; }
-    location = /identity/realms/master { return 404; }
-    location ^~ /identity/realms/master/ { return 404; }
+    location = ${PUBLISHER_CONTEXT_PATH}/identity/admin/master { return 404; }
+    location ^~ ${PUBLISHER_CONTEXT_PATH}/identity/admin/master/ { return 404; }
+    location = ${PUBLISHER_CONTEXT_PATH}/identity/admin/realms/master { return 404; }
+    location ^~ ${PUBLISHER_CONTEXT_PATH}/identity/admin/realms/master/ { return 404; }
+    location = ${PUBLISHER_CONTEXT_PATH}/identity/realms/master { return 404; }
+    location ^~ ${PUBLISHER_CONTEXT_PATH}/identity/realms/master/ { return 404; }
 
-    location = /identity { return 308 /identity/; }
+    location = ${PUBLISHER_CONTEXT_PATH}/identity { return 308 ${PUBLISHER_CONTEXT_PATH}/identity/; }
 
-    location ^~ /identity/ {
+    location ^~ ${PUBLISHER_CONTEXT_PATH}/identity/ {
         proxy_pass ${PUBLISHER_IDENTITY_UPSTREAM};
         proxy_http_version 1.1;
         proxy_set_header Host $http_host;
@@ -33,7 +36,7 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
-    location ^~ /api/ {
+    location ^~ ${PUBLISHER_CONTEXT_PATH}/api/ {
         proxy_pass ${PUBLISHER_BACKEND_UPSTREAM};
         proxy_http_version 1.1;
         proxy_set_header Host $http_host;
@@ -44,7 +47,7 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
-    location = /api {
+    location = ${PUBLISHER_CONTEXT_PATH}/api {
         proxy_pass ${PUBLISHER_BACKEND_UPSTREAM};
         proxy_http_version 1.1;
         proxy_set_header Host $http_host;
@@ -55,8 +58,8 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
-    location / {
-        proxy_pass ${PUBLISHER_FRONTEND_UPSTREAM};
+    location ${PUBLISHER_CONTEXT_PATH}/ {
+        proxy_pass ${PUBLISHER_FRONTEND_UPSTREAM}/;
         proxy_http_version 1.1;
         proxy_set_header Host $http_host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -65,4 +68,6 @@ server {
         proxy_set_header X-Forwarded-Port ${PUBLIC_PORT};
         proxy_set_header X-Forwarded-Proto $scheme;
     }
+
+    ${PUBLISHER_OUTSIDE_CONTEXT_LOCATION}
 }
