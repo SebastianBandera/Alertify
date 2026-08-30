@@ -1,5 +1,6 @@
 # Linux container entrypoints and helper scripts must retain Unix line endings.
 *.sh text eol=lf
+*.envsh text eol=lf
 
 # Keep native Windows launchers using their expected line endings.
 *.bat text eol=crlf
