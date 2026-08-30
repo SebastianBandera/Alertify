@@ -265,6 +265,9 @@
                 role="combobox"
                 aria-autocomplete="list"
                 [attr.aria-expanded]="templatePickerOpen()"
+                [attr.aria-invalid]="formFieldErrors().template ? true : null"
+                [attr.aria-describedby]="formFieldErrors().template ? 'alert-template-error' : null"
+                [class.field-invalid]="formFieldErrors().template"
                 [ngModel]="templateSearch()"
                 (ngModelChange)="updateTemplateSearch($event)"
                 (focus)="templatePickerOpen.set(!editingAlert())"
@@ -276,6 +279,9 @@
                 required
               >
             </label>
+            @if (formFieldErrors().template; as templateError) {
+              <small class="field-error" id="alert-template-error" role="alert">{{ templateError }}</small>
+            }
             @if (templatePickerOpen() && !editingAlert()) {
               <div class="template-options" role="listbox">
                 @for (template of filteredTemplates(); track template.id) {
@@ -298,12 +304,39 @@
           </div>
           <label>
             <span>{{ localization.translate('alerts.form.name') }}</span>
-            <input [ngModel]="form().name" (ngModelChange)="patchForm({ name: $event })" name="name" maxlength="200" required>
+            <input
+              id="alert-name"
+              [ngModel]="form().name"
+              (ngModelChange)="patchForm({ name: $event })"
+              [attr.aria-invalid]="formFieldErrors().name ? true : null"
+              [attr.aria-describedby]="formFieldErrors().name ? 'alert-name-error' : null"
+              [class.field-invalid]="formFieldErrors().name"
+              name="name"
+              maxlength="200"
+              required
+            >
+            @if (formFieldErrors().name; as nameError) {
+              <small class="field-error" id="alert-name-error" role="alert">{{ nameError }}</small>
+            }
           </label>
           <label>
             <span>{{ localization.translate('alerts.form.cron') }}</span>
-            <input class="mono" [ngModel]="form().cronExpression" (ngModelChange)="patchForm({ cronExpression: $event })" name="cron" maxlength="255" required>
-            <small>{{ localization.translate('alerts.form.cronHelp') }}</small>
+            <input
+              id="alert-cron"
+              class="mono"
+              [ngModel]="form().cronExpression"
+              (ngModelChange)="patchForm({ cronExpression: $event })"
+              [attr.aria-invalid]="formFieldErrors().cron ? true : null"
+              [attr.aria-describedby]="formFieldErrors().cron ? 'alert-cron-help alert-cron-error' : 'alert-cron-help'"
+              [class.field-invalid]="formFieldErrors().cron"
+              name="cron"
+              maxlength="255"
+              required
+            >
+            <small id="alert-cron-help">{{ localization.translate('alerts.form.cronHelp') }}</small>
+            @if (formFieldErrors().cron; as cronError) {
+              <small class="field-error" id="alert-cron-error" role="alert">{{ cronError }}</small>
+            }
           </label>
           <label class="full">
             <span>{{ localization.translate('alerts.form.alertDescription') }}</span>

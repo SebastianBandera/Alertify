@@ -1,5 +1,5 @@
 import { DatePipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
 import {
@@ -13,10 +13,13 @@ import {
   AlertTemplate,
   AlertTemplateParameter,
 } from '../../core/api/alert-api.service';
+import { ApiRequestError } from '../../core/api/configuration-api.service';
 import { LocalizationService } from '../../core/i18n/localization.service';
 
 type AlertTab = 'alerts' | 'templates' | 'history';
+type AlertFormField = 'template' | 'name' | 'cron';
 type ParameterFormSource = AlertParameterSource | 'OPTION';
+type AlertFormErrors = Partial<Record<AlertFormField, string>>;
 
 interface ParameterForm {
   configured: boolean;
@@ -59,6 +62,7 @@ export class AlertsComponent implements OnInit {
   protected readonly localization = inject(LocalizationService);
   protected readonly pageSizeOptions = PAGE_SIZE_OPTIONS;
   private readonly api = inject(AlertApiService);
+  private readonly elementRef: ElementRef<HTMLElement> = inject(ElementRef);
 
   protected readonly activeTab = signal<AlertTab>('alerts');
   protected readonly alerts = signal<readonly Alert[]>([]);
@@ -69,6 +73,7 @@ export class AlertsComponent implements OnInit {
   protected readonly saving = signal(false);
   protected readonly error = signal<string | null>(null);
   protected readonly formError = signal<string | null>(null);
+  protected readonly formFieldErrors = signal<AlertFormErrors>({});
   protected readonly search = signal('');
   protected readonly templateFilterId = signal<number | null>(null);
   protected readonly pageSize = signal(readStoredPageSize());
@@ -214,6 +219,7 @@ export class AlertsComponent implements OnInit {
     this.templateSearch.set(template ? this.dynamic(template.nameKey) : '');
     this.templatePickerOpen.set(false);
     this.formError.set(null);
+    this.formFieldErrors.set({});
     this.editorOpen.set(true);
   }
 
@@ -245,6 +251,7 @@ export class AlertsComponent implements OnInit {
     this.templateSearch.set(template ? this.dynamic(template.nameKey) : alert.templateKey);
     this.templatePickerOpen.set(false);
     this.formError.set(null);
+    this.formFieldErrors.set({});
     this.editorOpen.set(true);
   }
 
@@ -266,11 +273,13 @@ export class AlertsComponent implements OnInit {
     });
     this.templateSearch.set(this.dynamic(template.nameKey));
     this.templatePickerOpen.set(false);
+    this.clearFieldError('template');
   }
 
   protected updateTemplateSearch(value: string): void {
     this.templateSearch.set(value);
     this.templatePickerOpen.set(true);
+    this.clearFieldError('template');
     const selected = this.selectedTemplate();
     if (selected && value !== this.dynamic(selected.nameKey)) {
       this.form.update((form) => ({ ...form, templateId: null, parameters: {} }));
@@ -279,6 +288,8 @@ export class AlertsComponent implements OnInit {
 
   protected patchForm(patch: Partial<Omit<AlertForm, 'parameters'>>): void {
     this.form.update((form) => ({ ...form, ...patch }));
+    if (patch.name !== undefined) this.clearFieldError('name');
+    if (patch.cronExpression !== undefined) this.clearFieldError('cron');
   }
 
   protected patchParameter(key: string, patch: Partial<ParameterForm>): void {
@@ -292,10 +303,18 @@ export class AlertsComponent implements OnInit {
     const form = this.form();
     const template = this.selectedTemplate();
     const editing = this.editingAlert();
-    if (!template || !form.name.trim() || !form.cronExpression.trim()) {
-      this.formError.set(this.localization.translate('alerts.form.required'));
+    const validationErrors: AlertFormErrors = {};
+    if (!template)
+      validationErrors.template = this.localization.translate('alerts.form.templateRequired');
+    if (!form.name.trim())
+      validationErrors.name = this.localization.translate('alerts.form.nameRequired');
+    if (!form.cronExpression.trim())
+      validationErrors.cron = this.localization.translate('alerts.form.cronRequired');
+    if (Object.keys(validationErrors).length) {
+      this.showFieldErrors(validationErrors);
       return;
     }
+    if (!template) return;
 
     const parameters: AlertParameterWriteRequest[] = [];
     for (const definition of template.parameters) {
@@ -313,6 +332,7 @@ export class AlertsComponent implements OnInit {
 
     this.saving.set(true);
     this.formError.set(null);
+    this.formFieldErrors.set({});
     try {
       const request = {
         ...(editing ? { version: editing.version } : { templateId: template.id }),
@@ -327,7 +347,9 @@ export class AlertsComponent implements OnInit {
       this.editorOpen.set(false);
       await Promise.all([this.loadAlerts(), this.loadTemplates()]);
     } catch (error) {
-      this.formError.set(this.errorMessage(error));
+      const fieldErrors = this.alertFieldErrors(error);
+      if (Object.keys(fieldErrors).length) this.showFieldErrors(fieldErrors);
+      else this.formError.set(this.errorMessage(error));
     } finally {
       this.saving.set(false);
     }
@@ -396,6 +418,46 @@ export class AlertsComponent implements OnInit {
       configurationId: null,
       secretId: null,
     };
+  }
+
+  private alertFieldErrors(error: unknown): AlertFormErrors {
+    const errors: AlertFormErrors = {};
+    if (error instanceof ApiRequestError) {
+      if (error.fieldErrors['templateId']) errors.template = error.fieldErrors['templateId'];
+      if (error.fieldErrors['name']) errors.name = error.fieldErrors['name'];
+      if (error.fieldErrors['cronExpression']) errors.cron = error.fieldErrors['cronExpression'];
+    }
+    const message = this.errorMessage(error);
+    if (!errors.cron && message.toLocaleLowerCase().startsWith('invalid cron expression:'))
+      errors.cron = message;
+    return errors;
+  }
+
+  private showFieldErrors(errors: AlertFormErrors): void {
+    this.formError.set(null);
+    this.formFieldErrors.set(errors);
+    const firstField = (['template', 'name', 'cron'] as const).find((field) => errors[field]);
+    if (!firstField) return;
+
+    const fieldIds: Record<AlertFormField, string> = {
+      template: 'alert-template-search',
+      name: 'alert-name',
+      cron: 'alert-cron',
+    };
+    requestAnimationFrame(() => {
+      const field = this.elementRef.nativeElement.querySelector<HTMLElement>(`#${fieldIds[firstField]}`);
+      field?.focus({ preventScroll: true });
+      field?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  }
+
+  private clearFieldError(field: AlertFormField): void {
+    if (!this.formFieldErrors()[field]) return;
+    this.formFieldErrors.update((errors) => {
+      const updated = { ...errors };
+      delete updated[field];
+      return updated;
+    });
   }
 
   private errorMessage(error: unknown): string {

@@ -104,6 +104,7 @@ export class ApiRequestError extends Error {
     message: string,
     readonly code?: string,
     readonly parameters: Readonly<Record<string, string>> = {},
+    readonly fieldErrors: Readonly<Record<string, string>> = {},
   ) {
     super(message);
     this.name = 'ApiRequestError';

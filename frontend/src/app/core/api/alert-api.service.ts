@@ -181,7 +181,7 @@ export class AlertApiService {
       const error = (await response.json()) as ApiErrorResponse;
       const fieldMessage = error.fieldErrors ? Object.values(error.fieldErrors)[0] : undefined;
       message = fieldMessage ?? error.message ?? message;
-      return new ApiRequestError(message, error.code, error.parameters);
+      return new ApiRequestError(message, error.code, error.parameters, error.fieldErrors);
     } catch {
       return new Error(message);
     }
