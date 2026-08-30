@@ -502,6 +502,8 @@ function buildPlan(environment, options = {}) {
   const skipRedis = options.skipRedis === true;
   const skipDatabase = options.skipDatabase === true;
   const skipBackend = options.skipBackend === true;
+  const skipFrontend = options.skipFrontend === true;
+  const skipPublisher = options.skipPublisher === true;
   const skipWorkerStandard = options.skipWorkerStandard === true;
   const skipWorkerPlaywright = options.skipWorkerPlaywright === true;
   const plan = {
@@ -517,8 +519,10 @@ function buildPlan(environment, options = {}) {
     skipDatabase,
     frontendMode,
     frontendUrl: required(environment, 'APP_PUBLIC_URL'),
+    skipFrontend,
     publicPort,
     publisherUrl: required(environment, 'APP_PUBLIC_URL'),
+    skipPublisher,
     keycloakAdminUrl: null,
     backendDebugEnabled: false,
     backendDebugPort: null,
@@ -658,10 +662,14 @@ function buildPlan(environment, options = {}) {
     required(environment, 'OIDC_REALM');
     required(environment, 'OIDC_FRONTEND_CLIENT_ID');
     required(environment, 'FRONTEND_CONTAINER_MEMORY');
-    plan.services.push({ name: 'frontend', build: true });
+    if (!skipFrontend) {
+      plan.services.push({ name: 'frontend', build: true });
+    }
   }
 
-  plan.services.push({ name: 'publisher', build: true });
+  if (!skipPublisher) {
+    plan.services.push({ name: 'publisher', build: true });
+  }
 
   const serviceOrder = new Map([
     ['identity-database', 10],
@@ -776,12 +784,26 @@ function printPlan(plan, environment) {
   }
 
   if (plan.frontendMode === 'local') {
-    console.log(`  - Frontend: local (${redactUrl(plan.frontendUrl)})`);
+    if (plan.skipFrontend) {
+      console.log(
+        `  - Frontend: local, reusing the existing container without rebuild or restart ` +
+          `(${redactUrl(plan.frontendUrl)})`,
+      );
+    } else {
+      console.log(`  - Frontend: local (${redactUrl(plan.frontendUrl)})`);
+    }
   } else {
     console.log(`  - Frontend: external, reusing ${redactUrl(plan.frontendUrl)}`);
   }
 
-  console.log(`  - HTTP publisher: local (${redactUrl(plan.publisherUrl)})`);
+  if (plan.skipPublisher) {
+    console.log(
+      `  - HTTP publisher: local, reusing the existing container without rebuild or restart ` +
+        `(${redactUrl(plan.publisherUrl)})`,
+    );
+  } else {
+    console.log(`  - HTTP publisher: local (${redactUrl(plan.publisherUrl)})`);
+  }
   if (plan.keycloakAdminUrl) {
     console.log(
       `  - Keycloak master administration: direct local access (${redactUrl(plan.keycloakAdminUrl)})`,
@@ -927,6 +949,8 @@ function printHelp() {
     '  --skip-redis       Do not rebuild or restart the local Redis service.\n' +
     '  --skip-database    Do not rebuild or restart the local application database.\n' +
     '  --skip-backend     Do not rebuild or restart the local backend.\n' +
+    '  --skip-frontend    Do not rebuild or restart the local frontend.\n' +
+    '  --skip-publisher   Do not rebuild or restart the local HTTP publisher.\n' +
     '  --skip-worker-standard    Do not rebuild or restart standard workers.\n' +
     '  --skip-worker-playwright  Do not rebuild or restart Playwright workers.\n' +
     '  --cleanup-docker   Remove unused Docker images and build cache, preserving dependency cache mounts.\n' +
@@ -945,6 +969,8 @@ function main(argv = process.argv.slice(2), projectDirectory = path.resolve(__di
     '--skip-redis',
     '--skip-database',
     '--skip-backend',
+    '--skip-frontend',
+    '--skip-publisher',
     '--skip-worker-standard',
     '--skip-worker-playwright',
     '--cleanup-docker',
@@ -999,6 +1025,8 @@ function main(argv = process.argv.slice(2), projectDirectory = path.resolve(__di
     skipRedis: argv.includes('--skip-redis'),
     skipDatabase: argv.includes('--skip-database'),
     skipBackend: argv.includes('--skip-backend'),
+    skipFrontend: argv.includes('--skip-frontend'),
+    skipPublisher: argv.includes('--skip-publisher'),
     skipWorkerStandard: argv.includes('--skip-worker-standard'),
     skipWorkerPlaywright: argv.includes('--skip-worker-playwright'),
   });
