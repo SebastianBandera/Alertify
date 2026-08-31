@@ -166,28 +166,28 @@
 }
 
 .navigation__icon--dashboard {
-  mask-image: url('/icons/dashboard.svg');
-  -webkit-mask-image: url('/icons/dashboard.svg');
+  mask-image: url('../../../../public/icons/dashboard.svg');
+  -webkit-mask-image: url('../../../../public/icons/dashboard.svg');
 }
 
 .navigation__icon--alerts {
-  mask-image: url('/icons/alerts.svg');
-  -webkit-mask-image: url('/icons/alerts.svg');
+  mask-image: url('../../../../public/icons/alerts.svg');
+  -webkit-mask-image: url('../../../../public/icons/alerts.svg');
 }
 
 .navigation__icon--configs {
-  mask-image: url('/icons/configs.svg');
-  -webkit-mask-image: url('/icons/configs.svg');
+  mask-image: url('../../../../public/icons/configs.svg');
+  -webkit-mask-image: url('../../../../public/icons/configs.svg');
 }
 
 .navigation__icon--secrets {
-  mask-image: url('/icons/secrets.svg');
-  -webkit-mask-image: url('/icons/secrets.svg');
+  mask-image: url('../../../../public/icons/secrets.svg');
+  -webkit-mask-image: url('../../../../public/icons/secrets.svg');
 }
 
 .navigation__icon--logs {
-  mask-image: url('/icons/logs.svg');
-  -webkit-mask-image: url('/icons/logs.svg');
+  mask-image: url('../../../../public/icons/logs.svg');
+  -webkit-mask-image: url('../../../../public/icons/logs.svg');
 }
 
 .navigation__item--active .navigation__marker {
