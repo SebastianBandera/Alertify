@@ -13,4 +13,4 @@ Java        : ${java.version} (${java.vendor})
 JVM         : ${java.vm.name} ${java.vm.version}
 OS          : ${os.name} ${os.version} (${os.arch})
 Time zone   : ${user.timezone}
-gRPC port   : ${worker-standard.grpc.port}
+gRPC port   : ${alertify.worker.grpc-port}
