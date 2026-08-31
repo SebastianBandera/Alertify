@@ -51,4 +51,4 @@ else
   echo "Java remote debugging is disabled."
 fi
 
-exec java --sun-misc-unsafe-memory-access=allow "$@" -jar /application/alertify-backend.jar
+exec java --enable-native-access=ALL-UNNAMED --sun-misc-unsafe-memory-access=allow "$@" -jar /application/alertify-backend.jar
