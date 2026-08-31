@@ -104,3 +104,7 @@ worker:
       interval: ${WORKER_DISCOVERY_INTERVAL:30s}
       initial-delay: 0s
       health-timeout: ${WORKER_HEALTH_TIMEOUT:2s}
+    execution:
+      timeout: ${WORKER_EXECUTION_TIMEOUT:30m}
+      source-synchronization-timeout: ${WORKER_SOURCE_SYNC_TIMEOUT:30s}
+      source-root: ${ALERT_TEMPLATE_SOURCE_ROOT:/application/alert-template-sources}

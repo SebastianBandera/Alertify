@@ -11,14 +11,14 @@
         <relativePath>../pom.xml</relativePath>
     </parent>
 
-    <artifactId>alertify-worker-playwright</artifactId>
-    <name>Alertify Playwright Worker</name>
-    <description>Alertify worker prepared for browser-based alert execution</description>
+    <artifactId>alertify-worker-runtime</artifactId>
+    <name>Alertify Worker Runtime</name>
+    <description>Shared dynamic compilation and execution runtime for Alertify workers</description>
 
     <dependencies>
         <dependency>
             <groupId>app.alertify</groupId>
-            <artifactId>alertify-worker-runtime</artifactId>
+            <artifactId>alertify-worker-contract</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>
@@ -26,9 +26,16 @@
             <artifactId>spring-boot-starter</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.microsoft.playwright</groupId>
-            <artifactId>playwright</artifactId>
-            <version>${playwright.version}</version>
+            <groupId>io.grpc</groupId>
+            <artifactId>grpc-netty-shaded</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.grpc</groupId>
+            <artifactId>grpc-services</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>tools.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -36,14 +43,4 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
-
-    <build>
-        <finalName>alertify-worker-playwright</finalName>
-        <plugins>
-            <plugin>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-maven-plugin</artifactId>
-            </plugin>
-        </plugins>
-    </build>
 </project>

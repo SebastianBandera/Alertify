@@ -7,11 +7,15 @@ spring:
   lifecycle:
     timeout-per-shutdown-phase: 30s
 
-worker-playwright:
-  grpc:
-    port: ${WORKER_GRPC_PORT:9090}
+alertify:
+  worker:
+    name: ${spring.application.name}
+    grpc-port: ${WORKER_GRPC_PORT:9090}
     shutdown-grace-period: 10s
     capabilities: ${WORKER_PLAYWRIGHT_CAPABILITIES:PLAYWRIGHT}
+    max-concurrent-alerts: ${WORKER_MAX_CONCURRENT_ALERTS:4}
+    compiler-output-directory: /application/compiled-alerts
+    compiler-classpath-directory: /application/compiler-classpath
     tls:
       enabled: ${WORKER_GRPC_TLS_ENABLED:true}
       certificate-chain: /run/alertify-grpc-tls/current/worker-server.crt

@@ -5,6 +5,8 @@ ARG BACKEND_RUNTIME_IMAGE
 
 FROM ${BACKEND_BUILD_IMAGE} AS builder
 
+RUN if command -v apk >/dev/null 2>&1; then apk add --no-cache gcompat; fi
+
 WORKDIR /build
 
 COPY . .
@@ -13,6 +15,7 @@ RUN --mount=type=cache,id=alertify-maven,target=/root/.m2,sharing=locked \
 RUN cp -R core/src /runtime-src \
     && rm -f \
         /runtime-src/main/java/app/alertify/services/secret/key/PrivateKeyPart.java
+RUN cp -R alert-templates/src/main/java /runtime-alert-template-sources
 
 FROM ${BACKEND_RUNTIME_IMAGE}
 
@@ -28,6 +31,10 @@ COPY --from=builder --chown=application:application \
 COPY --from=builder --chown=application:application \
     /runtime-src \
     /application/src
+
+COPY --from=builder --chown=application:application \
+    /runtime-alert-template-sources \
+    /application/alert-template-sources
 
 COPY --chown=application:application start-backend.sh /application/start-backend.sh
 

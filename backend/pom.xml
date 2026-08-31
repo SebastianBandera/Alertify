@@ -22,11 +22,13 @@
         <java.version>25</java.version>
         <maven.compiler.parameters>true</maven.compiler.parameters>
         <grpc.version>1.83.1</grpc.version>
+        <protobuf.version>4.33.2</protobuf.version>
         <playwright.version>1.62.0</playwright.version>
     </properties>
 
     <modules>
         <module>worker-contract</module>
+        <module>worker-runtime</module>
         <module>alert-templates</module>
         <module>core</module>
         <module>worker-standard</module>
@@ -44,4 +46,14 @@
             </dependency>
         </dependencies>
     </dependencyManagement>
+
+    <build>
+        <extensions>
+            <extension>
+                <groupId>kr.motd.maven</groupId>
+                <artifactId>os-maven-plugin</artifactId>
+                <version>1.7.1</version>
+            </extension>
+        </extensions>
+    </build>
 </project>
