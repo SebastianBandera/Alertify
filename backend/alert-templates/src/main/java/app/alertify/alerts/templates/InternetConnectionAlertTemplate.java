@@ -21,7 +21,8 @@ import app.alertify.alerts.template.annotation.AlertTemplate;
  */
 @AlertTemplate(
     nameKey = "alerts.template.internet.name",
-    descriptionKey = "alerts.template.internet.description"
+    descriptionKey = "alerts.template.internet.description",
+    sourcePath = "app/alertify/alerts/templates/InternetConnectionAlertTemplate.java"
 )
 public final class InternetConnectionAlertTemplate implements AlertEvaluator {
 
