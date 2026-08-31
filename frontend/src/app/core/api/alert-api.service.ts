@@ -97,15 +97,23 @@ export interface AlertBindingOptions {
 
 export interface AlertExecution {
   readonly id: number;
+  readonly executionId: string;
   readonly alertId: number;
   readonly alertName: string;
   readonly status: AlertExecutionStatus;
   readonly startedAt: string;
+  readonly workStartedAt: string;
   readonly finishedAt: string;
   readonly durationMillis: number;
+  readonly idleMillis: number;
+  readonly executionMillis: number;
   readonly statusMessage: unknown | null;
   readonly errorType: string | null;
   readonly errorMessage: string | null;
+  readonly workerName: string | null;
+  readonly workerIpAddress: string | null;
+  readonly workerPort: number | null;
+  readonly workerInstanceId: string | null;
 }
 
 interface ApiErrorResponse {
