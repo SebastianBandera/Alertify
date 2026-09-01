@@ -4,6 +4,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.net.http.HttpTimeoutException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -66,24 +67,40 @@ public final class InternetConnectionAlertTemplate implements AlertEvaluator {
             .build();
 
         long startedNanos = System.nanoTime();
-        HttpResponse<Void> response = client.send(
-            request, HttpResponse.BodyHandlers.discarding()
-        );
-        long latencyMs = Math.max(0, (System.nanoTime() - startedNanos) / 1_000_000);
+        HttpResponse<Void> response;
+        try {
+            response = client.send(request, HttpResponse.BodyHandlers.discarding());
+        } catch (HttpTimeoutException exception) {
+            long latencyMs = elapsedMillis(startedNanos);
+            Map<String, Object> statusMessage = statusMessage(uri, timeout, latencyMs);
+            statusMessage.put("timedOut", true);
+            context.setState("endpoint=" + uri + ";timeoutSeconds=" + timeoutSeconds + ";latencyMs=" + latencyMs + ";timedOut=true");
+            return AlertResult.warn(statusMessage);
+        }
+
+        long latencyMs = elapsedMillis(startedNanos);
         int statusCode = response.statusCode();
-        Map<String, Object> statusMessage = new LinkedHashMap<>();
-        statusMessage.put("endpoint", uri.toString());
+        Map<String, Object> statusMessage = statusMessage(uri, timeout, latencyMs);
         statusMessage.put("statusCode", statusCode);
-        statusMessage.put("latencyMs", latencyMs);
-        statusMessage.put("checkedAt", Instant.now().toString());
-        context.setState(
-            "endpoint=" + uri + ";statusCode=" + statusCode + ";latencyMs=" + latencyMs
-        );
+        context.setState("endpoint=" + uri + ";statusCode=" + statusCode + ";timeoutSeconds=" + timeoutSeconds + ";latencyMs=" + latencyMs);
 
         if (statusCode >= 200 && statusCode < 400)
             return AlertResult.success(statusMessage);
 
         return AlertResult.warn(statusMessage);
+    }
+
+    private static Map<String, Object> statusMessage(URI uri, Duration timeout, long latencyMs) {
+        Map<String, Object> statusMessage = new LinkedHashMap<>();
+        statusMessage.put("endpoint", uri.toString());
+        statusMessage.put("timeoutSeconds", timeout.toSeconds());
+        statusMessage.put("latencyMs", latencyMs);
+        statusMessage.put("checkedAt", Instant.now().toString());
+        return statusMessage;
+    }
+
+    private static long elapsedMillis(long startedNanos) {
+        return Math.max(0, (System.nanoTime() - startedNanos) / 1_000_000);
     }
 
     private static URI endpoint(String configured) {
