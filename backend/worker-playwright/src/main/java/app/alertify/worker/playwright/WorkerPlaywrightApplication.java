@@ -2,17 +2,16 @@ package app.alertify.worker.playwright;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.annotation.Import;
 
-import app.alertify.worker.playwright.grpc.WorkerPlaywrightGrpcServerProperties;
+import app.alertify.worker.runtime.WorkerRuntimeConfiguration;
 
 /**
  * Starts the Playwright-capable worker as an independent Spring Boot process.
- * Browser automation is intentionally not initialized until execution support
- * is implemented.
+ * Browser automation is loaded only by alert templates that require it.
  */
 @SpringBootApplication
-@EnableConfigurationProperties(WorkerPlaywrightGrpcServerProperties.class)
+@Import(WorkerRuntimeConfiguration.class)
 public class WorkerPlaywrightApplication {
 
     public static void main(String[] args) {
