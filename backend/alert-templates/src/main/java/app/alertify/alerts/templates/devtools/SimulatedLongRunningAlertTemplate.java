@@ -17,7 +17,8 @@ import app.alertify.alerts.template.annotation.AlertTemplate;
 @AlertTemplate(
     nameKey = "alerts.template.devtools.simulatedLongRunning.name",
     descriptionKey = "alerts.template.devtools.simulatedLongRunning.description",
-    sourcePath = "app/alertify/alerts/templates/devtools/SimulatedLongRunningAlertTemplate.java"
+    sourcePath = "app/alertify/alerts/templates/devtools/SimulatedLongRunningAlertTemplate.java",
+    allowConcurrentExecutions = true
 )
 public final class SimulatedLongRunningAlertTemplate implements AlertEvaluator {
 
