@@ -175,6 +175,11 @@
   -webkit-mask-image: url('../../../../public/icons/alerts.svg');
 }
 
+.navigation__icon--status {
+  mask-image: url('../../../../public/icons/status.svg');
+  -webkit-mask-image: url('../../../../public/icons/status.svg');
+}
+
 .navigation__icon--configs {
   mask-image: url('../../../../public/icons/configs.svg');
   -webkit-mask-image: url('../../../../public/icons/configs.svg');
@@ -395,7 +400,7 @@
   }
 
   .navigation {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
   }
 
   .navigation__item {

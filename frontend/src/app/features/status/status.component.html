@@ -1,0 +1,141 @@
+<section class="status-page">
+  <header class="status-page__header">
+    <div>
+      <h1>{{ localization.translate('status.title') }}</h1>
+      <p>{{ localization.translate('status.description') }}</p>
+    </div>
+    <div class="status-page__refresh">
+      @if (lastUpdatedAt()) {
+        <small>
+          {{ localization.translate('status.lastUpdated') }}
+          {{ lastUpdatedAt() | date:'mediumTime' }}
+        </small>
+      }
+      <button type="button" (click)="refresh()" [disabled]="loading() || refreshing()">
+        {{ localization.translate(refreshing() ? 'status.refreshing' : 'status.refresh') }}
+      </button>
+    </div>
+  </header>
+
+  @if (error()) {
+    <p class="status-page__error" role="alert">{{ error() }}</p>
+  }
+
+  <div class="status-summary" [attr.aria-label]="localization.translate('status.summary')">
+    <article>
+      <span>{{ localization.translate('status.activeWorkers') }}</span>
+      <strong>{{ activeWorkerCount() }}</strong>
+      <small>{{ workers().length }} {{ localization.translate('status.discoveredWorkers') }}</small>
+    </article>
+    <article>
+      <span>{{ localization.translate('status.totalExecuted') }}</span>
+      <strong>{{ totalExecuted() }}</strong>
+    </article>
+    <article>
+      <span>{{ localization.translate('status.runningTasks') }}</span>
+      <strong>{{ runningCount() }}</strong>
+    </article>
+    <article>
+      <span>{{ localization.translate('status.waitingTasks') }}</span>
+      <strong>{{ waitingCount() }}</strong>
+    </article>
+  </div>
+
+  @if (loading()) {
+    <p class="status-page__state">{{ localization.translate('status.loading') }}</p>
+  } @else if (!workers().length) {
+    <p class="status-page__state">{{ localization.translate('status.empty') }}</p>
+  } @else {
+    <div class="worker-grid">
+      @for (worker of workers(); track worker.address) {
+        <article class="worker-card" [class.worker-card--unavailable]="!worker.available">
+          <header class="worker-card__header">
+            <div>
+              <div class="worker-card__identity">
+                <h2>{{ worker.workerName || worker.address }}</h2>
+                <span
+                  class="availability"
+                  [class.availability--unavailable]="!worker.available"
+                >
+                  {{ localization.translate(worker.available ? 'status.available' : 'status.unavailable') }}
+                </span>
+              </div>
+              <p>{{ worker.address }}</p>
+              @if (worker.workerInstanceId) {
+                <code>{{ worker.workerInstanceId }}</code>
+              }
+            </div>
+            <div class="capabilities">
+              @for (capability of worker.capabilities; track capability) {
+                <span>{{ capability }}</span>
+              }
+            </div>
+          </header>
+
+          @if (worker.error) {
+            <p class="worker-card__error">{{ worker.error }}</p>
+          }
+
+          <dl class="worker-metrics">
+            <div>
+              <dt>{{ localization.translate('status.totalExecuted') }}</dt>
+              <dd>{{ worker.totalExecuted }}</dd>
+            </div>
+            <div>
+              <dt>{{ localization.translate('status.runningTasks') }}</dt>
+              <dd>{{ worker.runningCount }}</dd>
+            </div>
+            <div>
+              <dt>{{ localization.translate('status.waitingTasks') }}</dt>
+              <dd>{{ worker.waitingCount }}</dd>
+            </div>
+          </dl>
+
+          <section class="task-section">
+            <h3>{{ localization.translate('status.runningTaskDetails') }}</h3>
+            @if (!worker.runningTasks.length) {
+              <p>{{ localization.translate('status.noRunningTasks') }}</p>
+            } @else {
+              <div class="task-list">
+                @for (task of worker.runningTasks; track task.executionId) {
+                  <article class="task-item">
+                    <div>
+                      <strong>{{ task.alertName }}</strong>
+                      <small>#{{ task.alertId }} · {{ task.executionId }}</small>
+                    </div>
+                    <div class="task-item__time">
+                      <strong>{{ formatDuration(task.elapsedMillis) }}</strong>
+                      <small>{{ taskStartedAt(task) | date:'mediumTime' }}</small>
+                    </div>
+                  </article>
+                }
+              </div>
+            }
+          </section>
+
+          <section class="task-section task-section--waiting">
+            <h3>{{ localization.translate('status.waitingTaskDetails') }}</h3>
+            @if (!worker.waitingTasks.length) {
+              <p>{{ localization.translate('status.noWaitingTasks') }}</p>
+            } @else {
+              <div class="task-list">
+                @for (task of worker.waitingTasks; track task.executionId) {
+                  <article class="task-item">
+                    <div>
+                      <strong>{{ task.alertName }}</strong>
+                      <small>#{{ task.alertId }} · {{ task.executionId }}</small>
+                    </div>
+                    <div class="task-item__time">
+                      <strong>{{ formatDuration(task.elapsedMillis) }}</strong>
+                      <small>{{ task.queuedAt | date:'mediumTime' }}</small>
+                    </div>
+                  </article>
+                }
+              </div>
+            }
+          </section>
+        </article>
+      }
+    </div>
+  }
+</section>
