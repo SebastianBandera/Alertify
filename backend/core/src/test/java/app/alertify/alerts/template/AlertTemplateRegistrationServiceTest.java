@@ -48,6 +48,10 @@ class AlertTemplateRegistrationServiceTest {
         AlertTemplateDefinition template = templateCaptor.getValue();
         assertEquals(templateKey, template.getTemplateKey());
         assertEquals("alerts.template.internet.name", template.getNameKey());
+        assertEquals(
+            "app/alertify/alerts/templates/InternetConnectionAlertTemplate.java",
+            template.getSourcePath()
+        );
 
         ArgumentCaptor<AlertTemplateParameterDefinition> parameterCaptor =
             ArgumentCaptor.forClass(AlertTemplateParameterDefinition.class);

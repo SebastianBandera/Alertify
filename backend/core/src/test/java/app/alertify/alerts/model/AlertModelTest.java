@@ -9,6 +9,7 @@ import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException
 
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 
@@ -80,19 +81,32 @@ class AlertModelTest {
         Alert alert = new Alert(template(), "Internet", null, "0 */5 * * * *", true);
         Instant startedAt = Instant.parse("2026-08-26T12:00:00Z");
         Instant finishedAt = startedAt.plusSeconds(1);
+        UUID executionId = UUID.randomUUID();
+        UUID workerInstanceId = UUID.randomUUID();
+        AlertExecutionWorker worker = new AlertExecutionWorker(
+                "standard-worker", "10.0.0.2", 9090, workerInstanceId
+        );
 
         AlertState state = new AlertState(1L, null);
         state.replaceState("ok");
 
         assertThat(state.getState()).isEqualTo("ok");
-        assertThat(AlertExecution.result(alert, SUCCESS, startedAt, finishedAt, null).getStatus())
+        assertThat(AlertExecution.result(executionId, alert, null, SUCCESS, startedAt, startedAt, finishedAt, null).getStatus())
                 .isEqualTo(SUCCESS);
-        assertThat(AlertExecution.result(alert, WARN, startedAt, finishedAt, null).getStatus())
+        assertThat(AlertExecution.result(executionId, alert, null, WARN, startedAt, startedAt, finishedAt, null).getStatus())
                 .isEqualTo(WARN);
-        assertThat(AlertExecution.error(alert, startedAt, finishedAt, "java.io.IOException", "offline", "stack").getStatus())
+        assertThat(AlertExecution.error(executionId, alert, null, startedAt, startedAt, finishedAt, "java.io.IOException", "offline", "stack").getStatus())
                 .isEqualTo(ERROR);
+        AlertExecution workerExecution = AlertExecution.result(
+                executionId, alert, worker, SUCCESS, startedAt, startedAt, finishedAt, null
+        );
+        assertThat(workerExecution.getExecutionId()).isEqualTo(executionId);
+        assertThat(workerExecution.getWorkerName()).isEqualTo("standard-worker");
+        assertThat(workerExecution.getWorkerIpAddress()).isEqualTo("10.0.0.2");
+        assertThat(workerExecution.getWorkerPort()).isEqualTo(9090);
+        assertThat(workerExecution.getWorkerInstanceId()).isEqualTo(workerInstanceId);
         assertThatIllegalArgumentException()
-                .isThrownBy(() -> AlertExecution.result(alert, ERROR, startedAt, finishedAt, null));
+                .isThrownBy(() -> AlertExecution.result(executionId, alert, null, ERROR, startedAt, startedAt, finishedAt, null));
     }
 
     private static void valueWithDisallowedConfiguration(Alert alert, AlertTemplateParameterDefinition parameter) {
@@ -109,6 +123,7 @@ class AlertModelTest {
     @AlertTemplate(
         nameKey = "internet.name",
         descriptionKey = "internet.description",
+        sourcePath = "sample/SampleAlertTemplate.java",
         capability = WorkerCapability.STANDARD
     )
     private static final class SampleAlertTemplate {

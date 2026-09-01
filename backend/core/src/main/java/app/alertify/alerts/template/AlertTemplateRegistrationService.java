@@ -105,7 +105,8 @@ public class AlertTemplateRegistrationService {
         AlertTemplateDefinition template = templateRepository.findByTemplateKey(templateKey)
             .orElseGet(() -> AlertTemplateDefinition.from(templateClass));
         template.synchronize(
-            metadata.nameKey(), metadata.descriptionKey(), metadata.capability()
+            metadata.nameKey(), metadata.descriptionKey(), metadata.sourcePath(),
+            metadata.capability(), metadata.allowConcurrentExecutions()
         );
         templateRepository.save(template);
 
@@ -179,8 +180,11 @@ public class AlertTemplateRegistrationService {
         AlertTemplate metadata = templateClass.getAnnotation(AlertTemplate.class);
         requireText(metadata.nameKey(), "nameKey", templateClass);
         requireText(metadata.descriptionKey(), "descriptionKey", templateClass);
+        validateSourcePath(metadata.sourcePath(), templateClass);
 
-        for (Field field : parameterFields(templateClass)) {
+        List<Field> parameterFields = parameterFields(templateClass);
+        validateConstructor(templateClass, parameterFields);
+        for (Field field : parameterFields) {
             AlertParameter parameter = field.getAnnotation(AlertParameter.class);
             if (Modifier.isStatic(field.getModifiers())) {
                 throw new IllegalStateException(
@@ -261,6 +265,37 @@ public class AlertTemplateRegistrationService {
             throw new IllegalStateException(
                 "Alert template " + property + " must be nonblank and trimmed: "
                     + templateClass.getName()
+            );
+        }
+    }
+
+    private static void validateSourcePath(String sourcePath, Class<?> templateClass) {
+        requireText(sourcePath, "sourcePath", templateClass);
+        java.nio.file.Path path = java.nio.file.Path.of(sourcePath);
+        if (path.isAbsolute() || sourcePath.contains("\\") || !sourcePath.endsWith(".java") || !path.equals(path.normalize()) || path.startsWith("..")) {
+            throw new IllegalStateException(
+                "Alert template sourcePath must be a relative normalized Java source path: "
+                    + templateClass.getName()
+            );
+        }
+    }
+
+    private static void validateConstructor(Class<?> templateClass, List<Field> parameterFields) {
+        Class<?>[] parameterTypes = parameterFields.stream().map(Field::getType).toArray(Class<?>[]::new);
+        try {
+            var constructor = templateClass.getDeclaredConstructor(parameterTypes);
+            var constructorParameters = constructor.getParameters();
+            for (int index = 0; index < constructorParameters.length; index++) {
+                if (!constructorParameters[index].getName().equals(parameterFields.get(index).getName())) {
+                    throw new IllegalStateException(
+                        "Alert template constructor parameters must match ordered alert fields: " + templateClass.getName()
+                    );
+                }
+            }
+        } catch (NoSuchMethodException exception) {
+            throw new IllegalStateException(
+                "Alert template must declare a constructor matching its ordered parameters: " + templateClass.getName(),
+                exception
             );
         }
     }

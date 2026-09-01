@@ -116,7 +116,12 @@ class WorkerDiscoveryServiceTest {
             true, Duration.ofSeconds(30), Duration.ZERO, Duration.ofSeconds(2)
         );
         WorkerGrpcProperties.Tls tls = new WorkerGrpcProperties.Tls(false, null, null, null, null);
-        WorkerGrpcProperties properties = new WorkerGrpcProperties("worker", 9090, tls, discovery);
+        WorkerGrpcProperties.Execution execution = new WorkerGrpcProperties.Execution(
+                Duration.ofMinutes(30), Duration.ofSeconds(30), java.nio.file.Path.of("src")
+        );
+        WorkerGrpcProperties properties = new WorkerGrpcProperties(
+                "worker", 9090, tls, discovery, execution
+        );
         return new WorkerDiscoveryService(properties, dnsResolver, healthProbe, availabilityService, eventLogger);
     }
 

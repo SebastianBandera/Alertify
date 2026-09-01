@@ -26,6 +26,8 @@ import app.alertify.alerts.api.AlertParameterValueRequest;
 import app.alertify.alerts.api.AlertResponse;
 import app.alertify.alerts.api.AlertStateResponse;
 import app.alertify.alerts.api.AlertUpdateRequest;
+import app.alertify.alerts.execution.AlertExecutionOrchestrator;
+import app.alertify.alerts.execution.AlertScheduleService;
 import app.alertify.alerts.model.Alert;
 import app.alertify.alerts.model.AlertParameterValue;
 import app.alertify.alerts.model.AlertTemplateDefinition;
@@ -64,8 +66,10 @@ public class AlertManagementService {
     private final ApplicationConfigurationRepository configurationRepository;
     private final ApplicationSecretRepository secretRepository;
     private final ApplicationEventLogger eventLogger;
+    private final AlertScheduleService scheduleService;
+    private final AlertExecutionOrchestrator executionOrchestrator;
 
-    public AlertManagementService(AlertRepository alertRepository, AlertTemplateDefinitionRepository templateRepository, AlertTemplateParameterDefinitionRepository templateParameterRepository, AlertParameterValueRepository parameterValueRepository, AlertExecutionRepository executionRepository, AlertStateRepository stateRepository, ApplicationConfigurationRepository configurationRepository, ApplicationSecretRepository secretRepository, ApplicationEventLogger eventLogger) {
+    public AlertManagementService(AlertRepository alertRepository, AlertTemplateDefinitionRepository templateRepository, AlertTemplateParameterDefinitionRepository templateParameterRepository, AlertParameterValueRepository parameterValueRepository, AlertExecutionRepository executionRepository, AlertStateRepository stateRepository, ApplicationConfigurationRepository configurationRepository, ApplicationSecretRepository secretRepository, ApplicationEventLogger eventLogger, AlertScheduleService scheduleService, AlertExecutionOrchestrator executionOrchestrator) {
         this.alertRepository = alertRepository;
         this.templateRepository = templateRepository;
         this.templateParameterRepository = templateParameterRepository;
@@ -75,6 +79,8 @@ public class AlertManagementService {
         this.configurationRepository = configurationRepository;
         this.secretRepository = secretRepository;
         this.eventLogger = eventLogger;
+        this.scheduleService = scheduleService;
+        this.executionOrchestrator = executionOrchestrator;
     }
 
     @Transactional(readOnly = true)
@@ -123,6 +129,7 @@ public class AlertManagementService {
         eventLogger.successAfterCommit("ALERT_CREATED", Map.of(
                 "alertId", alert.getId(), "name", alert.getName(), "templateId", template.getId()
         ));
+        scheduleService.rescheduleAfterCommit(alert.getId());
         return AlertMapper.toAlert(alert, values);
     }
 
@@ -146,6 +153,7 @@ public class AlertManagementService {
         eventLogger.successAfterCommit("ALERT_UPDATED", Map.of(
                 "alertId", alert.getId(), "name", alert.getName(), "version", alert.getVersion()
         ));
+        scheduleService.rescheduleAfterCommit(alert.getId());
         return AlertMapper.toAlert(alert, values);
     }
 
@@ -153,6 +161,8 @@ public class AlertManagementService {
     public void delete(Long id, long version) {
         Alert alert = alertRepository.findById(id).orElseThrow(() -> notFound("Alert", id));
         ensureVersion(alert, version);
+        if (executionOrchestrator.isRunning(id))
+            throw new ConflictException("Alert is currently running and cannot be deleted");
         if (executionRepository.existsByAlert_Id(id))
             throw new ConflictException("Alert has execution history and cannot be deleted");
         List<AlertParameterValue> values = parameterValueRepository.findAllByAlertIdOrdered(id);
@@ -160,6 +170,7 @@ public class AlertManagementService {
         parameterValueRepository.flush();
         alertRepository.delete(alert);
         eventLogger.successAfterCommit("ALERT_DELETED", Map.of("alertId", id, "name", alert.getName()));
+        scheduleService.removeAfterCommit(id);
     }
 
     private List<AlertParameterValue> synchronizeParameters(Alert alert, List<AlertParameterValueRequest> requested, List<AlertParameterValue> existing) {
