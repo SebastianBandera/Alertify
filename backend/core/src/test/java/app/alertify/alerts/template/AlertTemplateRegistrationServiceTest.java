@@ -19,6 +19,7 @@ import org.springframework.core.io.DefaultResourceLoader;
 import app.alertify.alerts.model.AlertTemplateDefinition;
 import app.alertify.alerts.model.AlertTemplateParameterDefinition;
 import app.alertify.alerts.templates.InternetConnectionAlertTemplate;
+import app.alertify.alerts.templates.devtools.SimulatedLongRunningAlertTemplate;
 import app.alertify.jpa.repository.AlertTemplateDefinitionRepository;
 import app.alertify.jpa.repository.AlertTemplateParameterDefinitionRepository;
 
@@ -29,23 +30,26 @@ class AlertTemplateRegistrationServiceTest {
     @Mock private AlertTemplateParameterDefinitionRepository parameterRepository;
 
     @Test
-    void discoversAndPersistsTheSharedInternetTemplate() {
+    void discoversAndPersistsTheSharedTemplates() {
         String templateKey = InternetConnectionAlertTemplate.class.getName();
+        String devToolsTemplateKey = SimulatedLongRunningAlertTemplate.class.getName();
         when(templateRepository.findByTemplateKey(templateKey)).thenReturn(Optional.empty());
+        when(templateRepository.findByTemplateKey(devToolsTemplateKey)).thenReturn(Optional.empty());
         when(parameterRepository.findAllByTemplate_TemplateKey(templateKey)).thenReturn(List.of());
+        when(parameterRepository.findAllByTemplate_TemplateKey(devToolsTemplateKey)).thenReturn(List.of());
         var service = new AlertTemplateRegistrationService(
             templateRepository, parameterRepository, new DefaultResourceLoader()
         );
 
         AlertTemplateRegistrationSummary summary = service.scanAndRegister();
 
-        assertEquals(1, summary.templates());
-        assertEquals(2, summary.parameters());
+        assertEquals(2, summary.templates());
+        assertEquals(6, summary.parameters());
 
         ArgumentCaptor<AlertTemplateDefinition> templateCaptor =
             ArgumentCaptor.forClass(AlertTemplateDefinition.class);
-        verify(templateRepository).save(templateCaptor.capture());
-        AlertTemplateDefinition template = templateCaptor.getValue();
+        verify(templateRepository, times(2)).save(templateCaptor.capture());
+        AlertTemplateDefinition template = templateCaptor.getAllValues().get(0);
         assertEquals(templateKey, template.getTemplateKey());
         assertEquals("alerts.template.internet.name", template.getNameKey());
         assertEquals(
@@ -55,7 +59,7 @@ class AlertTemplateRegistrationServiceTest {
 
         ArgumentCaptor<AlertTemplateParameterDefinition> parameterCaptor =
             ArgumentCaptor.forClass(AlertTemplateParameterDefinition.class);
-        verify(parameterRepository, times(2)).save(parameterCaptor.capture());
+        verify(parameterRepository, times(6)).save(parameterCaptor.capture());
         List<AlertTemplateParameterDefinition> parameters = parameterCaptor.getAllValues();
 
         assertEquals("endpoint", parameters.get(0).getParameterKey());

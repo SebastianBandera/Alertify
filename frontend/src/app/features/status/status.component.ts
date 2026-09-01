@@ -18,6 +18,12 @@ import { LocalizationService } from '../../core/i18n/localization.service';
 
 const REFRESH_INTERVAL_MILLIS = 1_000;
 
+function workerOrder(worker: WorkerNodeStatus): number {
+  if (worker.capabilities.includes('STANDARD')) return 0;
+  if (worker.capabilities.includes('PLAYWRIGHT')) return 1;
+  return 2;
+}
+
 @Component({
   selector: 'app-status',
   imports: [DatePipe],
@@ -111,7 +117,12 @@ export class StatusComponent implements OnInit {
       const workers = await this.api.status();
       if (this.destroyed) return;
 
-      this.workers.set(workers);
+      this.workers.set(
+        [...workers].sort(
+          (first, second) =>
+            workerOrder(first) - workerOrder(second) || first.address.localeCompare(second.address),
+        ),
+      );
       this.lastUpdatedAt.set(new Date());
       this.error.set(null);
     } catch (error) {

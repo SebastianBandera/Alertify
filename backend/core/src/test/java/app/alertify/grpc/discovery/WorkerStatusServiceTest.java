@@ -69,6 +69,22 @@ class WorkerStatusServiceTest {
         }
     }
 
+    @Test
+    void rotatesBetweenEquallyLoadedWorkersAcrossCompletedReservations() {
+        when(client.status(FIRST, TIMEOUT)).thenReturn(status(0, 0));
+        when(client.status(SECOND, TIMEOUT)).thenReturn(status(0, 0));
+
+        try (WorkerReservation first = service.reserve(WorkerCapability.STANDARD)) {
+            assertThat(first.worker().endpoint()).isEqualTo(FIRST);
+        }
+        try (WorkerReservation second = service.reserve(WorkerCapability.STANDARD)) {
+            assertThat(second.worker().endpoint()).isEqualTo(SECOND);
+        }
+        try (WorkerReservation third = service.reserve(WorkerCapability.STANDARD)) {
+            assertThat(third.worker().endpoint()).isEqualTo(FIRST);
+        }
+    }
+
     private static WorkerStatusResponse status(int running, int waiting) {
         return WorkerStatusResponse.newBuilder()
                 .setWorkerName("worker")

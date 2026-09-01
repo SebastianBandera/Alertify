@@ -4,7 +4,9 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -34,6 +36,7 @@ public class WorkerStatusService implements AutoCloseable {
     private final ApplicationEventLogger eventLogger;
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
     private final ConcurrentMap<WorkerEndpoint, AtomicInteger> reservations = new ConcurrentHashMap<>();
+    private final Map<WorkerCapability, WorkerEndpoint> lastSelectedWorkers = new EnumMap<>(WorkerCapability.class);
 
     public WorkerStatusService(WorkerAvailabilityService availabilityService, AlertWorkerClient client, WorkerGrpcProperties properties, ApplicationEventLogger eventLogger) {
         this.availabilityService = availabilityService;
@@ -51,9 +54,23 @@ public class WorkerStatusService implements AutoCloseable {
         if (workers.isEmpty())
             throw new IllegalStateException("No available worker supports capability " + capability);
 
-        SelectedWorker selected = workers.getFirst();
+        int lowestLoad = effectiveLoad(workers.getFirst());
+        List<SelectedWorker> leastLoadedWorkers = workers.stream()
+                .takeWhile(worker -> effectiveLoad(worker) == lowestLoad)
+                .toList();
+        SelectedWorker selected = nextWorker(capability, leastLoadedWorkers);
+        lastSelectedWorkers.put(capability, selected.endpoint());
         reservations.computeIfAbsent(selected.endpoint(), key -> new AtomicInteger()).incrementAndGet();
         return new WorkerReservation(selected, () -> release(selected.endpoint()));
+    }
+
+    private SelectedWorker nextWorker(WorkerCapability capability, List<SelectedWorker> workers) {
+        WorkerEndpoint lastSelected = lastSelectedWorkers.get(capability);
+        for (int index = 0; index < workers.size(); index++) {
+            if (workers.get(index).endpoint().equals(lastSelected))
+                return workers.get((index + 1) % workers.size());
+        }
+        return workers.getFirst();
     }
 
     public List<WorkerNodeStatusResponse> status() {
