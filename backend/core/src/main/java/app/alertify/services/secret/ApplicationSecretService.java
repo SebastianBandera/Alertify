@@ -182,11 +182,14 @@ public class ApplicationSecretService {
         Set<Long> ids = requestedIds == null ? Set.of() : new LinkedHashSet<>(requestedIds);
         if (ids.isEmpty())
             return Set.of();
+
         if (ids.stream().anyMatch(id -> id == null || id <= 0))
             throw new ResourceNotFoundException("One or more secret tags were not found");
+        
         List<Tag> found = tagRepository.findAllByIdInAndScope(ids, TagScope.SECRET);
         if (found.size() != ids.size())
             throw new ResourceNotFoundException("One or more secret tags were not found");
+
         return new LinkedHashSet<>(found);
     }
 
@@ -200,6 +203,7 @@ public class ApplicationSecretService {
     private static Set<Long> parseTagIds(List<String> rawValues) {
         if (rawValues == null || rawValues.isEmpty())
             return Set.of();
+
         try {
             return rawValues.stream().map(String::trim).map(Long::valueOf).peek(value -> {
                 if (value <= 0)
@@ -213,8 +217,10 @@ public class ApplicationSecretService {
     private static boolean parseMatchAllTags(List<String> rawValues) {
         if (rawValues == null || rawValues.isEmpty())
             return false;
+
         if (rawValues.size() != 1)
             throw new InvalidFilterException("tagOperator");
+        
         return switch (rawValues.get(0).trim().toUpperCase(Locale.ROOT)) {
             case "OR" -> false;
             case "AND" -> true;
@@ -233,6 +239,7 @@ public class ApplicationSecretService {
     private static String normalizeOptional(String value) {
         if (value == null)
             return null;
+
         String normalized = value.trim();
         return normalized.isEmpty() ? null : normalized;
     }

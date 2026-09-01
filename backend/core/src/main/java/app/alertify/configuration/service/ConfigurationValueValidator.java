@@ -25,6 +25,7 @@ public class ConfigurationValueValidator {
     public JsonNode validateAndNormalize(ConfigurationValueType type, JsonNode value) {
         if (type == null)
             throw new InvalidConfigurationValueException("Configuration value type is required");
+
         if (value == null || value.isNull() || value.isMissingNode()) {
             throw new InvalidConfigurationValueException("Configuration value must not be null");
         }

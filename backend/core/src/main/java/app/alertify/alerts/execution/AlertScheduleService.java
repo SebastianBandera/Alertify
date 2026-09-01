@@ -63,6 +63,7 @@ public class AlertScheduleService implements AutoCloseable {
         );
         if (future == null)
             throw new IllegalStateException("Could not schedule alert " + alert.getId());
+
         schedules.put(alert.getId(), future);
         eventLogger.success("ALERT_SCHEDULE_REGISTERED", Map.of(
                 "alertId", alert.getId(),
@@ -75,6 +76,7 @@ public class AlertScheduleService implements AutoCloseable {
         ScheduledFuture<?> existing = schedules.remove(alertId);
         if (existing == null)
             return;
+
         existing.cancel(false);
         eventLogger.success("ALERT_SCHEDULE_REMOVED", Map.of("alertId", alertId));
     }

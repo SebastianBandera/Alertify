@@ -46,18 +46,15 @@ record CompiledAlertTemplate(
         );
     }
 
-    private static boolean matches(
-        Constructor<?> constructor,
-        List<AlertParameter> parameters
-    ) {
+    private static boolean matches(Constructor<?> constructor, List<AlertParameter> parameters) {
         if (constructor.getParameterCount() != parameters.size())
             return false;
+
         Class<?>[] types = constructor.getParameterTypes();
         java.lang.reflect.Parameter[] constructorParameters = constructor.getParameters();
         for (int index = 0; index < types.length; index++) {
             AlertParameter parameter = parameters.get(index);
-            if (!types[index].getName().equals(parameter.getJavaType())
-                    || !constructorParameters[index].getName().equals(parameter.getName()))
+            if (!types[index].getName().equals(parameter.getJavaType()) || !constructorParameters[index].getName().equals(parameter.getName()))
                 return false;
         }
         return true;

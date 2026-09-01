@@ -118,8 +118,10 @@ public class WorkerDiscoveryService {
         data.put("availableCount", availabilityService.availableEndpoints().size());
         if (status != null)
             data.put("status", status);
+
         if (result != null)
             data.put("capabilities", capabilityNames(result.capabilities()));
+        
         if (exception != null) {
             data.put("exceptionType", exception.getClass().getName());
             if (exception.getMessage() != null)
@@ -137,6 +139,7 @@ public class WorkerDiscoveryService {
         data.put("exceptionType", exception.getClass().getName());
         if (exception.getMessage() != null)
             data.put("exceptionMessage", exception.getMessage());
+
         eventLogger.failure(DNS_RESOLUTION_FAILED, data);
     }
 

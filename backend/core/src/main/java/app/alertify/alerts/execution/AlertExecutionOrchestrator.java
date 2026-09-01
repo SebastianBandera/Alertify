@@ -73,6 +73,7 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
             PreparedAlertExecution execution = preparationService.prepare(alertId).orElse(null);
             if (execution == null)
                 return;
+
             try (WorkerReservation reservation = workerStatusService.reserve(execution.requiredCapability())) {
                 SelectedWorker worker = reservation.worker();
                 endpoint = worker.endpoint();
@@ -115,6 +116,7 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
                 }
                 if (!response.hasResult())
                     throw new IllegalStateException("Worker did not return an execution result");
+
                 persistenceService.persistWorkerResult(
                         alertId, executionId, endpoint, response.getResult()
                 );
@@ -122,6 +124,7 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
         } catch (Throwable exception) {
             if (exception instanceof InterruptedException)
                 Thread.currentThread().interrupt();
+
             try {
                 persistenceService.persistLocalFailure(
                         alertId, executionId, endpoint, workerName, workerInstanceId,
@@ -134,6 +137,7 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
                 data.put("exceptionType", exception.getClass().getName());
                 if (exception.getMessage() != null)
                     data.put("exceptionMessage", exception.getMessage());
+
                 data.put("persistenceExceptionType", persistenceException.getClass().getName());
                 eventLogger.error("ALERT_EXECUTION_DISPATCH_FAILED", data);
             }
@@ -160,6 +164,7 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
                     .setNullValue(parameter.nullValue());
             if (!parameter.nullValue())
                 value.setValue(parameter.value());
+
             request.addParameters(value);
         }
         return request.build();
@@ -168,9 +173,11 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
     private boolean enter(long alertId, boolean concurrent) {
         if (!concurrent)
             return activeAlerts.putIfAbsent(alertId, new AtomicInteger(1)) == null;
+
         activeAlerts.compute(alertId, (key, count) -> {
             if (count == null)
                 return new AtomicInteger(1);
+
             count.incrementAndGet();
             return count;
         });

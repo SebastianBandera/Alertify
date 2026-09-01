@@ -135,6 +135,7 @@ class AlertExecutionOrchestratorTest {
                     executionStarted.countDown();
                     if (!releaseExecution.await(5, TimeUnit.SECONDS))
                         throw new IllegalStateException("Test did not release the worker execution");
+
                     return ExecuteAlertResponse.newBuilder().setResult(successfulResult()).build();
                 });
 

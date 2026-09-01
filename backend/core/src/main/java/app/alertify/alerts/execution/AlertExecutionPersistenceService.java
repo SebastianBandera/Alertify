@@ -140,6 +140,7 @@ public class AlertExecutionPersistenceService {
             data.put("errorType", execution.getErrorType());
             if (execution.getErrorMessage() != null)
                 data.put("errorMessage", execution.getErrorMessage());
+
             eventLogger.errorAfterCommit("ALERT_EXECUTION_COMPLETED", data);
         } else {
             eventLogger.successAfterCommit("ALERT_EXECUTION_COMPLETED", data);
@@ -158,6 +159,7 @@ public class AlertExecutionPersistenceService {
     ) {
         if (endpoint == null)
             return null;
+
         return new AlertExecutionWorker(
                 required(workerName, "Worker name"), endpoint.ipAddress(), endpoint.port(),
                 UUID.fromString(required(workerInstanceId, "Worker instance ID"))
@@ -167,6 +169,7 @@ public class AlertExecutionPersistenceService {
     private JsonNode statusMessage(String json) {
         if (json == null || json.isBlank())
             return null;
+
         try {
             return jsonMapper.readTree(json);
         } catch (JacksonException exception) {
@@ -198,6 +201,7 @@ public class AlertExecutionPersistenceService {
     private static String required(String value, String name) {
         if (value == null || value.isBlank())
             throw new IllegalArgumentException(name + " must not be blank");
+
         return value;
     }
 

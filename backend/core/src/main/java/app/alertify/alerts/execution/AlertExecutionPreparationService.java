@@ -59,6 +59,7 @@ public class AlertExecutionPreparationService {
         Map<Long, AlertParameterValue> configuredValues = new HashMap<>();
         for (AlertParameterValue value : parameterValueRepository.findAllByAlertIdOrdered(alertId))
             configuredValues.put(value.getTemplateParameter().getId(), value);
+
         List<ResolvedAlertParameter> parameters = definitionRepository
                 .findAllByTemplate_IdOrderByParameterOrderAscIdAsc(template.getId())
                 .stream()
@@ -94,10 +95,12 @@ public class AlertExecutionPreparationService {
         WorkerGrpcProperties.Execution execution = properties.execution();
         if (execution == null || execution.sourceRoot() == null)
             throw new IllegalStateException("worker.grpc.execution.source-root must be configured");
+
         Path root = execution.sourceRoot().toAbsolutePath().normalize();
         Path path = root.resolve(relativePath).normalize();
         if (!path.startsWith(root))
             throw new IllegalStateException("Alert template source path escapes the configured root");
+
         try {
             String content = Files.readString(path, StandardCharsets.UTF_8);
             return new Source(content, sha256(content));

@@ -125,6 +125,7 @@ public class ApplicationConfigurationService {
         String nameFilter = params.getFirst("name");
         if (nameFilter != null && !nameFilter.isBlank())
             data.put("nameFilter", nameFilter);
+
         eventLogger.successAfterCommit("CONFIGURATION_PAGE_VIEWED", data);
         return result;
     }
@@ -340,6 +341,7 @@ public class ApplicationConfigurationService {
             configurationRepository.flush();
             if (changedFields.contains("value"))
                 expressionService.synchronizeDependencies(configuration);
+
             cacheInvalidator.evictAfterCommit(
                     id,
                     new LinkedHashSet<>(List.of(previousName, configuration.getName()))
@@ -389,6 +391,7 @@ public class ApplicationConfigurationService {
         Set<Long> ids = requestedIds == null ? Set.of() : new LinkedHashSet<>(requestedIds);
         if (ids.isEmpty())
             return Set.of();
+
         if (ids.stream().anyMatch(id -> id == null || id <= 0)) {
             throw new ResourceNotFoundException("One or more configuration tags were not found");
         }
@@ -403,6 +406,7 @@ public class ApplicationConfigurationService {
     private static Set<Long> parseTagIds(List<String> rawValues) {
         if (rawValues == null || rawValues.isEmpty())
             return Set.of();
+
         try {
             return rawValues.stream()
                     .map(String::trim).map(Long::valueOf)
@@ -419,6 +423,7 @@ public class ApplicationConfigurationService {
     private static boolean parseMatchAllTags(List<String> rawValues) {
         if (rawValues == null || rawValues.isEmpty())
             return false;
+
         if (rawValues.size() != 1)
             throw new InvalidFilterException("tagOperator");
 
@@ -452,6 +457,7 @@ public class ApplicationConfigurationService {
     private static String normalizeOptional(String value) {
         if (value == null)
             return null;
+
         String normalized = value.trim();
         return normalized.isEmpty() ? null : normalized;
     }

@@ -111,6 +111,7 @@ public class AlertManagementService {
     public AlertStateResponse state(Long alertId) {
         if (!alertRepository.existsById(alertId))
             throw notFound("Alert", alertId);
+
         String state = stateRepository.findById(alertId).map(value -> value.getState()).orElse("");
         return new AlertStateResponse(alertId, state);
     }
@@ -163,8 +164,10 @@ public class AlertManagementService {
         ensureVersion(alert, version);
         if (executionOrchestrator.isRunning(id))
             throw new ConflictException("Alert is currently running and cannot be deleted");
+
         if (executionRepository.existsByAlert_Id(id))
             throw new ConflictException("Alert has execution history and cannot be deleted");
+        
         List<AlertParameterValue> values = parameterValueRepository.findAllByAlertIdOrdered(id);
         parameterValueRepository.deleteAll(values);
         parameterValueRepository.flush();
@@ -182,6 +185,7 @@ public class AlertManagementService {
         for (AlertParameterValueRequest value : requested) {
             if (!definitionsByKey.containsKey(value.parameterKey()))
                 throw invalid("Unknown parameter '" + value.parameterKey() + "' for the selected template");
+
             if (requestsByKey.put(value.parameterKey(), value) != null)
                 throw invalid("Parameter '" + value.parameterKey() + "' was provided more than once");
         }
@@ -202,6 +206,7 @@ public class AlertManagementService {
             if (value == null) {
                 if (definition.isRequired())
                     throw invalid("Required parameter '" + definition.getParameterKey() + "' has no value");
+
                 continue;
             }
 
@@ -220,6 +225,7 @@ public class AlertManagementService {
                 .toList();
         if (!removed.isEmpty())
             parameterValueRepository.deleteAll(removed);
+
         parameterValueRepository.flush();
         return result;
     }
@@ -253,6 +259,7 @@ public class AlertManagementService {
                 .orElseThrow(() -> notFound("Configuration", id));
         if (HIDDEN_CONFIGURATION.equalsIgnoreCase(configuration.getName()))
             throw invalid("Configuration 'KEY_PART' cannot be used as an alert binding");
+
         return configuration;
     }
 
@@ -263,8 +270,10 @@ public class AlertManagementService {
     private String validateText(AlertTemplateParameterDefinition definition, String value) {
         if (value == null)
             throw invalid("Text value is required for parameter '" + definition.getParameterKey() + "'");
+
         if (!definition.isBindingAllowed() && !definition.getOptions().contains(value))
             throw invalid("Parameter '" + definition.getParameterKey() + "' must use one of its declared options");
+        
         try {
             validateJavaType(definition.getJavaType(), value);
         } catch (RuntimeException exception) {
@@ -319,6 +328,7 @@ public class AlertManagementService {
     private static String normalizeRequired(String value, String field) {
         if (value == null || value.isBlank())
             throw invalid(field + " must not be blank");
+
         return value.trim();
     }
 

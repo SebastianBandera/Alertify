@@ -47,8 +47,10 @@ public class AlertExecutionQueryService {
         data.put("totalElements", result.getTotalElements());
         if (alertId != null)
             data.put("alertId", alertId);
+
         if (status != null)
             data.put("status", status.name());
+        
         eventLogger.success("ALERT_EXECUTION_HISTORY_VIEWED", data);
         return result;
     }

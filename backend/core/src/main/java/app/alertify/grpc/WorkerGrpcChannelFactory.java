@@ -26,6 +26,7 @@ public class WorkerGrpcChannelFactory {
         NettyChannelBuilder builder = NettyChannelBuilder.forAddress(endpoint.ipAddress(), endpoint.port(), channelCredentials(tls));
         if (tls != null && tls.enabled())
             builder.overrideAuthority(tls.serverName());
+
         return builder.build();
     }
 
@@ -47,6 +48,7 @@ public class WorkerGrpcChannelFactory {
     private static void validateTls(WorkerGrpcProperties.Tls tls) {
         if (tls.serverName() == null || tls.serverName().isBlank())
             throw new IllegalStateException("worker.grpc.tls.server-name must not be blank");
+
         requireReadableFile(tls.certificateChain(), "worker.grpc.tls.certificate-chain");
         requireReadableFile(tls.privateKey(), "worker.grpc.tls.private-key");
         requireReadableFile(tls.serverCaCertificate(), "worker.grpc.tls.server-ca-certificate");

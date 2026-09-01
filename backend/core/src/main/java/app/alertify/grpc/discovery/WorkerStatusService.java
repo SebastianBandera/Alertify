@@ -50,6 +50,7 @@ public class WorkerStatusService implements AutoCloseable {
                 .toList();
         if (workers.isEmpty())
             throw new IllegalStateException("No available worker supports capability " + capability);
+
         SelectedWorker selected = workers.getFirst();
         reservations.computeIfAbsent(selected.endpoint(), key -> new AtomicInteger()).incrementAndGet();
         return new WorkerReservation(selected, () -> release(selected.endpoint()));
@@ -68,6 +69,7 @@ public class WorkerStatusService implements AutoCloseable {
         List<Future<WorkerStatusResult>> futures = new ArrayList<>();
         for (AvailableWorker worker : workers)
             futures.add(executor.submit(() -> inspect(worker)));
+
         List<WorkerStatusResult> results = new ArrayList<>();
         for (Future<WorkerStatusResult> future : futures) {
             try {

@@ -20,6 +20,7 @@ public record AlertResult(
         Objects.requireNonNull(status, "status must not be null");
         if (status == AlertExecutionStatus.ERROR)
             throw new IllegalArgumentException("ERROR is reserved for exceptions");
+
         statusMessage = statusMessage == null
                 ? Map.of()
                 : Collections.unmodifiableMap(new LinkedHashMap<>(statusMessage));

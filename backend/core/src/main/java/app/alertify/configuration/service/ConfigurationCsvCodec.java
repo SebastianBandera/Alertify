@@ -93,8 +93,10 @@ class ConfigurationCsvCodec {
             String name = fields.get(0).trim();
             if (name.isEmpty())
                 throw rowError(rowNumber, "name is required");
+
             if (name.length() > 200)
                 throw rowError(rowNumber, "name exceeds 200 characters");
+            
             String normalizedName = name.toLowerCase(Locale.ROOT);
             Integer previousRow = names.putIfAbsent(normalizedName, rowNumber);
             if (previousRow != null) {
@@ -160,6 +162,7 @@ class ConfigurationCsvCodec {
         for (JsonNode tagNode : tagsNode) {
             if (!tagNode.isObject())
                 throw rowError(rowNumber, "each tag must be a JSON object");
+
             JsonNode nameNode = tagNode.get("name");
             JsonNode colorNode = tagNode.get("color");
             if (nameNode == null || !nameNode.isString()) {
@@ -194,6 +197,7 @@ class ConfigurationCsvCodec {
         for (int index = 0; index < fields.size(); index++) {
             if (index > 0)
                 csv.append(',');
+
             appendField(csv, fields.get(index));
         }
         csv.append("\r\n");
@@ -210,6 +214,7 @@ class ConfigurationCsvCodec {
             char character = value.charAt(index);
             if (character == '"')
                 csv.append('"');
+
             csv.append(character);
         }
         csv.append('"');
@@ -254,6 +259,7 @@ class ConfigurationCsvCodec {
                 fieldStarted = false;
                 if (!row.stream().allMatch(String::isBlank))
                     rows.add(List.copyOf(row));
+
                 row.clear();
                 if (character == '\r' && index + 1 < csv.length() && csv.charAt(index + 1) == '\n') {
                     index++;

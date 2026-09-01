@@ -126,6 +126,7 @@ class AlertWorkerGrpcService extends AlertWorkerServiceGrpc.AlertWorkerServiceIm
                 .setQueuedAt(WorkerExecutionEngine.timestamp(task.queuedAt()));
         if (task.workStartedAt() != null)
             result.setWorkStartedAt(WorkerExecutionEngine.timestamp(task.workStartedAt()));
+
         return result.build();
     }
 }

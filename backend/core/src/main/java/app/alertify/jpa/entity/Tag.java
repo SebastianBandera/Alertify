@@ -116,6 +116,7 @@ public class Tag {
     public boolean equals(Object other) {
         if (this == other)
             return true;
+
         if (other == null || Hibernate.getClass(this) != Hibernate.getClass(other))
             return false;
         Tag tag = (Tag) other;

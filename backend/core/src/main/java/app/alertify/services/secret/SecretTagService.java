@@ -91,6 +91,7 @@ public class SecretTagService {
         }
         if (!changedFields.isEmpty())
             tagRepository.flush();
+
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("tagId", id);
         data.put("name", tag.getName());

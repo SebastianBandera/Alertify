@@ -46,6 +46,7 @@ public class SecretEncryptionService {
         byte[] valueBytes = value.getBytes(StandardCharsets.UTF_8);
         if (valueBytes.length == 0)
             throw new InvalidSecretValueException("Secret value must contain at least one byte");
+
         if (valueBytes.length > MAX_VALUE_BYTES)
             throw new InvalidSecretValueException("Secret value exceeds the 1 MiB UTF-8 limit");
 
@@ -115,8 +116,10 @@ public class SecretEncryptionService {
         } catch (GeneralSecurityException | RuntimeException exception) {
             if (exception instanceof SecretNotRecoverableException notRecoverable)
                 throw notRecoverable;
+
             if (decryptedValue != null)
                 Arrays.fill(decryptedValue, (byte) 0);
+            
             throw new SecretNotRecoverableException(secret.getName(), exception);
         } finally {
             if (calculatedHash != null)

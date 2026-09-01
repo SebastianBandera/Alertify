@@ -82,6 +82,7 @@ public final class InternetConnectionAlertTemplate implements AlertEvaluator {
 
         if (statusCode >= 200 && statusCode < 400)
             return AlertResult.success(statusMessage);
+
         return AlertResult.warn(statusMessage);
     }
 

@@ -73,6 +73,7 @@ class WorkerExecutionEngine implements AutoCloseable {
         } catch (Throwable exception) {
             if (exception instanceof InterruptedException)
                 Thread.currentThread().interrupt();
+
             Instant workStartedAt = permit == null ? startedAt : permit.workStartedAt();
             observer.onNext(AlertExecutionResult.newBuilder()
                     .setStatus(WorkerExecutionStatus.WORKER_EXECUTION_STATUS_ERROR)

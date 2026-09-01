@@ -19,6 +19,7 @@ public final class WorkerReservation implements AutoCloseable {
     public synchronized void close() {
         if (closed)
             return;
+
         closed = true;
         release.run();
     }

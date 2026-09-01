@@ -46,16 +46,19 @@ class AlertTemplateCompiler {
         CompiledAlertTemplate template = templates.get(className);
         if (template == null || !template.checksum().equals(checksum))
             throw new IllegalStateException("Alert template source is not synchronized");
+
         return template;
     }
 
     synchronized void synchronize(String className, String checksum, String source) {
         if (isAvailable(className, checksum))
             return;
+
         if (!SourceVersion.isName(className))
             throw new IllegalArgumentException("className is invalid");
         if (checksum == null || !checksum.matches("[0-9a-f]{64}"))
             throw new IllegalArgumentException("checksum must be a lowercase SHA-256 value");
+
         if (source == null || source.isBlank())
             throw new TemplateCompilationException("Alert template source must not be blank");
         if (!checksum.equals(sha256(source)))
@@ -78,6 +81,7 @@ class AlertTemplateCompiler {
             List<Path> classpath = compilerClasspath();
             if (!classpath.isEmpty())
                 fileManager.setLocationFromPaths(StandardLocation.CLASS_PATH, classpath);
+
             JavaFileObject sourceFile = new StringJavaSource(className, source);
             Boolean compiled = compiler.getTask(null, fileManager, diagnostics, List.of("-parameters"), null, List.of(sourceFile)).call();
             if (!Boolean.TRUE.equals(compiled))

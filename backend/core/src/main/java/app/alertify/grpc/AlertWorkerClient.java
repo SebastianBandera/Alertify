@@ -40,6 +40,7 @@ public class AlertWorkerClient {
     private <T> T call(WorkerEndpoint endpoint, Duration timeout, GrpcCall<T> call) {
         if (timeout == null || timeout.isZero() || timeout.isNegative())
             throw new IllegalArgumentException("gRPC timeout must be positive");
+
         ManagedChannel channel = channelFactory.create(endpoint);
         try {
             AlertWorkerServiceGrpc.AlertWorkerServiceBlockingStub stub = AlertWorkerServiceGrpc.newBlockingStub(channel)

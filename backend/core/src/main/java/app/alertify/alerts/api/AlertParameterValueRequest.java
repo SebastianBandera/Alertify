@@ -24,6 +24,7 @@ public record AlertParameterValueRequest(
     public boolean isSourceSelectionValid() {
         if (source == null)
             return true;
+
         return switch (source) {
             case TEXT -> textValue != null && configurationId == null && secretId == null;
             case CONFIGURATION -> textValue == null && configurationId != null && secretId == null;

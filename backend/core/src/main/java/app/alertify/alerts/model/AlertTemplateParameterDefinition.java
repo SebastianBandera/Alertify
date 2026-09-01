@@ -171,6 +171,7 @@ public class AlertTemplateParameterDefinition {
         validateBindingMetadata();
         if (parameterOrder < 0)
             throw new IllegalArgumentException("parameterOrder must not be negative");
+
         this.parameterOrder = parameterOrder;
         this.required = required;
     }
@@ -184,6 +185,7 @@ public class AlertTemplateParameterDefinition {
     private void validateBindingMetadata() {
         if (!bindingAllowed && options.isEmpty())
             throw new IllegalArgumentException("options must not be empty when binding is disabled");
+
         if (!bindingAllowed && defaultValue != null && !options.contains(defaultValue)) {
             throw new IllegalArgumentException(
                 "defaultValue must be one of options when binding is disabled"

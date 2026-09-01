@@ -35,6 +35,7 @@ public class WorkerAvailabilityService {
     public Set<AvailableWorker> availableWorkersWithAll(Set<WorkerCapability> requiredCapabilities) {
         if (requiredCapabilities == null)
             throw new IllegalArgumentException("requiredCapabilities must not be null");
+
         Set<WorkerCapability> required = Set.copyOf(requiredCapabilities);
         return availableWorkers.entrySet().stream()
                 .filter(entry -> entry.getValue().containsAll(required))

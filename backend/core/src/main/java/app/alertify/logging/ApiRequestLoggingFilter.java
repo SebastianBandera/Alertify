@@ -97,6 +97,7 @@ public final class ApiRequestLoggingFilter extends OncePerRequestFilter {
         });
         if (!query.isEmpty())
             data.put("query", query);
+
         return data;
     }
 }

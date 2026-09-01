@@ -90,6 +90,7 @@ public class AlertExecution {
         this.finishedAt = Objects.requireNonNull(finishedAt, "finishedAt must not be null");
         if (workStartedAt.isBefore(startedAt) || finishedAt.isBefore(workStartedAt))
             throw new IllegalArgumentException("Execution timestamps must be ordered");
+
         this.statusMessage = statusMessage == null ? null : statusMessage.deepCopy();
         this.errorType = errorType;
         this.errorMessage = errorMessage;
@@ -105,6 +106,7 @@ public class AlertExecution {
     public static AlertExecution result(UUID executionId, Alert alert, AlertExecutionWorker worker, AlertExecutionStatus status, Instant startedAt, Instant workStartedAt, Instant finishedAt, JsonNode statusMessage) {
         if (status == AlertExecutionStatus.ERROR)
             throw new IllegalArgumentException("ERROR is reserved for exception executions");
+
         return new AlertExecution(executionId, alert, worker, status, startedAt, workStartedAt, finishedAt, statusMessage, null, null, null);
     }
 

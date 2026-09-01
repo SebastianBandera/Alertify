@@ -26,6 +26,7 @@ class WorkerExecutionTracker {
     WorkerExecutionTracker(WorkerRuntimeProperties properties) {
         if (properties.maxConcurrentAlerts() <= 0)
             throw new IllegalArgumentException("alertify.worker.max-concurrent-alerts must be positive");
+
         semaphore = new Semaphore(properties.maxConcurrentAlerts(), true);
     }
 
@@ -105,6 +106,7 @@ class WorkerExecutionTracker {
         public void close() {
             if (closed)
                 return;
+
             closed = true;
             running.remove(executionId);
             totalExecuted.increment();

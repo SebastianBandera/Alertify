@@ -123,6 +123,7 @@ public class ApplicationEventLogger {
         String requestId = MDC.get(REQUEST_ID_MDC_KEY);
         if (requestId == null)
             return null;
+
         try {
             return UUID.fromString(requestId);
         } catch (IllegalArgumentException exception) {

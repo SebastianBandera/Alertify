@@ -39,11 +39,13 @@ class WorkerGrpcServer implements SmartLifecycle {
     public synchronized void start() {
         if (running)
             return;
+
         validateProperties();
         try {
             healthStatusManager.setStatus("", SERVING);
             for (WorkerCapability capability : properties.capabilities())
                 healthStatusManager.setStatus(capability.healthServiceName(), SERVING);
+
             server = NettyServerBuilder.forPort(properties.grpcPort(), serverCredentials())
                     .addService(healthStatusManager.getHealthService())
                     .addService(workerService)
@@ -84,6 +86,7 @@ class WorkerGrpcServer implements SmartLifecycle {
     public synchronized void stop() {
         if (!running)
             return;
+
         healthStatusManager.enterTerminalState();
         server.shutdown();
         try {
@@ -116,18 +119,23 @@ class WorkerGrpcServer implements SmartLifecycle {
         Server current = server;
         if (current == null)
             throw new IllegalStateException("The worker gRPC server is not running");
+
         return current.getPort();
     }
 
     private void validateProperties() {
         if (properties.name() == null || properties.name().isBlank())
             throw new IllegalStateException("alertify.worker.name must not be blank");
+
         if (properties.grpcPort() < 0 || properties.grpcPort() > 65535)
             throw new IllegalStateException("alertify.worker.grpc-port must be between 0 and 65535");
+        
         if (properties.shutdownGracePeriod() == null || properties.shutdownGracePeriod().isNegative())
             throw new IllegalStateException("alertify.worker.shutdown-grace-period must not be negative");
+
         if (properties.capabilities() == null || properties.capabilities().isEmpty())
             throw new IllegalStateException("alertify.worker.capabilities must not be empty");
+        
         if (properties.compilerOutputDirectory() == null)
             throw new IllegalStateException("alertify.worker.compiler-output-directory must be configured");
     }

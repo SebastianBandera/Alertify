@@ -68,8 +68,10 @@ public class ConfigurationExpressionService {
         Map<String, Object> data = new LinkedHashMap<>();
         if (request.configurationId() != null)
             data.put("configurationId", request.configurationId());
+
         if (draft.name() != null)
             data.put("name", draft.name());
+        
         data.put("configurationReferenceCount", parsed.configurationNames().size());
         data.put("environmentReferenceCount", parsed.environmentNames().size());
         data.put("utilityReferenceCount", parsed.utilityNames().size());
@@ -116,6 +118,7 @@ public class ConfigurationExpressionService {
         String names = String.join(", ", dependents.subList(0, Math.min(dependents.size(), 5)));
         if (dependents.size() > 5)
             names += ", ...";
+
         throw new ConflictException(
                 "CONFIGURATION_REFERENCED_BY_EXPRESSION",
                 "Configuration '" + configuration.getName() + "' cannot be " + operation + " because it is referenced by: " + names,
@@ -178,6 +181,7 @@ public class ConfigurationExpressionService {
     private void ensureAcyclic(Long configurationId, Set<Long> path, int depth) {
         if (depth > MAX_DEPTH)
             throw new InvalidConfigurationExpressionException("Configuration expression exceeds the maximum dependency depth of " + MAX_DEPTH);
+
         if (!path.add(configurationId))
             throw new InvalidConfigurationExpressionException("Configuration expression dependency cycle detected");
         try {
@@ -197,6 +201,7 @@ public class ConfigurationExpressionService {
     private static void enter(Set<String> path, String key, String displayName, int depth) {
         if (depth > MAX_DEPTH)
             throw new InvalidConfigurationExpressionException("Configuration expression exceeds the maximum resolution depth of " + MAX_DEPTH);
+
         if (!path.add(key))
             throw new InvalidConfigurationExpressionException("Configuration expression cycle detected at '" + displayName + "'");
     }
@@ -228,6 +233,7 @@ public class ConfigurationExpressionService {
     private static String normalizeOptional(String value) {
         if (value == null)
             return null;
+
         String normalized = value.trim();
         return normalized.isEmpty() ? null : normalized;
     }
