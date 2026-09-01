@@ -16,7 +16,7 @@ import {
 } from '../../core/api/worker-status-api.service';
 import { LocalizationService } from '../../core/i18n/localization.service';
 
-const REFRESH_INTERVAL_MILLIS = 5_000;
+const REFRESH_INTERVAL_MILLIS = 1_000;
 
 @Component({
   selector: 'app-status',
