@@ -215,6 +215,7 @@ public class AlertManagementService {
                 parameterValue = createValue(alert, definition, value);
             else
                 replaceValue(parameterValue, definition, value);
+
             result.add(parameterValueRepository.save(parameterValue));
             if (parameterValue.getId() != null)
                 retainedIds.add(parameterValue.getId());

@@ -69,24 +69,34 @@ public final class DynamicSpecification {
 
         if ("=null".equalsIgnoreCase(value))
             return cb.isNull(path);
+
         if ("!=null".equalsIgnoreCase(value))
             return cb.isNotNull(path);
+
         if (type == String.class)
             return createStringPredicate(cb, path, value);
+
         if (isRange(value))
             return createRangePredicate(cb, path, type, value);
+
         if (value.startsWith("!="))
             return cb.notEqual(path, convert(value.substring(2), type));
+
         if (value.startsWith(">="))
             return greaterThanOrEqualTo(cb, path, convertComparable(value.substring(2), type));
+
         if (value.startsWith("<="))
             return lessThanOrEqualTo(cb, path, convertComparable(value.substring(2), type));
+
         if (value.startsWith(">"))
             return greaterThan(cb, path, convertComparable(value.substring(1), type));
+
         if (value.startsWith("<"))
             return lessThan(cb, path, convertComparable(value.substring(1), type));
+
         if (value.startsWith("="))
             value = value.substring(1);
+
         return cb.equal(path, convert(value, type));
     }
 
@@ -144,6 +154,7 @@ public final class DynamicSpecification {
         Path<?> path = root;
         for (String part : field.split("\\."))
             path = path.get(part);
+
         return path;
     }
 
@@ -180,22 +191,31 @@ public final class DynamicSpecification {
         value = value.trim();
         if (type == Integer.class || type == int.class)
             return Integer.valueOf(value);
+
         if (type == Long.class || type == long.class)
             return Long.valueOf(value);
+
         if (type == Double.class || type == double.class)
             return Double.valueOf(value);
+
         if (type == Float.class || type == float.class)
             return Float.valueOf(value);
+
         if (type == Boolean.class || type == boolean.class)
             return Boolean.valueOf(value);
+
         if (type == LocalDate.class)
             return LocalDate.parse(value);
+
         if (type == LocalDateTime.class)
             return LocalDateTime.parse(value);
+
         if (type == Instant.class)
             return Instant.parse(value);
+
         if (type.isEnum())
             return Enum.valueOf((Class<? extends Enum>) type, value);
+
         throw new IllegalArgumentException("Unsupported filter type: " + type.getSimpleName());
     }
 }

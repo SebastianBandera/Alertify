@@ -184,6 +184,7 @@ public class ConfigurationExpressionService {
 
         if (!path.add(configurationId))
             throw new InvalidConfigurationExpressionException("Configuration expression dependency cycle detected");
+
         try {
             for (Long referencedId : dependencyRepository.findReferencedIds(configurationId))
                 ensureAcyclic(referencedId, path, depth + 1);

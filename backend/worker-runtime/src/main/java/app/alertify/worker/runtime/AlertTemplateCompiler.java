@@ -56,11 +56,13 @@ class AlertTemplateCompiler {
 
         if (!SourceVersion.isName(className))
             throw new IllegalArgumentException("className is invalid");
+
         if (checksum == null || !checksum.matches("[0-9a-f]{64}"))
             throw new IllegalArgumentException("checksum must be a lowercase SHA-256 value");
 
         if (source == null || source.isBlank())
             throw new TemplateCompilationException("Alert template source must not be blank");
+
         if (!checksum.equals(sha256(source)))
             throw new TemplateCompilationException("Alert template source does not match its checksum");
 

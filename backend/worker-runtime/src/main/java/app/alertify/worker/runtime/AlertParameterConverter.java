@@ -102,6 +102,7 @@ final class AlertParameterConverter {
 
         if (targetType == double.class)
             return 0D;
+
         throw new IllegalArgumentException("Unsupported primitive type " + targetType.getName());
     }
 }

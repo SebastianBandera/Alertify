@@ -119,6 +119,7 @@ public class Tag {
 
         if (other == null || Hibernate.getClass(this) != Hibernate.getClass(other))
             return false;
+
         Tag tag = (Tag) other;
         return id != null && id.equals(tag.id);
     }
