@@ -64,6 +64,13 @@ public class ApplicationEventLogger {
         runAfterCommit(() -> write(command));
     }
 
+    public void errorAfterCommit(String event, Map<String, ?> data) {
+        ApplicationLogCommand command = command(
+                ApplicationLogLevel.ERROR, event, ApplicationLogOutcome.FAILURE, data
+        );
+        runAfterCommit(() -> write(command));
+    }
+
     private ApplicationLogCommand command(ApplicationLogLevel level, String event, ApplicationLogOutcome outcome, Map<String, ?> data) {
         return new ApplicationLogCommand(
                 Instant.now(), level, source, event, outcome, CurrentLogActor.resolve(),

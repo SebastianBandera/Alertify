@@ -2,6 +2,7 @@ package app.alertify.alerts.model;
 
 import java.time.Instant;
 import java.util.Objects;
+import java.util.UUID;
 
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
@@ -32,6 +33,9 @@ public class AlertExecution {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "execution_id", nullable = false, updatable = false)
+    private UUID executionId;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "alert_id", nullable = false, updatable = false)
     private Alert alert;
@@ -42,6 +46,9 @@ public class AlertExecution {
 
     @Column(name = "started_at", nullable = false, updatable = false)
     private Instant startedAt;
+
+    @Column(name = "work_started_at", nullable = false, updatable = false)
+    private Instant workStartedAt;
 
     @Column(name = "finished_at", nullable = false, updatable = false)
     private Instant finishedAt;
@@ -59,37 +66,61 @@ public class AlertExecution {
     @Column(name = "error_stack_trace", columnDefinition = "text", updatable = false)
     private String errorStackTrace;
 
+    @Column(name = "worker_name", updatable = false)
+    private String workerName;
+
+    @Column(name = "worker_ip_address", length = 45, updatable = false)
+    private String workerIpAddress;
+
+    @Column(name = "worker_port", updatable = false)
+    private Integer workerPort;
+
+    @Column(name = "worker_instance_id", updatable = false)
+    private UUID workerInstanceId;
+
     protected AlertExecution() {
     }
 
-    private AlertExecution(Alert alert, AlertExecutionStatus status, Instant startedAt, Instant finishedAt, JsonNode statusMessage, String errorType, String errorMessage, String errorStackTrace) {
+    private AlertExecution(UUID executionId, Alert alert, AlertExecutionWorker worker, AlertExecutionStatus status, Instant startedAt, Instant workStartedAt, Instant finishedAt, JsonNode statusMessage, String errorType, String errorMessage, String errorStackTrace) {
+        this.executionId = Objects.requireNonNull(executionId, "executionId must not be null");
         this.alert = Objects.requireNonNull(alert, "alert must not be null");
         this.status = Objects.requireNonNull(status, "status must not be null");
         this.startedAt = Objects.requireNonNull(startedAt, "startedAt must not be null");
+        this.workStartedAt = Objects.requireNonNull(workStartedAt, "workStartedAt must not be null");
         this.finishedAt = Objects.requireNonNull(finishedAt, "finishedAt must not be null");
-        if (finishedAt.isBefore(startedAt))
-            throw new IllegalArgumentException("finishedAt must not be before startedAt");
+        if (workStartedAt.isBefore(startedAt) || finishedAt.isBefore(workStartedAt))
+            throw new IllegalArgumentException("Execution timestamps must be ordered");
         this.statusMessage = statusMessage == null ? null : statusMessage.deepCopy();
         this.errorType = errorType;
         this.errorMessage = errorMessage;
         this.errorStackTrace = errorStackTrace;
+        if (worker != null) {
+            this.workerName = worker.name();
+            this.workerIpAddress = worker.ipAddress();
+            this.workerPort = worker.port();
+            this.workerInstanceId = worker.instanceId();
+        }
     }
 
-    public static AlertExecution result(Alert alert, AlertExecutionStatus status, Instant startedAt, Instant finishedAt, JsonNode statusMessage) {
+    public static AlertExecution result(UUID executionId, Alert alert, AlertExecutionWorker worker, AlertExecutionStatus status, Instant startedAt, Instant workStartedAt, Instant finishedAt, JsonNode statusMessage) {
         if (status == AlertExecutionStatus.ERROR)
             throw new IllegalArgumentException("ERROR is reserved for exception executions");
-        return new AlertExecution(alert, status, startedAt, finishedAt, statusMessage, null, null, null);
+        return new AlertExecution(executionId, alert, worker, status, startedAt, workStartedAt, finishedAt, statusMessage, null, null, null);
     }
 
-    public static AlertExecution error(Alert alert, Instant startedAt, Instant finishedAt, String errorType, String errorMessage, String errorStackTrace) {
+    public static AlertExecution error(UUID executionId, Alert alert, AlertExecutionWorker worker, Instant startedAt, Instant workStartedAt, Instant finishedAt, String errorType, String errorMessage, String errorStackTrace) {
         return new AlertExecution(
-                alert, AlertExecutionStatus.ERROR, startedAt, finishedAt, null,
+                executionId, alert, worker, AlertExecutionStatus.ERROR, startedAt, workStartedAt, finishedAt, null,
                 Objects.requireNonNull(errorType, "errorType must not be null"), errorMessage, errorStackTrace
         );
     }
 
     public Long getId() {
         return id;
+    }
+
+    public UUID getExecutionId() {
+        return executionId;
     }
 
     public Alert getAlert() {
@@ -108,6 +139,10 @@ public class AlertExecution {
         return finishedAt;
     }
 
+    public Instant getWorkStartedAt() {
+        return workStartedAt;
+    }
+
     public JsonNode getStatusMessage() {
         return statusMessage == null ? null : statusMessage.deepCopy();
     }
@@ -122,5 +157,21 @@ public class AlertExecution {
 
     public String getErrorStackTrace() {
         return errorStackTrace;
+    }
+
+    public String getWorkerName() {
+        return workerName;
+    }
+
+    public String getWorkerIpAddress() {
+        return workerIpAddress;
+    }
+
+    public Integer getWorkerPort() {
+        return workerPort;
+    }
+
+    public UUID getWorkerInstanceId() {
+        return workerInstanceId;
     }
 }

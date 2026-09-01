@@ -13,7 +13,8 @@ public record WorkerGrpcProperties(
     String host,
     int port,
     Tls tls,
-    Discovery discovery
+    Discovery discovery,
+    Execution execution
 ) {
 
     public record Tls(
@@ -30,6 +31,13 @@ public record WorkerGrpcProperties(
         Duration interval,
         Duration initialDelay,
         Duration healthTimeout
+    ) {
+    }
+
+    public record Execution(
+        Duration timeout,
+        Duration sourceSynchronizationTimeout,
+        Path sourceRoot
     ) {
     }
 }

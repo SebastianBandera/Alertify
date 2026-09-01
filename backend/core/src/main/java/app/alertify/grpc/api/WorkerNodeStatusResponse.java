@@ -1,0 +1,21 @@
+package app.alertify.grpc.api;
+
+import java.util.List;
+import java.util.Set;
+
+import app.alertify.worker.contract.WorkerCapability;
+
+public record WorkerNodeStatusResponse(
+    String address,
+    boolean available,
+    String workerName,
+    String workerInstanceId,
+    Set<WorkerCapability> capabilities,
+    long totalExecuted,
+    int runningCount,
+    int waitingCount,
+    List<WorkerTaskStatusResponse> runningTasks,
+    List<WorkerTaskStatusResponse> waitingTasks,
+    String error
+) {
+}

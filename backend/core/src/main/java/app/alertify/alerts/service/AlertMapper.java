@@ -41,10 +41,15 @@ final class AlertMapper {
 
     static AlertExecutionResponse toExecution(AlertExecution execution) {
         return new AlertExecutionResponse(
-                execution.getId(), execution.getAlert().getId(), execution.getAlert().getName(),
-                execution.getStatus(), execution.getStartedAt(), execution.getFinishedAt(),
+                execution.getId(), execution.getExecutionId(), execution.getAlert().getId(), execution.getAlert().getName(),
+                execution.getStatus(), execution.getStartedAt(), execution.getWorkStartedAt(),
+                execution.getFinishedAt(),
                 Duration.between(execution.getStartedAt(), execution.getFinishedAt()).toMillis(),
-                execution.getStatusMessage(), execution.getErrorType(), execution.getErrorMessage()
+                Duration.between(execution.getStartedAt(), execution.getWorkStartedAt()).toMillis(),
+                Duration.between(execution.getWorkStartedAt(), execution.getFinishedAt()).toMillis(),
+                execution.getStatusMessage(), execution.getErrorType(), execution.getErrorMessage(),
+                execution.getWorkerName(), execution.getWorkerIpAddress(), execution.getWorkerPort(),
+                execution.getWorkerInstanceId()
         );
     }
 

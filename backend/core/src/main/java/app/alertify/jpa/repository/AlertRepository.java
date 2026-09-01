@@ -1,6 +1,7 @@
 package app.alertify.jpa.repository;
 
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -15,6 +16,13 @@ public interface AlertRepository extends JpaRepository<Alert, Long> {
     boolean existsByNameIgnoreCase(String name);
 
     boolean existsByNameIgnoreCaseAndIdNot(String name, Long id);
+
+    @Override
+    @EntityGraph(attributePaths = "template")
+    Optional<Alert> findById(Long id);
+
+    @EntityGraph(attributePaths = "template")
+    List<Alert> findAllByEnabledTrue();
 
     @Override
     @EntityGraph(attributePaths = "template")
