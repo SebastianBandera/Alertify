@@ -65,11 +65,7 @@ public class AlertScheduleService implements AutoCloseable {
             throw new IllegalStateException("Could not schedule alert " + alert.getId());
 
         schedules.put(alert.getId(), future);
-        eventLogger.success("ALERT_SCHEDULE_REGISTERED", Map.of(
-                "alertId", alert.getId(),
-                "alertName", alert.getName(),
-                "cronExpression", alert.getCronExpression()
-        ));
+        eventLogger.success("ALERT_SCHEDULE_REGISTERED", Map.of("alertId", alert.getId(), "alertName", alert.getName(), "cronExpression", alert.getCronExpression()));
     }
 
     private synchronized void remove(Long alertId) {

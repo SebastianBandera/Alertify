@@ -101,9 +101,7 @@ public class AlertManagementService {
         Page<AlertResponse> result = alerts.map(
                 alert -> AlertMapper.toAlert(alert, parameterValueRepository.findAllByAlertIdOrdered(alert.getId()))
         );
-        eventLogger.success("ALERT_PAGE_VIEWED", Map.of(
-                "page", result.getNumber(), "size", result.getSize(), "totalElements", result.getTotalElements()
-        ));
+        eventLogger.success("ALERT_PAGE_VIEWED", Map.of("page", result.getNumber(), "size", result.getSize(), "totalElements", result.getTotalElements()));
         return result;
     }
 
@@ -167,7 +165,7 @@ public class AlertManagementService {
 
         if (executionRepository.existsByAlert_Id(id))
             throw new ConflictException("Alert has execution history and cannot be deleted");
-        
+
         List<AlertParameterValue> values = parameterValueRepository.findAllByAlertIdOrdered(id);
         parameterValueRepository.deleteAll(values);
         parameterValueRepository.flush();
@@ -274,7 +272,7 @@ public class AlertManagementService {
 
         if (!definition.isBindingAllowed() && !definition.getOptions().contains(value))
             throw invalid("Parameter '" + definition.getParameterKey() + "' must use one of its declared options");
-        
+
         try {
             validateJavaType(definition.getJavaType(), value);
         } catch (RuntimeException exception) {

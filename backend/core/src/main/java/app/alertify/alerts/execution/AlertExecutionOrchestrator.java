@@ -48,11 +48,7 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
 
     public void trigger(long alertId, String alertName, boolean allowConcurrentExecutions) {
         if (!enter(alertId, allowConcurrentExecutions)) {
-            eventLogger.failure("ALERT_EXECUTION_SKIPPED", Map.of(
-                    "alertId", alertId,
-                    "alertName", alertName,
-                    "reason", "ALREADY_RUNNING"
-            ));
+            eventLogger.failure("ALERT_EXECUTION_SKIPPED", Map.of("alertId", alertId, "alertName", alertName, "reason", "ALREADY_RUNNING"));
             return;
         }
         executor.submit(() -> execute(alertId));
@@ -79,15 +75,7 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
                 endpoint = worker.endpoint();
                 workerName = worker.status().getWorkerName();
                 workerInstanceId = worker.status().getWorkerInstanceId();
-                eventLogger.success("ALERT_EXECUTION_STARTED", Map.of(
-                        "executionId", executionId,
-                        "alertId", execution.alertId(),
-                        "alertName", execution.alertName(),
-                        "worker", endpoint.toString(),
-                        "workerName", workerName,
-                        "workerInstanceId", workerInstanceId,
-                        "workerLoad", worker.currentLoad()
-                ));
+                eventLogger.success("ALERT_EXECUTION_STARTED", Map.of("executionId", executionId, "alertId", execution.alertId(), "alertName", execution.alertName(), "worker", endpoint.toString(), "workerName", workerName, "workerInstanceId", workerInstanceId, "workerLoad", worker.currentLoad()));
 
                 ExecuteAlertRequest request = request(executionId.toString(), execution);
                 ExecuteAlertResponse response = workerClient.execute(

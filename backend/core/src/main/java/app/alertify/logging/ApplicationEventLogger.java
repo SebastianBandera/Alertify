@@ -99,10 +99,7 @@ public class ApplicationEventLogger {
         try {
             writer.persist(command);
         } catch (RuntimeException exception) {
-            log.error(
-                    "Unable to persist application event={} requestId={}",
-                    command.event(), command.requestId(), exception
-            );
+            log.error("Unable to persist application event={} requestId={}", command.event(), command.requestId(), exception);
         }
     }
 

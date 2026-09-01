@@ -22,7 +22,7 @@ final class ConfigurationMapper {
                 .sorted(java.util.Comparator.comparing(Tag::getName, String.CASE_INSENSITIVE_ORDER))
                 .map(ConfigurationMapper::toResponse)
                 .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
-        
+
         boolean valueHidden = SystemConfigurationPolicy.isValueHidden(configuration.getName());
 
         return new ConfigurationResponse(

@@ -267,10 +267,7 @@ public class ApplicationConfigurationService {
 
     public ConfigurationResponse get(Long id) {
         ConfigurationResponse response = lookupService.getById(id);
-        eventLogger.success(
-                "CONFIGURATION_VIEWED",
-                Map.of("configurationId", response.id(), "name", response.name(), "version", response.version())
-        );
+        eventLogger.success("CONFIGURATION_VIEWED", Map.of("configurationId", response.id(), "name", response.name(), "version", response.version()));
         return response;
     }
 

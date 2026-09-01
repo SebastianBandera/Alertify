@@ -8,7 +8,7 @@ import java.util.Map;
  */
 public class ConflictException extends RuntimeException {
     private static final long serialVersionUID = 1L;
-    
+
     private final String code;
     private final Map<String, String> parameters;
 

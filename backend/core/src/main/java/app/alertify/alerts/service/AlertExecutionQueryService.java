@@ -50,7 +50,7 @@ public class AlertExecutionQueryService {
 
         if (status != null)
             data.put("status", status.name());
-        
+
         eventLogger.success("ALERT_EXECUTION_HISTORY_VIEWED", data);
         return result;
     }

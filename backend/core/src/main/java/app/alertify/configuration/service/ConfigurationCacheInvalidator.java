@@ -58,7 +58,7 @@ class ConfigurationCacheInvalidator {
         Cache byId = cacheManager.getCache(ConfigurationCacheNames.BY_ID);
         if (byId != null)
             byId.clear();
-        
+
         Cache byName = cacheManager.getCache(ConfigurationCacheNames.BY_NAME);
         if (byName != null)
             byName.clear();

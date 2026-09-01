@@ -49,12 +49,7 @@ public class WorkerGrpcHealthProbe {
             LOGGER.debug("Received gRPC worker response from {}: status={}, capabilities={}", endpoint, status, capabilities);
             return new WorkerGrpcProbeResult(status, capabilities);
         } catch (StatusRuntimeException exception) {
-            LOGGER.warn(
-                    "gRPC worker request to {} failed: code={}, description={}",
-                    endpoint,
-                    exception.getStatus().getCode(),
-                    exception.getStatus().getDescription()
-            );
+            LOGGER.warn("gRPC worker request to {} failed: code={}, description={}", endpoint, exception.getStatus().getCode(), exception.getStatus().getDescription());
             throw exception;
         } finally {
             channel.shutdownNow();

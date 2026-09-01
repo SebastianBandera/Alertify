@@ -65,11 +65,7 @@ class ApplicationEventLoggerTest {
     void canPersistExpectedBusinessFailureAtInfoLevel() {
         ApplicationEventLogger logger = new ApplicationEventLogger(writer, "test-app");
 
-        logger.failure(
-            "API_ERROR_SHOWN",
-            ApplicationLogLevel.INFO,
-            Map.of("errorCode", "CONFIGURATION_TAG_IN_USE")
-        );
+        logger.failure("API_ERROR_SHOWN", ApplicationLogLevel.INFO, Map.of("errorCode", "CONFIGURATION_TAG_IN_USE"));
 
         ArgumentCaptor<ApplicationLogCommand> command =
             ArgumentCaptor.forClass(ApplicationLogCommand.class);

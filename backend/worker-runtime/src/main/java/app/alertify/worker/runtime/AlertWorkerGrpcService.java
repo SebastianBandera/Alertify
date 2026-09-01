@@ -36,16 +36,9 @@ class AlertWorkerGrpcService extends AlertWorkerServiceGrpc.AlertWorkerServiceIm
 
     @Override
     public void executeAlert(ExecuteAlertRequest request, StreamObserver<ExecuteAlertResponse> responseObserver) {
-        LOGGER.info(
-            "Received alert execution: executionId={}, alertId={}, alertName={}, template={}",
-            request.getExecutionId(), request.getAlertId(), request.getAlertName(),
-            request.getTemplateClassName()
-        );
+        LOGGER.info("Received alert execution: executionId={}, alertId={}, alertName={}, template={}", request.getExecutionId(), request.getAlertId(), request.getAlertName(), request.getTemplateClassName());
         if (!compiler.isAvailable(request.getTemplateClassName(), request.getSourceChecksum())) {
-            LOGGER.info(
-                "Alert template source is required: executionId={}, template={}, checksum={}",
-                request.getExecutionId(), request.getTemplateClassName(), request.getSourceChecksum()
-            );
+            LOGGER.info("Alert template source is required: executionId={}, template={}, checksum={}", request.getExecutionId(), request.getTemplateClassName(), request.getSourceChecksum());
             responseObserver.onNext(
                 ExecuteAlertResponse.newBuilder()
                     .setSourceRequired(SourceRequired.newBuilder()
@@ -67,10 +60,7 @@ class AlertWorkerGrpcService extends AlertWorkerServiceGrpc.AlertWorkerServiceIm
                     .setSynchronized(true)
                     .build());
         } catch (RuntimeException exception) {
-            LOGGER.warn(
-                "Alert template compilation failed: template={}, checksum={}",
-                request.getTemplateClassName(), request.getSourceChecksum(), exception
-            );
+            LOGGER.warn("Alert template compilation failed: template={}, checksum={}", request.getTemplateClassName(), request.getSourceChecksum(), exception);
             responseObserver.onNext(SynchronizeTemplateResponse.newBuilder()
                     .setSynchronized(false)
                     .setError(WorkerExecutionEngine.error(exception))

@@ -71,7 +71,7 @@ public class ConfigurationExpressionService {
 
         if (draft.name() != null)
             data.put("name", draft.name());
-        
+
         data.put("configurationReferenceCount", parsed.configurationNames().size());
         data.put("environmentReferenceCount", parsed.environmentNames().size());
         data.put("utilityReferenceCount", parsed.utilityNames().size());

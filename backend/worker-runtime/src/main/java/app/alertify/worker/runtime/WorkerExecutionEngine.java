@@ -51,11 +51,11 @@ class WorkerExecutionEngine implements AutoCloseable {
         try {
             permit = tracker.acquire(request, startedAt);
             context = new AlertExecutionContext(request.getState());
-            
+
             AlertResult result = compiler.get(request.getTemplateClassName(), request.getSourceChecksum())
                                         .newInstance(request.getParametersList())
                                         .evaluate(context);
-            
+
             finalStatus = result.status();
             Instant finishedAt = Instant.now();
 
@@ -89,7 +89,7 @@ class WorkerExecutionEngine implements AutoCloseable {
         } finally {
             if (permit != null)
                 permit.close();
-            
+
             LOGGER.info("Alert execution finished: executionId={}, alertId={}, alertName={}, status={}", request.getExecutionId(), request.getAlertId(), request.getAlertName(), finalStatus);
         }
     }

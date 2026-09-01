@@ -121,7 +121,7 @@ public class WorkerDiscoveryService {
 
         if (result != null)
             data.put("capabilities", capabilityNames(result.capabilities()));
-        
+
         if (exception != null) {
             data.put("exceptionType", exception.getClass().getName());
             if (exception.getMessage() != null)

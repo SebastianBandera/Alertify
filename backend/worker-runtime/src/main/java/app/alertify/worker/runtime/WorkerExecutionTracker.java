@@ -36,7 +36,7 @@ class WorkerExecutionTracker {
         );
 
         waiting.put(request.getExecutionId(), task);
-        
+
         try {
             if (!semaphore.tryAcquire()) {
                 LOGGER.info("Alert execution is waiting for a permit: executionId={}, alertId={}, alertName={}", request.getExecutionId(), request.getAlertId(), request.getAlertName());
@@ -50,9 +50,9 @@ class WorkerExecutionTracker {
         Instant workStartedAt = Instant.now();
         waiting.remove(request.getExecutionId());
         running.put(request.getExecutionId(), task.withWorkStartedAt(workStartedAt));
-        
+
         LOGGER.info("Alert execution started: executionId={}, alertId={}, alertName={}, waitedMs={}", request.getExecutionId(), request.getAlertId(), request.getAlertName(), Duration.between(queuedAt, workStartedAt).toMillis());
-        
+
         return new Permit(request.getExecutionId(), workStartedAt);
     }
 

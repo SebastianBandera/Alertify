@@ -96,7 +96,7 @@ final class AlertParameterConverter {
 
         if (targetType == long.class)
             return 0L;
-            
+
         if (targetType == float.class)
             return 0F;
 

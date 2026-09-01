@@ -78,7 +78,7 @@ public class ApplicationLogService {
                                     order.getDirection(),
                                     SORT_ALIASES.getOrDefault(order.getProperty(), order.getProperty())
                             ).with(order.getNullHandling());
-                            
+
                             return order.isIgnoreCase() ? mappedOrder.ignoreCase() : mappedOrder;
                         })
                         .toList()

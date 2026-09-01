@@ -119,7 +119,7 @@ public class SecretEncryptionService {
 
             if (decryptedValue != null)
                 Arrays.fill(decryptedValue, (byte) 0);
-            
+
             throw new SecretNotRecoverableException(secret.getName(), exception);
         } finally {
             if (calculatedHash != null)

@@ -185,7 +185,7 @@ public class ApplicationSecretService {
 
         if (ids.stream().anyMatch(id -> id == null || id <= 0))
             throw new ResourceNotFoundException("One or more secret tags were not found");
-        
+
         List<Tag> found = tagRepository.findAllByIdInAndScope(ids, TagScope.SECRET);
         if (found.size() != ids.size())
             throw new ResourceNotFoundException("One or more secret tags were not found");
@@ -220,7 +220,7 @@ public class ApplicationSecretService {
 
         if (rawValues.size() != 1)
             throw new InvalidFilterException("tagOperator");
-        
+
         return switch (rawValues.get(0).trim().toUpperCase(Locale.ROOT)) {
             case "OR" -> false;
             case "AND" -> true;

@@ -52,11 +52,7 @@ class WorkerGrpcServer implements SmartLifecycle {
                     .build()
                     .start();
             running = true;
-            LOGGER.info(
-                "Worker gRPC server started: name={}, instanceId={}, port={}, capabilities={}, maxConcurrentAlerts={}",
-                properties.name(), instanceIdentity.id(), server.getPort(), properties.capabilities(),
-                properties.maxConcurrentAlerts()
-            );
+            LOGGER.info("Worker gRPC server started: name={}, instanceId={}, port={}, capabilities={}, maxConcurrentAlerts={}", properties.name(), instanceIdentity.id(), server.getPort(), properties.capabilities(), properties.maxConcurrentAlerts());
         } catch (IOException exception) {
             healthStatusManager.enterTerminalState();
             throw new IllegalStateException("The worker gRPC server could not be started", exception);
@@ -129,13 +125,13 @@ class WorkerGrpcServer implements SmartLifecycle {
 
         if (properties.grpcPort() < 0 || properties.grpcPort() > 65535)
             throw new IllegalStateException("alertify.worker.grpc-port must be between 0 and 65535");
-        
+
         if (properties.shutdownGracePeriod() == null || properties.shutdownGracePeriod().isNegative())
             throw new IllegalStateException("alertify.worker.shutdown-grace-period must not be negative");
 
         if (properties.capabilities() == null || properties.capabilities().isEmpty())
             throw new IllegalStateException("alertify.worker.capabilities must not be empty");
-        
+
         if (properties.compilerOutputDirectory() == null)
             throw new IllegalStateException("alertify.worker.compiler-output-directory must be configured");
     }

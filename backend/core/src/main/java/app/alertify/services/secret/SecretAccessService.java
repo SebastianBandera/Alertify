@@ -36,10 +36,7 @@ public class SecretAccessService {
                 .stream()
                 .map(secret -> new SecretDescriptor(secret.getName(), secret.getDescription()))
                 .toList();
-        eventLogger.success(
-                "SECRET_CATALOG_ACCESSED",
-                Map.of("secretCount", descriptors.size())
-        );
+        eventLogger.success("SECRET_CATALOG_ACCESSED", Map.of("secretCount", descriptors.size()));
         return descriptors;
     }
 
@@ -48,28 +45,16 @@ public class SecretAccessService {
         ApplicationSecret secret = secretRepository.findByNameIgnoreCase(name)
                 .orElse(null);
         if (secret == null) {
-            eventLogger.failure(
-                    "SECRET_VALUE_ACCESSED",
-                    Map.of("name", name, "reason", "NOT_FOUND")
-            );
+            eventLogger.failure("SECRET_VALUE_ACCESSED", Map.of("name", name, "reason", "NOT_FOUND"));
             throw new ResourceNotFoundException("Secret '" + name + "' was not found");
         }
 
         try {
             String value = encryptionService.decrypt(secret);
-            eventLogger.success(
-                    "SECRET_VALUE_ACCESSED",
-                    Map.of("secretId", secret.getId(), "name", secret.getName())
-            );
+            eventLogger.success("SECRET_VALUE_ACCESSED", Map.of("secretId", secret.getId(), "name", secret.getName()));
             return value;
         } catch (SecretNotRecoverableException exception) {
-            eventLogger.failure(
-                    "SECRET_VALUE_ACCESSED",
-                    Map.of(
-                            "secretId", secret.getId(), "name", secret.getName(),
-                            "reason", "UNRECOVERABLE"
-                    )
-            );
+            eventLogger.failure("SECRET_VALUE_ACCESSED", Map.of("secretId", secret.getId(), "name", secret.getName(), "reason", "UNRECOVERABLE"));
             throw exception;
         }
     }

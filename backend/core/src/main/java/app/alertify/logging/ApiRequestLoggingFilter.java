@@ -51,14 +51,7 @@ public final class ApiRequestLoggingFilter extends OncePerRequestFilter {
         try {
             filterChain.doFilter(request, response);
         } catch (IOException | ServletException | RuntimeException exception) {
-            eventLogger.error(
-                    "API_UNHANDLED_ERROR",
-                    Map.of(
-                            "method", request.getMethod(),
-                            "path", request.getRequestURI(),
-                            "errorType", exception.getClass().getSimpleName()
-                    )
-            );
+            eventLogger.error("API_UNHANDLED_ERROR", Map.of("method", request.getMethod(), "path", request.getRequestURI(), "errorType", exception.getClass().getSimpleName()));
             throw exception;
         } finally {
             Map<String, Object> data = requestData(request);

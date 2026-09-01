@@ -67,10 +67,7 @@ public class AlertTemplateRegistrationService {
             parameterCount += register(templateClass);
 
         var summary = new AlertTemplateRegistrationSummary(templateClasses.size(), parameterCount);
-        log.info(
-            "Alert template scan completed: templates={}, parameters={}",
-            summary.templates(), summary.parameters()
-        );
+        log.info("Alert template scan completed: templates={}, parameters={}", summary.templates(), summary.parameters());
         return summary;
     }
 
