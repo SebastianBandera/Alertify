@@ -1,0 +1,100 @@
+syntax = "proto3";
+
+package alertify.worker.v1;
+
+option java_multiple_files = true;
+option java_package = "app.alertify.worker.grpc";
+option java_outer_classname = "AlertWorkerProto";
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+service AlertWorkerService {
+  rpc ExecuteAlert(ExecuteAlertRequest) returns (ExecuteAlertResponse);
+  rpc SynchronizeTemplate(SynchronizeTemplateRequest) returns (SynchronizeTemplateResponse);
+  rpc GetStatus(google.protobuf.Empty) returns (WorkerStatusResponse);
+}
+
+message ExecuteAlertRequest {
+  string execution_id = 1;
+  int64 alert_id = 2;
+  string alert_name = 3;
+  string template_class_name = 4;
+  string source_checksum = 5;
+  repeated AlertParameter parameters = 6;
+  string state = 7;
+}
+
+message AlertParameter {
+  string name = 1;
+  string java_type = 2;
+  string value = 3;
+  bool null_value = 4;
+}
+
+message ExecuteAlertResponse {
+  oneof outcome {
+    SourceRequired source_required = 1;
+    AlertExecutionResult result = 2;
+  }
+}
+
+message SourceRequired {
+  string template_class_name = 1;
+  string source_checksum = 2;
+}
+
+message SynchronizeTemplateRequest {
+  string template_class_name = 1;
+  string source_checksum = 2;
+  string source = 3;
+}
+
+message SynchronizeTemplateResponse {
+  bool synchronized = 1;
+  ExecutionError error = 2;
+}
+
+enum WorkerExecutionStatus {
+  WORKER_EXECUTION_STATUS_UNSPECIFIED = 0;
+  WORKER_EXECUTION_STATUS_SUCCESS = 1;
+  WORKER_EXECUTION_STATUS_WARN = 2;
+  WORKER_EXECUTION_STATUS_ERROR = 3;
+}
+
+message AlertExecutionResult {
+  WorkerExecutionStatus status = 1;
+  google.protobuf.Timestamp started_at = 2;
+  google.protobuf.Timestamp work_started_at = 3;
+  google.protobuf.Timestamp finished_at = 4;
+  string status_message_json = 5;
+  string state = 6;
+  ExecutionError error = 7;
+  string worker_name = 8;
+  string worker_instance_id = 9;
+}
+
+message ExecutionError {
+  string type = 1;
+  string message = 2;
+  string stack_trace = 3;
+}
+
+message WorkerStatusResponse {
+  string worker_name = 1;
+  repeated string capabilities = 2;
+  int64 total_executed = 3;
+  int32 running_count = 4;
+  int32 waiting_count = 5;
+  repeated WorkerTask running_tasks = 6;
+  repeated WorkerTask waiting_tasks = 7;
+  string worker_instance_id = 8;
+}
+
+message WorkerTask {
+  string execution_id = 1;
+  int64 alert_id = 2;
+  string alert_name = 3;
+  google.protobuf.Timestamp queued_at = 4;
+  google.protobuf.Timestamp work_started_at = 5;
+}
