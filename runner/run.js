@@ -11,6 +11,7 @@ const PRIVATE_KEY_PART_SOURCE = path.join(
   'backend', 'core', 'src', 'main', 'java', 'app', 'alertify', 'services', 'secret', 'key',
   'PrivateKeyPart.java',
 );
+const CLEANUP_PRESERVATION_LABEL = 'app.alertify.cleanup-preservation=true';
 
 function parseDocument(content, sourceName) {
   const lines = content.split(/\r?\n/);
@@ -835,6 +836,22 @@ function runCommand(command, args, cwd, label, environment) {
   }
 }
 
+function captureCommand(command, args, cwd, label) {
+  const result = spawnSync(command, args, {
+    cwd,
+    encoding: 'utf8',
+    shell: false,
+  });
+  if (result.error) {
+    throw new Error(`${label}: ${result.error.message}`);
+  }
+  if (result.status !== 0) {
+    const details = result.stderr.trim();
+    throw new Error(`${label}: command exited with code ${result.status}${details ? `: ${details}` : '.'}`);
+  }
+  return result.stdout;
+}
+
 function commandSucceeds(command, args, cwd) {
   const result = spawnSync(command, args, { cwd, stdio: 'ignore', shell: false });
   return !result.error && result.status === 0;
@@ -926,13 +943,130 @@ function startLocalServices(plan, environment, projectDirectory) {
   }
 }
 
-function cleanupDockerResources(projectDirectory) {
+function imageReferencePattern(pattern) {
+  const expression = pattern
+    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+    .replace(/\*/g, '.*')
+    .replace(/\?/g, '.');
+  return new RegExp(`^${expression}$`);
+}
+
+function parseCleanupDockerOption(argv) {
+  const options = argv.filter((argument) => argument === '--cleanup-docker' || argument.startsWith('--cleanup-docker='));
+  if (options.length > 1) {
+    throw new Error('--cleanup-docker may only be specified once.');
+  }
+  if (options.length === 0) {
+    return { enabled: false, imagePatterns: [] };
+  }
+
+  const option = options[0];
+  if (option === '--cleanup-docker') {
+    return { enabled: true, imagePatterns: [] };
+  }
+
+  const rawPatterns = option.substring('--cleanup-docker='.length);
+  const imagePatterns = rawPatterns.split(';').map((pattern) => pattern.trim());
+  if (imagePatterns.some((pattern) => pattern.length === 0)) {
+    throw new Error('--cleanup-docker image patterns must not be empty.');
+  }
+  return { enabled: true, imagePatterns: [...new Set(imagePatterns)] };
+}
+
+function preservationImages(projectDirectory, imagePatterns) {
+  if (imagePatterns.length === 0) {
+    return [];
+  }
+
+  const matchers = imagePatterns.map(imageReferencePattern);
+  const matchedPatterns = new Set();
+  const referencesByImage = new Map();
+  const output = captureCommand(
+    'docker',
+    ['image', 'ls', '--all', '--no-trunc', '--format', '{{.ID}}\t{{.Repository}}:{{.Tag}}'],
+    projectDirectory,
+    'Listing Docker images for cleanup exclusions',
+  );
+  for (const line of output.split(/\r?\n/).filter(Boolean)) {
+    const separator = line.indexOf('\t');
+    if (separator < 0) {
+      continue;
+    }
+    const imageId = line.substring(0, separator);
+    const reference = line.substring(separator + 1);
+    const matchingIndexes = matchers
+      .map((matcher, index) => matcher.test(reference) ? index : -1)
+      .filter((index) => index >= 0);
+    if (matchingIndexes.length === 0) {
+      continue;
+    }
+    matchingIndexes.forEach((index) => matchedPatterns.add(index));
+    const references = referencesByImage.get(imageId) || new Set();
+    references.add(reference);
+    referencesByImage.set(imageId, references);
+  }
+
+  imagePatterns.forEach((pattern, index) => {
+    if (!matchedPatterns.has(index)) {
+      console.log(`  - No local Docker image matched cleanup exclusion: ${pattern}`);
+    }
+  });
+  return [...referencesByImage.entries()].map(([imageId, references]) => ({
+    imageId,
+    references: [...references].sort(),
+  }));
+}
+
+function createPreservationContainers(projectDirectory, images) {
+  const containerIds = [];
+  try {
+    for (const image of images) {
+      console.log(`  - Preserving Docker image during cleanup: ${image.references.join(', ')}`);
+      const containerId = captureCommand(
+        'docker',
+        ['create', '--label', CLEANUP_PRESERVATION_LABEL, image.imageId, 'true'],
+        projectDirectory,
+        `Creating cleanup preservation container for ${image.references.join(', ')}`,
+      ).trim();
+      if (!containerId) {
+        throw new Error(`Docker did not return a preservation container ID for ${image.references.join(', ')}.`);
+      }
+      containerIds.push(containerId);
+    }
+  } catch (error) {
+    removePreservationContainers(projectDirectory, containerIds);
+    throw error;
+  }
+  return containerIds;
+}
+
+function removePreservationContainers(projectDirectory, containerIds) {
+  if (containerIds.length === 0) {
+    return;
+  }
   runCommand(
     'docker',
-    ['image', 'prune', '-a', '-f'],
+    ['container', 'rm', ...containerIds],
     projectDirectory,
-    'Removing unused Docker images...',
+    'Removing temporary Docker image preservation containers...',
   );
+}
+
+function cleanupDockerResources(projectDirectory, imagePatterns = []) {
+  const preservationContainers = createPreservationContainers(
+    projectDirectory,
+    preservationImages(projectDirectory, imagePatterns),
+  );
+  try {
+    runCommand(
+      'docker',
+      ['image', 'prune', '-a', '-f'],
+      projectDirectory,
+      'Removing unused Docker images...',
+    );
+  } finally {
+    removePreservationContainers(projectDirectory, preservationContainers);
+  }
   runCommand(
     'docker',
     ['buildx', 'prune', '--all', '--force', '--filter', 'type!=exec.cachemount'],
@@ -953,7 +1087,8 @@ function printHelp() {
     '  --skip-publisher   Do not rebuild or restart the local HTTP publisher.\n' +
     '  --skip-worker-standard    Do not rebuild or restart standard workers.\n' +
     '  --skip-worker-playwright  Do not rebuild or restart Playwright workers.\n' +
-    '  --cleanup-docker   Remove unused Docker images and build cache, preserving dependency cache mounts.\n' +
+    '  --cleanup-docker[=PATTERNS]  Remove unused Docker images and build cache. Optional semicolon-separated image reference globs are preserved.\n' +
+    '                              Example: "--cleanup-docker=maven:*;mcr.microsoft.com/playwright:*;monitoring-*"\n' +
     '  --help             Show this help.');
 }
 
@@ -963,6 +1098,7 @@ function main(argv = process.argv.slice(2), projectDirectory = path.resolve(__di
     throw new Error(`Node.js 18 or later is required; detected version: ${process.versions.node}.`);
   }
 
+  const cleanupDocker = parseCleanupDockerOption(argv);
   const allowed = new Set([
     '--configure-only',
     '--skip-keycloak',
@@ -976,7 +1112,7 @@ function main(argv = process.argv.slice(2), projectDirectory = path.resolve(__di
     '--cleanup-docker',
     '--help',
   ]);
-  const unknown = argv.filter((argument) => !allowed.has(argument));
+  const unknown = argv.filter((argument) => !allowed.has(argument) && !argument.startsWith('--cleanup-docker='));
   if (unknown.length > 0) {
     throw new Error(`Unknown option: ${unknown.join(', ')}. Use --help to list the available options.`);
   }
@@ -984,7 +1120,7 @@ function main(argv = process.argv.slice(2), projectDirectory = path.resolve(__di
     printHelp();
     return;
   }
-  if (argv.includes('--configure-only') && argv.includes('--cleanup-docker')) {
+  if (argv.includes('--configure-only') && cleanupDocker.enabled) {
     throw new Error('--cleanup-docker cannot be combined with --configure-only.');
   }
 
@@ -1041,8 +1177,8 @@ function main(argv = process.argv.slice(2), projectDirectory = path.resolve(__di
 
   prepareGrpcCertificates(plan, effectiveEnvironment, projectDirectory);
   startLocalServices(plan, effectiveEnvironment, projectDirectory);
-  if (argv.includes('--cleanup-docker')) {
-    cleanupDockerResources(projectDirectory);
+  if (cleanupDocker.enabled) {
+    cleanupDockerResources(projectDirectory, cleanupDocker.imagePatterns);
   }
   console.log('\nStartup completed successfully.');
 }
@@ -1060,7 +1196,9 @@ module.exports = {
   applyApplicationContext,
   buildPlan,
   ensurePrivateKeyPartClass,
+  imageReferencePattern,
   main,
+  parseCleanupDockerOption,
   parseExistingEnvironment,
   prepareGrpcCertificates,
   reconcileEnvironment,
