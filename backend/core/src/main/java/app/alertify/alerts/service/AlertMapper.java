@@ -2,6 +2,8 @@ package app.alertify.alerts.service;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.LinkedHashSet;
+import java.util.Comparator;
 
 import app.alertify.alerts.api.AlertExecutionResponse;
 import app.alertify.alerts.api.AlertParameterValueResponse;
@@ -13,6 +15,7 @@ import app.alertify.alerts.model.AlertExecution;
 import app.alertify.alerts.model.AlertParameterValue;
 import app.alertify.alerts.model.AlertTemplateDefinition;
 import app.alertify.alerts.model.AlertTemplateParameterDefinition;
+import app.alertify.configuration.api.TagResponse;
 
 final class AlertMapper {
 
@@ -34,7 +37,14 @@ final class AlertMapper {
         return new AlertResponse(
                 alert.getId(), alert.getVersion(), template.getId(), template.getTemplateKey(),
                 template.getNameKey(), alert.getName(), alert.getDescription(), alert.getCronExpression(),
-                alert.isEnabled(), values.stream().map(AlertMapper::toParameterValue).toList(),
+                alert.isEnabled(), alert.getTags().stream()
+                        .sorted(Comparator.comparing(tag -> tag.getName().toLowerCase(java.util.Locale.ROOT)))
+                        .map(tag -> new TagResponse(
+                                tag.getId(), tag.getVersion(), tag.getScope(), tag.getName(), tag.getColor(),
+                                tag.getCreatedAt(), tag.getUpdatedAt()
+                        ))
+                        .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new)),
+                values.stream().map(AlertMapper::toParameterValue).toList(),
                 alert.getCreatedAt(), alert.getUpdatedAt()
         );
     }

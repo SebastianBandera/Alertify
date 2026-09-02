@@ -14,6 +14,7 @@ public record WorkerNodeStatusResponse(
     long totalExecuted,
     int runningCount,
     int waitingCount,
+    int maxConcurrentAlerts,
     List<WorkerTaskStatusResponse> runningTasks,
     List<WorkerTaskStatusResponse> waitingTasks,
     String error

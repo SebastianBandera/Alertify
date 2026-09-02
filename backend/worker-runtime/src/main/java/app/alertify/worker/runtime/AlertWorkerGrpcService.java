@@ -76,6 +76,7 @@ class AlertWorkerGrpcService extends AlertWorkerServiceGrpc.AlertWorkerServiceIm
         WorkerStatusResponse.Builder response = WorkerStatusResponse.newBuilder()
                 .setWorkerName(properties.name())
                 .setWorkerInstanceId(instanceIdentity.id())
+                .setMaxConcurrentAlerts(properties.maxConcurrentAlerts())
                 .addAllCapabilities(properties.capabilities().stream()
                         .map(Enum::name)
                         .sorted()

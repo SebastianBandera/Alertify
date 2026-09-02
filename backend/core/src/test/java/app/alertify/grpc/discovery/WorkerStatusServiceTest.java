@@ -85,11 +85,21 @@ class WorkerStatusServiceTest {
         }
     }
 
+    @Test
+    void exposesTheWorkerParallelCapacityInItsStatus() {
+        when(client.status(FIRST, TIMEOUT)).thenReturn(status(2, 1));
+        when(client.status(SECOND, TIMEOUT)).thenReturn(status(0, 0));
+
+        assertThat(service.status())
+                .allSatisfy(status -> assertThat(status.maxConcurrentAlerts()).isEqualTo(4));
+    }
+
     private static WorkerStatusResponse status(int running, int waiting) {
         return WorkerStatusResponse.newBuilder()
                 .setWorkerName("worker")
                 .setWorkerInstanceId("15d5376a-e386-48fe-a089-3d8e597bc29a")
                 .addCapabilities(WorkerCapability.STANDARD.name())
+                .setMaxConcurrentAlerts(4)
                 .setRunningCount(running)
                 .setWaitingCount(waiting)
                 .build();

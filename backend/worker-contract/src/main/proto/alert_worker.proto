@@ -89,6 +89,7 @@ message WorkerStatusResponse {
   repeated WorkerTask running_tasks = 6;
   repeated WorkerTask waiting_tasks = 7;
   string worker_instance_id = 8;
+  int32 max_concurrent_alerts = 9;
 }
 
 message WorkerTask {

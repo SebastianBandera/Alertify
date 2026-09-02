@@ -17,6 +17,7 @@ import java.util.stream.Collectors;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.scheduling.support.CronExpression;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,6 +40,8 @@ import app.alertify.api.error.ResourceNotFoundException;
 import app.alertify.configuration.service.SearchValidation;
 import app.alertify.jpa.entity.ApplicationConfiguration;
 import app.alertify.jpa.entity.ApplicationSecret;
+import app.alertify.jpa.entity.Tag;
+import app.alertify.jpa.entity.TagScope;
 import app.alertify.jpa.repository.AlertExecutionRepository;
 import app.alertify.jpa.repository.AlertParameterValueRepository;
 import app.alertify.jpa.repository.AlertRepository;
@@ -47,6 +50,8 @@ import app.alertify.jpa.repository.AlertTemplateDefinitionRepository;
 import app.alertify.jpa.repository.AlertTemplateParameterDefinitionRepository;
 import app.alertify.jpa.repository.ApplicationConfigurationRepository;
 import app.alertify.jpa.repository.ApplicationSecretRepository;
+import app.alertify.jpa.repository.TagRepository;
+import app.alertify.jpa.specification.AlertSpecifications;
 import app.alertify.logging.ApplicationEventLogger;
 
 @Service
@@ -65,11 +70,12 @@ public class AlertManagementService {
     private final AlertStateRepository stateRepository;
     private final ApplicationConfigurationRepository configurationRepository;
     private final ApplicationSecretRepository secretRepository;
+    private final TagRepository tagRepository;
     private final ApplicationEventLogger eventLogger;
     private final AlertScheduleService scheduleService;
     private final AlertExecutionOrchestrator executionOrchestrator;
 
-    public AlertManagementService(AlertRepository alertRepository, AlertTemplateDefinitionRepository templateRepository, AlertTemplateParameterDefinitionRepository templateParameterRepository, AlertParameterValueRepository parameterValueRepository, AlertExecutionRepository executionRepository, AlertStateRepository stateRepository, ApplicationConfigurationRepository configurationRepository, ApplicationSecretRepository secretRepository, ApplicationEventLogger eventLogger, AlertScheduleService scheduleService, AlertExecutionOrchestrator executionOrchestrator) {
+    public AlertManagementService(AlertRepository alertRepository, AlertTemplateDefinitionRepository templateRepository, AlertTemplateParameterDefinitionRepository templateParameterRepository, AlertParameterValueRepository parameterValueRepository, AlertExecutionRepository executionRepository, AlertStateRepository stateRepository, ApplicationConfigurationRepository configurationRepository, ApplicationSecretRepository secretRepository, TagRepository tagRepository, ApplicationEventLogger eventLogger, AlertScheduleService scheduleService, AlertExecutionOrchestrator executionOrchestrator) {
         this.alertRepository = alertRepository;
         this.templateRepository = templateRepository;
         this.templateParameterRepository = templateParameterRepository;
@@ -78,26 +84,26 @@ public class AlertManagementService {
         this.stateRepository = stateRepository;
         this.configurationRepository = configurationRepository;
         this.secretRepository = secretRepository;
+        this.tagRepository = tagRepository;
         this.eventLogger = eventLogger;
         this.scheduleService = scheduleService;
         this.executionOrchestrator = executionOrchestrator;
     }
 
     @Transactional(readOnly = true)
-    public Page<AlertResponse> search(String name, Long templateId, Pageable pageable) {
+    public Page<AlertResponse> search(String name, Long templateId, Set<Long> tagIds, boolean matchAllTags, Pageable pageable) {
         SearchValidation.validateSort(pageable, SORT_FIELDS);
         String normalizedName = name == null || name.isBlank() ? null : name.trim();
-        Page<Alert> alerts;
-        if (templateId == null && normalizedName == null)
-            alerts = alertRepository.findAll(pageable);
-        else if (templateId == null)
-            alerts = alertRepository.findAllByNameContainingIgnoreCase(normalizedName, pageable);
-        else if (normalizedName == null)
-            alerts = alertRepository.findAllByTemplate_Id(templateId, pageable);
-        else
-            alerts = alertRepository.findAllByTemplate_IdAndNameContainingIgnoreCase(
-                    templateId, normalizedName, pageable
-            );
+        Specification<Alert> specification = (_, _, cb) -> cb.conjunction();
+        if (normalizedName != null)
+            specification = specification.and(AlertSpecifications.nameContains(normalizedName));
+        if (templateId != null)
+            specification = specification.and(AlertSpecifications.hasTemplateId(templateId));
+        if (!tagIds.isEmpty())
+            specification = specification.and(matchAllTags
+                    ? AlertSpecifications.hasAllTagIds(tagIds)
+                    : AlertSpecifications.hasAnyTagId(tagIds));
+        Page<Alert> alerts = alertRepository.findAll(specification, pageable);
         Page<AlertResponse> result = alerts.map(
                 alert -> AlertMapper.toAlert(alert, parameterValueRepository.findAllByAlertIdOrdered(alert.getId()))
         );
@@ -121,8 +127,9 @@ public class AlertManagementService {
         String cron = validateCron(request.cronExpression());
         AlertTemplateDefinition template = templateRepository.findById(request.templateId())
                 .orElseThrow(() -> notFound("Alert template", request.templateId()));
+        Set<Tag> tags = resolveAlertTags(request.tagIds());
         Alert alert = alertRepository.saveAndFlush(new Alert(
-                template, name, normalizeOptional(request.description()), cron, request.enabled()
+                template, name, normalizeOptional(request.description()), cron, request.enabled(), tags
         ));
         List<AlertParameterValue> values = synchronizeParameters(alert, request.parameters(), List.of());
         eventLogger.successAfterCommit("ALERT_CREATED", Map.of(
@@ -145,6 +152,7 @@ public class AlertManagementService {
             alert.enable();
         else
             alert.disable();
+        alert.replaceTags(resolveAlertTags(request.tagIds()));
 
         List<AlertParameterValue> existing = parameterValueRepository.findAllByAlertIdOrdered(id);
         List<AlertParameterValue> values = synchronizeParameters(alert, request.parameters(), existing);
@@ -264,6 +272,17 @@ public class AlertManagementService {
 
     private ApplicationSecret secret(Long id) {
         return secretRepository.findById(id).orElseThrow(() -> notFound("Secret", id));
+    }
+
+    private Set<Tag> resolveAlertTags(Set<Long> requestedIds) {
+        if (requestedIds.isEmpty())
+            return Set.of();
+
+        List<Tag> tags = tagRepository.findAllByIdInAndScope(requestedIds, TagScope.ALERT);
+        if (tags.size() != requestedIds.size())
+            throw new ResourceNotFoundException("One or more alert tags were not found");
+
+        return new java.util.LinkedHashSet<>(tags);
     }
 
     private String validateText(AlertTemplateParameterDefinition definition, String value) {

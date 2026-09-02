@@ -22,6 +22,7 @@ export interface WorkerNodeStatus {
   readonly totalExecuted: number;
   readonly runningCount: number;
   readonly waitingCount: number;
+  readonly maxConcurrentAlerts: number;
   readonly runningTasks: readonly WorkerTaskStatus[];
   readonly waitingTasks: readonly WorkerTaskStatus[];
   readonly error: string | null;

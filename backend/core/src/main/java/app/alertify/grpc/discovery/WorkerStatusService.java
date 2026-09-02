@@ -129,7 +129,7 @@ public class WorkerStatusService implements AutoCloseable {
         if (!result.available()) {
             return new WorkerNodeStatusResponse(
                     result.endpoint().toString(), false, null, null, result.capabilities(),
-                    0, 0, 0, List.of(), List.of(), result.error()
+                    0, 0, 0, 0, List.of(), List.of(), result.error()
             );
         }
         WorkerStatusResponse status = result.status();
@@ -138,6 +138,7 @@ public class WorkerStatusService implements AutoCloseable {
                 result.endpoint().toString(), true, status.getWorkerName(),
                 status.getWorkerInstanceId(), result.capabilities(),
                 status.getTotalExecuted(), status.getRunningCount(), status.getWaitingCount(),
+                status.getMaxConcurrentAlerts(),
                 status.getRunningTasksList().stream().map(task -> task(task, now, true)).toList(),
                 status.getWaitingTasksList().stream().map(task -> task(task, now, false)).toList(),
                 null
