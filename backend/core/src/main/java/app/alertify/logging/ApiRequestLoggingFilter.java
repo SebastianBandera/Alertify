@@ -37,7 +37,7 @@ public final class ApiRequestLoggingFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        return !request.getRequestURI().startsWith("/api/");
+        return !request.getServletPath().startsWith("/api/");
     }
 
     @Override
