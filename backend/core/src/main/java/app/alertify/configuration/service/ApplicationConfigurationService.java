@@ -219,7 +219,7 @@ public class ApplicationConfigurationService {
             if (configuration == null) {
                 ApplicationConfiguration createdConfiguration = configurationRepository.save(
                         new ApplicationConfiguration(
-                                row.name(), row.description(), row.valueType(), value, tags
+                                row.name(), row.description(), row.valueType(), value, tags, row.writable()
                         )
                 );
                 configurationsByName.put(configurationKey, createdConfiguration);
@@ -242,6 +242,10 @@ public class ApplicationConfigurationService {
             }
             if (!tagIds(configuration.getTags()).equals(tagIds(tags))) {
                 configuration.replaceTags(tags);
+                changed = true;
+            }
+            if (configuration.isWritable() != row.writable()) {
+                configuration.changeWritable(row.writable());
                 changed = true;
             }
 
@@ -278,9 +282,11 @@ public class ApplicationConfigurationService {
         ensureNameAvailable(name, null);
 
         JsonNode value = valueValidator.validateAndNormalize(request.valueType(), request.value());
+        SystemConfigurationPolicy.validateWritable(name, request.writable());
         Set<Tag> tags = resolveConfigurationTags(request.tagIds());
         ApplicationConfiguration configuration = new ApplicationConfiguration(
-                name, normalizeOptional(request.description()), request.valueType(), value, tags
+                name, normalizeOptional(request.description()), request.valueType(), value, tags,
+                request.writable()
         );
         ApplicationConfiguration saved = configurationRepository.saveAndFlush(configuration);
         expressionService.synchronizeDependencies(saved);
@@ -289,7 +295,8 @@ public class ApplicationConfigurationService {
                 "CONFIGURATION_CREATED",
                 Map.of(
                         "configurationId", saved.getId(), "name", saved.getName(),
-                        "valueType", saved.getValueType().name(), "tagIds", tagIds(saved.getTags())
+                        "valueType", saved.getValueType().name(), "writable", saved.isWritable(),
+                        "tagIds", tagIds(saved.getTags())
                 )
         );
         return ConfigurationMapper.toResponse(saved);
@@ -308,6 +315,7 @@ public class ApplicationConfigurationService {
         SystemConfigurationPolicy.validateUpdate(
                 configuration, name, request.valueType(), value
         );
+        SystemConfigurationPolicy.validateWritable(name, request.writable());
 
         Set<Tag> tags = resolveConfigurationTags(request.tagIds());
         Set<String> changedFields = new LinkedHashSet<>();
@@ -333,6 +341,10 @@ public class ApplicationConfigurationService {
             configuration.replaceTags(tags);
             changedFields.add("tags");
         }
+        if (configuration.isWritable() != request.writable()) {
+            configuration.changeWritable(request.writable());
+            changedFields.add("writable");
+        }
 
         if (!changedFields.isEmpty()) {
             configurationRepository.flush();
@@ -349,6 +361,7 @@ public class ApplicationConfigurationService {
         logData.put("name", configuration.getName());
         logData.put("previousName", previousName);
         logData.put("valueType", configuration.getValueType().name());
+        logData.put("writable", configuration.isWritable());
         logData.put("tagIds", tagIds(configuration.getTags()));
         logData.put("changed", !changedFields.isEmpty());
         logData.put("changedFields", changedFields);

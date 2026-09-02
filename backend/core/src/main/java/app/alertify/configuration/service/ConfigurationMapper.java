@@ -28,7 +28,9 @@ final class ConfigurationMapper {
         return new ConfigurationResponse(
                 configuration.getId(), configuration.getVersion(), configuration.getName(),
                 configuration.getDescription(), configuration.getValueType(),
-                valueHidden ? null : configuration.getValue().deepCopy(), valueHidden, tags,
+                valueHidden ? null : configuration.getValue().deepCopy(), valueHidden,
+                configuration.isWritable(), 
+                tags,
                 SystemConfigurationPolicy.isSystemManaged(configuration.getName()),
                 SystemConfigurationPolicy.isDeletable(configuration.getName()),
                 SystemConfigurationPolicy.warning(configuration.getName()),

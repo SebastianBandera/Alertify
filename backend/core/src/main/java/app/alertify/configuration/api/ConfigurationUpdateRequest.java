@@ -17,6 +17,11 @@ public record ConfigurationUpdateRequest(
     @Size(max = 2000) String description,
     @NotNull ConfigurationValueType valueType,
     @NotNull JsonNode value,
-    Set<@Positive Long> tagIds
+    Set<@Positive Long> tagIds,
+    boolean writable
 ) {
+
+    public ConfigurationUpdateRequest(Long version, String name, String description, ConfigurationValueType valueType, JsonNode value, Set<Long> tagIds) {
+        this(version, name, description, valueType, value, tagIds, false);
+    }
 }

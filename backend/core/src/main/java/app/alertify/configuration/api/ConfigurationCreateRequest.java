@@ -15,6 +15,11 @@ public record ConfigurationCreateRequest(
     @Size(max = 2000) String description,
     @NotNull ConfigurationValueType valueType,
     @NotNull JsonNode value,
-    Set<@Positive Long> tagIds
+    Set<@Positive Long> tagIds,
+    boolean writable
 ) {
+
+    public ConfigurationCreateRequest(String name, String description, ConfigurationValueType valueType, JsonNode value, Set<Long> tagIds) {
+        this(name, description, valueType, value, tagIds, false);
+    }
 }

@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 
 import com.google.protobuf.Timestamp;
 
+import app.alertify.alerts.AlertEvaluator;
 import app.alertify.alerts.AlertExecutionContext;
 import app.alertify.alerts.AlertResult;
 import app.alertify.alerts.execution.AlertExecutionStatus;
@@ -52,14 +53,14 @@ class WorkerExecutionEngine implements AutoCloseable {
             permit = tracker.acquire(request, startedAt);
             context = new AlertExecutionContext(request.getState());
 
-            AlertResult result = compiler.get(request.getTemplateClassName(), request.getSourceChecksum())
-                                        .newInstance(request.getParametersList())
-                                        .evaluate(context);
+            CompiledAlertTemplate template = compiler.get(request.getTemplateClassName(), request.getSourceChecksum());
+            AlertEvaluator evaluator = template.newInstance(request.getParametersList());
+            AlertResult result = evaluator.evaluate(context);
 
             finalStatus = result.status();
             Instant finishedAt = Instant.now();
 
-            observer.onNext(AlertExecutionResult.newBuilder()
+            AlertExecutionResult.Builder response = AlertExecutionResult.newBuilder()
                     .setStatus(toGrpcStatus(result.status()))
                     .setStartedAt(timestamp(startedAt))
                     .setWorkStartedAt(timestamp(permit.workStartedAt()))
@@ -67,8 +68,11 @@ class WorkerExecutionEngine implements AutoCloseable {
                     .setStatusMessageJson(jsonMapper.writeValueAsString(result.statusMessage()))
                     .setState(context.getState())
                     .setWorkerName(properties.name())
-                    .setWorkerInstanceId(instanceIdentity.id())
-                    .build());
+                    .setWorkerInstanceId(instanceIdentity.id());
+            response.addAllWritableConfigurationValues(
+                    template.writableConfigurationValues(evaluator, request.getParametersList())
+            );
+            observer.onNext(response.build());
             observer.onCompleted();
         } catch (Throwable exception) {
             if (exception instanceof InterruptedException)

@@ -16,6 +16,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import app.alertify.worker.contract.WorkerCapability;
 import app.alertify.worker.grpc.AlertExecutionResult;
+import app.alertify.worker.grpc.AlertParameter;
 import app.alertify.worker.grpc.ExecuteAlertRequest;
 import app.alertify.worker.grpc.WorkerExecutionStatus;
 import io.grpc.stub.StreamObserver;
@@ -86,6 +87,68 @@ class WorkerExecutionEngineTest {
         assertThat(tracker.totalExecuted()).isEqualTo(1);
         assertThat(tracker.runningTasks()).isEmpty();
         assertThat(tracker.waitingTasks()).isEmpty();
+    }
+
+    @Test
+    void returnsOnlyChangedWritableConfigurationParameters() throws Exception {
+        WorkerRuntimeProperties properties = properties();
+        AlertTemplateCompiler compiler = new AlertTemplateCompiler(properties);
+        String source = """
+                package dynamic;
+
+                import java.util.Map;
+                import app.alertify.alerts.AlertEvaluator;
+                import app.alertify.alerts.AlertExecutionContext;
+                import app.alertify.alerts.AlertResult;
+
+                public final class WritableAlert implements AlertEvaluator {
+                    private Integer counter;
+
+                    public WritableAlert(Integer counter) {
+                        this.counter = counter;
+                    }
+
+                    @Override
+                    public AlertResult evaluate(AlertExecutionContext context) {
+                        counter++;
+                        return AlertResult.success(Map.of());
+                    }
+                }
+                """;
+        String checksum = sha256(source);
+        compiler.synchronize("dynamic.WritableAlert", checksum, source);
+        CompletableFuture<AlertExecutionResult> result = new CompletableFuture<>();
+
+        try (WorkerExecutionEngine engine = new WorkerExecutionEngine(
+                compiler, new WorkerExecutionTracker(properties), properties,
+                new WorkerInstanceIdentity()
+        )) {
+            engine.execute(
+                    ExecuteAlertRequest.newBuilder()
+                            .setExecutionId("execution-writable")
+                            .setAlertId(8)
+                            .setAlertName("Writable sample")
+                            .setTemplateClassName("dynamic.WritableAlert")
+                            .setSourceChecksum(checksum)
+                            .addParameters(AlertParameter.newBuilder()
+                                    .setName("counter")
+                                    .setJavaType(Integer.class.getName())
+                                    .setValue("5")
+                                    .setWritable(true)
+                                    .setConfigurationId(42))
+                            .build(),
+                    observer(result)
+            );
+
+            AlertExecutionResult execution = result.get(5, TimeUnit.SECONDS);
+
+            assertThat(execution.getWritableConfigurationValuesList()).singleElement().satisfies(value -> {
+                assertThat(value.getConfigurationId()).isEqualTo(42);
+                assertThat(value.getParameterName()).isEqualTo("counter");
+                assertThat(value.getValue()).isEqualTo("6");
+                assertThat(value.getNullValue()).isFalse();
+            });
+        }
     }
 
     private WorkerRuntimeProperties properties() {

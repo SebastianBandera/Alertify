@@ -16,6 +16,7 @@ import app.alertify.alerts.model.AlertExecution;
 import app.alertify.alerts.model.AlertExecutionWorker;
 import app.alertify.alerts.model.AlertState;
 import app.alertify.grpc.discovery.WorkerEndpoint;
+import app.alertify.configuration.service.WritableConfigurationService;
 import app.alertify.jpa.repository.AlertExecutionRepository;
 import app.alertify.jpa.repository.AlertRepository;
 import app.alertify.jpa.repository.AlertStateRepository;
@@ -34,14 +35,16 @@ public class AlertExecutionPersistenceService {
     private final AlertExecutionRepository executionRepository;
     private final AlertStateRepository stateRepository;
     private final ApplicationEventLogger eventLogger;
+    private final WritableConfigurationService writableConfigurationService;
     private final JsonMapper jsonMapper;
 
-    public AlertExecutionPersistenceService(AlertRepository alertRepository, AlertExecutionRepository executionRepository, AlertStateRepository stateRepository, ApplicationEventLogger eventLogger, JsonMapper jsonMapper) {
+    public AlertExecutionPersistenceService(AlertRepository alertRepository, AlertExecutionRepository executionRepository, AlertStateRepository stateRepository, ApplicationEventLogger eventLogger, JsonMapper jsonMapper, WritableConfigurationService writableConfigurationService) {
         this.alertRepository = alertRepository;
         this.executionRepository = executionRepository;
         this.stateRepository = stateRepository;
         this.eventLogger = eventLogger;
         this.jsonMapper = jsonMapper;
+        this.writableConfigurationService = writableConfigurationService;
     }
 
     @Transactional
@@ -71,6 +74,12 @@ public class AlertExecutionPersistenceService {
         AlertState state = stateRepository.findById(alertId).orElseThrow(() -> new IllegalStateException("Alert state " + alertId + " was not found"));
         state.replaceState(result.getState());
         stateRepository.save(state);
+        if (result.getStatus() != WorkerExecutionStatus.WORKER_EXECUTION_STATUS_ERROR) {
+            writableConfigurationService.apply(
+                    alertId, alert.getName(), executionId,
+                    result.getWritableConfigurationValuesList()
+            );
+        }
         logResult(execution);
     }
 

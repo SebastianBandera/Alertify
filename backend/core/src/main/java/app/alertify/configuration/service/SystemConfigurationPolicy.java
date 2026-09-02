@@ -65,6 +65,11 @@ final class SystemConfigurationPolicy {
         }
     }
 
+    static void validateWritable(String name, boolean writable) {
+        if (writable && isSystemManaged(name))
+            throw new ConflictException("Configuration '" + KEY_PART + "' cannot be writable by alerts");
+    }
+
     static void validateDeletion(ApplicationConfiguration configuration) {
         if (!isDeletable(configuration.getName())) {
             throw new ConflictException("Configuration '" + KEY_PART + "' cannot be deleted");

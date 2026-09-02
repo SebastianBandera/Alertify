@@ -672,6 +672,18 @@ td small {
   cursor: pointer;
 }
 
+.confirmation--writable span,
+.confirmation--writable strong,
+.confirmation--writable small {
+  display: block;
+}
+
+.confirmation--writable small {
+  margin-top: 3px;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
 .tag-option input,
 .confirmation input {
   width: 16px;

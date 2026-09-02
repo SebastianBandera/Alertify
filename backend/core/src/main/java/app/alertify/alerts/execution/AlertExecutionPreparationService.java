@@ -19,6 +19,7 @@ import app.alertify.alerts.model.Alert;
 import app.alertify.alerts.model.AlertParameterValue;
 import app.alertify.alerts.model.AlertTemplateDefinition;
 import app.alertify.alerts.model.AlertTemplateParameterDefinition;
+import app.alertify.alerts.template.annotation.AlertParameterSource;
 import app.alertify.configuration.service.ConfigurationExpressionService;
 import app.alertify.grpc.WorkerGrpcProperties;
 import app.alertify.jpa.repository.AlertParameterValueRepository;
@@ -78,7 +79,7 @@ public class AlertExecutionPreparationService {
             String defaultValue = definition.getDefaultValue();
             return new ResolvedAlertParameter(
                     definition.getParameterKey(), definition.getJavaType(), defaultValue,
-                    defaultValue == null
+                    defaultValue == null, null, false
             );
         }
         String value = switch (configured.getSource()) {
@@ -87,7 +88,12 @@ public class AlertExecutionPreparationService {
             case SECRET -> secretAccessService.getValueByName(configured.getSecret().getName());
         };
         return new ResolvedAlertParameter(
-                definition.getParameterKey(), definition.getJavaType(), value, value == null
+                definition.getParameterKey(), definition.getJavaType(), value, value == null,
+                configured.getSource() == AlertParameterSource.CONFIGURATION
+                        ? configured.getConfiguration().getId()
+                        : null,
+                configured.getSource() == AlertParameterSource.CONFIGURATION
+                        && configured.getConfiguration().isWritable()
         );
     }
 

@@ -37,6 +37,31 @@ class ConfigurationValueValidatorTest {
     }
 
     @Test
+    void acceptsStrictTwentyFourHourTime() {
+        var result = validator.validateAndNormalize(
+            ConfigurationValueType.TIME,
+            StringNode.valueOf("23:59")
+        );
+
+        assertThat(result.stringValue()).isEqualTo("23:59");
+    }
+
+    @Test
+    void rejectsTimeOutsideStrictHourMinuteFormat() {
+        assertThatThrownBy(() -> validator.validateAndNormalize(
+            ConfigurationValueType.TIME, StringNode.valueOf("24:00")
+        ))
+            .isInstanceOf(InvalidConfigurationValueException.class)
+            .hasMessage("TIME must use 24-hour HH:mm format");
+
+        assertThatThrownBy(() -> validator.validateAndNormalize(
+            ConfigurationValueType.TIME, StringNode.valueOf("9:30")
+        ))
+            .isInstanceOf(InvalidConfigurationValueException.class)
+            .hasMessage("TIME must use 24-hour HH:mm format");
+    }
+
+    @Test
     void normalizesDecimalScale() {
         var result = validator.validateAndNormalize(
             ConfigurationValueType.DECIMAL,

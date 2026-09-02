@@ -30,6 +30,8 @@ message AlertParameter {
   string java_type = 2;
   string value = 3;
   bool null_value = 4;
+  bool writable = 5;
+  int64 configuration_id = 6;
 }
 
 message ExecuteAlertResponse {
@@ -72,6 +74,14 @@ message AlertExecutionResult {
   ExecutionError error = 7;
   string worker_name = 8;
   string worker_instance_id = 9;
+  repeated WritableConfigurationValue writable_configuration_values = 10;
+}
+
+message WritableConfigurationValue {
+  int64 configuration_id = 1;
+  string parameter_name = 2;
+  string value = 3;
+  bool null_value = 4;
 }
 
 message ExecutionError {

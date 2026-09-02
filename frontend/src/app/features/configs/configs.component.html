@@ -391,6 +391,16 @@
                 name="configurationValue"
               />
             }
+            @case ('TIME') {
+              <input
+                required
+                type="time"
+                step="60"
+                [ngModel]="configurationForm().rawValue"
+                (ngModelChange)="patchConfigurationForm({ rawValue: $event })"
+                name="configurationValue"
+              />
+            }
             @case ('DATE_TIME') {
               <input
                 required
@@ -423,6 +433,19 @@
             }
           }
         </div>
+
+        <label class="confirmation confirmation--writable">
+          <input
+            type="checkbox"
+            [checked]="configurationForm().writable"
+            [disabled]="editingConfiguration()?.systemManaged ?? false"
+            (change)="patchConfigurationForm({ writable: $any($event.target).checked })"
+          />
+          <span>
+            <strong>{{ localization.translate('configs.field.writable') }}</strong>
+            <small>{{ localization.translate('configs.field.writableHelp') }}</small>
+          </span>
+        </label>
 
         @if (editingConfiguration()?.changeWarning === 'SECRET_LOSS') {
           <button class="button button--secondary generate-button" type="button" (click)="generateKeyPart()">

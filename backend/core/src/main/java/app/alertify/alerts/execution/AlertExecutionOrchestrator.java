@@ -134,10 +134,7 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
         }
     }
 
-    private static ExecuteAlertRequest request(
-        String executionId,
-        PreparedAlertExecution execution
-    ) {
+    private static ExecuteAlertRequest request(String executionId, PreparedAlertExecution execution) {
         ExecuteAlertRequest.Builder request = ExecuteAlertRequest.newBuilder()
                 .setExecutionId(executionId)
                 .setAlertId(execution.alertId())
@@ -152,6 +149,11 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
                     .setNullValue(parameter.nullValue());
             if (!parameter.nullValue())
                 value.setValue(parameter.value());
+
+            if (parameter.writable()) {
+                value.setWritable(true);
+                value.setConfigurationId(parameter.configurationId());
+            }
 
             request.addParameters(value);
         }

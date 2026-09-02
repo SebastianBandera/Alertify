@@ -28,7 +28,7 @@ import tools.jackson.databind.json.JsonMapper;
 class ConfigurationCsvCodec {
 
     private static final List<String> HEADER = List.of(
-            "name", "description", "valueType", "value", "tags"
+            "name", "description", "valueType", "value", "writable", "tags"
     );
     private static final int MAX_ROWS = 10_000;
     private static final Pattern TAG_COLOR = Pattern.compile("^#[0-9A-Fa-f]{6}$");
@@ -58,6 +58,7 @@ class ConfigurationCsvCodec {
                             configuration.getDescription() == null ? "" : configuration.getDescription(),
                             configuration.getValueType().name(),
                             exportValue(configuration),
+                            Boolean.toString(configuration.isWritable()),
                             writeJson(tags)
                     )
             );
@@ -117,8 +118,9 @@ class ConfigurationCsvCodec {
 
             JsonNode value = parseValue(fields.get(3), valueType, rowNumber);
 
-            List<ImportTag> tags = parseTags(fields.get(4), rowNumber);
-            result.add(new ImportRow(rowNumber, name, description, valueType, value, tags));
+            boolean writable = parseWritable(fields.get(4), rowNumber);
+            List<ImportTag> tags = parseTags(fields.get(5), rowNumber);
+            result.add(new ImportRow(rowNumber, name, description, valueType, value, writable, tags));
         }
         return result;
     }
@@ -127,6 +129,7 @@ class ConfigurationCsvCodec {
         if (valueType == ConfigurationValueType.STRING
                 || valueType == ConfigurationValueType.EXPRESSION
                 || valueType == ConfigurationValueType.DATE
+                || valueType == ConfigurationValueType.TIME
                 || valueType == ConfigurationValueType.DATE_TIME) {
             return StringNode.valueOf(rawValue);
         }
@@ -139,8 +142,16 @@ class ConfigurationCsvCodec {
 
     private String exportValue(ApplicationConfiguration configuration) {
         return switch (configuration.getValueType()) {
-            case STRING, EXPRESSION, DATE, DATE_TIME -> configuration.getValue().stringValue();
+            case STRING, EXPRESSION, DATE, TIME, DATE_TIME -> configuration.getValue().stringValue();
             default -> writeJson(configuration.getValue());
+        };
+    }
+
+    private static boolean parseWritable(String rawWritable, int rowNumber) {
+        return switch (rawWritable.trim().toLowerCase(Locale.ROOT)) {
+            case "true" -> true;
+            case "false" -> false;
+            default -> throw rowError(rowNumber, "writable must be true or false");
         };
     }
 
@@ -295,6 +306,7 @@ class ConfigurationCsvCodec {
         String description,
         ConfigurationValueType valueType,
         JsonNode value,
+        boolean writable,
         List<ImportTag> tags
     ) {
     }

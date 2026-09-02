@@ -73,6 +73,9 @@ public class ApplicationConfiguration {
     @Column(name = "configuration_value", nullable = false, columnDefinition = "jsonb")
     private JsonNode value;
 
+    @Column(nullable = false)
+    private boolean writable;
+
     @CreationTimestamp
     @NotAudited
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -97,10 +100,15 @@ public class ApplicationConfiguration {
     }
 
     public ApplicationConfiguration(String name, String description, ConfigurationValueType valueType, JsonNode value, Set<Tag> tags) {
+        this(name, description, valueType, value, tags, false);
+    }
+
+    public ApplicationConfiguration(String name, String description, ConfigurationValueType valueType, JsonNode value, Set<Tag> tags, boolean writable) {
         this.name = Objects.requireNonNull(name, "name must not be null");
         this.description = description;
         this.valueType = Objects.requireNonNull(valueType, "valueType must not be null");
         this.value = Objects.requireNonNull(value, "value must not be null");
+        this.writable = writable;
         replaceTags(tags);
     }
 
@@ -128,6 +136,10 @@ public class ApplicationConfiguration {
         return value;
     }
 
+    public boolean isWritable() {
+        return writable;
+    }
+
     public Instant getCreatedAt() {
         return createdAt;
     }
@@ -151,6 +163,10 @@ public class ApplicationConfiguration {
     public void changeValue(ConfigurationValueType valueType, JsonNode value) {
         this.valueType = Objects.requireNonNull(valueType, "valueType must not be null");
         this.value = Objects.requireNonNull(value, "value must not be null");
+    }
+
+    public void changeWritable(boolean writable) {
+        this.writable = writable;
     }
 
     public void replaceTags(Set<Tag> tags) {

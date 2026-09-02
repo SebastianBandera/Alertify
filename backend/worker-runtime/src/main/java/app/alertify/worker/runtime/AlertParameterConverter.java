@@ -73,6 +73,29 @@ final class AlertParameterConverter {
         throw new IllegalArgumentException("Unsupported alert parameter type " + targetType.getName());
     }
 
+    static String serialize(Object value, Class<?> declaredType) {
+        if (value == null)
+            return null;
+
+        if (declaredType.isEnum())
+            return ((Enum<?>) value).name();
+
+        if (declaredType == String.class || declaredType == Character.class || declaredType == char.class
+                || declaredType == URI.class || declaredType == Duration.class || declaredType == Instant.class
+                || declaredType == BigInteger.class || declaredType == BigDecimal.class
+                || declaredType == Byte.class || declaredType == byte.class
+                || declaredType == Short.class || declaredType == short.class
+                || declaredType == Integer.class || declaredType == int.class
+                || declaredType == Long.class || declaredType == long.class
+                || declaredType == Float.class || declaredType == float.class
+                || declaredType == Double.class || declaredType == double.class
+                || declaredType == Boolean.class || declaredType == boolean.class) {
+            return value.toString();
+        }
+
+        throw new IllegalArgumentException("Unsupported writable alert parameter type " + declaredType.getName());
+    }
+
     @SuppressWarnings({ "rawtypes", "unchecked" })
     private static Object enumValue(Class<?> targetType, String value) {
         return Enum.valueOf((Class<? extends Enum>) targetType, value);

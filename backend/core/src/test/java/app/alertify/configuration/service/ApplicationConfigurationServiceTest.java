@@ -115,7 +115,7 @@ class ApplicationConfigurationServiceTest {
         when(csvCodec.read(any(byte[].class))).thenReturn(List.of(
             new ConfigurationCsvCodec.ImportRow(
                 2, "KEY_PART", null, ConfigurationValueType.STRING,
-                StringNode.valueOf("replacement"), List.of()
+                StringNode.valueOf("replacement"), false, List.of()
             )
         ));
         when(configurationRepository.findAll()).thenReturn(List.of());

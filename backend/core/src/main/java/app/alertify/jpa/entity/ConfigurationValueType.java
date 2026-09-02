@@ -11,6 +11,7 @@ public enum ConfigurationValueType {
     DECIMAL,
     BOOLEAN,
     DATE,
+    TIME,
     DATE_TIME,
     JSON
 }

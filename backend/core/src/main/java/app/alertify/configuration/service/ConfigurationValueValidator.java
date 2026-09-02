@@ -2,6 +2,7 @@ package app.alertify.configuration.service;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.OffsetDateTime;
 
 import tools.jackson.databind.JsonNode;
@@ -37,6 +38,7 @@ public class ConfigurationValueValidator {
             case DECIMAL -> validateDecimal(value);
             case BOOLEAN -> validateBoolean(value);
             case DATE -> validateDate(value);
+            case TIME -> validateTime(value);
             case DATE_TIME -> validateDateTime(value);
             case JSON -> validateJson(value);
         };
@@ -81,6 +83,15 @@ public class ConfigurationValueValidator {
                     "DATE_TIME must use ISO-8601 format and include an offset", exception
             );
         }
+    }
+
+    private static JsonNode validateTime(JsonNode value) {
+        require(value.isString(), "TIME requires a JSON string");
+        String raw = value.stringValue();
+        if (!raw.matches("(?:[01]\\d|2[0-3]):[0-5]\\d"))
+            throw new InvalidConfigurationValueException("TIME must use 24-hour HH:mm format");
+
+        return StringNode.valueOf(LocalTime.parse(raw).toString());
     }
 
     private static JsonNode validateJson(JsonNode value) {

@@ -10,6 +10,7 @@ export type ConfigurationValueType =
   | 'DECIMAL'
   | 'BOOLEAN'
   | 'DATE'
+  | 'TIME'
   | 'DATE_TIME'
   | 'JSON';
 
@@ -33,6 +34,7 @@ export interface ApplicationConfiguration {
   readonly valueType: ConfigurationValueType;
   readonly value: unknown | null;
   readonly valueHidden: boolean;
+  readonly writable: boolean;
   readonly tags: readonly ConfigurationTag[];
   readonly systemManaged: boolean;
   readonly deletable: boolean;
@@ -56,6 +58,7 @@ export interface ConfigurationWriteRequest {
   readonly valueType: ConfigurationValueType;
   readonly value: unknown;
   readonly tagIds: readonly number[];
+  readonly writable: boolean;
 }
 
 export interface ConfigurationExpressionSuggestions {

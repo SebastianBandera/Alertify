@@ -18,6 +18,7 @@ interface ConfigurationForm {
   valueType: ConfigurationValueType;
   rawValue: string;
   tagIds: number[];
+  writable: boolean;
 }
 
 interface TagForm {
@@ -38,6 +39,7 @@ const VALUE_TYPES: readonly ConfigurationValueType[] = [
   'DECIMAL',
   'BOOLEAN',
   'DATE',
+  'TIME',
   'DATE_TIME',
   'JSON',
   'EXPRESSION',
@@ -312,6 +314,7 @@ export class ConfigsComponent implements OnInit {
         ? ''
         : this.toEditorValue(configuration.valueType, configuration.value),
       tagIds: configuration.tags.map((tag) => tag.id),
+      writable: configuration.writable,
     });
     this.sensitiveChangeConfirmed.set(false);
     this.formError.set(null);
@@ -469,6 +472,7 @@ export class ConfigsComponent implements OnInit {
         valueType: form.valueType,
         value,
         tagIds: form.tagIds,
+        writable: form.writable,
       };
       if (editing) {
         await this.api.updateConfiguration(editing.id, request);
@@ -619,6 +623,11 @@ export class ConfigsComponent implements OnInit {
         }
         return value.toISOString();
       }
+      case 'TIME':
+        if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(rawValue)) {
+          throw new Error(this.localization.translate('configs.value.invalidTime'));
+        }
+        return rawValue;
       case 'JSON':
         try {
           const value: unknown = JSON.parse(rawValue);
@@ -714,6 +723,7 @@ export class ConfigsComponent implements OnInit {
       valueType: 'STRING',
       rawValue: '',
       tagIds: [],
+      writable: false,
     };
   }
 
