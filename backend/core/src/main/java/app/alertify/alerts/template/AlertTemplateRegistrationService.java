@@ -103,7 +103,7 @@ public class AlertTemplateRegistrationService {
             .orElseGet(() -> AlertTemplateDefinition.from(templateClass));
         template.synchronize(
             metadata.nameKey(), metadata.descriptionKey(), metadata.sourcePath(),
-            metadata.capability(), metadata.allowConcurrentExecutions()
+            metadata.capability()
         );
         templateRepository.save(template);
 

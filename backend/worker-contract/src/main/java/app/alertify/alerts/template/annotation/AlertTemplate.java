@@ -28,6 +28,4 @@ public @interface AlertTemplate {
     WorkerCapability capability() default WorkerCapability.STANDARD;
 
     String sourcePath() default "";
-
-    boolean allowConcurrentExecutions() default false;
 }

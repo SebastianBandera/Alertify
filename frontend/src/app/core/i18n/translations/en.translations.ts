@@ -114,6 +114,8 @@ export const EN_TRANSLATIONS = {
   'alerts.form.cronHelp': 'Spring cron format with six fields, including seconds.',
   'alerts.form.alertDescription': 'Description',
   'alerts.form.enabled': 'Enable this alert',
+  'alerts.form.allowConcurrentExecutions': 'Allow concurrent executions',
+  'alerts.form.allowConcurrentExecutionsHelp': 'Allow a new execution to start while this alert is already running.',
   'alerts.form.tags': 'Tags',
   'alerts.form.noTags': 'No alert tags have been defined.',
   'alerts.form.parameters': 'Template parameters',

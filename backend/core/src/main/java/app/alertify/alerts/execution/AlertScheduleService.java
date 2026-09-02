@@ -57,7 +57,7 @@ public class AlertScheduleService implements AutoCloseable {
         ScheduledFuture<?> future = taskScheduler.schedule(
                 () -> orchestrator.trigger(
                         alert.getId(), alert.getName(),
-                        alert.getTemplate().isConcurrentExecutionAllowed()
+                        alert.isConcurrentExecutionAllowed()
                 ),
                 new CronTrigger(alert.getCronExpression(), ZoneId.systemDefault())
         );

@@ -99,6 +99,8 @@ details summary { color: var(--primary-strong); cursor: pointer; font-weight: 70
 .checkbox { flex-direction: row; align-items: center; }
 .checkbox input { width: 17px; min-height: 17px; height: 17px; flex: 0 0 auto; }
 .checkbox.compact { white-space: nowrap; }
+.checkbox--with-help span, .checkbox--with-help small { display: block; }
+.checkbox--with-help small { margin-top: 3px; color: var(--text-muted); font-weight: 400; }
 .tag-fieldset { margin: 0; padding: 0; border: 0; }
 .tag-fieldset legend { margin-bottom: 9px; color: #344054; font-size: 12px; font-weight: 650; }
 .tag-option { display: flex; align-items: center; flex-direction: row; gap: 8px; cursor: pointer; }

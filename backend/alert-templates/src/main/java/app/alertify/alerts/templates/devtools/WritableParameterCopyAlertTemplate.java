@@ -14,8 +14,7 @@ import app.alertify.alerts.template.annotation.AlertTemplate;
 @AlertTemplate(
     nameKey = "alerts.template.devtools.writableParameterCopy.name",
     descriptionKey = "alerts.template.devtools.writableParameterCopy.description",
-    sourcePath = "app/alertify/alerts/templates/devtools/WritableParameterCopyAlertTemplate.java",
-    allowConcurrentExecutions = true
+    sourcePath = "app/alertify/alerts/templates/devtools/WritableParameterCopyAlertTemplate.java"
 )
 public final class WritableParameterCopyAlertTemplate implements AlertEvaluator {
 

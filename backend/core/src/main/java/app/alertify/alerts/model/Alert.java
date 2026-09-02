@@ -70,6 +70,9 @@ public class Alert {
     @Column(nullable = false)
     private boolean enabled;
 
+    @Column(name = "allow_concurrent_executions", nullable = false)
+    private boolean allowConcurrentExecutions;
+
     @CreationTimestamp
     @NotAudited
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -94,15 +97,24 @@ public class Alert {
     }
 
     public Alert(AlertTemplateDefinition template, String name, String description, String cronExpression, boolean enabled) {
-        this(template, name, description, cronExpression, enabled, Set.of());
+        this(template, name, description, cronExpression, enabled, false, Set.of());
     }
 
     public Alert(AlertTemplateDefinition template, String name, String description, String cronExpression, boolean enabled, Set<Tag> tags) {
+        this(template, name, description, cronExpression, enabled, false, tags);
+    }
+
+    public Alert(AlertTemplateDefinition template, String name, String description, String cronExpression, boolean enabled, boolean allowConcurrentExecutions) {
+        this(template, name, description, cronExpression, enabled, allowConcurrentExecutions, Set.of());
+    }
+
+    public Alert(AlertTemplateDefinition template, String name, String description, String cronExpression, boolean enabled, boolean allowConcurrentExecutions, Set<Tag> tags) {
         this.template = Objects.requireNonNull(template, "template must not be null");
         this.name = Objects.requireNonNull(name, "name must not be null");
         this.description = description;
         this.cronExpression = Objects.requireNonNull(cronExpression, "cronExpression must not be null");
         this.enabled = enabled;
+        this.allowConcurrentExecutions = allowConcurrentExecutions;
         replaceTags(tags);
     }
 
@@ -132,6 +144,10 @@ public class Alert {
 
     public boolean isEnabled() {
         return enabled;
+    }
+
+    public boolean isConcurrentExecutionAllowed() {
+        return allowConcurrentExecutions;
     }
 
     public Instant getCreatedAt() {
@@ -164,6 +180,10 @@ public class Alert {
 
     public void disable() {
         enabled = false;
+    }
+
+    public void changeConcurrentExecution(boolean allowConcurrentExecutions) {
+        this.allowConcurrentExecutions = allowConcurrentExecutions;
     }
 
     public void replaceTags(Set<Tag> tags) {

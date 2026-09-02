@@ -38,6 +38,19 @@ class AlertModelTest {
     }
 
     @Test
+    void storesConcurrentExecutionPreferenceOnTheAlert() {
+        Alert alert = new Alert(
+                template(), "Concurrent", null, "0 */5 * * * *", true, true
+        );
+
+        assertThat(alert.isConcurrentExecutionAllowed()).isTrue();
+
+        alert.changeConcurrentExecution(false);
+
+        assertThat(alert.isConcurrentExecutionAllowed()).isFalse();
+    }
+
+    @Test
     void rejectsBindingWhenTheTemplateParameterDoesNotAllowIt() {
         AlertTemplateDefinition template = template();
         AlertTemplateParameterDefinition parameter = new AlertTemplateParameterDefinition(

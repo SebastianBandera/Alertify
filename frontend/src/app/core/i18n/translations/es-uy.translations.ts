@@ -114,6 +114,8 @@ export const ES_UY_TRANSLATIONS = {
   'alerts.form.cronHelp': 'Formato cron de Spring con seis campos, incluyendo segundos.',
   'alerts.form.alertDescription': 'Descripción',
   'alerts.form.enabled': 'Habilitar esta alerta',
+  'alerts.form.allowConcurrentExecutions': 'Permitir ejecuciones concurrentes',
+  'alerts.form.allowConcurrentExecutionsHelp': 'Permite iniciar una nueva ejecución mientras esta alerta todavía está en curso.',
   'alerts.form.tags': 'Tags',
   'alerts.form.noTags': 'No hay tags de alertas definidos.',
   'alerts.form.parameters': 'Parámetros del template',

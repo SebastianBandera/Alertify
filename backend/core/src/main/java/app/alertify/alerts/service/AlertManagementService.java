@@ -58,7 +58,8 @@ import app.alertify.logging.ApplicationEventLogger;
 public class AlertManagementService {
 
     private static final Set<String> SORT_FIELDS = Set.of(
-            "id", "version", "name", "cronExpression", "enabled", "createdAt", "updatedAt"
+            "id", "version", "name", "cronExpression", "enabled",
+            "allowConcurrentExecutions", "createdAt", "updatedAt"
     );
     private static final String HIDDEN_CONFIGURATION = "KEY_PART";
 
@@ -129,11 +130,13 @@ public class AlertManagementService {
                 .orElseThrow(() -> notFound("Alert template", request.templateId()));
         Set<Tag> tags = resolveAlertTags(request.tagIds());
         Alert alert = alertRepository.saveAndFlush(new Alert(
-                template, name, normalizeOptional(request.description()), cron, request.enabled(), tags
+                template, name, normalizeOptional(request.description()), cron, request.enabled(),
+                request.allowConcurrentExecutions(), tags
         ));
         List<AlertParameterValue> values = synchronizeParameters(alert, request.parameters(), List.of());
         eventLogger.successAfterCommit("ALERT_CREATED", Map.of(
-                "alertId", alert.getId(), "name", alert.getName(), "templateId", template.getId()
+                "alertId", alert.getId(), "name", alert.getName(), "templateId", template.getId(),
+                "allowConcurrentExecutions", alert.isConcurrentExecutionAllowed()
         ));
         scheduleService.rescheduleAfterCommit(alert.getId());
         return AlertMapper.toAlert(alert, values);
@@ -152,13 +155,15 @@ public class AlertManagementService {
             alert.enable();
         else
             alert.disable();
+        alert.changeConcurrentExecution(request.allowConcurrentExecutions());
         alert.replaceTags(resolveAlertTags(request.tagIds()));
 
         List<AlertParameterValue> existing = parameterValueRepository.findAllByAlertIdOrdered(id);
         List<AlertParameterValue> values = synchronizeParameters(alert, request.parameters(), existing);
         alertRepository.flush();
         eventLogger.successAfterCommit("ALERT_UPDATED", Map.of(
-                "alertId", alert.getId(), "name", alert.getName(), "version", alert.getVersion()
+                "alertId", alert.getId(), "name", alert.getName(), "version", alert.getVersion(),
+                "allowConcurrentExecutions", alert.isConcurrentExecutionAllowed()
         ));
         scheduleService.rescheduleAfterCommit(alert.getId());
         return AlertMapper.toAlert(alert, values);

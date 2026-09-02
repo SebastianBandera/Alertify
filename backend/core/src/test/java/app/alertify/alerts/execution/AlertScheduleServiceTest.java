@@ -19,7 +19,6 @@ import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.Trigger;
 
 import app.alertify.alerts.model.Alert;
-import app.alertify.alerts.model.AlertTemplateDefinition;
 import app.alertify.jpa.repository.AlertRepository;
 import app.alertify.logging.ApplicationEventLogger;
 
@@ -31,7 +30,6 @@ class AlertScheduleServiceTest {
     @Mock private TaskScheduler taskScheduler;
     @Mock private ApplicationEventLogger eventLogger;
     @Mock private Alert alert;
-    @Mock private AlertTemplateDefinition template;
     @Mock private ScheduledFuture<?> scheduledFuture;
 
     private AlertScheduleService service;
@@ -54,8 +52,7 @@ class AlertScheduleServiceTest {
         when(alert.getId()).thenReturn(7L);
         when(alert.getName()).thenReturn("Sample alert");
         when(alert.getCronExpression()).thenReturn("0 */5 * * * *");
-        when(alert.getTemplate()).thenReturn(template);
-        when(template.isConcurrentExecutionAllowed()).thenReturn(false);
+        when(alert.isConcurrentExecutionAllowed()).thenReturn(true);
         doReturn(scheduledFuture).when(taskScheduler)
                 .schedule(any(Runnable.class), any(Trigger.class));
 
@@ -64,7 +61,7 @@ class AlertScheduleServiceTest {
         ArgumentCaptor<Runnable> scheduledTask = ArgumentCaptor.forClass(Runnable.class);
         verify(taskScheduler).schedule(scheduledTask.capture(), any(Trigger.class));
         scheduledTask.getValue().run();
-        verify(orchestrator).trigger(7L, "Sample alert", false);
+        verify(orchestrator).trigger(7L, "Sample alert", true);
 
         service.removeAfterCommit(7L);
 

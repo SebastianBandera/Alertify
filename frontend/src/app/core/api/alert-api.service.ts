@@ -71,6 +71,7 @@ export interface Alert {
   readonly description: string | null;
   readonly cronExpression: string;
   readonly enabled: boolean;
+  readonly allowConcurrentExecutions: boolean;
   readonly tags: readonly AlertTag[];
   readonly parameters: readonly AlertParameterValue[];
   readonly createdAt: string;
@@ -92,6 +93,7 @@ export interface AlertWriteRequest {
   readonly description: string | null;
   readonly cronExpression: string;
   readonly enabled: boolean;
+  readonly allowConcurrentExecutions: boolean;
   readonly tagIds: readonly number[];
   readonly parameters: readonly AlertParameterWriteRequest[];
 }

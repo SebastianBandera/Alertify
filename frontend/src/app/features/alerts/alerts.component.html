@@ -47,7 +47,7 @@
         <span>{{ localization.translate('alerts.templateFilter') }}</span>
         <select [ngModel]="templateFilterId()" (ngModelChange)="templateFilterId.set($event)">
           <option [ngValue]="null">{{ localization.translate('alerts.allTemplates') }}</option>
-          @for (template of templates(); track template.id) {
+          @for (template of sortedTemplates(); track template.id) {
             <option [ngValue]="template.id">{{ dynamic(template.nameKey) }}</option>
           }
         </select>
@@ -383,6 +383,18 @@
           <label class="checkbox full">
             <input type="checkbox" [ngModel]="form().enabled" (ngModelChange)="patchForm({ enabled: $event })" name="enabled">
             <span>{{ localization.translate('alerts.form.enabled') }}</span>
+          </label>
+          <label class="checkbox checkbox--with-help full">
+            <input
+              type="checkbox"
+              [ngModel]="form().allowConcurrentExecutions"
+              (ngModelChange)="patchForm({ allowConcurrentExecutions: $event })"
+              name="allowConcurrentExecutions"
+            >
+            <span>
+              {{ localization.translate('alerts.form.allowConcurrentExecutions') }}
+              <small>{{ localization.translate('alerts.form.allowConcurrentExecutionsHelp') }}</small>
+            </span>
           </label>
           <fieldset class="tag-fieldset full">
             <legend>{{ localization.translate('alerts.form.tags') }}</legend>

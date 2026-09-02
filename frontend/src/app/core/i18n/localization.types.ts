@@ -110,6 +110,8 @@ export type TranslationKey =
   | 'alerts.form.cronHelp'
   | 'alerts.form.alertDescription'
   | 'alerts.form.enabled'
+  | 'alerts.form.allowConcurrentExecutions'
+  | 'alerts.form.allowConcurrentExecutionsHelp'
   | 'alerts.form.tags'
   | 'alerts.form.noTags'
   | 'alerts.form.parameters'

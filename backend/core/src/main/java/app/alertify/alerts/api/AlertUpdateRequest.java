@@ -16,7 +16,12 @@ public record AlertUpdateRequest(
     @Size(max = 2000) String description,
     @NotBlank @Size(max = 255) String cronExpression,
     boolean enabled,
+    boolean allowConcurrentExecutions,
     @NotNull @Size(max = 100) List<@Valid AlertParameterValueRequest> parameters,
     @NotNull @Size(max = 100) Set<@Positive Long> tagIds
 ) {
+    public AlertUpdateRequest(Long version, String name, String description, String cronExpression,
+            boolean enabled, List<AlertParameterValueRequest> parameters, Set<Long> tagIds) {
+        this(version, name, description, cronExpression, enabled, false, parameters, tagIds);
+    }
 }

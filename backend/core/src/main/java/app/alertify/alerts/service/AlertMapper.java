@@ -37,7 +37,7 @@ final class AlertMapper {
         return new AlertResponse(
                 alert.getId(), alert.getVersion(), template.getId(), template.getTemplateKey(),
                 template.getNameKey(), alert.getName(), alert.getDescription(), alert.getCronExpression(),
-                alert.isEnabled(), alert.getTags().stream()
+                alert.isEnabled(), alert.isConcurrentExecutionAllowed(), alert.getTags().stream()
                         .sorted(Comparator.comparing(tag -> tag.getName().toLowerCase(java.util.Locale.ROOT)))
                         .map(tag -> new TagResponse(
                                 tag.getId(), tag.getVersion(), tag.getScope(), tag.getName(), tag.getColor(),

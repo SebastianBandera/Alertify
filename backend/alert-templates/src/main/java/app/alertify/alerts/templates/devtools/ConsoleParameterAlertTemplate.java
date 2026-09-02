@@ -14,8 +14,7 @@ import app.alertify.alerts.template.annotation.AlertTemplate;
 @AlertTemplate(
     nameKey = "alerts.template.devtools.consoleParameter.name",
     descriptionKey = "alerts.template.devtools.consoleParameter.description",
-    sourcePath = "app/alertify/alerts/templates/devtools/ConsoleParameterAlertTemplate.java",
-    allowConcurrentExecutions = true
+    sourcePath = "app/alertify/alerts/templates/devtools/ConsoleParameterAlertTemplate.java"
 )
 public final class ConsoleParameterAlertTemplate implements AlertEvaluator {
 

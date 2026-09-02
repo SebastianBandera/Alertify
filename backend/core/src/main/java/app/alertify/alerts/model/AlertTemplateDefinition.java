@@ -62,9 +62,6 @@ public class AlertTemplateDefinition {
     @Column(name = "source_path", nullable = false, columnDefinition = "text")
     private String sourcePath;
 
-    @Column(name = "allow_concurrent_executions", nullable = false)
-    private boolean allowConcurrentExecutions;
-
     @Enumerated(EnumType.STRING)
     @Column(name = "required_capability", nullable = false, length = 32)
     private WorkerCapability requiredCapability;
@@ -82,9 +79,9 @@ public class AlertTemplateDefinition {
     protected AlertTemplateDefinition() {
     }
 
-    public AlertTemplateDefinition(String templateKey, String nameKey, String descriptionKey, String sourcePath, WorkerCapability requiredCapability, boolean allowConcurrentExecutions) {
+    public AlertTemplateDefinition(String templateKey, String nameKey, String descriptionKey, String sourcePath, WorkerCapability requiredCapability) {
         this.templateKey = Objects.requireNonNull(templateKey, "templateKey must not be null");
-        synchronize(nameKey, descriptionKey, sourcePath, requiredCapability, allowConcurrentExecutions);
+        synchronize(nameKey, descriptionKey, sourcePath, requiredCapability);
     }
 
     public static AlertTemplateDefinition from(Class<?> templateClass) {
@@ -92,7 +89,7 @@ public class AlertTemplateDefinition {
         AlertTemplate metadata = templateClass.getAnnotation(AlertTemplate.class);
         return new AlertTemplateDefinition(
                 templateKey, metadata.nameKey(), metadata.descriptionKey(), metadata.sourcePath(),
-                metadata.capability(), metadata.allowConcurrentExecutions()
+                metadata.capability()
         );
     }
 
@@ -120,10 +117,6 @@ public class AlertTemplateDefinition {
         return sourcePath;
     }
 
-    public boolean isConcurrentExecutionAllowed() {
-        return allowConcurrentExecutions;
-    }
-
     public WorkerCapability getRequiredCapability() {
         return requiredCapability;
     }
@@ -136,11 +129,10 @@ public class AlertTemplateDefinition {
         return updatedAt;
     }
 
-    public void synchronize(String nameKey, String descriptionKey, String sourcePath, WorkerCapability requiredCapability, boolean allowConcurrentExecutions) {
+    public void synchronize(String nameKey, String descriptionKey, String sourcePath, WorkerCapability requiredCapability) {
         this.nameKey = Objects.requireNonNull(nameKey, "nameKey must not be null");
         this.descriptionKey = Objects.requireNonNull(descriptionKey, "descriptionKey must not be null");
         this.sourcePath = Objects.requireNonNull(sourcePath, "sourcePath must not be null");
         this.requiredCapability = Objects.requireNonNull(requiredCapability, "requiredCapability must not be null");
-        this.allowConcurrentExecutions = allowConcurrentExecutions;
     }
 }

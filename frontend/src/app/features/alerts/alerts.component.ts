@@ -36,6 +36,7 @@ interface AlertForm {
   description: string;
   cronExpression: string;
   enabled: boolean;
+  allowConcurrentExecutions: boolean;
   tagIds: number[];
   parameters: Readonly<Record<string, ParameterForm>>;
 }
@@ -94,12 +95,22 @@ export class AlertsComponent implements OnInit {
   protected readonly historyTotalPages = signal(0);
   protected readonly historyTotalElements = signal(0);
   protected readonly templatePage = signal(0);
+  protected readonly sortedTemplates = computed(() =>
+    [...this.templates()].sort((first, second) =>
+      second.alertCount - first.alertCount
+      || this.dynamic(first.nameKey).localeCompare(
+        this.dynamic(second.nameKey),
+        this.localization.locale(),
+        { sensitivity: 'base' },
+      ),
+    ),
+  );
   protected readonly templateTotalPages = computed(() =>
-    Math.ceil(this.templates().length / this.pageSize()),
+    Math.ceil(this.sortedTemplates().length / this.pageSize()),
   );
   protected readonly pagedTemplates = computed(() => {
     const start = this.templatePage() * this.pageSize();
-    return this.templates().slice(start, start + this.pageSize());
+    return this.sortedTemplates().slice(start, start + this.pageSize());
   });
   protected readonly historyAlertId = signal<number | null>(null);
   protected readonly historyStatus = signal<AlertExecutionStatus | ''>('');
@@ -113,8 +124,8 @@ export class AlertsComponent implements OnInit {
   );
   protected readonly filteredTemplates = computed(() => {
     const query = this.templateSearch().trim().toLocaleLowerCase();
-    if (!query) return this.templates();
-    return this.templates().filter((template) =>
+    if (!query) return this.sortedTemplates();
+    return this.sortedTemplates().filter((template) =>
       this.dynamic(template.nameKey).toLocaleLowerCase().includes(query)
       || this.dynamic(template.descriptionKey).toLocaleLowerCase().includes(query)
       || template.templateKey.toLocaleLowerCase().includes(query),
@@ -305,6 +316,7 @@ export class AlertsComponent implements OnInit {
       description: alert.description ?? '',
       cronExpression: alert.cronExpression,
       enabled: alert.enabled,
+      allowConcurrentExecutions: alert.allowConcurrentExecutions,
       tagIds: alert.tags.map((tag) => tag.id),
       parameters,
     });
@@ -330,6 +342,7 @@ export class AlertsComponent implements OnInit {
       description: current.description,
       cronExpression: current.cronExpression,
       enabled: current.enabled,
+      allowConcurrentExecutions: current.allowConcurrentExecutions,
       tagIds: current.tagIds,
     });
     this.templateSearch.set(this.dynamic(template.nameKey));
@@ -408,6 +421,7 @@ export class AlertsComponent implements OnInit {
         description: form.description.trim() || null,
         cronExpression: form.cronExpression.trim(),
         enabled: form.enabled,
+        allowConcurrentExecutions: form.allowConcurrentExecutions,
         tagIds: form.tagIds,
         parameters,
       };
@@ -524,7 +538,16 @@ export class AlertsComponent implements OnInit {
   }
 
   private emptyForm(): AlertForm {
-    return { templateId: null, name: '', description: '', cronExpression: '0 0 * * * *', enabled: true, tagIds: [], parameters: {} };
+    return {
+      templateId: null,
+      name: '',
+      description: '',
+      cronExpression: '0 0 * * * *',
+      enabled: true,
+      allowConcurrentExecutions: false,
+      tagIds: [],
+      parameters: {},
+    };
   }
 
   private formForTemplate(template: AlertTemplate | null): AlertForm {
