@@ -11,8 +11,13 @@
           {{ lastUpdatedAt() | date:'mediumTime' }}
         </small>
       }
-      <button type="button" (click)="refresh()" [disabled]="loading() || refreshing()">
-        {{ localization.translate(refreshing() ? 'status.refreshing' : 'status.refresh') }}
+      <button
+        type="button"
+        (click)="refresh()"
+        [disabled]="loading() || refreshing()"
+        [attr.aria-busy]="refreshing()"
+      >
+        {{ localization.translate('status.refresh') }}
       </button>
     </div>
   </header>
@@ -84,6 +89,12 @@
             <div>
               <dt>{{ localization.translate('status.runningTasks') }}</dt>
               <dd>{{ worker.runningCount }}</dd>
+              @if (worker.maxConcurrentAlerts > 0) {
+                <small class="worker-metrics__secondary">
+                  {{ localization.translate('status.parallelCapacity') }}:
+                  {{ worker.maxConcurrentAlerts }}
+                </small>
+              }
             </div>
             <div>
               <dt>{{ localization.translate('status.waitingTasks') }}</dt>
