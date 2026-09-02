@@ -1,0 +1,79 @@
+server {
+    listen 8080;
+    server_name _;
+    absolute_redirect off;
+
+    # Resolve the backend through Docker DNS at request time so recreating the
+    # backend container does not leave Nginx using its previous IP address.
+    resolver 127.0.0.11 valid=5s ipv6=off;
+    resolver_timeout 2s;
+    set $backend_upstream ${PUBLISHER_BACKEND_UPSTREAM};
+
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+    location = /publisher-health {
+        access_log off;
+        add_header Content-Type text/plain;
+        return 200 "UP\n";
+    }
+
+    ${PUBLISHER_CONTEXT_GUARDS}
+
+    # The Keycloak master realm is intentionally unavailable through the
+    # general publisher. Other realms keep their normal public endpoints.
+    location = ${PUBLISHER_CONTEXT_PATH}/identity/admin/master { return 404; }
+    location ^~ ${PUBLISHER_CONTEXT_PATH}/identity/admin/master/ { return 404; }
+    location = ${PUBLISHER_CONTEXT_PATH}/identity/admin/realms/master { return 404; }
+    location ^~ ${PUBLISHER_CONTEXT_PATH}/identity/admin/realms/master/ { return 404; }
+    location = ${PUBLISHER_CONTEXT_PATH}/identity/realms/master { return 404; }
+    location ^~ ${PUBLISHER_CONTEXT_PATH}/identity/realms/master/ { return 404; }
+
+    location = ${PUBLISHER_CONTEXT_PATH}/identity { return 308 ${PUBLISHER_CONTEXT_PATH}/identity/; }
+
+    location ^~ ${PUBLISHER_CONTEXT_PATH}/identity/ {
+        proxy_pass ${PUBLISHER_IDENTITY_UPSTREAM};
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Host $http_host;
+        proxy_set_header X-Forwarded-Port ${PUBLIC_PORT};
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location ^~ ${PUBLISHER_CONTEXT_PATH}/api/ {
+        proxy_pass $backend_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Host $http_host;
+        proxy_set_header X-Forwarded-Port ${PUBLIC_PORT};
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location = ${PUBLISHER_CONTEXT_PATH}/api {
+        proxy_pass $backend_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Host $http_host;
+        proxy_set_header X-Forwarded-Port ${PUBLIC_PORT};
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location ${PUBLISHER_CONTEXT_PATH}/ {
+        proxy_pass ${PUBLISHER_FRONTEND_UPSTREAM}/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Host $http_host;
+        proxy_set_header X-Forwarded-Port ${PUBLIC_PORT};
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    ${PUBLISHER_OUTSIDE_CONTEXT_LOCATION}
+}

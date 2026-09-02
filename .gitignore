@@ -89,7 +89,7 @@ karma-debug.log
 # =========================================================
 # Logs
 # =========================================================
-logs/
+/logs/
 *.log
 
 # =========================================================
@@ -119,3 +119,10 @@ bootstrap.properties
 notas.txt
 nb-configuration.xml
 _.code-workspace
+
+nogit/
+*.md
+
+/*.bat
+!/run.bat
+/*.zip

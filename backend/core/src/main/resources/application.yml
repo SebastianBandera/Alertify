@@ -1,0 +1,110 @@
+server:
+  port: 8080
+  shutdown: graceful
+
+spring:
+  application:
+    name: alertify-backend
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+  datasource:
+    url: ${DATABASE_URL}
+    username: ${DATABASE_USER}
+    password: ${DATABASE_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      minimum-idle: 1
+      maximum-pool-size: 10
+      connection-timeout: 30000
+      validation-timeout: 5000
+      schema: core
+  jpa:
+    open-in-view: false
+    show-sql: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_schema: core
+        jdbc:
+          time_zone: UTC
+        type:
+          json_format_mapper: app.alertify.jpa.json.AlertifyJackson3JsonFormatMapper
+      org:
+        hibernate:
+          envers:
+            default_schema: audit
+            audit_table_suffix: _aud
+            store_data_at_delete: true
+  data:
+    redis:
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT}
+      password: ${REDIS_PASSWORD}
+      connect-timeout: 5s
+      timeout: 5s
+      ssl:
+        enabled: ${REDIS_SSL_ENABLED:false}
+      repositories:
+        enabled: false
+  cache:
+    type: redis
+    redis:
+      time-to-live: 10m
+      key-prefix: "alertify:"
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${OIDC_ISSUER_URI}
+          jwk-set-uri: ${OIDC_JWK_SET_URI}
+          audiences:
+            - ${OIDC_BACKEND_AUDIENCE}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include:
+          - health
+          - info
+  endpoint:
+    health:
+      show-details: never
+      probes:
+        enabled: true
+
+info:
+  application:
+    name: ${spring.application.name}
+    description: Alertify backend skeleton
+
+security:
+  roles-client-id: ${OIDC_BACKEND_AUDIENCE}
+  cors:
+    allowed-origin: ${APP_PUBLIC_URL}
+  symmetric-key:
+    environment-part: ${KEY_ENV_PART}
+
+configuration-expressions:
+  allowed-environment-variables: ${CONFIGURATION_EXPRESSION_ALLOWED_ENVIRONMENT_VARIABLES:}
+
+worker:
+  grpc:
+    host: ${WORKER_GRPC_HOST:localhost}
+    port: ${WORKER_GRPC_PORT:9090}
+    tls:
+      enabled: ${WORKER_GRPC_TLS_ENABLED:true}
+      server-name: ${WORKER_GRPC_TLS_SERVER_NAME:worker}
+      certificate-chain: /run/alertify-grpc-tls/current/backend-client.crt
+      private-key: /run/alertify-grpc-tls/current/backend-client.key
+      server-ca-certificate: /run/alertify-grpc-tls/current/worker-server-ca.crt
+    discovery:
+      enabled: ${WORKER_DISCOVERY_ENABLED:true}
+      interval: ${WORKER_DISCOVERY_INTERVAL:30s}
+      initial-delay: 0s
+      health-timeout: ${WORKER_HEALTH_TIMEOUT:2s}
+    execution:
+      timeout: ${WORKER_EXECUTION_TIMEOUT:30m}
+      source-synchronization-timeout: ${WORKER_SOURCE_SYNC_TIMEOUT:30s}
+      source-root: ${ALERT_TEMPLATE_SOURCE_ROOT:/application/alert-template-sources}

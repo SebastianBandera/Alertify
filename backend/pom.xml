@@ -1,134 +1,59 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
-	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
-	<modelVersion>4.0.0</modelVersion>
-	<groupId>app.alertify</groupId>
-	<artifactId>AlertifyArtifact</artifactId>
-	<version>0.0.2-SNAPSHOT</version>
-	<name>Alertify</name>
-	<description>Custom Monitor</description>
-	<packaging>jar</packaging>
-	<parent>
-		<groupId>org.springframework.boot</groupId>
-		<artifactId>spring-boot-starter-parent</artifactId>
-		<version>4.0.2</version>
-		<relativePath/>
-	</parent>
-	<properties>
-		<java.version>25</java.version>
-		<application.title>Alertify</application.title>
-		<application.version>1.0</application.version>
-	</properties>
-	<dependencies>
-		<dependency>
-	        <groupId>org.springframework.boot</groupId>
-	        <artifactId>spring-boot-starter-web</artifactId>
-	    </dependency>
-	    <dependency>
-	        <groupId>org.springframework.boot</groupId>
-	        <artifactId>spring-boot-starter-data-jpa</artifactId>
-	    </dependency>
-		<dependency>
-			<groupId>org.springframework.boot</groupId>
-			<artifactId>spring-boot-starter-jdbc</artifactId>
-		</dependency>
-		<dependency>
-		  <groupId>org.springframework.boot</groupId>
-		  <artifactId>spring-boot-starter-actuator</artifactId>
-		</dependency>
-		<dependency>
-		    <groupId>io.hypersistence</groupId>
-		    <artifactId>hypersistence-utils-hibernate-71</artifactId>
-		    <version>3.15.2</version>
-		</dependency>
-		<dependency>
-		    <groupId>org.postgresql</groupId>
-		    <artifactId>postgresql</artifactId>
-		</dependency>
-		<dependency>
-            <groupId>com.mysql</groupId>
-            <artifactId>mysql-connector-j</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.microsoft.sqlserver</groupId>
-            <artifactId>mssql-jdbc</artifactId>
-        </dependency>
-        
-		<dependency>
-		    <groupId>io.github.java-diff-utils</groupId>
-		    <artifactId>java-diff-utils</artifactId>
-		    <version>4.16</version>
-		</dependency>
-		
-		<dependency>
-	        <groupId>org.junit.jupiter</groupId>
-	        <artifactId>junit-jupiter</artifactId>
-	        <scope>test</scope>
-	    </dependency>
-	
-	    <dependency>
-	        <groupId>org.mockito</groupId>
-	        <artifactId>mockito-core</artifactId>
-	        <scope>test</scope>
-	    </dependency>
-	    
-	    <dependency>
-		  <groupId>org.assertj</groupId>
-		  <artifactId>assertj-core</artifactId>
-		  <scope>test</scope>
-		</dependency>
-			
-	    <dependency>
-	        <groupId>org.mockito</groupId>
-	        <artifactId>mockito-junit-jupiter</artifactId>
-	        <scope>test</scope>
-	    </dependency>
-	    
-	    <dependency>
-		    <groupId>org.springframework</groupId>
-		    <artifactId>spring-test</artifactId>
-		    <scope>test</scope>
-		</dependency>
-		
-		<dependency>
-		    <groupId>org.springframework.boot</groupId>
-		    <artifactId>spring-boot-starter-cache</artifactId>
-		</dependency>
-		
-		<dependency>
-		    <groupId>com.github.ben-manes.caffeine</groupId>
-		    <artifactId>caffeine</artifactId>
-		</dependency>
-		
-		<dependency>
-		  <groupId>org.springframework.boot</groupId>
-		  <artifactId>spring-boot-devtools</artifactId>
-  		  <scope>runtime</scope>
-		  <optional>true</optional>
-		</dependency>
-	</dependencies>
-	<build>
-	    <finalName>alertify</finalName>
-		<resources>
-			<resource>
-				<directory>src/main/resources</directory>
-				<filtering>true</filtering>
-				<includes>
-                    <include>**/*.properties</include>
-                    <include>**/*.yml</include>
-                    <include>**/*.txt</include>
-                </includes>
-			</resource>
-		</resources>
-		<plugins>
-			<plugin>
-				<groupId>org.springframework.boot</groupId>
-				<artifactId>spring-boot-maven-plugin</artifactId>
-				<configuration>
-				    <mainClass>app.alertify.AlertifyApplication</mainClass>
-				</configuration>
-			</plugin>
-		</plugins>
-	</build>
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>4.0.2</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>app.alertify</groupId>
+    <artifactId>alertify-backend-parent</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <packaging>pom</packaging>
+    <name>Alertify Backend Parent</name>
+    <description>Alertify backend modules</description>
+
+    <properties>
+        <java.version>25</java.version>
+        <maven.compiler.parameters>true</maven.compiler.parameters>
+        <grpc.version>1.83.1</grpc.version>
+        <protobuf.version>4.33.2</protobuf.version>
+        <playwright.version>1.62.0</playwright.version>
+    </properties>
+
+    <modules>
+        <module>worker-contract</module>
+        <module>worker-runtime</module>
+        <module>alert-templates</module>
+        <module>core</module>
+        <module>worker-standard</module>
+        <module>worker-playwright</module>
+    </modules>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>io.grpc</groupId>
+                <artifactId>grpc-bom</artifactId>
+                <version>${grpc.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <build>
+        <extensions>
+            <extension>
+                <groupId>kr.motd.maven</groupId>
+                <artifactId>os-maven-plugin</artifactId>
+                <version>1.7.1</version>
+            </extension>
+        </extensions>
+    </build>
 </project>

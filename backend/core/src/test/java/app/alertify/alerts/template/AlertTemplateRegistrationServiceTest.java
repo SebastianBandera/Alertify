@@ -1,0 +1,85 @@
+package app.alertify.alerts.template;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import java.util.List;
+import java.util.Optional;
+
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.core.io.DefaultResourceLoader;
+
+import app.alertify.alerts.model.AlertTemplateDefinition;
+import app.alertify.alerts.model.AlertTemplateParameterDefinition;
+import app.alertify.alerts.templates.InternetConnectionAlertTemplate;
+import app.alertify.alerts.templates.devtools.ConsoleParameterAlertTemplate;
+import app.alertify.alerts.templates.devtools.SimulatedLongRunningAlertTemplate;
+import app.alertify.alerts.templates.devtools.WritableParameterCopyAlertTemplate;
+import app.alertify.jpa.repository.AlertTemplateDefinitionRepository;
+import app.alertify.jpa.repository.AlertTemplateParameterDefinitionRepository;
+
+@ExtendWith(MockitoExtension.class)
+class AlertTemplateRegistrationServiceTest {
+
+    @Mock private AlertTemplateDefinitionRepository templateRepository;
+    @Mock private AlertTemplateParameterDefinitionRepository parameterRepository;
+
+    @Test
+    void discoversAndPersistsTheSharedTemplates() {
+        String templateKey = InternetConnectionAlertTemplate.class.getName();
+        String consoleParameterTemplateKey = ConsoleParameterAlertTemplate.class.getName();
+        String devToolsTemplateKey = SimulatedLongRunningAlertTemplate.class.getName();
+        String writableParameterCopyTemplateKey = WritableParameterCopyAlertTemplate.class.getName();
+        when(templateRepository.findByTemplateKey(templateKey)).thenReturn(Optional.empty());
+        when(templateRepository.findByTemplateKey(consoleParameterTemplateKey)).thenReturn(Optional.empty());
+        when(templateRepository.findByTemplateKey(devToolsTemplateKey)).thenReturn(Optional.empty());
+        when(templateRepository.findByTemplateKey(writableParameterCopyTemplateKey)).thenReturn(Optional.empty());
+        when(parameterRepository.findAllByTemplate_TemplateKey(templateKey)).thenReturn(List.of());
+        when(parameterRepository.findAllByTemplate_TemplateKey(consoleParameterTemplateKey)).thenReturn(List.of());
+        when(parameterRepository.findAllByTemplate_TemplateKey(devToolsTemplateKey)).thenReturn(List.of());
+        when(parameterRepository.findAllByTemplate_TemplateKey(writableParameterCopyTemplateKey)).thenReturn(List.of());
+        var service = new AlertTemplateRegistrationService(
+            templateRepository, parameterRepository, new DefaultResourceLoader()
+        );
+
+        AlertTemplateRegistrationSummary summary = service.scanAndRegister();
+
+        assertEquals(4, summary.templates());
+        assertEquals(9, summary.parameters());
+
+        ArgumentCaptor<AlertTemplateDefinition> templateCaptor =
+            ArgumentCaptor.forClass(AlertTemplateDefinition.class);
+        verify(templateRepository, times(4)).save(templateCaptor.capture());
+        AlertTemplateDefinition template = templateCaptor.getAllValues().get(0);
+        assertEquals(templateKey, template.getTemplateKey());
+        assertEquals("alerts.template.internet.name", template.getNameKey());
+        assertEquals(
+            "app/alertify/alerts/templates/InternetConnectionAlertTemplate.java",
+            template.getSourcePath()
+        );
+
+        ArgumentCaptor<AlertTemplateParameterDefinition> parameterCaptor =
+            ArgumentCaptor.forClass(AlertTemplateParameterDefinition.class);
+        verify(parameterRepository, times(9)).save(parameterCaptor.capture());
+        List<AlertTemplateParameterDefinition> parameters = parameterCaptor.getAllValues();
+
+        assertEquals("endpoint", parameters.get(0).getParameterKey());
+        assertEquals(String.class.getName(), parameters.get(0).getJavaType());
+        assertEquals(List.of("google", "cloudflare"), parameters.get(0).getOptions());
+        assertTrue(parameters.get(0).isBindingAllowed());
+        assertEquals("google", parameters.get(0).getDefaultValue());
+
+        assertEquals("timeoutSeconds", parameters.get(1).getParameterKey());
+        assertEquals(int.class.getName(), parameters.get(1).getJavaType());
+        assertEquals(List.of("1", "3", "5", "10"), parameters.get(1).getOptions());
+        assertTrue(parameters.get(1).isBindingAllowed());
+        assertEquals("3", parameters.get(1).getDefaultValue());
+    }
+}

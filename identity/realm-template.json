@@ -1,0 +1,118 @@
+{
+  "realm": "${OIDC_REALM}",
+  "enabled": true,
+  "displayName": "${APP_DISPLAY_NAME}",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": true,
+  "rememberMe": true,
+  "loginWithEmailAllowed": false,
+  "duplicateEmailsAllowed": false,
+  "bruteForceProtected": true,
+  "internationalizationEnabled": true,
+  "supportedLocales": ["es", "en"],
+  "defaultLocale": "es",
+  "roles": {
+    "client": {
+      "${OIDC_BACKEND_AUDIENCE}": [
+        {
+          "name": "DASHBOARD",
+          "description": "Can view the dashboard"
+        },
+        {
+          "name": "ADMIN",
+          "description": "Can administer Alertify configurations, tags, secrets and alert definitions",
+          "composite": true,
+          "composites": {
+            "client": {
+              "${OIDC_BACKEND_AUDIENCE}": ["DASHBOARD"]
+            }
+          }
+        }
+      ]
+    }
+  },
+  "clients": [
+    {
+      "clientId": "${OIDC_BACKEND_AUDIENCE}",
+      "name": "API",
+      "description": "Alertify backend API protected by Keycloak.",
+      "enabled": true,
+      "bearerOnly": true,
+      "publicClient": false,
+      "protocol": "openid-connect"
+    },
+    {
+      "clientId": "${OIDC_FRONTEND_CLIENT_ID}",
+      "name": "Frontend",
+      "description": "Alertify web application using the OpenID Connect authorization code flow with PKCE.",
+      "enabled": true,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": ["${APP_PUBLIC_URL}/*"],
+      "webOrigins": ["${APP_PUBLIC_URL}"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "${APP_PUBLIC_URL}/*"
+      },
+      "protocolMappers": [
+        {
+          "name": "backend-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "${OIDC_BACKEND_AUDIENCE}",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "${APP_ADMIN_USERNAME}",
+      "firstName": "Application",
+      "lastName": "Administrator",
+      "email": "admin@example.invalid",
+      "emailVerified": true,
+      "enabled": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${APP_ADMIN_PASSWORD}",
+          "temporary": false
+        }
+      ],
+      "requiredActions": [],
+      "clientRoles": {
+        "${OIDC_BACKEND_AUDIENCE}": ["ADMIN"],
+        "account": ["view-profile"]
+      }
+    },
+    {
+      "username": "${APP_VIEWER_USERNAME}",
+      "firstName": "Application",
+      "lastName": "Viewer",
+      "email": "viewer@example.invalid",
+      "emailVerified": true,
+      "enabled": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${APP_VIEWER_PASSWORD}",
+          "temporary": false
+        }
+      ],
+      "requiredActions": [],
+      "clientRoles": {
+        "${OIDC_BACKEND_AUDIENCE}": ["DASHBOARD"],
+        "account": ["view-profile"]
+      }
+    }
+  ]
+}

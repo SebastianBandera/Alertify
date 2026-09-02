@@ -1,0 +1,4 @@
+*
+!Dockerfile
+!default.conf.template
+!19-application-context.envsh

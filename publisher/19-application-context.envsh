@@ -1,0 +1,23 @@
+#!/usr/bin/env sh
+
+context_path=${APP_CONTEXT_PATH:?APP_CONTEXT_PATH is required}
+
+case "$context_path" in
+  /)
+    PUBLISHER_CONTEXT_PATH=
+    PUBLISHER_CONTEXT_GUARDS=
+    PUBLISHER_OUTSIDE_CONTEXT_LOCATION=
+    ;;
+  /*)
+    PUBLISHER_CONTEXT_PATH=${context_path%/}
+    PUBLISHER_CONTEXT_GUARDS="location = / { return 308 ${PUBLISHER_CONTEXT_PATH}; }
+    location = ${PUBLISHER_CONTEXT_PATH} { return 308 ${PUBLISHER_CONTEXT_PATH}/; }"
+    PUBLISHER_OUTSIDE_CONTEXT_LOCATION='location / { return 404; }'
+    ;;
+  *)
+    echo "ERROR: APP_CONTEXT_PATH must be / or start with /." >&2
+    exit 1
+    ;;
+esac
+
+export PUBLISHER_CONTEXT_PATH PUBLISHER_CONTEXT_GUARDS PUBLISHER_OUTSIDE_CONTEXT_LOCATION

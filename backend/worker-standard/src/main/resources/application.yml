@@ -1,0 +1,23 @@
+spring:
+  application:
+    name: alertify-worker-standard
+  main:
+    keep-alive: true
+    web-application-type: none
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+
+alertify:
+  worker:
+    name: ${spring.application.name}
+    grpc-port: ${WORKER_GRPC_PORT:9090}
+    shutdown-grace-period: 10s
+    capabilities: ${WORKER_STANDARD_CAPABILITIES:STANDARD}
+    max-concurrent-alerts: ${WORKER_MAX_CONCURRENT_ALERTS:4}
+    compiler-output-directory: /application/compiled-alerts
+    compiler-classpath-directory: /application/compiler-classpath
+    tls:
+      enabled: ${WORKER_GRPC_TLS_ENABLED:true}
+      certificate-chain: /run/alertify-grpc-tls/current/worker-server.crt
+      private-key: /run/alertify-grpc-tls/current/worker-server.key
+      client-ca-certificate: /run/alertify-grpc-tls/current/backend-client-ca.crt

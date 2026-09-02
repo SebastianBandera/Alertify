@@ -1,0 +1,107 @@
+<div class="app-shell">
+  <aside class="sidebar" [attr.aria-label]="localization.translate('navigation.primary')">
+    <a
+      class="brand"
+      routerLink="/dashboard"
+      [attr.aria-label]="localization.translate('brand.home')"
+    >
+      <img
+        class="brand__mark"
+        src="icons/alertify.svg"
+        width="42"
+        height="42"
+        alt=""
+        aria-hidden="true"
+      >
+      <span>
+        <strong>Alertify</strong>
+        <small>{{ localization.translate('brand.subtitle') }}</small>
+      </span>
+    </a>
+
+    <label class="navigation-search">
+      <span class="navigation-search__icon" aria-hidden="true"></span>
+      <span class="visually-hidden">{{ localization.translate('navigation.filter') }}</span>
+      <input
+        type="search"
+        [placeholder]="localization.translate('navigation.filterPlaceholder')"
+        autocomplete="off"
+        [value]="searchTerm()"
+        (input)="updateSearch($event)"
+      >
+    </label>
+
+    <nav class="navigation" [attr.aria-label]="localization.translate('navigation.sections')">
+      @for (item of filteredNavigationItems(); track item.path) {
+        <a
+          class="navigation__item"
+          [routerLink]="item.path"
+          routerLinkActive="navigation__item--active"
+        >
+          <span class="navigation__marker" aria-hidden="true">
+            <span
+              class="navigation__icon"
+              [class.navigation__icon--dashboard]="item.icon === 'dashboard'"
+              [class.navigation__icon--alerts]="item.icon === 'alerts'"
+              [class.navigation__icon--status]="item.icon === 'status'"
+              [class.navigation__icon--configs]="item.icon === 'configs'"
+              [class.navigation__icon--secrets]="item.icon === 'secrets'"
+              [class.navigation__icon--logs]="item.icon === 'logs'"
+            ></span>
+          </span>
+          <span>{{ localization.translate(item.labelKey) }}</span>
+        </a>
+      } @empty {
+        <p class="navigation__empty">{{ localization.translate('navigation.noMatches') }}</p>
+      }
+    </nav>
+
+    <div class="sidebar__footer">
+      <div class="user-summary">
+        <span class="user-summary__avatar" aria-hidden="true">
+          {{ authService.userInitial }}
+        </span>
+        <span class="user-summary__details">
+          <strong>{{ authService.displayName }}</strong>
+          <small>{{ localization.translate('user.authenticated') }}</small>
+        </span>
+      </div>
+      <div class="logout-action">
+        <button
+          class="logout-button"
+          type="button"
+          (click)="logout()"
+          [attr.aria-label]="localization.translate('action.signOut')"
+          aria-describedby="logout-tooltip"
+        >
+          <span class="logout-button__icon" aria-hidden="true">&#8594;</span>
+        </button>
+        <span id="logout-tooltip" class="logout-tooltip" role="tooltip">
+          {{ localization.translate('action.signOut') }}
+        </span>
+      </div>
+    </div>
+  </aside>
+
+  <main class="workspace">
+    <header class="workspace__header">
+      <div class="workspace__actions">
+        <label class="language-selector">
+          <span>{{ localization.translate('language.label') }}</span>
+          <select
+            [ngModel]="localization.locale()"
+            (ngModelChange)="updateLocale($event)"
+          >
+            @for (localeOption of localization.localeOptions; track localeOption.value) {
+              <option [value]="localeOption.value">{{ localeOption.label }}</option>
+            }
+          </select>
+        </label>
+      </div>
+    </header>
+
+    <section class="workspace__content">
+      <router-outlet />
+    </section>
+  </main>
+</div>

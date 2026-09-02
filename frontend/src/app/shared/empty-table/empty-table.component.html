@@ -1,0 +1,36 @@
+<article class="panel">
+  <header class="panel__header">
+    <div>
+      <h1>{{ title() }}</h1>
+      <p>{{ description() }}</p>
+    </div>
+    <span class="record-count">{{ localization.translate('table.records') }}</span>
+  </header>
+
+  <div class="table-frame">
+    <table>
+      <thead>
+        <tr>
+          @for (column of columns(); track column) {
+            <th scope="col">{{ column }}</th>
+          }
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td [attr.colspan]="columns().length">
+            <div class="empty-state">
+              <span class="empty-state__icon" aria-hidden="true">
+                <span></span>
+                <span></span>
+                <span></span>
+              </span>
+              <strong>{{ emptyMessage() }}</strong>
+              <p>{{ localization.translate('table.emptyDescription') }}</p>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</article>

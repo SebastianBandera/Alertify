@@ -1,0 +1,10 @@
+*
+!*/
+!pom.xml
+!*/pom.xml
+!*/src/
+!*/src/**
+!start-backend.sh
+!start-worker-standard.sh
+!Dockerfile
+!worker-standard/Dockerfile
