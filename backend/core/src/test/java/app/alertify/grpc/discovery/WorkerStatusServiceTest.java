@@ -5,6 +5,7 @@ import static org.mockito.Mockito.when;
 
 import java.nio.file.Path;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Set;
 
 import org.junit.jupiter.api.AfterEach;
@@ -13,6 +14,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+
+import com.google.protobuf.Timestamp;
 
 import app.alertify.grpc.AlertWorkerClient;
 import app.alertify.grpc.WorkerGrpcProperties;
@@ -26,6 +29,7 @@ class WorkerStatusServiceTest {
     private static final WorkerEndpoint FIRST = new WorkerEndpoint("10.0.0.2", 9090);
     private static final WorkerEndpoint SECOND = new WorkerEndpoint("10.0.0.3", 9090);
     private static final Duration TIMEOUT = Duration.ofSeconds(2);
+    private static final Instant WORKER_STARTED_AT = Instant.parse("2026-09-02T20:00:00Z");
 
     @Mock private AlertWorkerClient client;
     @Mock private ApplicationEventLogger eventLogger;
@@ -94,10 +98,22 @@ class WorkerStatusServiceTest {
                 .allSatisfy(status -> assertThat(status.maxConcurrentAlerts()).isEqualTo(4));
     }
 
+    @Test
+    void exposesWhenTheWorkerInstanceStarted() {
+        when(client.status(FIRST, TIMEOUT)).thenReturn(status(0, 0));
+        when(client.status(SECOND, TIMEOUT)).thenReturn(status(0, 0));
+
+        assertThat(service.status())
+                .allSatisfy(status -> assertThat(status.workerStartedAt()).isEqualTo(WORKER_STARTED_AT));
+    }
+
     private static WorkerStatusResponse status(int running, int waiting) {
         return WorkerStatusResponse.newBuilder()
                 .setWorkerName("worker")
                 .setWorkerInstanceId("15d5376a-e386-48fe-a089-3d8e597bc29a")
+                .setWorkerStartedAt(Timestamp.newBuilder()
+                        .setSeconds(WORKER_STARTED_AT.getEpochSecond())
+                        .setNanos(WORKER_STARTED_AT.getNano()))
                 .addCapabilities(WorkerCapability.STANDARD.name())
                 .setMaxConcurrentAlerts(4)
                 .setRunningCount(running)

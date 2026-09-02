@@ -1,5 +1,6 @@
 package app.alertify.grpc.api;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Set;
 
@@ -10,6 +11,7 @@ public record WorkerNodeStatusResponse(
     boolean available,
     String workerName,
     String workerInstanceId,
+    Instant workerStartedAt,
     Set<WorkerCapability> capabilities,
     long totalExecuted,
     int runningCount,

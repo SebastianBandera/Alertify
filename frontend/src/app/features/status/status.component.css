@@ -150,11 +150,25 @@ h1 {
 }
 
 .worker-card code {
-  display: block;
-  margin-top: 6px;
   overflow-wrap: anywhere;
   color: var(--text-muted);
   font-size: 10px;
+}
+
+.worker-card__instance {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 6px;
+}
+
+.worker-card__instance small {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .availability,
@@ -331,6 +345,12 @@ h1 {
   .task-item {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .worker-card__instance {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 3px;
   }
 
   .task-item__time {

@@ -67,7 +67,15 @@
               </div>
               <p>{{ worker.address }}</p>
               @if (worker.workerInstanceId) {
-                <code>{{ worker.workerInstanceId }}</code>
+                <div class="worker-card__instance">
+                  <code>{{ worker.workerInstanceId }}</code>
+                  @if (worker.workerStartedAt) {
+                    <small>
+                      {{ localization.translate('status.workerStartedAt') }}:
+                      {{ worker.workerStartedAt | date:'medium' }}
+                    </small>
+                  }
+                </div>
               }
             </div>
             <div class="capabilities">

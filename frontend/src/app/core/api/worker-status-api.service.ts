@@ -18,6 +18,7 @@ export interface WorkerNodeStatus {
   readonly available: boolean;
   readonly workerName: string | null;
   readonly workerInstanceId: string | null;
+  readonly workerStartedAt: string | null;
   readonly capabilities: readonly WorkerCapability[];
   readonly totalExecuted: number;
   readonly runningCount: number;

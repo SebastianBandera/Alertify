@@ -100,6 +100,7 @@ message WorkerStatusResponse {
   repeated WorkerTask waiting_tasks = 7;
   string worker_instance_id = 8;
   int32 max_concurrent_alerts = 9;
+  google.protobuf.Timestamp worker_started_at = 10;
 }
 
 message WorkerTask {

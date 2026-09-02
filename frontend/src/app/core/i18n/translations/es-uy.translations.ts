@@ -33,6 +33,7 @@ export const ES_UY_TRANSLATIONS = {
   'status.runningTasks': 'Tareas activas',
   'status.waitingTasks': 'Tareas en espera',
   'status.parallelCapacity': 'Capacidad paralela',
+  'status.workerStartedAt': 'Inició',
   'status.available': 'Disponible',
   'status.unavailable': 'No disponible',
   'status.runningTaskDetails': 'Tareas actualmente en ejecución',
