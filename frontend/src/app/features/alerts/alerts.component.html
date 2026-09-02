@@ -4,9 +4,14 @@
       <h1>{{ localization.translate('alerts.title') }}</h1>
       <p>{{ localization.translate('alerts.description') }}</p>
     </div>
-    <button class="button button--primary" type="button" (click)="openCreate()" [disabled]="!templates().length">
-      {{ localization.translate('alerts.create') }}
-    </button>
+    <div class="page-header__actions">
+      <button class="button button--secondary" type="button" (click)="openTagManager()">
+        {{ localization.translate('alerts.manageTags') }}
+      </button>
+      <button class="button button--primary" type="button" (click)="openCreate()" [disabled]="!templates().length">
+        {{ localization.translate('alerts.create') }}
+      </button>
+    </div>
   </header>
 
   <nav class="tabs" [attr.aria-label]="localization.translate('alerts.tabs.label')">
@@ -47,6 +52,29 @@
           }
         </select>
       </label>
+      <div class="tag-filter-field">
+        <span>{{ localization.translate('alerts.filterTag') }}</span>
+        <div class="tag-filter">
+          @for (tag of selectedFilterTags(); track tag.id) {
+            <span class="filter-tag" [style.--tag-color]="tag.color">
+              {{ tag.name }}
+              <button type="button" [title]="localization.translate('alerts.removeTagFilter')" (click)="removeTagFilter(tag.id)">×</button>
+            </span>
+          }
+          <select value="" (change)="addTagFilter($event)">
+            <option value="">{{ localization.translate('alerts.addTagFilter') }}</option>
+            @for (tag of availableFilterTags(); track tag.id) {
+              <option [value]="tag.id">{{ tag.name }}</option>
+            }
+          </select>
+          @if (selectedTagIds().length >= 2) {
+            <div class="tag-match-mode" role="group">
+              <button type="button" [class.active]="tagMatchMode() === 'OR'" (click)="updateTagMatchMode('OR')">OR</button>
+              <button type="button" [class.active]="tagMatchMode() === 'AND'" (click)="updateTagMatchMode('AND')">AND</button>
+            </div>
+          }
+        </div>
+      </div>
       <button class="button button--secondary" type="button" (click)="applySearch()">
         {{ localization.translate('alerts.searchAction') }}
       </button>
@@ -62,6 +90,7 @@
           <thead><tr>
             <th>{{ localization.translate('alerts.column.name') }}</th>
             <th>{{ localization.translate('alerts.column.template') }}</th>
+            <th>{{ localization.translate('alerts.column.tags') }}</th>
             <th>{{ localization.translate('alerts.column.schedule') }}</th>
             <th>{{ localization.translate('alerts.column.status') }}</th>
             <th>{{ localization.translate('alerts.column.updatedAt') }}</th>
@@ -72,6 +101,15 @@
               <tr>
                 <td><strong>{{ alert.name }}</strong><small>{{ alert.description || '—' }}</small></td>
                 <td><strong>{{ dynamic(alert.templateNameKey) }}</strong><small class="mono">{{ alert.templateKey }}</small></td>
+                <td>
+                  <div class="tag-list">
+                    @for (tag of alert.tags; track tag.id) {
+                      <span class="tag" [style.--tag-color]="tag.color">{{ tag.name }}</span>
+                    } @empty {
+                      <span class="muted">—</span>
+                    }
+                  </div>
+                </td>
                 <td><code>{{ alert.cronExpression }}</code></td>
                 <td>
                   <span class="badge" [class.badge--disabled]="!alert.enabled">
@@ -346,6 +384,21 @@
             <input type="checkbox" [ngModel]="form().enabled" (ngModelChange)="patchForm({ enabled: $event })" name="enabled">
             <span>{{ localization.translate('alerts.form.enabled') }}</span>
           </label>
+          <fieldset class="tag-fieldset full">
+            <legend>{{ localization.translate('alerts.form.tags') }}</legend>
+            @if (tags().length) {
+              <div class="tag-options">
+                @for (tag of tags(); track tag.id) {
+                  <label class="tag-option">
+                    <input type="checkbox" [checked]="form().tagIds.includes(tag.id)" (change)="toggleFormTag(tag.id, $any($event.target).checked)">
+                    <span class="tag" [style.--tag-color]="tag.color">{{ tag.name }}</span>
+                  </label>
+                }
+              </div>
+            } @else {
+              <span class="muted">{{ localization.translate('alerts.form.noTags') }}</span>
+            }
+          </fieldset>
         </div>
 
         @if (selectedTemplate(); as template) {
@@ -426,6 +479,39 @@
           <button class="button button--primary" type="submit" [disabled]="saving()">{{ localization.translate(saving() ? 'alerts.saving' : 'alerts.save') }}</button>
         </footer>
       </form>
+    </section>
+  </div>
+}
+
+@if (tagDialogOpen()) {
+  <div class="modal-backdrop" (mousedown)="closeTagManager()">
+    <section class="modal modal--tags" role="dialog" aria-modal="true" (mousedown)="$event.stopPropagation()">
+      <header>
+        <h2>{{ localization.translate('alerts.tags.title') }}</h2>
+        <button class="close" type="button" (click)="closeTagManager()">×</button>
+      </header>
+      <div class="tag-manager-body">
+        <form class="tag-form" (ngSubmit)="saveTag()">
+          <label><span>{{ localization.translate('alerts.tags.name') }}</span><input name="tagName" required maxlength="100" [ngModel]="tagForm().name" (ngModelChange)="updateTagForm('name', $event)"></label>
+          <label><span>{{ localization.translate('alerts.tags.color') }}</span><input name="tagColor" type="color" [ngModel]="tagForm().color" (ngModelChange)="updateTagForm('color', $event)"></label>
+          <button class="button button--primary" type="submit" [disabled]="saving() || !tagForm().name.trim()">{{ localization.translate(editingTag() ? 'alerts.tags.update' : 'alerts.tags.add') }}</button>
+        </form>
+        @if (tagError()) { <p class="form-error" role="alert">{{ tagError() }}</p> }
+        <div class="tag-manager-list">
+          @for (tag of tags(); track tag.id) {
+            <div class="tag-manager-row">
+              <span class="tag" [style.--tag-color]="tag.color">{{ tag.name }}</span>
+              <code>{{ tag.color }}</code>
+              <div class="actions">
+                <button type="button" (click)="editTag(tag)">{{ localization.translate('alerts.tags.edit') }}</button>
+                <button class="danger" type="button" (click)="deleteTag(tag)">{{ localization.translate('alerts.tags.delete') }}</button>
+              </div>
+            </div>
+          } @empty {
+            <p class="muted">{{ localization.translate('alerts.tags.empty') }}</p>
+          }
+        </div>
+      </div>
     </section>
   </div>
 }

@@ -1,6 +1,7 @@
 package app.alertify.alerts.api;
 
 import java.util.List;
+import java.util.Set;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -14,6 +15,7 @@ public record AlertCreateRequest(
     @Size(max = 2000) String description,
     @NotBlank @Size(max = 255) String cronExpression,
     boolean enabled,
-    @NotNull @Size(max = 100) List<@Valid AlertParameterValueRequest> parameters
+    @NotNull @Size(max = 100) List<@Valid AlertParameterValueRequest> parameters,
+    @NotNull @Size(max = 100) Set<@Positive Long> tagIds
 ) {
 }

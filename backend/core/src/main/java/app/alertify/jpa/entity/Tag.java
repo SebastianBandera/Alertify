@@ -23,7 +23,7 @@ import jakarta.persistence.Version;
 
 /**
  * Reusable label isolated by {@link TagScope}; database constraints prevent a
- * configuration tag from being attached to a secret or vice versa.
+ * tag from being attached to a resource in another scope.
  */
 @Entity
 @Audited

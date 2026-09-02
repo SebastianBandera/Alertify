@@ -1,6 +1,8 @@
 package app.alertify.controller;
 
 import java.net.URI;
+import java.util.LinkedHashSet;
+import java.util.List;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -29,6 +31,7 @@ import app.alertify.alerts.service.AlertManagementService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.PositiveOrZero;
+import jakarta.validation.constraints.Pattern;
 
 @RestController
 @RequestMapping("/api/alerts")
@@ -47,8 +50,14 @@ public class AlertController {
     @GetMapping
     public Page<AlertResponse> search(@RequestParam(required = false) String name,
             @RequestParam(required = false) @Positive Long templateId,
+            @RequestParam(required = false) List<@Positive Long> tagId,
+            @RequestParam(defaultValue = "OR") @Pattern(regexp = "(?i)OR|AND") String tagOperator,
             @PageableDefault(size = 20, sort = "name") Pageable pageable) {
-        return service.search(name, templateId, pageable);
+        return service.search(
+                name, templateId,
+                tagId == null ? java.util.Set.of() : new LinkedHashSet<>(tagId),
+                "AND".equalsIgnoreCase(tagOperator), pageable
+        );
     }
 
     @GetMapping("/binding-options")

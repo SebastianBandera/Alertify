@@ -14,7 +14,7 @@ import app.alertify.jpa.entity.TagScope;
 
 /**
  * Persistence gateway for tags with queries that always preserve their
- * configuration or secret scope.
+ * configuration, secret or alert scope.
  */
 public interface TagRepository extends JpaRepository<Tag, Long>, JpaSpecificationExecutor<Tag> {
 

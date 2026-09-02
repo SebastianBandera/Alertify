@@ -2,11 +2,21 @@ import { inject, Injectable } from '@angular/core';
 
 import { AuthService } from '../auth/auth.service';
 import { RUNTIME_CONFIG } from '../config/runtime-config';
-import { ApiRequestError, PageResponse } from './configuration-api.service';
+import { ApiRequestError, PageResponse, TagMatchMode } from './configuration-api.service';
 
 export type AlertParameterSource = 'TEXT' | 'CONFIGURATION' | 'SECRET';
 export type AlertExecutionStatus = 'SUCCESS' | 'WARN' | 'ERROR';
 export type WorkerCapability = 'STANDARD' | 'PLAYWRIGHT';
+
+export interface AlertTag {
+  readonly id: number;
+  readonly version: number;
+  readonly scope: 'ALERT';
+  readonly name: string;
+  readonly color: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
 
 export interface AlertTemplateParameter {
   readonly id: number;
@@ -61,6 +71,7 @@ export interface Alert {
   readonly description: string | null;
   readonly cronExpression: string;
   readonly enabled: boolean;
+  readonly tags: readonly AlertTag[];
   readonly parameters: readonly AlertParameterValue[];
   readonly createdAt: string;
   readonly updatedAt: string;
@@ -81,7 +92,14 @@ export interface AlertWriteRequest {
   readonly description: string | null;
   readonly cronExpression: string;
   readonly enabled: boolean;
+  readonly tagIds: readonly number[];
   readonly parameters: readonly AlertParameterWriteRequest[];
+}
+
+export interface AlertTagWriteRequest {
+  readonly version?: number;
+  readonly name: string;
+  readonly color: string;
 }
 
 export interface AlertBindingOption {
@@ -131,13 +149,34 @@ export class AlertApiService {
   async listAlerts(
     name: string,
     templateId: number | null,
+    tagIds: readonly number[],
+    tagMatchMode: TagMatchMode,
     page: number,
     size: number,
   ): Promise<PageResponse<Alert>> {
     const params = new URLSearchParams({ page: String(page), size: String(size), sort: 'name,asc' });
     if (name.trim()) params.set('name', name.trim());
     if (templateId !== null) params.set('templateId', String(templateId));
+    tagIds.forEach((tagId) => params.append('tagId', String(tagId)));
+    if (tagIds.length >= 2) params.set('tagOperator', tagMatchMode);
     return this.request(`/api/alerts?${params.toString()}`);
+  }
+
+  async listTags(): Promise<readonly AlertTag[]> {
+    const page = await this.request<PageResponse<AlertTag>>('/api/alert-tags?page=0&size=200&sort=name,asc');
+    return page.content;
+  }
+
+  async createTag(request: AlertTagWriteRequest): Promise<AlertTag> {
+    return this.request('/api/alert-tags', { method: 'POST', body: JSON.stringify(request) });
+  }
+
+  async updateTag(id: number, request: AlertTagWriteRequest): Promise<AlertTag> {
+    return this.request(`/api/alert-tags/${id}`, { method: 'PUT', body: JSON.stringify(request) });
+  }
+
+  async deleteTag(id: number, version: number): Promise<void> {
+    await this.request<void>(`/api/alert-tags/${id}?version=${version}`, { method: 'DELETE' });
   }
 
   async listTemplates(): Promise<readonly AlertTemplate[]> {

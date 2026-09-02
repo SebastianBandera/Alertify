@@ -12,8 +12,9 @@ import {
   AlertParameterWriteRequest,
   AlertTemplate,
   AlertTemplateParameter,
+  AlertTag,
 } from '../../core/api/alert-api.service';
-import { ApiRequestError } from '../../core/api/configuration-api.service';
+import { ApiRequestError, TagMatchMode } from '../../core/api/configuration-api.service';
 import { LocalizationService } from '../../core/i18n/localization.service';
 
 type AlertTab = 'alerts' | 'templates' | 'history';
@@ -35,7 +36,13 @@ interface AlertForm {
   description: string;
   cronExpression: string;
   enabled: boolean;
+  tagIds: number[];
   parameters: Readonly<Record<string, ParameterForm>>;
+}
+
+interface TagForm {
+  name: string;
+  color: string;
 }
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100, 250, 500, 1000] as const;
@@ -67,6 +74,7 @@ export class AlertsComponent implements OnInit {
   protected readonly activeTab = signal<AlertTab>('alerts');
   protected readonly alerts = signal<readonly Alert[]>([]);
   protected readonly templates = signal<readonly AlertTemplate[]>([]);
+  protected readonly tags = signal<readonly AlertTag[]>([]);
   protected readonly executions = signal<readonly AlertExecution[]>([]);
   protected readonly bindings = signal<AlertBindingOptions>(EMPTY_BINDINGS);
   protected readonly loading = signal(true);
@@ -76,6 +84,8 @@ export class AlertsComponent implements OnInit {
   protected readonly formFieldErrors = signal<AlertFormErrors>({});
   protected readonly search = signal('');
   protected readonly templateFilterId = signal<number | null>(null);
+  protected readonly selectedTagIds = signal<readonly number[]>([]);
+  protected readonly tagMatchMode = signal<TagMatchMode>('OR');
   protected readonly pageSize = signal(readStoredPageSize());
   protected readonly alertPage = signal(0);
   protected readonly alertTotalPages = signal(0);
@@ -110,9 +120,24 @@ export class AlertsComponent implements OnInit {
       || template.templateKey.toLocaleLowerCase().includes(query),
     );
   });
+  protected readonly selectedFilterTags = computed(() => {
+    const tagsById = new Map(this.tags().map((tag) => [tag.id, tag]));
+    return this.selectedTagIds().flatMap((id) => {
+      const tag = tagsById.get(id);
+      return tag ? [tag] : [];
+    });
+  });
+  protected readonly availableFilterTags = computed(() => {
+    const selected = new Set(this.selectedTagIds());
+    return this.tags().filter((tag) => !selected.has(tag.id));
+  });
+  protected readonly tagDialogOpen = signal(false);
+  protected readonly editingTag = signal<AlertTag | null>(null);
+  protected readonly tagForm = signal<TagForm>({ name: '', color: '#6D5DFC' });
+  protected readonly tagError = signal<string | null>(null);
 
   async ngOnInit(): Promise<void> {
-    await Promise.all([this.loadAlerts(), this.loadTemplates(), this.loadBindings(), this.loadHistory()]);
+    await Promise.all([this.loadAlerts(), this.loadTemplates(), this.loadTags(), this.loadBindings(), this.loadHistory()]);
   }
 
   protected async selectTab(tab: AlertTab): Promise<void> {
@@ -127,7 +152,8 @@ export class AlertsComponent implements OnInit {
     this.error.set(null);
     try {
       const page = await this.api.listAlerts(
-        this.search(), this.templateFilterId(), this.alertPage(), this.pageSize(),
+        this.search(), this.templateFilterId(), this.selectedTagIds(), this.tagMatchMode(),
+        this.alertPage(), this.pageSize(),
       );
       this.alerts.set(page.content);
       this.alertPage.set(page.page.number);
@@ -137,6 +163,14 @@ export class AlertsComponent implements OnInit {
       this.error.set(this.errorMessage(error));
     } finally {
       this.loading.set(false);
+    }
+  }
+
+  protected async loadTags(): Promise<void> {
+    try {
+      this.tags.set(await this.api.listTags());
+    } catch (error) {
+      this.error.set(this.errorMessage(error));
     }
   }
 
@@ -181,6 +215,29 @@ export class AlertsComponent implements OnInit {
     void this.loadAlerts();
   }
 
+  protected addTagFilter(event: Event): void {
+    const select = event.target as HTMLSelectElement;
+    const tagId = Number(select.value);
+    if (tagId && !this.selectedTagIds().includes(tagId)) {
+      this.selectedTagIds.set([...this.selectedTagIds(), tagId]);
+      this.alertPage.set(0);
+      void this.loadAlerts();
+    }
+    select.value = '';
+  }
+
+  protected removeTagFilter(tagId: number): void {
+    this.selectedTagIds.set(this.selectedTagIds().filter((id) => id !== tagId));
+    this.alertPage.set(0);
+    void this.loadAlerts();
+  }
+
+  protected updateTagMatchMode(mode: TagMatchMode): void {
+    this.tagMatchMode.set(mode);
+    this.alertPage.set(0);
+    void this.loadAlerts();
+  }
+
   protected showTemplateAlerts(template: AlertTemplate): void {
     this.activeTab.set('alerts');
     this.search.set('');
@@ -214,7 +271,9 @@ export class AlertsComponent implements OnInit {
 
   protected openCreate(templateId?: number): void {
     this.editingAlert.set(null);
-    const template = this.templates().find((item) => item.id === templateId) ?? this.templates()[0] ?? null;
+    const template = templateId === undefined
+      ? null
+      : this.templates().find((item) => item.id === templateId) ?? null;
     this.form.set(this.formForTemplate(template));
     this.templateSearch.set(template ? this.dynamic(template.nameKey) : '');
     this.templatePickerOpen.set(false);
@@ -246,6 +305,7 @@ export class AlertsComponent implements OnInit {
       description: alert.description ?? '',
       cronExpression: alert.cronExpression,
       enabled: alert.enabled,
+      tagIds: alert.tags.map((tag) => tag.id),
       parameters,
     });
     this.templateSearch.set(template ? this.dynamic(template.nameKey) : alert.templateKey);
@@ -270,6 +330,7 @@ export class AlertsComponent implements OnInit {
       description: current.description,
       cronExpression: current.cronExpression,
       enabled: current.enabled,
+      tagIds: current.tagIds,
     });
     this.templateSearch.set(this.dynamic(template.nameKey));
     this.templatePickerOpen.set(false);
@@ -296,6 +357,13 @@ export class AlertsComponent implements OnInit {
     this.form.update((form) => ({
       ...form,
       parameters: { ...form.parameters, [key]: { ...form.parameters[key], ...patch } },
+    }));
+  }
+
+  protected toggleFormTag(tagId: number, checked: boolean): void {
+    this.form.update((form) => ({
+      ...form,
+      tagIds: checked ? [...form.tagIds, tagId] : form.tagIds.filter((id) => id !== tagId),
     }));
   }
 
@@ -340,6 +408,7 @@ export class AlertsComponent implements OnInit {
         description: form.description.trim() || null,
         cronExpression: form.cronExpression.trim(),
         enabled: form.enabled,
+        tagIds: form.tagIds,
         parameters,
       };
       if (editing) await this.api.updateAlert(editing.id, request);
@@ -363,6 +432,63 @@ export class AlertsComponent implements OnInit {
       await Promise.all([this.loadAlerts(), this.loadTemplates()]);
     } catch (error) {
       this.error.set(this.errorMessage(error));
+    }
+  }
+
+  protected openTagManager(): void {
+    this.editingTag.set(null);
+    this.tagForm.set({ name: '', color: '#6D5DFC' });
+    this.tagError.set(null);
+    this.tagDialogOpen.set(true);
+  }
+
+  protected closeTagManager(): void {
+    if (!this.saving()) this.tagDialogOpen.set(false);
+  }
+
+  protected editTag(tag: AlertTag): void {
+    this.editingTag.set(tag);
+    this.tagForm.set({ name: tag.name, color: tag.color });
+  }
+
+  protected updateTagForm(field: keyof TagForm, value: string): void {
+    this.tagForm.update((form) => ({ ...form, [field]: value }));
+  }
+
+  protected async saveTag(): Promise<void> {
+    const form = this.tagForm();
+    if (!form.name.trim()) return;
+    this.saving.set(true);
+    this.tagError.set(null);
+    try {
+      const editing = this.editingTag();
+      if (editing) {
+        await this.api.updateTag(editing.id, {
+          version: editing.version, name: form.name.trim(), color: form.color,
+        });
+      } else {
+        await this.api.createTag({ name: form.name.trim(), color: form.color });
+      }
+      this.editingTag.set(null);
+      this.tagForm.set({ name: '', color: '#6D5DFC' });
+      await Promise.all([this.loadTags(), this.loadAlerts()]);
+    } catch (error) {
+      this.tagError.set(this.errorMessage(error));
+    } finally {
+      this.saving.set(false);
+    }
+  }
+
+  protected async deleteTag(tag: AlertTag): Promise<void> {
+    if (!window.confirm(this.localization.translate('alerts.tags.deleteConfirm'))) return;
+    try {
+      await this.api.deleteTag(tag.id, tag.version);
+      this.selectedTagIds.set(this.selectedTagIds().filter((id) => id !== tag.id));
+      await Promise.all([this.loadTags(), this.loadAlerts()]);
+    } catch (error) {
+      this.tagError.set(error instanceof ApiRequestError && error.code === 'ALERT_TAG_IN_USE'
+        ? this.localization.translate('alerts.tags.inUse')
+        : this.errorMessage(error));
     }
   }
 
@@ -398,7 +524,7 @@ export class AlertsComponent implements OnInit {
   }
 
   private emptyForm(): AlertForm {
-    return { templateId: null, name: '', description: '', cronExpression: '0 0 * * * *', enabled: true, parameters: {} };
+    return { templateId: null, name: '', description: '', cronExpression: '0 0 * * * *', enabled: true, tagIds: [], parameters: {} };
   }
 
   private formForTemplate(template: AlertTemplate | null): AlertForm {

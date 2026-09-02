@@ -1,13 +1,19 @@
 package app.alertify.alerts.model;
 
 import java.time.Instant;
+import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.Objects;
+import java.util.Set;
 
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 import org.hibernate.envers.AuditTable;
+import org.hibernate.envers.AuditJoinTable;
 import org.hibernate.envers.Audited;
 import org.hibernate.envers.NotAudited;
+
+import app.alertify.jpa.entity.Tag;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -16,6 +22,8 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.JoinTable;
+import jakarta.persistence.ManyToMany;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
@@ -72,15 +80,30 @@ public class Alert {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+        name = "alert_tag",
+        schema = "core",
+        joinColumns = @JoinColumn(name = "alert_id"),
+        inverseJoinColumns = @JoinColumn(name = "tag_id")
+    )
+    @AuditJoinTable(name = "alert_tag_aud", schema = "audit")
+    private Set<Tag> tags = new LinkedHashSet<>();
+
     protected Alert() {
     }
 
     public Alert(AlertTemplateDefinition template, String name, String description, String cronExpression, boolean enabled) {
+        this(template, name, description, cronExpression, enabled, Set.of());
+    }
+
+    public Alert(AlertTemplateDefinition template, String name, String description, String cronExpression, boolean enabled, Set<Tag> tags) {
         this.template = Objects.requireNonNull(template, "template must not be null");
         this.name = Objects.requireNonNull(name, "name must not be null");
         this.description = description;
         this.cronExpression = Objects.requireNonNull(cronExpression, "cronExpression must not be null");
         this.enabled = enabled;
+        replaceTags(tags);
     }
 
     public Long getId() {
@@ -119,6 +142,10 @@ public class Alert {
         return updatedAt;
     }
 
+    public Set<Tag> getTags() {
+        return Collections.unmodifiableSet(tags);
+    }
+
     public void rename(String name) {
         this.name = Objects.requireNonNull(name, "name must not be null");
     }
@@ -137,6 +164,12 @@ public class Alert {
 
     public void disable() {
         enabled = false;
+    }
+
+    public void replaceTags(Set<Tag> tags) {
+        this.tags.clear();
+        if (tags != null)
+            this.tags.addAll(tags);
     }
 
 }
