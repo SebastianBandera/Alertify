@@ -71,6 +71,9 @@ karma-debug.log
 # VS Code
 .vscode/
 
+# Claude Code (personal settings)
+.claude/settings.local.json
+
 # NetBeans
 /nbproject/private/
 /nbbuild/
