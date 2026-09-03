@@ -13,7 +13,7 @@ alertify:
     grpc-port: ${WORKER_GRPC_PORT:9090}
     shutdown-grace-period: 10s
     capabilities: ${WORKER_STANDARD_CAPABILITIES:STANDARD}
-    max-concurrent-alerts: ${WORKER_MAX_CONCURRENT_ALERTS:4}
+    max-concurrent-alerts: ${WORKER_STANDARD_MAX_CONCURRENT_ALERTS:8}
     compiler-output-directory: /application/compiled-alerts
     compiler-classpath-directory: /application/compiler-classpath
     tls:
