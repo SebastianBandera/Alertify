@@ -229,12 +229,33 @@ h1 {
   font-weight: 750;
 }
 
+.worker-metrics__running-value {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
 .worker-metrics__secondary {
   display: block;
   margin-top: 3px;
   color: var(--text-muted);
   font-size: 10px;
   font-weight: 500;
+}
+
+.worker-metrics__capacity-reached {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #f79009;
+  color: #fff;
+  cursor: help;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
 }
 
 .task-section {

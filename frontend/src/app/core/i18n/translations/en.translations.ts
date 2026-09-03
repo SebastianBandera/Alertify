@@ -33,6 +33,7 @@ export const EN_TRANSLATIONS = {
   'status.runningTasks': 'Active tasks',
   'status.waitingTasks': 'Waiting tasks',
   'status.parallelCapacity': 'Parallel capacity',
+  'status.parallelCapacityReached': 'Parallel capacity reached; additional tasks will wait.',
   'status.workerStartedAt': 'Started',
   'status.available': 'Available',
   'status.unavailable': 'Unavailable',

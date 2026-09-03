@@ -97,7 +97,17 @@
             </div>
             <div>
               <dt>{{ localization.translate('status.runningTasks') }}</dt>
-              <dd>{{ worker.runningCount }}</dd>
+              <dd class="worker-metrics__running-value">
+                {{ worker.runningCount }}
+                @if (worker.maxConcurrentAlerts > 0 && worker.runningCount >= worker.maxConcurrentAlerts) {
+                  <span
+                    class="worker-metrics__capacity-reached"
+                    role="img"
+                    [attr.aria-label]="localization.translate('status.parallelCapacityReached')"
+                    [title]="localization.translate('status.parallelCapacityReached')"
+                  >!</span>
+                }
+              </dd>
               @if (worker.maxConcurrentAlerts > 0) {
                 <small class="worker-metrics__secondary">
                   {{ localization.translate('status.parallelCapacity') }}:

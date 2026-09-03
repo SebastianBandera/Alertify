@@ -29,6 +29,7 @@ export type TranslationKey =
   | 'status.runningTasks'
   | 'status.waitingTasks'
   | 'status.parallelCapacity'
+  | 'status.parallelCapacityReached'
   | 'status.workerStartedAt'
   | 'status.available'
   | 'status.unavailable'
