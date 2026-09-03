@@ -22,6 +22,7 @@ import app.alertify.alerts.model.AlertTemplateDefinition;
 import app.alertify.alerts.model.AlertTemplateParameterDefinition;
 import app.alertify.alerts.templates.HttpsCertificateExpiryAlertTemplate;
 import app.alertify.alerts.templates.InternetConnectionAlertTemplate;
+import app.alertify.alerts.templates.TcpConnectionAlertTemplate;
 import app.alertify.alerts.templates.devtools.ConsoleParameterAlertTemplate;
 import app.alertify.alerts.templates.devtools.SimulatedLongRunningAlertTemplate;
 import app.alertify.alerts.templates.devtools.WritableParameterCopyAlertTemplate;
@@ -38,16 +39,19 @@ class AlertTemplateRegistrationServiceTest {
     void discoversAndPersistsTheSharedTemplates() {
         String httpsCertificateTemplateKey = HttpsCertificateExpiryAlertTemplate.class.getName();
         String templateKey = InternetConnectionAlertTemplate.class.getName();
+        String tcpConnectionTemplateKey = TcpConnectionAlertTemplate.class.getName();
         String consoleParameterTemplateKey = ConsoleParameterAlertTemplate.class.getName();
         String devToolsTemplateKey = SimulatedLongRunningAlertTemplate.class.getName();
         String writableParameterCopyTemplateKey = WritableParameterCopyAlertTemplate.class.getName();
         when(templateRepository.findByTemplateKey(httpsCertificateTemplateKey)).thenReturn(Optional.empty());
         when(templateRepository.findByTemplateKey(templateKey)).thenReturn(Optional.empty());
+        when(templateRepository.findByTemplateKey(tcpConnectionTemplateKey)).thenReturn(Optional.empty());
         when(templateRepository.findByTemplateKey(consoleParameterTemplateKey)).thenReturn(Optional.empty());
         when(templateRepository.findByTemplateKey(devToolsTemplateKey)).thenReturn(Optional.empty());
         when(templateRepository.findByTemplateKey(writableParameterCopyTemplateKey)).thenReturn(Optional.empty());
         when(parameterRepository.findAllByTemplate_TemplateKey(httpsCertificateTemplateKey)).thenReturn(List.of());
         when(parameterRepository.findAllByTemplate_TemplateKey(templateKey)).thenReturn(List.of());
+        when(parameterRepository.findAllByTemplate_TemplateKey(tcpConnectionTemplateKey)).thenReturn(List.of());
         when(parameterRepository.findAllByTemplate_TemplateKey(consoleParameterTemplateKey)).thenReturn(List.of());
         when(parameterRepository.findAllByTemplate_TemplateKey(devToolsTemplateKey)).thenReturn(List.of());
         when(parameterRepository.findAllByTemplate_TemplateKey(writableParameterCopyTemplateKey)).thenReturn(List.of());
@@ -57,12 +61,12 @@ class AlertTemplateRegistrationServiceTest {
 
         AlertTemplateRegistrationSummary summary = service.scanAndRegister();
 
-        assertEquals(5, summary.templates());
-        assertEquals(13, summary.parameters());
+        assertEquals(6, summary.templates());
+        assertEquals(16, summary.parameters());
 
         ArgumentCaptor<AlertTemplateDefinition> templateCaptor =
             ArgumentCaptor.forClass(AlertTemplateDefinition.class);
-        verify(templateRepository, times(5)).save(templateCaptor.capture());
+        verify(templateRepository, times(6)).save(templateCaptor.capture());
         AlertTemplateDefinition httpsCertificateTemplate = templateCaptor.getAllValues().get(0);
         assertEquals(httpsCertificateTemplateKey, httpsCertificateTemplate.getTemplateKey());
         assertEquals("alerts.template.httpsCertificate.name", httpsCertificateTemplate.getNameKey());
@@ -81,7 +85,7 @@ class AlertTemplateRegistrationServiceTest {
 
         ArgumentCaptor<AlertTemplateParameterDefinition> parameterCaptor =
             ArgumentCaptor.forClass(AlertTemplateParameterDefinition.class);
-        verify(parameterRepository, times(13)).save(parameterCaptor.capture());
+        verify(parameterRepository, times(16)).save(parameterCaptor.capture());
         List<AlertTemplateParameterDefinition> parameters = parameterCaptor.getAllValues();
 
         assertEquals("endpoint", parameters.get(0).getParameterKey());
@@ -119,5 +123,19 @@ class AlertTemplateRegistrationServiceTest {
         assertEquals(List.of("1", "3", "5", "10"), parameters.get(5).getOptions());
         assertTrue(parameters.get(5).isBindingAllowed());
         assertEquals("3", parameters.get(5).getDefaultValue());
+
+        assertEquals("host", parameters.get(6).getParameterKey());
+        assertEquals(String.class.getName(), parameters.get(6).getJavaType());
+        assertTrue(parameters.get(6).isBindingAllowed());
+
+        assertEquals("port", parameters.get(7).getParameterKey());
+        assertEquals(int.class.getName(), parameters.get(7).getJavaType());
+        assertTrue(parameters.get(7).isBindingAllowed());
+
+        assertEquals("timeoutSeconds", parameters.get(8).getParameterKey());
+        assertEquals(int.class.getName(), parameters.get(8).getJavaType());
+        assertEquals(List.of("1", "3", "5", "10", "30"), parameters.get(8).getOptions());
+        assertTrue(parameters.get(8).isBindingAllowed());
+        assertEquals("3", parameters.get(8).getDefaultValue());
     }
 }
