@@ -531,6 +531,11 @@ export class AlertsComponent implements OnInit {
     return this.localization.translateDynamic(key);
   }
 
+  protected templateClassName(templateKey: string): string {
+    const separator = templateKey.lastIndexOf('.');
+    return separator < 0 ? templateKey : templateKey.substring(separator + 1);
+  }
+
   protected statusMessage(execution: AlertExecution): string {
     if (execution.status === 'ERROR') return execution.errorMessage ?? execution.errorType ?? '—';
     if (execution.statusMessage === null) return '—';

@@ -162,7 +162,7 @@
             @for (template of pagedTemplates(); track template.id) {
               <tr>
                 <td><strong>{{ dynamic(template.nameKey) }}</strong><small>{{ dynamic(template.descriptionKey) }}</small></td>
-                <td><code class="template-key">{{ template.templateKey }}</code><small>#{{ template.id }}</small></td>
+                <td><code class="template-key" [attr.title]="template.templateKey">{{ templateClassName(template.templateKey) }}</code><small>#{{ template.id }}</small></td>
                 <td><span class="badge badge--capability">{{ template.requiredCapability }}</span></td>
                 <td>
                   <details>
