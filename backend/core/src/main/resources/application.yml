@@ -17,10 +17,14 @@ spring:
     password: ${DATABASE_PASSWORD}
     driver-class-name: org.postgresql.Driver
     hikari:
-      minimum-idle: 1
-      maximum-pool-size: 10
-      connection-timeout: 30000
-      validation-timeout: 5000
+      pool-name: ${DATABASE_POOL_NAME:alertify-backend-pool}
+      minimum-idle: ${DATABASE_POOL_MINIMUM_IDLE:1}
+      maximum-pool-size: ${DATABASE_POOL_MAXIMUM_SIZE:10}
+      connection-timeout: ${DATABASE_POOL_CONNECTION_TIMEOUT_MS:30000}
+      validation-timeout: ${DATABASE_POOL_VALIDATION_TIMEOUT_MS:5000}
+      idle-timeout: ${DATABASE_POOL_IDLE_TIMEOUT_MS:600000}
+      max-lifetime: ${DATABASE_POOL_MAX_LIFETIME_MS:1800000}
+      keepalive-time: ${DATABASE_POOL_KEEPALIVE_TIME_MS:120000}
       schema: core
   jpa:
     open-in-view: false
