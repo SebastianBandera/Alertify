@@ -1,6 +1,8 @@
 import { DatePipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, ElementRef, OnInit, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, OnInit, computed, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
+import { ActivatedRoute, Router } from '@angular/router';
 
 import {
   Alert,
@@ -59,6 +61,11 @@ function readStoredPageSize(): number {
   }
 }
 
+function alertTab(value: string | null): AlertTab {
+  if (value === 'templates' || value === 'history') return value;
+  return 'alerts';
+}
+
 @Component({
   selector: 'app-alerts',
   imports: [DatePipe, FormsModule],
@@ -70,6 +77,9 @@ export class AlertsComponent implements OnInit {
   protected readonly localization = inject(LocalizationService);
   protected readonly pageSizeOptions = PAGE_SIZE_OPTIONS;
   private readonly api = inject(AlertApiService);
+  private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
+  private readonly destroyRef = inject(DestroyRef);
   private readonly elementRef: ElementRef<HTMLElement> = inject(ElementRef);
 
   protected readonly activeTab = signal<AlertTab>('alerts');
@@ -148,11 +158,42 @@ export class AlertsComponent implements OnInit {
   protected readonly tagError = signal<string | null>(null);
 
   async ngOnInit(): Promise<void> {
+    const requestedTab = this.route.snapshot.queryParamMap.get('tab');
+    this.activeTab.set(alertTab(requestedTab));
+    this.route.queryParamMap
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((parameters) => {
+        const tab = alertTab(parameters.get('tab'));
+        if (tab === this.activeTab()) return;
+
+        this.activeTab.set(tab);
+        void this.loadTab(tab);
+      });
+    if (requestedTab !== this.activeTab()) {
+      void this.router.navigate([], {
+        relativeTo: this.route,
+        queryParams: { tab: this.activeTab() },
+        queryParamsHandling: 'merge',
+        replaceUrl: true,
+      });
+    }
+
     await Promise.all([this.loadAlerts(), this.loadTemplates(), this.loadTags(), this.loadBindings(), this.loadHistory()]);
   }
 
   protected async selectTab(tab: AlertTab): Promise<void> {
     this.activeTab.set(tab);
+    await Promise.all([
+      this.router.navigate([], {
+        relativeTo: this.route,
+        queryParams: { tab },
+        queryParamsHandling: 'merge',
+      }),
+      this.loadTab(tab),
+    ]);
+  }
+
+  private async loadTab(tab: AlertTab): Promise<void> {
     if (tab === 'alerts') await this.loadAlerts();
     if (tab === 'templates') await this.loadTemplates();
     if (tab === 'history') await this.loadHistory();
@@ -250,11 +291,10 @@ export class AlertsComponent implements OnInit {
   }
 
   protected showTemplateAlerts(template: AlertTemplate): void {
-    this.activeTab.set('alerts');
     this.search.set('');
     this.templateFilterId.set(template.id);
     this.alertPage.set(0);
-    void this.loadAlerts();
+    void this.selectTab('alerts');
   }
 
   protected applyHistoryFilters(): void {
