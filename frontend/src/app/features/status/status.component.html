@@ -73,6 +73,7 @@
                     <small>
                       {{ localization.translate('status.workerStartedAt') }}:
                       {{ worker.workerStartedAt | date:'medium' }}
+                      ({{ workerUptime(worker.workerStartedAt) }})
                     </small>
                   }
                 </div>

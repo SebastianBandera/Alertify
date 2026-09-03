@@ -86,6 +86,29 @@ export class StatusComponent implements OnInit {
     return task.workStartedAt ?? task.queuedAt;
   }
 
+  protected workerUptime(startedAt: string): string {
+    const elapsedMillis = Math.max(0, Date.now() - Date.parse(startedAt));
+    const elapsedSeconds = Math.floor(elapsedMillis / 1_000);
+    let value: number;
+    let unit: Intl.RelativeTimeFormatUnit;
+    if (elapsedSeconds < 60) {
+      value = elapsedSeconds;
+      unit = 'second';
+    } else if (elapsedSeconds < 3_600) {
+      value = Math.floor(elapsedSeconds / 60);
+      unit = 'minute';
+    } else if (elapsedSeconds < 86_400) {
+      value = Math.floor(elapsedSeconds / 3_600);
+      unit = 'hour';
+    } else {
+      value = Math.floor(elapsedSeconds / 86_400);
+      unit = 'day';
+    }
+
+    return new Intl.RelativeTimeFormat(this.localization.locale(), { numeric: 'always' })
+      .format(-value, unit);
+  }
+
   private updatePolling(): void {
     if (this.document.visibilityState !== 'visible') {
       this.stopPolling();
