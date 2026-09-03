@@ -262,6 +262,16 @@ export class AlertsComponent implements OnInit {
     void this.loadHistory();
   }
 
+  protected updateHistoryAlertFilter(alertId: number | null): void {
+    this.historyAlertId.set(alertId);
+    this.applyHistoryFilters();
+  }
+
+  protected updateHistoryStatusFilter(status: AlertExecutionStatus | ''): void {
+    this.historyStatus.set(status);
+    this.applyHistoryFilters();
+  }
+
   protected updatePageSize(value: string | number): void {
     const pageSize = Number(value);
     if (!PAGE_SIZE_OPTIONS.some((option) => option === pageSize)) return;

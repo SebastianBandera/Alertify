@@ -220,14 +220,14 @@
     <div class="toolbar history-filters">
       <label>
         <span>{{ localization.translate('alerts.history.alert') }}</span>
-        <select [ngModel]="historyAlertId()" (ngModelChange)="historyAlertId.set($event)">
+        <select [ngModel]="historyAlertId()" (ngModelChange)="updateHistoryAlertFilter($event)">
           <option [ngValue]="null">{{ localization.translate('alerts.history.allAlerts') }}</option>
           @for (alert of alerts(); track alert.id) { <option [ngValue]="alert.id">{{ alert.name }}</option> }
         </select>
       </label>
       <label>
         <span>{{ localization.translate('alerts.history.status') }}</span>
-        <select [ngModel]="historyStatus()" (ngModelChange)="historyStatus.set($event)">
+        <select [ngModel]="historyStatus()" (ngModelChange)="updateHistoryStatusFilter($event)">
           <option value="">{{ localization.translate('alerts.history.allStatuses') }}</option>
           <option value="SUCCESS">SUCCESS</option>
           <option value="WARN">WARN</option>
