@@ -10,6 +10,7 @@ import {
   AlertBindingOptions,
   AlertExecution,
   AlertExecutionStatus,
+  AlertImportResult,
   AlertParameterSource,
   AlertParameterWriteRequest,
   AlertTemplate,
@@ -90,7 +91,10 @@ export class AlertsComponent implements OnInit {
   protected readonly bindings = signal<AlertBindingOptions>(EMPTY_BINDINGS);
   protected readonly loading = signal(true);
   protected readonly saving = signal(false);
+  protected readonly exporting = signal(false);
+  protected readonly importing = signal(false);
   protected readonly error = signal<string | null>(null);
+  protected readonly notice = signal<string | null>(null);
   protected readonly formError = signal<string | null>(null);
   protected readonly formFieldErrors = signal<AlertFormErrors>({});
   protected readonly search = signal('');
@@ -224,6 +228,70 @@ export class AlertsComponent implements OnInit {
     } catch (error) {
       this.error.set(this.errorMessage(error));
     }
+  }
+
+  protected async exportAlerts(): Promise<void> {
+    if (this.exporting()) return;
+    this.exporting.set(true);
+    this.error.set(null);
+    this.notice.set(null);
+    try {
+      const blob = await this.api.exportAlerts();
+      const url = URL.createObjectURL(blob);
+      try {
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'alertify-alerts.csv';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    } catch (error) {
+      this.error.set(this.errorMessage(error));
+    } finally {
+      this.exporting.set(false);
+    }
+  }
+
+  protected chooseImportFile(fileInput: HTMLInputElement): void {
+    if (this.importing()) return;
+    fileInput.value = '';
+    fileInput.click();
+  }
+
+  protected async importAlerts(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.item(0);
+    if (!file) return;
+    if (!window.confirm(this.localization.translate('alerts.importConfirm'))) {
+      input.value = '';
+      return;
+    }
+
+    this.importing.set(true);
+    this.error.set(null);
+    this.notice.set(null);
+    try {
+      const result = await this.api.importAlerts(file);
+      this.notice.set(this.importSuccessMessage(result));
+      this.alertPage.set(0);
+      await Promise.all([this.loadAlerts(), this.loadTags()]);
+    } catch (error) {
+      this.error.set(this.errorMessage(error));
+    } finally {
+      input.value = '';
+      this.importing.set(false);
+    }
+  }
+
+  private importSuccessMessage(result: AlertImportResult): string {
+    return this.localization.translate('alerts.importSuccess')
+      .replace('{created}', String(result.created))
+      .replace('{updated}', String(result.updated))
+      .replace('{unchanged}', String(result.unchanged))
+      .replace('{tagsCreated}', String(result.tagsCreated));
   }
 
   protected async loadTemplates(): Promise<void> {

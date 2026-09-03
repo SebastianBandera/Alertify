@@ -57,7 +57,7 @@ public class ApplicationConfigurationService {
     private static final Set<String> SORT_FIELDS = Set.of(
             "id", "version", "name", "valueType", "createdAt", "updatedAt"
     );
-    private static final long MAX_IMPORT_FILE_SIZE = 50L * 1024 * 1024;
+    private static final long MAX_IMPORT_FILE_SIZE = 10L * 1024 * 1024;
 
     private final ApplicationConfigurationRepository configurationRepository;
     private final TagRepository tagRepository;
@@ -146,7 +146,7 @@ public class ApplicationConfigurationService {
             throw new InvalidConfigurationImportException("A non-empty CSV file is required");
         }
         if (file.getSize() > MAX_IMPORT_FILE_SIZE) {
-            throw new InvalidConfigurationImportException("CSV file exceeds the 50 MB limit");
+            throw new InvalidConfigurationImportException("CSV file exceeds the 10 MB limit");
         }
 
         List<ConfigurationCsvCodec.ImportRow> rows;

@@ -136,6 +136,14 @@ export interface AlertExecution {
   readonly workerInstanceId: string | null;
 }
 
+export interface AlertImportResult {
+  readonly total: number;
+  readonly created: number;
+  readonly updated: number;
+  readonly unchanged: number;
+  readonly tagsCreated: number;
+}
+
 interface ApiErrorResponse {
   readonly code?: string;
   readonly message?: string;
@@ -162,6 +170,28 @@ export class AlertApiService {
     tagIds.forEach((tagId) => params.append('tagId', String(tagId)));
     if (tagIds.length >= 2) params.set('tagOperator', tagMatchMode);
     return this.request(`/api/alerts?${params.toString()}`);
+  }
+
+  async exportAlerts(): Promise<Blob> {
+    const token = await this.authService.getAccessToken();
+    const response = await fetch(`${this.apiBaseUrl}/api/alerts/export`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) throw await this.responseError(response);
+    return response.blob();
+  }
+
+  async importAlerts(file: File): Promise<AlertImportResult> {
+    const token = await this.authService.getAccessToken();
+    const body = new FormData();
+    body.append('file', file);
+    const response = await fetch(`${this.apiBaseUrl}/api/alerts/import`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body,
+    });
+    if (!response.ok) throw await this.responseError(response);
+    return (await response.json()) as AlertImportResult;
   }
 
   async listTags(): Promise<readonly AlertTag[]> {

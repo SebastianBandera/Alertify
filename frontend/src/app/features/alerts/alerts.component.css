@@ -45,6 +45,9 @@ label .field-error { margin-top: 0; color: #b42318; font-weight: 500; }
 .state { padding: 48px 26px; color: var(--text-muted); text-align: center; }
 .state--error, .form-error { color: #b42318; background: #fffbfa; }
 .state--error { padding: 12px 26px; border-bottom: 1px solid #fecdca; }
+.state--success { padding: 12px 26px; border-bottom: 1px solid #a6f4c5; color: #027a48; background: #f6fef9; text-align: left; }
+
+.file-input { display: none; }
 
 .table-shell { min-height: 280px; overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-size: 12px; }

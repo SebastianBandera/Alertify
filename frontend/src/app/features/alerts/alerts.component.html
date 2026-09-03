@@ -5,6 +5,29 @@
       <p>{{ localization.translate('alerts.description') }}</p>
     </div>
     <div class="page-header__actions">
+      <input
+        #importFileInput
+        class="file-input"
+        type="file"
+        accept=".csv,text/csv"
+        (change)="importAlerts($event)"
+      />
+      <button
+        class="button button--secondary"
+        type="button"
+        [disabled]="exporting() || importing()"
+        (click)="exportAlerts()"
+      >
+        {{ localization.translate(exporting() ? 'alerts.exporting' : 'alerts.export') }}
+      </button>
+      <button
+        class="button button--secondary"
+        type="button"
+        [disabled]="importing() || exporting()"
+        (click)="chooseImportFile(importFileInput)"
+      >
+        {{ localization.translate(importing() ? 'alerts.importing' : 'alerts.import') }}
+      </button>
       <button class="button button--secondary" type="button" (click)="openTagManager()">
         {{ localization.translate('alerts.manageTags') }}
       </button>
@@ -30,6 +53,7 @@
   </nav>
 
   @if (error()) { <p class="state state--error" role="alert">{{ error() }}</p> }
+  @if (notice()) { <p class="state state--success" role="status">{{ notice() }}</p> }
 
   @if (activeTab() === 'alerts') {
     <div class="toolbar">

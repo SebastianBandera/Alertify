@@ -11,6 +11,7 @@ import java.util.regex.Pattern;
 
 import org.springframework.stereotype.Component;
 
+import app.alertify.api.csv.CsvSupport;
 import app.alertify.api.error.InvalidConfigurationImportException;
 import app.alertify.jpa.entity.ApplicationConfiguration;
 import app.alertify.jpa.entity.ConfigurationValueType;
@@ -41,7 +42,7 @@ class ConfigurationCsvCodec {
 
     byte[] write(List<ApplicationConfiguration> configurations) {
         StringBuilder csv = new StringBuilder("\uFEFF");
-        appendRow(csv, HEADER);
+        CsvSupport.appendRow(csv, HEADER);
 
         for (ApplicationConfiguration configuration : configurations) {
             if (SystemConfigurationPolicy.isValueHidden(configuration.getName()))
@@ -52,7 +53,7 @@ class ConfigurationCsvCodec {
                     .map(tag -> new ExportTag(tag.getName(), tag.getColor()))
                     .toList();
 
-            appendRow(
+            CsvSupport.appendRow(
                     csv, List.of(
                             configuration.getName(),
                             configuration.getDescription() == null ? "" : configuration.getDescription(),
@@ -71,7 +72,7 @@ class ConfigurationCsvCodec {
         if (csv.startsWith("\uFEFF"))
             csv = csv.substring(1);
 
-        List<List<String>> rows = parseCsv(csv);
+        List<List<String>> rows = parseRows(csv);
         if (rows.isEmpty()) {
             throw new InvalidConfigurationImportException("The CSV file is empty");
         }
@@ -204,92 +205,12 @@ class ConfigurationCsvCodec {
         }
     }
 
-    private static void appendRow(StringBuilder csv, List<String> fields) {
-        for (int index = 0; index < fields.size(); index++) {
-            if (index > 0)
-                csv.append(',');
-
-            appendField(csv, fields.get(index));
+    private static List<List<String>> parseRows(String csv) {
+        try {
+            return CsvSupport.parseCsv(csv);
+        } catch (IllegalArgumentException exception) {
+            throw new InvalidConfigurationImportException(exception.getMessage(), exception);
         }
-        csv.append("\r\n");
-    }
-
-    private static void appendField(StringBuilder csv, String value) {
-        boolean quote = value.indexOf(',') >= 0 || value.indexOf('"') >= 0 || value.indexOf('\r') >= 0 || value.indexOf('\n') >= 0;
-        if (!quote) {
-            csv.append(value);
-            return;
-        }
-        csv.append('"');
-        for (int index = 0; index < value.length(); index++) {
-            char character = value.charAt(index);
-            if (character == '"')
-                csv.append('"');
-
-            csv.append(character);
-        }
-        csv.append('"');
-    }
-
-    private static List<List<String>> parseCsv(String csv) {
-        List<List<String>> rows = new ArrayList<>();
-        List<String> row = new ArrayList<>();
-        StringBuilder field = new StringBuilder();
-        boolean quoted = false;
-        boolean fieldStarted = false;
-
-        for (int index = 0; index < csv.length(); index++) {
-            char character = csv.charAt(index);
-            if (quoted) {
-                if (character == '"') {
-                    if (index + 1 < csv.length() && csv.charAt(index + 1) == '"') {
-                        field.append('"');
-                        index++;
-                    } else {
-                        quoted = false;
-                    }
-                } else {
-                    field.append(character);
-                }
-                continue;
-            }
-
-            if (character == '"') {
-                if (fieldStarted || field.length() > 0) {
-                    throw new InvalidConfigurationImportException("Malformed CSV quoting");
-                }
-                quoted = true;
-                fieldStarted = true;
-            } else if (character == ',') {
-                row.add(field.toString());
-                field.setLength(0);
-                fieldStarted = false;
-            } else if (character == '\r' || character == '\n') {
-                row.add(field.toString());
-                field.setLength(0);
-                fieldStarted = false;
-                if (!row.stream().allMatch(String::isBlank))
-                    rows.add(List.copyOf(row));
-
-                row.clear();
-                if (character == '\r' && index + 1 < csv.length() && csv.charAt(index + 1) == '\n') {
-                    index++;
-                }
-            } else {
-                field.append(character);
-                fieldStarted = true;
-            }
-        }
-
-        if (quoted)
-            throw new InvalidConfigurationImportException("Malformed CSV quoting");
-
-        if (fieldStarted || field.length() > 0 || !row.isEmpty()) {
-            row.add(field.toString());
-            if (!row.stream().allMatch(String::isBlank))
-                rows.add(List.copyOf(row));
-        }
-        return rows;
     }
 
     private static InvalidConfigurationImportException rowError(int row, String message) {

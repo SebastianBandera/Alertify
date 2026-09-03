@@ -13,6 +13,7 @@ import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import app.alertify.jpa.specification.InvalidFilterException;
 import app.alertify.logging.ApiRequestLoggingFilter;
@@ -60,6 +61,16 @@ public class ApiExceptionHandler {
     @ExceptionHandler(InvalidConfigurationImportException.class)
     ResponseEntity<ApiError> handleInvalidImport(InvalidConfigurationImportException exception, HttpServletRequest request) {
         return response(HttpStatus.BAD_REQUEST, "INVALID_CONFIGURATION_IMPORT", exception.getMessage(), Map.of(), exception, request);
+    }
+
+    @ExceptionHandler(InvalidAlertImportException.class)
+    ResponseEntity<ApiError> handleInvalidAlertImport(InvalidAlertImportException exception, HttpServletRequest request) {
+        return response(HttpStatus.BAD_REQUEST, "INVALID_ALERT_IMPORT", exception.getMessage(), Map.of(), exception, request);
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    ResponseEntity<ApiError> handleUploadTooLarge(MaxUploadSizeExceededException exception, HttpServletRequest request) {
+        return response(HttpStatus.BAD_REQUEST, "PAYLOAD_TOO_LARGE", "The uploaded file is too large", Map.of(), exception, request);
     }
 
     @ExceptionHandler(InvalidConfigurationValueException.class)
