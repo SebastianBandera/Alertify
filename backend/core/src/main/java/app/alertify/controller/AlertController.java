@@ -27,6 +27,7 @@ import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import app.alertify.alerts.api.AlertBindingOptionsResponse;
 import app.alertify.alerts.api.AlertCreateRequest;
+import app.alertify.alerts.api.AlertDeletionImpactResponse;
 import app.alertify.alerts.api.AlertImportResult;
 import app.alertify.alerts.api.AlertResponse;
 import app.alertify.alerts.api.AlertStateResponse;
@@ -93,6 +94,11 @@ public class AlertController {
     @GetMapping("/{id}/state")
     public AlertStateResponse state(@PathVariable Long id) {
         return service.state(id);
+    }
+
+    @GetMapping("/{id}/deletion-impact")
+    public AlertDeletionImpactResponse deletionImpact(@PathVariable Long id) {
+        return service.deletionImpact(id);
     }
 
     @PostMapping

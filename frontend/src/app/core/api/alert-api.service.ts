@@ -142,6 +142,12 @@ export interface AlertExecution {
   readonly workerInstanceId: string | null;
 }
 
+export interface AlertDeletionImpact {
+  readonly alertId: number;
+  readonly name: string;
+  readonly executionCount: number;
+}
+
 export interface AlertImportResult {
   readonly total: number;
   readonly created: number;
@@ -176,6 +182,10 @@ export class AlertApiService {
     tagIds.forEach((tagId) => params.append('tagId', String(tagId)));
     if (tagIds.length >= 2) params.set('tagOperator', tagMatchMode);
     return this.request(`/api/alerts?${params.toString()}`);
+  }
+
+  async alertDeletionImpact(id: number): Promise<AlertDeletionImpact> {
+    return this.request(`/api/alerts/${id}/deletion-impact`);
   }
 
   // Answers 202 Accepted with no body, which the shared request helper only tolerates on 204.

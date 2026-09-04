@@ -622,11 +622,27 @@ export class AlertsComponent implements OnInit {
   }
 
   protected async deleteAlert(alert: Alert): Promise<void> {
-    if (!window.confirm(this.localization.translate('alerts.deleteConfirm'))) return;
     this.error.set(null);
+
+    // The execution history is deleted along with the alert, so say how much.
+    let executionCount: number;
+    try {
+      executionCount = (await this.api.alertDeletionImpact(alert.id)).executionCount;
+    } catch (error) {
+      this.error.set(this.errorMessage(error));
+      return;
+    }
+
+    const confirmation = executionCount > 0
+      ? this.localization.translate('alerts.deleteConfirmWithHistory')
+          .replace('{name}', alert.name)
+          .replace('{count}', String(executionCount))
+      : this.localization.translate('alerts.deleteConfirm').replace('{name}', alert.name);
+    if (!window.confirm(confirmation)) return;
+
     try {
       await this.api.deleteAlert(alert.id, alert.version);
-      await Promise.all([this.loadAlerts(), this.loadTemplates()]);
+      await Promise.all([this.loadAlerts(), this.loadTemplates(), this.loadHistory()]);
     } catch (error) {
       this.error.set(this.errorMessage(error));
     }

@@ -23,6 +23,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import app.alertify.alerts.api.AlertCreateRequest;
+import app.alertify.alerts.api.AlertDeletionImpactResponse;
 import app.alertify.alerts.api.AlertParameterValueRequest;
 import app.alertify.alerts.api.AlertResponse;
 import app.alertify.alerts.api.AlertStateResponse;
@@ -197,15 +198,30 @@ public class AlertManagementService {
         if (executionOrchestrator.isRunning(id))
             throw new ConflictException("Alert is currently running and cannot be deleted");
 
-        if (executionRepository.existsByAlert_Id(id))
-            throw new ConflictException("Alert has execution history and cannot be deleted");
-
+        // Executions first: their foreign key to the alert is ON DELETE RESTRICT.
+        // The application log keeps the trail, so only the history rows are lost.
+        int executionsDeleted = executionRepository.deleteByAlertId(id);
+        executionRepository.flush();
         List<AlertParameterValue> values = parameterValueRepository.findAllByAlertIdOrdered(id);
         parameterValueRepository.deleteAll(values);
         parameterValueRepository.flush();
         alertRepository.delete(alert);
-        eventLogger.successAfterCommit("ALERT_DELETED", Map.of("alertId", id, "name", alert.getName()));
+        eventLogger.successAfterCommit("ALERT_DELETED", Map.of(
+                "alertId", id, "name", alert.getName(), "executionsDeleted", executionsDeleted
+        ));
         scheduleService.removeAfterCommit(id);
+    }
+
+    /**
+     * What deleting one alert would destroy, so the caller can confirm knowing
+     * how much execution history is at stake.
+     */
+    @Transactional(readOnly = true)
+    public AlertDeletionImpactResponse deletionImpact(Long id) {
+        Alert alert = alertRepository.findById(id).orElseThrow(() -> notFound("Alert", id));
+        return new AlertDeletionImpactResponse(
+                alert.getId(), alert.getName(), executionRepository.countByAlert_Id(id)
+        );
     }
 
     private List<AlertParameterValue> synchronizeParameters(Alert alert, List<AlertParameterValueRequest> requested, List<AlertParameterValue> existing) {

@@ -79,6 +79,7 @@ export type TranslationKey =
   | 'alerts.edit'
   | 'alerts.delete'
   | 'alerts.deleteConfirm'
+  | 'alerts.deleteConfirmWithHistory'
   | 'alerts.runNow'
   | 'alerts.runNowHint'
   | 'alerts.runStarting'
