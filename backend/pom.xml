@@ -13,7 +13,7 @@
 
     <groupId>app.alertify</groupId>
     <artifactId>alertify-backend-parent</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
+    <version>1.0.0</version>
     <packaging>pom</packaging>
     <name>Alertify Backend Parent</name>
     <description>Alertify backend modules</description>
