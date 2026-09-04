@@ -53,6 +53,7 @@ interface TagForm {
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100, 250, 500, 1000] as const;
 const PAGE_SIZE_STORAGE_KEY = 'alertify.alerts.page-size';
 const EMPTY_BINDINGS: AlertBindingOptions = { configurations: [], secrets: [] };
+const NOTICE_TIMEOUT_SECONDS = 8;
 
 function readStoredPageSize(): number {
   try {
@@ -94,6 +95,9 @@ export class AlertsComponent implements OnInit {
   protected readonly saving = signal(false);
   protected readonly exporting = signal(false);
   protected readonly importing = signal(false);
+  protected readonly runningAlertId = signal<number | null>(null);
+  protected readonly noticeCountdown = signal<number | null>(null);
+  private noticeTimer: ReturnType<typeof setInterval> | null = null;
   protected readonly error = signal<string | null>(null);
   protected readonly notice = signal<string | null>(null);
   protected readonly formError = signal<string | null>(null);
@@ -201,6 +205,7 @@ export class AlertsComponent implements OnInit {
   protected readonly tagError = signal<string | null>(null);
 
   async ngOnInit(): Promise<void> {
+    this.destroyRef.onDestroy(() => this.clearNoticeTimer());
     const requestedTab = this.route.snapshot.queryParamMap.get('tab');
     this.activeTab.set(alertTab(requestedTab));
     this.route.queryParamMap
@@ -311,6 +316,7 @@ export class AlertsComponent implements OnInit {
 
     this.importing.set(true);
     this.error.set(null);
+    this.clearNoticeTimer();
     this.notice.set(null);
     try {
       const result = await this.api.importAlerts(file);
@@ -624,6 +630,59 @@ export class AlertsComponent implements OnInit {
     } catch (error) {
       this.error.set(this.errorMessage(error));
     }
+  }
+
+  protected async runAlertNow(alert: Alert): Promise<void> {
+    // A disabled alert can still be run on demand, so it is confirmed first.
+    if (!alert.enabled && !window.confirm(this.localization.translate('alerts.runDisabledConfirm')))
+      return;
+
+    if (this.runningAlertId() !== null) return;
+    this.runningAlertId.set(alert.id);
+    this.error.set(null);
+    this.clearNoticeTimer();
+    this.notice.set(null);
+    try {
+      await this.api.runAlertNow(alert.id);
+      this.showTransientNotice(
+        this.localization.translate('alerts.runStarted').replace('{name}', alert.name),
+      );
+    } catch (error) {
+      this.error.set(
+        error instanceof ApiRequestError && error.code === 'ALERT_ALREADY_RUNNING'
+          ? this.localization.translate('alerts.runAlreadyRunning').replace('{name}', alert.name)
+          : this.errorMessage(error),
+      );
+    } finally {
+      this.runningAlertId.set(null);
+    }
+  }
+
+  /**
+   * Shows a notice that clears itself, counting the remaining seconds down so
+   * the reader can tell it is about to disappear.
+   */
+  private showTransientNotice(message: string): void {
+    this.clearNoticeTimer();
+    this.notice.set(message);
+    this.noticeCountdown.set(NOTICE_TIMEOUT_SECONDS);
+    this.noticeTimer = setInterval(() => {
+      const remaining = (this.noticeCountdown() ?? 1) - 1;
+      if (remaining <= 0) {
+        this.clearNoticeTimer();
+        this.notice.set(null);
+        return;
+      }
+      this.noticeCountdown.set(remaining);
+    }, 1000);
+  }
+
+  private clearNoticeTimer(): void {
+    if (this.noticeTimer !== null) {
+      clearInterval(this.noticeTimer);
+      this.noticeTimer = null;
+    }
+    this.noticeCountdown.set(null);
   }
 
   protected openTagManager(): void {

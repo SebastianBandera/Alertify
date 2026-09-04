@@ -34,6 +34,14 @@ public class ApplicationEventLogger {
         this.source = source;
     }
 
+    /**
+     * Username of the current actor, for callers that must carry it into a
+     * thread where the security context is no longer available.
+     */
+    public String currentUsername() {
+        return CurrentLogActor.resolve().username();
+    }
+
     public void success(String event, Map<String, ?> data) {
         write(command(ApplicationLogLevel.INFO, event, ApplicationLogOutcome.SUCCESS, data));
     }

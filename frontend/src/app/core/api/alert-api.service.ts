@@ -178,6 +178,16 @@ export class AlertApiService {
     return this.request(`/api/alerts?${params.toString()}`);
   }
 
+  // Answers 202 Accepted with no body, which the shared request helper only tolerates on 204.
+  async runAlertNow(id: number): Promise<void> {
+    const token = await this.authService.getAccessToken();
+    const response = await fetch(`${this.apiBaseUrl}/api/alerts/${id}/run`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) throw await this.responseError(response);
+  }
+
   async exportAlerts(): Promise<Blob> {
     const token = await this.authService.getAccessToken();
     const response = await fetch(`${this.apiBaseUrl}/api/alerts/export`, {

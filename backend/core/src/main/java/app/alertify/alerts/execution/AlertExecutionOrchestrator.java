@@ -47,11 +47,38 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
     }
 
     public void trigger(long alertId, String alertName, boolean allowConcurrentExecutions) {
+        trigger(alertId, alertName, allowConcurrentExecutions, AlertExecutionTrigger.CRON, null);
+    }
+
+    /**
+     * Submits one execution and reports whether it was accepted. The caller
+     * runs on the request thread for a manual run, so {@code triggeredBy} is
+     * resolved there and carried into the worker thread, where the security
+     * context is no longer available.
+     *
+     * @return false when the alert is already running and does not allow
+     *         concurrent executions.
+     */
+    public boolean trigger(long alertId, String alertName, boolean allowConcurrentExecutions, AlertExecutionTrigger source, String triggeredBy) {
         if (!enter(alertId, allowConcurrentExecutions)) {
-            eventLogger.failure("ALERT_EXECUTION_SKIPPED", Map.of("alertId", alertId, "alertName", alertName, "reason", "ALREADY_RUNNING"));
-            return;
+            eventLogger.failure("ALERT_EXECUTION_SKIPPED", data(alertId, alertName, source, triggeredBy, "reason", "ALREADY_RUNNING"));
+            return false;
         }
-        executor.submit(() -> execute(alertId));
+        eventLogger.success("ALERT_EXECUTION_TRIGGERED", data(alertId, alertName, source, triggeredBy));
+        executor.submit(() -> execute(alertId, source, triggeredBy));
+        return true;
+    }
+
+    private static Map<String, Object> data(long alertId, String alertName, AlertExecutionTrigger source, String triggeredBy, String... extra) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("alertId", alertId);
+        data.put("alertName", alertName);
+        data.put("trigger", source.name());
+        data.put("triggeredBy", triggeredBy == null ? "system" : triggeredBy);
+        for (int index = 0; index + 1 < extra.length; index += 2)
+            data.put(extra[index], extra[index + 1]);
+
+        return data;
     }
 
     public boolean isRunning(long alertId) {
@@ -59,14 +86,17 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
         return count != null && count.get() > 0;
     }
 
-    private void execute(long alertId) {
+    private void execute(long alertId, AlertExecutionTrigger source, String triggeredBy) {
         UUID executionId = UUID.randomUUID();
         Instant startedAt = Instant.now();
         WorkerEndpoint endpoint = null;
         String workerName = null;
         String workerInstanceId = null;
         try {
-            PreparedAlertExecution execution = preparationService.prepare(alertId).orElse(null);
+            // A manual run also covers alerts that are currently disabled.
+            PreparedAlertExecution execution = preparationService
+                    .prepare(alertId, source == AlertExecutionTrigger.MANUAL)
+                    .orElse(null);
             if (execution == null)
                 return;
 
@@ -75,7 +105,13 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
                 endpoint = worker.endpoint();
                 workerName = worker.status().getWorkerName();
                 workerInstanceId = worker.status().getWorkerInstanceId();
-                eventLogger.success("ALERT_EXECUTION_STARTED", Map.of("executionId", executionId, "alertId", execution.alertId(), "alertName", execution.alertName(), "worker", endpoint.toString(), "workerName", workerName, "workerInstanceId", workerInstanceId, "workerLoad", worker.currentLoad()));
+                Map<String, Object> started = data(execution.alertId(), execution.alertName(), source, triggeredBy);
+                started.put("executionId", executionId);
+                started.put("worker", endpoint.toString());
+                started.put("workerName", workerName);
+                started.put("workerInstanceId", workerInstanceId);
+                started.put("workerLoad", worker.currentLoad());
+                eventLogger.success("ALERT_EXECUTION_STARTED", started);
 
                 ExecuteAlertRequest request = request(executionId.toString(), execution);
                 ExecuteAlertResponse response = workerClient.execute(
@@ -122,6 +158,8 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
                 Map<String, Object> data = new LinkedHashMap<>();
                 data.put("executionId", executionId);
                 data.put("alertId", alertId);
+                data.put("trigger", source.name());
+                data.put("triggeredBy", triggeredBy == null ? "system" : triggeredBy);
                 data.put("exceptionType", exception.getClass().getName());
                 if (exception.getMessage() != null)
                     data.put("exceptionMessage", exception.getMessage());

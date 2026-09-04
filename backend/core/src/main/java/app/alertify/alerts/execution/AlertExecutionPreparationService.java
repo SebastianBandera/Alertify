@@ -51,8 +51,16 @@ public class AlertExecutionPreparationService {
 
     @Transactional(readOnly = true)
     public Optional<PreparedAlertExecution> prepare(Long alertId) {
+        return prepare(alertId, false);
+    }
+
+    /**
+     * @param includeDisabled run a disabled alert anyway, as a manual run does.
+     */
+    @Transactional(readOnly = true)
+    public Optional<PreparedAlertExecution> prepare(Long alertId, boolean includeDisabled) {
         Alert alert = alertRepository.findById(alertId).orElse(null);
-        if (alert == null || !alert.isEnabled())
+        if (alert == null || (!alert.isEnabled() && !includeDisabled))
             return Optional.empty();
 
         AlertTemplateDefinition template = alert.getTemplate();

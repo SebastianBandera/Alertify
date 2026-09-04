@@ -47,6 +47,8 @@ label .field-error { margin-top: 0; color: #b42318; font-weight: 500; }
 .state--error { padding: 12px 26px; border-bottom: 1px solid #fecdca; }
 .state--success { padding: 12px 26px; border-bottom: 1px solid #a6f4c5; color: #027a48; background: #f6fef9; text-align: left; }
 
+.notice-countdown { margin-left: 6px; opacity: .65; font-variant-numeric: tabular-nums; }
+
 .file-input { display: none; }
 
 .table-shell { min-height: 280px; overflow-x: auto; }

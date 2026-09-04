@@ -85,7 +85,7 @@ class AlertExecutionOrchestratorTest {
     void synchronizesMissingSourceAndRetriesTheExecutionOnTheSameWorker() {
         PreparedAlertExecution prepared = prepared();
         AlertExecutionResult result = successfulResult();
-        when(preparationService.prepare(7L)).thenReturn(Optional.of(prepared));
+        when(preparationService.prepare(7L, false)).thenReturn(Optional.of(prepared));
         when(workerStatusService.reserve(WorkerCapability.STANDARD)).thenReturn(reservation);
         when(workerClient.execute(eq(ENDPOINT), any(), eq(Duration.ofMinutes(30))))
                 .thenReturn(sourceRequired(), ExecuteAlertResponse.newBuilder().setResult(result).build());
@@ -128,7 +128,7 @@ class AlertExecutionOrchestratorTest {
     void skipsANewTriggerWhileTheSameAlertIsAlreadyRunningByDefault() throws Exception {
         CountDownLatch executionStarted = new CountDownLatch(1);
         CountDownLatch releaseExecution = new CountDownLatch(1);
-        when(preparationService.prepare(7L)).thenReturn(Optional.of(prepared()));
+        when(preparationService.prepare(7L, false)).thenReturn(Optional.of(prepared()));
         when(workerStatusService.reserve(WorkerCapability.STANDARD)).thenReturn(reservation);
         when(workerClient.execute(eq(ENDPOINT), any(), eq(Duration.ofMinutes(30))))
                 .thenAnswer(invocation -> {
@@ -150,6 +150,66 @@ class AlertExecutionOrchestratorTest {
                 eq(7L), any(UUID.class), eq(ENDPOINT), any(AlertExecutionResult.class)
         );
         verify(workerClient).execute(eq(ENDPOINT), any(), eq(Duration.ofMinutes(30)));
+    }
+
+    @Test
+    void manualTriggerRunsDisabledAlertsAndRecordsTheOperator() {
+        when(preparationService.prepare(7L, true)).thenReturn(Optional.of(prepared()));
+        when(workerStatusService.reserve(WorkerCapability.STANDARD)).thenReturn(reservation);
+        when(workerClient.execute(eq(ENDPOINT), any(), eq(Duration.ofMinutes(30))))
+                .thenReturn(ExecuteAlertResponse.newBuilder().setResult(successfulResult()).build());
+
+        boolean accepted = orchestrator.trigger(
+                7L, "Sample alert", false, AlertExecutionTrigger.MANUAL, "sebastian"
+        );
+
+        assertThat(accepted).isTrue();
+        verify(persistenceService, org.mockito.Mockito.timeout(5000)).persistWorkerResult(
+                eq(7L), any(UUID.class), eq(ENDPOINT), any(AlertExecutionResult.class)
+        );
+        ArgumentCaptor<java.util.Map<String, Object>> triggered = ArgumentCaptor.captor();
+        verify(eventLogger).success(eq("ALERT_EXECUTION_TRIGGERED"), triggered.capture());
+        assertThat(triggered.getValue())
+                .containsEntry("trigger", "MANUAL")
+                .containsEntry("triggeredBy", "sebastian")
+                .containsEntry("alertId", 7L);
+        // A disabled alert must reach the preparation service with the flag set.
+        verify(preparationService).prepare(7L, true);
+    }
+
+    @Test
+    void manualTriggerIsRejectedWhileTheAlertIsRunningWithoutConcurrency() throws Exception {
+        CountDownLatch executionStarted = new CountDownLatch(1);
+        CountDownLatch releaseExecution = new CountDownLatch(1);
+        when(preparationService.prepare(7L, false)).thenReturn(Optional.of(prepared()));
+        when(workerStatusService.reserve(WorkerCapability.STANDARD)).thenReturn(reservation);
+        when(workerClient.execute(eq(ENDPOINT), any(), eq(Duration.ofMinutes(30))))
+                .thenAnswer(invocation -> {
+                    executionStarted.countDown();
+                    if (!releaseExecution.await(5, TimeUnit.SECONDS))
+                        throw new IllegalStateException("Test did not release the worker execution");
+
+                    return ExecuteAlertResponse.newBuilder().setResult(successfulResult()).build();
+                });
+
+        orchestrator.trigger(7L, "Sample alert", false);
+        assertThat(executionStarted.await(5, TimeUnit.SECONDS)).isTrue();
+
+        boolean accepted = orchestrator.trigger(
+                7L, "Sample alert", false, AlertExecutionTrigger.MANUAL, "sebastian"
+        );
+
+        assertThat(accepted).isFalse();
+        ArgumentCaptor<java.util.Map<String, Object>> skipped = ArgumentCaptor.captor();
+        verify(eventLogger).failure(eq("ALERT_EXECUTION_SKIPPED"), skipped.capture());
+        assertThat(skipped.getValue())
+                .containsEntry("trigger", "MANUAL")
+                .containsEntry("triggeredBy", "sebastian")
+                .containsEntry("reason", "ALREADY_RUNNING");
+        releaseExecution.countDown();
+        verify(persistenceService, org.mockito.Mockito.timeout(5000)).persistWorkerResult(
+                eq(7L), any(UUID.class), eq(ENDPOINT), any(AlertExecutionResult.class)
+        );
     }
 
     private static PreparedAlertExecution prepared() {

@@ -107,6 +107,12 @@ public class AlertController {
         return service.update(id, request);
     }
 
+    @PostMapping("/{id}/run")
+    public ResponseEntity<Void> runNow(@PathVariable Long id) {
+        service.runNow(id);
+        return ResponseEntity.accepted().build();
+    }
+
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id, @RequestParam @PositiveOrZero long version) {
         service.delete(id, version);

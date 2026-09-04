@@ -53,7 +53,14 @@
   </nav>
 
   @if (error()) { <p class="state state--error" role="alert">{{ error() }}</p> }
-  @if (notice()) { <p class="state state--success" role="status">{{ notice() }}</p> }
+  @if (notice()) {
+    <p class="state state--success" role="status">
+      {{ notice() }}
+      @if (noticeCountdown() !== null) {
+        <span class="notice-countdown" aria-hidden="true">({{ noticeCountdown() }}s)</span>
+      }
+    </p>
+  }
 
   @if (activeTab() === 'alerts') {
     <div class="toolbar">
@@ -142,6 +149,14 @@
                 </td>
                 <td>{{ alert.updatedAt | date:'medium' }}</td>
                 <td class="actions">
+                  <button
+                    type="button"
+                    [disabled]="runningAlertId() !== null"
+                    [title]="localization.translate('alerts.runNowHint')"
+                    (click)="runAlertNow(alert)"
+                  >
+                    {{ localization.translate(runningAlertId() === alert.id ? 'alerts.runStarting' : 'alerts.runNow') }}
+                  </button>
                   <button type="button" (click)="openEdit(alert)">{{ localization.translate('alerts.edit') }}</button>
                   <button class="danger" type="button" (click)="deleteAlert(alert)">{{ localization.translate('alerts.delete') }}</button>
                 </td>

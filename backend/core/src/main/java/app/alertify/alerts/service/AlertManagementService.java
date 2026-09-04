@@ -28,6 +28,7 @@ import app.alertify.alerts.api.AlertResponse;
 import app.alertify.alerts.api.AlertStateResponse;
 import app.alertify.alerts.api.AlertUpdateRequest;
 import app.alertify.alerts.execution.AlertExecutionOrchestrator;
+import app.alertify.alerts.execution.AlertExecutionTrigger;
 import app.alertify.alerts.execution.AlertScheduleService;
 import app.alertify.alerts.model.Alert;
 import app.alertify.alerts.model.AlertParameterValue;
@@ -167,6 +168,26 @@ public class AlertManagementService {
         ));
         scheduleService.rescheduleAfterCommit(alert.getId());
         return AlertMapper.toAlert(alert, values);
+    }
+
+    /**
+     * Runs one alert immediately, outside its schedule. Disabled alerts are
+     * allowed so an operator can test them before enabling.
+     */
+    @Transactional(readOnly = true)
+    public void runNow(Long id) {
+        Alert alert = alertRepository.findById(id).orElseThrow(() -> notFound("Alert", id));
+        boolean accepted = executionOrchestrator.trigger(
+                alert.getId(), alert.getName(), alert.isConcurrentExecutionAllowed(),
+                AlertExecutionTrigger.MANUAL, eventLogger.currentUsername()
+        );
+        if (!accepted) {
+            throw new ConflictException(
+                    "ALERT_ALREADY_RUNNING",
+                    "Alert '" + alert.getName() + "' is already running and does not allow concurrent executions",
+                    Map.of("alertName", alert.getName())
+            );
+        }
     }
 
     @Transactional
