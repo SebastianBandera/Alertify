@@ -15,6 +15,7 @@ import {
   AlertParameterWriteRequest,
   AlertTemplate,
   AlertTemplateParameter,
+  AlertTemplateTag,
   AlertTag,
 } from '../../core/api/alert-api.service';
 import { ApiRequestError, TagMatchMode } from '../../core/api/configuration-api.service';
@@ -109,6 +110,8 @@ export class AlertsComponent implements OnInit {
   protected readonly historyTotalPages = signal(0);
   protected readonly historyTotalElements = signal(0);
   protected readonly templatePage = signal(0);
+  protected readonly selectedTemplateTagKeys = signal<readonly string[]>([]);
+  protected readonly templateTagMatchMode = signal<TagMatchMode>('OR');
   protected readonly sortedTemplates = computed(() =>
     [...this.templates()].sort((first, second) =>
       second.alertCount - first.alertCount
@@ -119,12 +122,48 @@ export class AlertsComponent implements OnInit {
       ),
     ),
   );
+  protected readonly templateTags = computed(() => {
+    const tagsByNameKey = new Map<string, AlertTemplateTag>();
+    for (const template of this.templates()) {
+      for (const tag of template.tags)
+        tagsByNameKey.set(tag.nameKey, tag);
+    }
+    return [...tagsByNameKey.values()].sort((first, second) =>
+      this.dynamic(first.nameKey).localeCompare(
+        this.dynamic(second.nameKey),
+        this.localization.locale(),
+        { sensitivity: 'base' },
+      ),
+    );
+  });
+  protected readonly selectedTemplateFilterTags = computed(() => {
+    const tagsByNameKey = new Map(this.templateTags().map((tag) => [tag.nameKey, tag]));
+    return this.selectedTemplateTagKeys().flatMap((nameKey) => {
+      const tag = tagsByNameKey.get(nameKey);
+      return tag ? [tag] : [];
+    });
+  });
+  protected readonly availableTemplateFilterTags = computed(() => {
+    const selected = new Set(this.selectedTemplateTagKeys());
+    return this.templateTags().filter((tag) => !selected.has(tag.nameKey));
+  });
+  protected readonly visibleTemplates = computed(() => {
+    const selected = this.selectedTemplateTagKeys();
+    if (!selected.length) return this.sortedTemplates();
+
+    return this.sortedTemplates().filter((template) => {
+      const templateTagKeys = new Set(template.tags.map((tag) => tag.nameKey));
+      return this.templateTagMatchMode() === 'AND'
+        ? selected.every((nameKey) => templateTagKeys.has(nameKey))
+        : selected.some((nameKey) => templateTagKeys.has(nameKey));
+    });
+  });
   protected readonly templateTotalPages = computed(() =>
-    Math.ceil(this.sortedTemplates().length / this.pageSize()),
+    Math.ceil(this.visibleTemplates().length / this.pageSize()),
   );
   protected readonly pagedTemplates = computed(() => {
     const start = this.templatePage() * this.pageSize();
-    return this.sortedTemplates().slice(start, start + this.pageSize());
+    return this.visibleTemplates().slice(start, start + this.pageSize());
   });
   protected readonly historyAlertId = signal<number | null>(null);
   protected readonly historyStatus = signal<AlertExecutionStatus | ''>('');
@@ -356,6 +395,26 @@ export class AlertsComponent implements OnInit {
     this.tagMatchMode.set(mode);
     this.alertPage.set(0);
     void this.loadAlerts();
+  }
+
+  protected addTemplateTagFilter(event: Event): void {
+    const select = event.target as HTMLSelectElement;
+    const nameKey = select.value;
+    if (nameKey && !this.selectedTemplateTagKeys().includes(nameKey)) {
+      this.selectedTemplateTagKeys.set([...this.selectedTemplateTagKeys(), nameKey]);
+      this.templatePage.set(0);
+    }
+    select.value = '';
+  }
+
+  protected removeTemplateTagFilter(nameKey: string): void {
+    this.selectedTemplateTagKeys.set(this.selectedTemplateTagKeys().filter((key) => key !== nameKey));
+    this.templatePage.set(0);
+  }
+
+  protected updateTemplateTagMatchMode(mode: TagMatchMode): void {
+    this.templateTagMatchMode.set(mode);
+    this.templatePage.set(0);
   }
 
   protected showTemplateAlerts(template: AlertTemplate): void {
@@ -652,6 +711,17 @@ export class AlertsComponent implements OnInit {
   protected templateClassName(templateKey: string): string {
     const separator = templateKey.lastIndexOf('.');
     return separator < 0 ? templateKey : templateKey.substring(separator + 1);
+  }
+
+  protected templateTagColor(tag: AlertTemplateTag): string {
+    if (tag.color) return tag.color;
+
+    let hash = 2_166_136_261;
+    for (let index = 0; index < tag.nameKey.length; index += 1) {
+      hash ^= tag.nameKey.charCodeAt(index);
+      hash = Math.imul(hash, 16_777_619);
+    }
+    return `hsl(${(hash >>> 0) % 360} 62% 45%)`;
   }
 
   protected statusMessage(execution: AlertExecution): string {

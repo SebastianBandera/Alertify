@@ -1,10 +1,14 @@
 package app.alertify.alerts.model;
 
 import java.time.Instant;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Objects;
 
+import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
+import org.hibernate.type.SqlTypes;
 import org.hibernate.envers.AuditTable;
 import org.hibernate.envers.Audited;
 import org.hibernate.envers.NotAudited;
@@ -62,6 +66,10 @@ public class AlertTemplateDefinition {
     @Column(name = "source_path", nullable = false, columnDefinition = "text")
     private String sourcePath;
 
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(nullable = false, columnDefinition = "jsonb")
+    private List<AlertTemplateTagDefinition> tags = List.of();
+
     @Enumerated(EnumType.STRING)
     @Column(name = "required_capability", nullable = false, length = 32)
     private WorkerCapability requiredCapability;
@@ -80,8 +88,12 @@ public class AlertTemplateDefinition {
     }
 
     public AlertTemplateDefinition(String templateKey, String nameKey, String descriptionKey, String sourcePath, WorkerCapability requiredCapability) {
+        this(templateKey, nameKey, descriptionKey, sourcePath, requiredCapability, List.of());
+    }
+
+    public AlertTemplateDefinition(String templateKey, String nameKey, String descriptionKey, String sourcePath, WorkerCapability requiredCapability, List<AlertTemplateTagDefinition> tags) {
         this.templateKey = Objects.requireNonNull(templateKey, "templateKey must not be null");
-        synchronize(nameKey, descriptionKey, sourcePath, requiredCapability);
+        synchronize(nameKey, descriptionKey, sourcePath, requiredCapability, tags);
     }
 
     public static AlertTemplateDefinition from(Class<?> templateClass) {
@@ -89,7 +101,7 @@ public class AlertTemplateDefinition {
         AlertTemplate metadata = templateClass.getAnnotation(AlertTemplate.class);
         return new AlertTemplateDefinition(
                 templateKey, metadata.nameKey(), metadata.descriptionKey(), metadata.sourcePath(),
-                metadata.capability()
+                metadata.capability(), Arrays.stream(metadata.tags()).map(AlertTemplateTagDefinition::from).toList()
         );
     }
 
@@ -121,6 +133,10 @@ public class AlertTemplateDefinition {
         return requiredCapability;
     }
 
+    public List<AlertTemplateTagDefinition> getTags() {
+        return tags;
+    }
+
     public Instant getCreatedAt() {
         return createdAt;
     }
@@ -130,9 +146,14 @@ public class AlertTemplateDefinition {
     }
 
     public void synchronize(String nameKey, String descriptionKey, String sourcePath, WorkerCapability requiredCapability) {
+        synchronize(nameKey, descriptionKey, sourcePath, requiredCapability, List.of());
+    }
+
+    public void synchronize(String nameKey, String descriptionKey, String sourcePath, WorkerCapability requiredCapability, List<AlertTemplateTagDefinition> tags) {
         this.nameKey = Objects.requireNonNull(nameKey, "nameKey must not be null");
         this.descriptionKey = Objects.requireNonNull(descriptionKey, "descriptionKey must not be null");
         this.sourcePath = Objects.requireNonNull(sourcePath, "sourcePath must not be null");
         this.requiredCapability = Objects.requireNonNull(requiredCapability, "requiredCapability must not be null");
+        this.tags = List.copyOf(Objects.requireNonNull(tags, "tags must not be null"));
     }
 }

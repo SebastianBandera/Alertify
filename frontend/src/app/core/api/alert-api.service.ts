@@ -34,6 +34,11 @@ export interface AlertTemplateParameter {
   readonly updatedAt: string;
 }
 
+export interface AlertTemplateTag {
+  readonly nameKey: string;
+  readonly color: string | null;
+}
+
 export interface AlertTemplate {
   readonly id: number;
   readonly version: number;
@@ -41,6 +46,7 @@ export interface AlertTemplate {
   readonly nameKey: string;
   readonly descriptionKey: string;
   readonly requiredCapability: WorkerCapability;
+  readonly tags: readonly AlertTemplateTag[];
   readonly alertCount: number;
   readonly parameters: readonly AlertTemplateParameter[];
   readonly createdAt: string;

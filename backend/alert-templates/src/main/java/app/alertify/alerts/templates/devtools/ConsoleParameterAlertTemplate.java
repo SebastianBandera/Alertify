@@ -7,6 +7,7 @@ import app.alertify.alerts.AlertExecutionContext;
 import app.alertify.alerts.AlertResult;
 import app.alertify.alerts.template.annotation.AlertParameter;
 import app.alertify.alerts.template.annotation.AlertTemplate;
+import app.alertify.alerts.template.annotation.AlertTemplateTag;
 
 /**
  * Development template that prints its configured value to standard output.
@@ -14,6 +15,7 @@ import app.alertify.alerts.template.annotation.AlertTemplate;
 @AlertTemplate(
     nameKey = "alerts.template.devtools.consoleParameter.name",
     descriptionKey = "alerts.template.devtools.consoleParameter.description",
+    tags = @AlertTemplateTag(nameKey = "alerts.templateTag.development"),
     sourcePath = "app/alertify/alerts/templates/devtools/ConsoleParameterAlertTemplate.java"
 )
 public final class ConsoleParameterAlertTemplate implements AlertEvaluator {

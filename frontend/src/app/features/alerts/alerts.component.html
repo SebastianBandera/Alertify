@@ -172,59 +172,98 @@
     @if (!templates().length) {
       <p class="state">{{ localization.translate('alerts.templates.empty') }}</p>
     } @else {
-      <div class="table-shell">
-        <table>
-          <thead><tr>
-            <th>{{ localization.translate('alerts.templates.column.name') }}</th>
-            <th>{{ localization.translate('alerts.templates.column.key') }}</th>
-            <th>{{ localization.translate('alerts.templates.column.capability') }}</th>
-            <th>{{ localization.translate('alerts.templates.column.parameters') }}</th>
-            <th>{{ localization.translate('alerts.templates.column.alerts') }}</th>
-            <th>{{ localization.translate('alerts.column.actions') }}</th>
-          </tr></thead>
-          <tbody>
-            @for (template of pagedTemplates(); track template.id) {
-              <tr>
-                <td><strong>{{ dynamic(template.nameKey) }}</strong><small>{{ dynamic(template.descriptionKey) }}</small></td>
-                <td><code class="template-key" [attr.title]="template.templateKey">{{ templateClassName(template.templateKey) }}</code><small>#{{ template.id }}</small></td>
-                <td><span class="badge badge--capability">{{ template.requiredCapability }}</span></td>
-                <td>
-                  <details>
-                    <summary>{{ template.parameters.length }} {{ localization.translate('alerts.templates.parameters') }}</summary>
-                    <div class="parameter-summary">
-                      @for (parameter of template.parameters; track parameter.id) {
-                        <div>
-                          <strong>{{ dynamic(parameter.labelKey) }}</strong>
-                          <small>{{ parameter.javaType }}</small>
-                          @if (parameter.bindingAllowed) {
-                            <span>{{ localization.translate(parameter.options.length ? 'alerts.binding.allowedWithOptions' : 'alerts.binding.allowed') }}</span>
-                          } @else {
-                            <span>{{ localization.translate('alerts.binding.optionsOnly') }}</span>
-                          }
-                        </div>
+      <div class="toolbar template-tag-filters">
+        <div class="tag-filter-field">
+          <span>{{ localization.translate('alerts.filterTag') }}</span>
+          <div class="tag-filter">
+            @for (tag of selectedTemplateFilterTags(); track tag.nameKey) {
+              <span class="filter-tag" [style.--tag-color]="templateTagColor(tag)">
+                {{ dynamic(tag.nameKey) }}
+                <button type="button" [title]="localization.translate('alerts.removeTagFilter')" (click)="removeTemplateTagFilter(tag.nameKey)">×</button>
+              </span>
+            }
+            <select value="" (change)="addTemplateTagFilter($event)">
+              <option value="">{{ localization.translate('alerts.addTagFilter') }}</option>
+              @for (tag of availableTemplateFilterTags(); track tag.nameKey) {
+                <option [value]="tag.nameKey">{{ dynamic(tag.nameKey) }}</option>
+              }
+            </select>
+            @if (selectedTemplateTagKeys().length >= 2) {
+              <div class="tag-match-mode">
+                <button type="button" [class.active]="templateTagMatchMode() === 'OR'" (click)="updateTemplateTagMatchMode('OR')">OR</button>
+                <button type="button" [class.active]="templateTagMatchMode() === 'AND'" (click)="updateTemplateTagMatchMode('AND')">AND</button>
+              </div>
+            }
+          </div>
+        </div>
+      </div>
+      @if (!visibleTemplates().length) {
+        <p class="state">{{ localization.translate('alerts.templates.noMatching') }}</p>
+      } @else {
+        <div class="table-shell">
+          <table>
+            <thead><tr>
+              <th>{{ localization.translate('alerts.templates.column.name') }}</th>
+              <th>{{ localization.translate('alerts.templates.column.key') }}</th>
+              <th>{{ localization.translate('alerts.templates.column.capability') }}</th>
+              <th>{{ localization.translate('alerts.templates.column.tags') }}</th>
+              <th>{{ localization.translate('alerts.templates.column.parameters') }}</th>
+              <th>{{ localization.translate('alerts.templates.column.alerts') }}</th>
+              <th>{{ localization.translate('alerts.column.actions') }}</th>
+            </tr></thead>
+            <tbody>
+              @for (template of pagedTemplates(); track template.id) {
+                <tr>
+                  <td><strong>{{ dynamic(template.nameKey) }}</strong><small>{{ dynamic(template.descriptionKey) }}</small></td>
+                  <td><code class="template-key" [attr.title]="template.templateKey">{{ templateClassName(template.templateKey) }}</code><small>#{{ template.id }}</small></td>
+                  <td><span class="badge badge--capability">{{ template.requiredCapability }}</span></td>
+                  <td>
+                    <div class="tag-list">
+                      @for (tag of template.tags; track tag.nameKey) {
+                        <span class="tag" [style.--tag-color]="templateTagColor(tag)">{{ dynamic(tag.nameKey) }}</span>
+                      } @empty {
+                        <span class="muted">—</span>
                       }
                     </div>
-                  </details>
-                </td>
-                <td>
-                  @if (template.alertCount > 0) {
-                    <button class="template-count" type="button" (click)="showTemplateAlerts(template)">
-                      {{ template.alertCount }}
-                    </button>
-                  } @else {
-                    <strong>0</strong>
-                  }
-                </td>
-                <td class="actions"><button type="button" (click)="openCreate(template.id)">{{ localization.translate('alerts.useTemplate') }}</button></td>
-              </tr>
-            }
-          </tbody>
-        </table>
-      </div>
+                  </td>
+                  <td>
+                    <details>
+                      <summary>{{ template.parameters.length }} {{ localization.translate('alerts.templates.parameters') }}</summary>
+                      <div class="parameter-summary">
+                        @for (parameter of template.parameters; track parameter.id) {
+                          <div>
+                            <strong>{{ dynamic(parameter.labelKey) }}</strong>
+                            <small>{{ parameter.javaType }}</small>
+                            @if (parameter.bindingAllowed) {
+                              <span>{{ localization.translate(parameter.options.length ? 'alerts.binding.allowedWithOptions' : 'alerts.binding.allowed') }}</span>
+                            } @else {
+                              <span>{{ localization.translate('alerts.binding.optionsOnly') }}</span>
+                            }
+                          </div>
+                        }
+                      </div>
+                    </details>
+                  </td>
+                  <td>
+                    @if (template.alertCount > 0) {
+                      <button class="template-count" type="button" (click)="showTemplateAlerts(template)">
+                        {{ template.alertCount }}
+                      </button>
+                    } @else {
+                      <strong>0</strong>
+                    }
+                  </td>
+                  <td class="actions"><button type="button" (click)="openCreate(template.id)">{{ localization.translate('alerts.useTemplate') }}</button></td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
     }
     @if (templates().length) {
       <footer class="pagination" [attr.aria-label]="localization.translate('alerts.pagination.label')">
-        <span>{{ templates().length }} {{ localization.translate('alerts.records') }}</span>
+        <span>{{ visibleTemplates().length }} {{ localization.translate('alerts.records') }}</span>
         <div class="pagination__controls">
           <label>
             <span>{{ localization.translate('alerts.pagination.rowsPerPage') }}</span>

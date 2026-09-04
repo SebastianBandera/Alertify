@@ -74,6 +74,11 @@ class AlertTemplateRegistrationServiceTest {
             "app/alertify/alerts/templates/HttpsCertificateExpiryAlertTemplate.java",
             httpsCertificateTemplate.getSourcePath()
         );
+        assertEquals(2, httpsCertificateTemplate.getTags().size());
+        assertEquals("alerts.templateTag.network", httpsCertificateTemplate.getTags().get(0).nameKey());
+        assertEquals("#0EA5E9", httpsCertificateTemplate.getTags().get(0).color());
+        assertEquals("alerts.templateTag.security", httpsCertificateTemplate.getTags().get(1).nameKey());
+        assertEquals("#7C3AED", httpsCertificateTemplate.getTags().get(1).color());
 
         AlertTemplateDefinition template = templateCaptor.getAllValues().get(1);
         assertEquals(templateKey, template.getTemplateKey());
@@ -82,6 +87,14 @@ class AlertTemplateRegistrationServiceTest {
             "app/alertify/alerts/templates/InternetConnectionAlertTemplate.java",
             template.getSourcePath()
         );
+        assertEquals(1, template.getTags().size());
+        assertEquals("alerts.templateTag.network", template.getTags().get(0).nameKey());
+        assertEquals("#0EA5E9", template.getTags().get(0).color());
+
+        AlertTemplateDefinition consoleParameterTemplate = templateCaptor.getAllValues().get(3);
+        assertEquals(1, consoleParameterTemplate.getTags().size());
+        assertEquals("alerts.templateTag.development", consoleParameterTemplate.getTags().get(0).nameKey());
+        assertNull(consoleParameterTemplate.getTags().get(0).color());
 
         ArgumentCaptor<AlertTemplateParameterDefinition> parameterCaptor =
             ArgumentCaptor.forClass(AlertTemplateParameterDefinition.class);

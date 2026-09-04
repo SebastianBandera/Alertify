@@ -20,6 +20,7 @@ import app.alertify.alerts.AlertExecutionContext;
 import app.alertify.alerts.AlertResult;
 import app.alertify.alerts.template.annotation.AlertParameter;
 import app.alertify.alerts.template.annotation.AlertTemplate;
+import app.alertify.alerts.template.annotation.AlertTemplateTag;
 
 /**
  * Standard alert that resolves a hostname and verifies that one of its
@@ -28,6 +29,7 @@ import app.alertify.alerts.template.annotation.AlertTemplate;
 @AlertTemplate(
     nameKey = "alerts.template.tcpConnection.name",
     descriptionKey = "alerts.template.tcpConnection.description",
+    tags = @AlertTemplateTag(nameKey = "alerts.templateTag.network", color = "#0EA5E9"),
     sourcePath = "app/alertify/alerts/templates/TcpConnectionAlertTemplate.java"
 )
 public final class TcpConnectionAlertTemplate implements AlertEvaluator {

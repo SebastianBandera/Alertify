@@ -3,10 +3,14 @@ package app.alertify.alerts.template;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,6 +26,7 @@ import org.springframework.util.StringUtils;
 import app.alertify.alerts.AlertEvaluator;
 import app.alertify.alerts.model.AlertTemplateDefinition;
 import app.alertify.alerts.model.AlertTemplateParameterDefinition;
+import app.alertify.alerts.model.AlertTemplateTagDefinition;
 import app.alertify.alerts.template.annotation.AlertParameter;
 import app.alertify.alerts.template.annotation.AlertTemplate;
 import app.alertify.alerts.template.annotation.AlertTemplateKey;
@@ -38,6 +43,7 @@ public class AlertTemplateRegistrationService {
     static final String TEMPLATE_BASE_PACKAGE = "app.alertify.alerts.templates";
 
     private static final Logger log = LoggerFactory.getLogger(AlertTemplateRegistrationService.class);
+    private static final Pattern TAG_COLOR = Pattern.compile("^#[0-9A-Fa-f]{6}$");
 
     private final AlertTemplateDefinitionRepository templateRepository;
     private final AlertTemplateParameterDefinitionRepository parameterRepository;
@@ -103,7 +109,9 @@ public class AlertTemplateRegistrationService {
             .orElseGet(() -> AlertTemplateDefinition.from(templateClass));
         template.synchronize(
             metadata.nameKey(), metadata.descriptionKey(), metadata.sourcePath(),
-            metadata.capability()
+            metadata.capability(), Arrays.stream(metadata.tags())
+                .map(AlertTemplateTagDefinition::from)
+                .toList()
         );
         templateRepository.save(template);
 
@@ -177,6 +185,7 @@ public class AlertTemplateRegistrationService {
         AlertTemplate metadata = templateClass.getAnnotation(AlertTemplate.class);
         requireText(metadata.nameKey(), "nameKey", templateClass);
         requireText(metadata.descriptionKey(), "descriptionKey", templateClass);
+        validateTags(metadata, templateClass);
         validateSourcePath(metadata.sourcePath(), templateClass);
 
         List<Field> parameterFields = parameterFields(templateClass);
@@ -217,6 +226,24 @@ public class AlertTemplateRegistrationService {
                 throw new IllegalStateException(
                     "Alert parameter order must not be negative: "
                         + templateClass.getName() + "." + field.getName()
+                );
+            }
+        }
+    }
+
+    private static void validateTags(AlertTemplate metadata, Class<?> templateClass) {
+        Set<String> nameKeys = new HashSet<>();
+        for (var tag : metadata.tags()) {
+            requireText(tag.nameKey(), "tag nameKey", templateClass);
+            if (!nameKeys.add(tag.nameKey())) {
+                throw new IllegalStateException(
+                    "Alert template tag nameKey must be unique: " + templateClass.getName()
+                );
+            }
+            if (!tag.color().isEmpty()
+                    && (!tag.color().equals(tag.color().trim()) || !TAG_COLOR.matcher(tag.color()).matches())) {
+                throw new IllegalStateException(
+                    "Alert template tag color must be empty or use #RRGGBB format: " + templateClass.getName()
                 );
             }
         }

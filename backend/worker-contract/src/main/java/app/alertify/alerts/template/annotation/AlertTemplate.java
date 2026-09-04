@@ -25,6 +25,8 @@ public @interface AlertTemplate {
 
     String descriptionKey();
 
+    AlertTemplateTag[] tags() default {};
+
     WorkerCapability capability() default WorkerCapability.STANDARD;
 
     String sourcePath() default "";

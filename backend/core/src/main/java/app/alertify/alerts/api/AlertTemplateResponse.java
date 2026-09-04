@@ -12,6 +12,7 @@ public record AlertTemplateResponse(
     String nameKey,
     String descriptionKey,
     WorkerCapability requiredCapability,
+    List<AlertTemplateTagResponse> tags,
     long alertCount,
     List<AlertTemplateParameterResponse> parameters,
     Instant createdAt,

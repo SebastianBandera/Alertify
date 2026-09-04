@@ -15,6 +15,7 @@ import app.alertify.alerts.AlertExecutionContext;
 import app.alertify.alerts.AlertResult;
 import app.alertify.alerts.template.annotation.AlertParameter;
 import app.alertify.alerts.template.annotation.AlertTemplate;
+import app.alertify.alerts.template.annotation.AlertTemplateTag;
 
 /**
  * Standard alert that checks whether a public HTTP endpoint can be reached.
@@ -23,6 +24,7 @@ import app.alertify.alerts.template.annotation.AlertTemplate;
 @AlertTemplate(
     nameKey = "alerts.template.internet.name",
     descriptionKey = "alerts.template.internet.description",
+    tags = @AlertTemplateTag(nameKey = "alerts.templateTag.network", color = "#0EA5E9"),
     sourcePath = "app/alertify/alerts/templates/InternetConnectionAlertTemplate.java"
 )
 public final class InternetConnectionAlertTemplate implements AlertEvaluator {

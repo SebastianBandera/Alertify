@@ -10,6 +10,7 @@ import app.alertify.alerts.api.AlertParameterValueResponse;
 import app.alertify.alerts.api.AlertResponse;
 import app.alertify.alerts.api.AlertTemplateParameterResponse;
 import app.alertify.alerts.api.AlertTemplateResponse;
+import app.alertify.alerts.api.AlertTemplateTagResponse;
 import app.alertify.alerts.model.Alert;
 import app.alertify.alerts.model.AlertExecution;
 import app.alertify.alerts.model.AlertParameterValue;
@@ -26,6 +27,9 @@ final class AlertMapper {
         return new AlertTemplateResponse(
                 template.getId(), template.getVersion(), template.getTemplateKey(),
                 template.getNameKey(), template.getDescriptionKey(), template.getRequiredCapability(),
+                template.getTags().stream()
+                        .map(tag -> new AlertTemplateTagResponse(tag.nameKey(), tag.color()))
+                        .toList(),
                 alertCount,
                 parameters.stream().map(AlertMapper::toTemplateParameter).toList(),
                 template.getCreatedAt(), template.getUpdatedAt()

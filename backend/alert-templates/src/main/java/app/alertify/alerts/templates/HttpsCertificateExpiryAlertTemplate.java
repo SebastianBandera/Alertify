@@ -38,6 +38,7 @@ import app.alertify.alerts.AlertExecutionContext;
 import app.alertify.alerts.AlertResult;
 import app.alertify.alerts.template.annotation.AlertParameter;
 import app.alertify.alerts.template.annotation.AlertTemplate;
+import app.alertify.alerts.template.annotation.AlertTemplateTag;
 
 /**
  * Standard alert that warns before the HTTPS certificate served by a site
@@ -46,6 +47,10 @@ import app.alertify.alerts.template.annotation.AlertTemplate;
 @AlertTemplate(
     nameKey = "alerts.template.httpsCertificate.name",
     descriptionKey = "alerts.template.httpsCertificate.description",
+    tags = {
+        @AlertTemplateTag(nameKey = "alerts.templateTag.network", color = "#0EA5E9"),
+        @AlertTemplateTag(nameKey = "alerts.templateTag.security", color = "#7C3AED")
+    },
     sourcePath = "app/alertify/alerts/templates/HttpsCertificateExpiryAlertTemplate.java"
 )
 public final class HttpsCertificateExpiryAlertTemplate implements AlertEvaluator {
