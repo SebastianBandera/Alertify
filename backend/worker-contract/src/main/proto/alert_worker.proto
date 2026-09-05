@@ -32,6 +32,15 @@ message AlertParameter {
   bool null_value = 4;
   bool writable = 5;
   int64 configuration_id = 6;
+  int64 secret_id = 7;
+  AlertParameterValueSource source = 8;
+}
+
+enum AlertParameterValueSource {
+  ALERT_PARAMETER_VALUE_SOURCE_UNSPECIFIED = 0;
+  ALERT_PARAMETER_VALUE_SOURCE_TEXT = 1;
+  ALERT_PARAMETER_VALUE_SOURCE_CONFIGURATION = 2;
+  ALERT_PARAMETER_VALUE_SOURCE_SECRET = 3;
 }
 
 message ExecuteAlertResponse {
@@ -75,10 +84,18 @@ message AlertExecutionResult {
   string worker_name = 8;
   string worker_instance_id = 9;
   repeated WritableConfigurationValue writable_configuration_values = 10;
+  repeated WritableSecretValue writable_secret_values = 11;
 }
 
 message WritableConfigurationValue {
   int64 configuration_id = 1;
+  string parameter_name = 2;
+  string value = 3;
+  bool null_value = 4;
+}
+
+message WritableSecretValue {
+  int64 secret_id = 1;
   string parameter_name = 2;
   string value = 3;
   bool null_value = 4;

@@ -20,6 +20,7 @@ export interface ApplicationSecret {
   readonly name: string;
   readonly description: string | null;
   readonly tags: readonly SecretTag[];
+  readonly writable: boolean;
   readonly recoveryStatus: 'RECOVERABLE' | 'UNRECOVERABLE';
   readonly valueRevision: number;
   readonly createdAt: string;
@@ -31,6 +32,7 @@ export interface SecretCreateRequest {
   readonly description: string | null;
   readonly value: string;
   readonly tagIds: readonly number[];
+  readonly writable: boolean;
 }
 
 export interface SecretUpdateRequest {
@@ -39,6 +41,7 @@ export interface SecretUpdateRequest {
   readonly description: string | null;
   readonly newValue: string;
   readonly tagIds: readonly number[];
+  readonly writable: boolean;
 }
 
 interface ApiErrorResponse {

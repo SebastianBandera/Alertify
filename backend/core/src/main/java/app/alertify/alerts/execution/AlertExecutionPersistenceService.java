@@ -21,6 +21,7 @@ import app.alertify.jpa.repository.AlertExecutionRepository;
 import app.alertify.jpa.repository.AlertRepository;
 import app.alertify.jpa.repository.AlertStateRepository;
 import app.alertify.logging.ApplicationEventLogger;
+import app.alertify.services.secret.WritableSecretService;
 import app.alertify.worker.grpc.AlertExecutionResult;
 import app.alertify.worker.grpc.ExecutionError;
 import app.alertify.worker.grpc.WorkerExecutionStatus;
@@ -36,15 +37,17 @@ public class AlertExecutionPersistenceService {
     private final AlertStateRepository stateRepository;
     private final ApplicationEventLogger eventLogger;
     private final WritableConfigurationService writableConfigurationService;
+    private final WritableSecretService writableSecretService;
     private final JsonMapper jsonMapper;
 
-    public AlertExecutionPersistenceService(AlertRepository alertRepository, AlertExecutionRepository executionRepository, AlertStateRepository stateRepository, ApplicationEventLogger eventLogger, JsonMapper jsonMapper, WritableConfigurationService writableConfigurationService) {
+    public AlertExecutionPersistenceService(AlertRepository alertRepository, AlertExecutionRepository executionRepository, AlertStateRepository stateRepository, ApplicationEventLogger eventLogger, JsonMapper jsonMapper, WritableConfigurationService writableConfigurationService, WritableSecretService writableSecretService) {
         this.alertRepository = alertRepository;
         this.executionRepository = executionRepository;
         this.stateRepository = stateRepository;
         this.eventLogger = eventLogger;
         this.jsonMapper = jsonMapper;
         this.writableConfigurationService = writableConfigurationService;
+        this.writableSecretService = writableSecretService;
     }
 
     @Transactional
@@ -78,6 +81,10 @@ public class AlertExecutionPersistenceService {
             writableConfigurationService.apply(
                     alertId, alert.getName(), executionId,
                     result.getWritableConfigurationValuesList()
+            );
+            writableSecretService.apply(
+                    alertId, alert.getName(), executionId,
+                    result.getWritableSecretValuesList()
             );
         }
         logResult(execution);

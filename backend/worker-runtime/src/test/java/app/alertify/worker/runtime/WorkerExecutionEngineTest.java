@@ -17,6 +17,7 @@ import org.junit.jupiter.api.io.TempDir;
 import app.alertify.worker.contract.WorkerCapability;
 import app.alertify.worker.grpc.AlertExecutionResult;
 import app.alertify.worker.grpc.AlertParameter;
+import app.alertify.worker.grpc.AlertParameterValueSource;
 import app.alertify.worker.grpc.ExecuteAlertRequest;
 import app.alertify.worker.grpc.WorkerExecutionStatus;
 import io.grpc.stub.StreamObserver;
@@ -134,6 +135,7 @@ class WorkerExecutionEngineTest {
                                     .setName("counter")
                                     .setJavaType(Integer.class.getName())
                                     .setValue("5")
+                                    .setSource(AlertParameterValueSource.ALERT_PARAMETER_VALUE_SOURCE_CONFIGURATION)
                                     .setWritable(true)
                                     .setConfigurationId(42))
                             .build(),
@@ -148,6 +150,83 @@ class WorkerExecutionEngineTest {
                 assertThat(value.getValue()).isEqualTo("6");
                 assertThat(value.getNullValue()).isFalse();
             });
+        }
+    }
+
+    @Test
+    void returnsOnlyChangedWritableSecretParameters() throws Exception {
+        WorkerRuntimeProperties properties = properties();
+        AlertTemplateCompiler compiler = new AlertTemplateCompiler(properties);
+        String source = """
+                package dynamic;
+
+                import java.util.Map;
+                import app.alertify.alerts.AlertEvaluator;
+                import app.alertify.alerts.AlertExecutionContext;
+                import app.alertify.alerts.AlertResult;
+                import app.alertify.alerts.template.annotation.AlertParameterSource;
+
+                public final class WritableSecretAlert implements AlertEvaluator {
+                    private String sourceToken;
+                    private String targetToken;
+
+                    public WritableSecretAlert(String sourceToken, String targetToken) {
+                        this.sourceToken = sourceToken;
+                        this.targetToken = targetToken;
+                    }
+
+                    @Override
+                    public AlertResult evaluate(AlertExecutionContext context) {
+                        targetToken = sourceToken;
+                        return AlertResult.success(Map.of(
+                            "secretBindingDetected",
+                            context.getParameterSource("sourceToken") == AlertParameterSource.SECRET
+                        ));
+                    }
+                }
+                """;
+        String checksum = sha256(source);
+        compiler.synchronize("dynamic.WritableSecretAlert", checksum, source);
+        CompletableFuture<AlertExecutionResult> result = new CompletableFuture<>();
+
+        try (WorkerExecutionEngine engine = new WorkerExecutionEngine(
+                compiler, new WorkerExecutionTracker(properties), properties,
+                new WorkerInstanceIdentity()
+        )) {
+            engine.execute(
+                    ExecuteAlertRequest.newBuilder()
+                            .setExecutionId("execution-writable-secret")
+                            .setAlertId(9)
+                            .setAlertName("Writable secret sample")
+                            .setTemplateClassName("dynamic.WritableSecretAlert")
+                            .setSourceChecksum(checksum)
+                            .addParameters(AlertParameter.newBuilder()
+                                    .setName("sourceToken")
+                                    .setJavaType(String.class.getName())
+                                    .setValue("rotated-token")
+                                    .setSource(AlertParameterValueSource.ALERT_PARAMETER_VALUE_SOURCE_SECRET))
+                            .addParameters(AlertParameter.newBuilder()
+                                    .setName("targetToken")
+                                    .setJavaType(String.class.getName())
+                                    .setValue("previous-token")
+                                    .setSource(AlertParameterValueSource.ALERT_PARAMETER_VALUE_SOURCE_SECRET)
+                                    .setWritable(true)
+                                    .setSecretId(73))
+                            .build(),
+                    observer(result)
+            );
+
+            AlertExecutionResult execution = result.get(5, TimeUnit.SECONDS);
+
+            assertThat(execution.getWritableSecretValuesList()).singleElement().satisfies(value -> {
+                assertThat(value.getSecretId()).isEqualTo(73);
+                assertThat(value.getParameterName()).isEqualTo("targetToken");
+                assertThat(value.getValue()).isEqualTo("rotated-token");
+                assertThat(value.getNullValue()).isFalse();
+            });
+            assertThat(execution.getWritableConfigurationValuesList()).isEmpty();
+            assertThat(execution.getStatusMessageJson())
+                    .isEqualTo("{\"secretBindingDetected\":true}");
         }
     }
 

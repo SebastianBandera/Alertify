@@ -12,6 +12,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import org.springframework.stereotype.Service;
 
+import app.alertify.alerts.template.annotation.AlertParameterSource;
 import app.alertify.grpc.AlertWorkerClient;
 import app.alertify.grpc.WorkerGrpcProperties;
 import app.alertify.grpc.discovery.SelectedWorker;
@@ -20,6 +21,7 @@ import app.alertify.grpc.discovery.WorkerStatusService;
 import app.alertify.grpc.discovery.WorkerReservation;
 import app.alertify.logging.ApplicationEventLogger;
 import app.alertify.worker.grpc.AlertParameter;
+import app.alertify.worker.grpc.AlertParameterValueSource;
 import app.alertify.worker.grpc.ExecuteAlertRequest;
 import app.alertify.worker.grpc.ExecuteAlertResponse;
 import app.alertify.worker.grpc.SynchronizeTemplateRequest;
@@ -184,18 +186,35 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
             AlertParameter.Builder value = AlertParameter.newBuilder()
                     .setName(parameter.name())
                     .setJavaType(parameter.javaType())
-                    .setNullValue(parameter.nullValue());
+                    .setNullValue(parameter.nullValue())
+                    .setSource(toGrpcSource(parameter.source()));
             if (!parameter.nullValue())
                 value.setValue(parameter.value());
 
             if (parameter.writable()) {
+                boolean configurationTarget = parameter.configurationId() != null;
+                boolean secretTarget = parameter.secretId() != null;
+                if (configurationTarget == secretTarget)
+                    throw new IllegalStateException("Writable parameter '" + parameter.name() + "' must have exactly one target");
+
                 value.setWritable(true);
-                value.setConfigurationId(parameter.configurationId());
+                if (configurationTarget)
+                    value.setConfigurationId(parameter.configurationId());
+                else
+                    value.setSecretId(parameter.secretId());
             }
 
             request.addParameters(value);
         }
         return request.build();
+    }
+
+    private static AlertParameterValueSource toGrpcSource(AlertParameterSource source) {
+        return switch (source) {
+            case TEXT -> AlertParameterValueSource.ALERT_PARAMETER_VALUE_SOURCE_TEXT;
+            case CONFIGURATION -> AlertParameterValueSource.ALERT_PARAMETER_VALUE_SOURCE_CONFIGURATION;
+            case SECRET -> AlertParameterValueSource.ALERT_PARAMETER_VALUE_SOURCE_SECRET;
+        };
     }
 
     private boolean enter(long alertId, boolean concurrent) {

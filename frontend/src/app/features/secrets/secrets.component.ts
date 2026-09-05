@@ -10,6 +10,7 @@ interface SecretForm {
   description: string;
   newValue: string;
   tagIds: number[];
+  writable: boolean;
 }
 
 interface TagForm {
@@ -155,7 +156,13 @@ export class SecretsComponent implements OnInit {
 
   protected openEdit(secret: ApplicationSecret): void {
     this.editingSecret.set(secret);
-    this.secretForm.set({ name: secret.name, description: secret.description ?? '', newValue: '', tagIds: secret.tags.map((tag) => tag.id) });
+    this.secretForm.set({
+      name: secret.name,
+      description: secret.description ?? '',
+      newValue: '',
+      tagIds: secret.tags.map((tag) => tag.id),
+      writable: secret.writable,
+    });
     this.formError.set(null);
     this.editorOpen.set(true);
   }
@@ -164,7 +171,7 @@ export class SecretsComponent implements OnInit {
     if (!this.saving()) this.editorOpen.set(false);
   }
 
-  protected updateSecretForm(field: 'name' | 'description' | 'newValue', value: string): void {
+  protected updateSecretForm<Field extends 'name' | 'description' | 'newValue' | 'writable'>(field: Field, value: SecretForm[Field]): void {
     this.secretForm.update((form) => ({ ...form, [field]: value }));
   }
 
@@ -183,9 +190,9 @@ export class SecretsComponent implements OnInit {
     try {
       const editing = this.editingSecret();
       if (editing) {
-        await this.api.updateSecret(editing.id, { version: editing.version, name: form.name.trim(), description: form.description.trim() || null, newValue: form.newValue, tagIds: form.tagIds });
+        await this.api.updateSecret(editing.id, { version: editing.version, name: form.name.trim(), description: form.description.trim() || null, newValue: form.newValue, tagIds: form.tagIds, writable: form.writable });
       } else {
-        await this.api.createSecret({ name: form.name.trim(), description: form.description.trim() || null, value: form.newValue, tagIds: form.tagIds });
+        await this.api.createSecret({ name: form.name.trim(), description: form.description.trim() || null, value: form.newValue, tagIds: form.tagIds, writable: form.writable });
       }
       this.editorOpen.set(false);
       this.notice.set(this.localization.translate('secrets.saved'));
@@ -263,7 +270,7 @@ export class SecretsComponent implements OnInit {
   }
 
   private emptySecretForm(): SecretForm {
-    return { name: '', description: '', newValue: '', tagIds: [] };
+    return { name: '', description: '', newValue: '', tagIds: [], writable: false };
   }
 
   private errorMessage(error: unknown): string {

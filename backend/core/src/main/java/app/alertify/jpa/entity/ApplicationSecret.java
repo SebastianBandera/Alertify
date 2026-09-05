@@ -81,6 +81,9 @@ public class ApplicationSecret {
     @Column(name = "value_revision", nullable = false)
     private long valueRevision;
 
+    @Column(nullable = false)
+    private boolean writable;
+
     @CreationTimestamp
     @NotAudited
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -105,10 +108,15 @@ public class ApplicationSecret {
     }
 
     public ApplicationSecret(String name, String description, byte[] encryptedValue, byte[] encryptionIv, byte[] valueHash, byte[] hashSalt, short encryptionVersion, Set<Tag> tags) {
+        this(name, description, encryptedValue, encryptionIv, valueHash, hashSalt, encryptionVersion, tags, false);
+    }
+
+    public ApplicationSecret(String name, String description, byte[] encryptedValue, byte[] encryptionIv, byte[] valueHash, byte[] hashSalt, short encryptionVersion, Set<Tag> tags, boolean writable) {
         this.name = Objects.requireNonNull(name, "name must not be null");
         this.description = description;
         setEncryptedValue(encryptedValue, encryptionIv, valueHash, hashSalt, encryptionVersion);
         valueRevision = 1;
+        this.writable = writable;
         replaceTags(tags);
     }
 
@@ -152,6 +160,10 @@ public class ApplicationSecret {
         return valueRevision;
     }
 
+    public boolean isWritable() {
+        return writable;
+    }
+
     public Instant getCreatedAt() {
         return createdAt;
     }
@@ -175,6 +187,10 @@ public class ApplicationSecret {
     public void replaceEncryptedValue(byte[] encryptedValue, byte[] encryptionIv, byte[] valueHash, byte[] hashSalt, short encryptionVersion) {
         setEncryptedValue(encryptedValue, encryptionIv, valueHash, hashSalt, encryptionVersion);
         valueRevision++;
+    }
+
+    public void changeWritable(boolean writable) {
+        this.writable = writable;
     }
 
     public void replaceTags(Set<Tag> tags) {

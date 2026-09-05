@@ -106,12 +106,16 @@ public class ApplicationSecretService {
         EncryptedSecretValue encrypted = encryptionService.encrypt(request.value());
         ApplicationSecret secret = new ApplicationSecret(
                 name, normalizeOptional(request.description()), encrypted.encryptedValue(), encrypted.encryptionIv(),
-                encrypted.valueHash(), encrypted.hashSalt(), encrypted.encryptionVersion(), tags
+                encrypted.valueHash(), encrypted.hashSalt(), encrypted.encryptionVersion(), tags, request.writable()
         );
         ApplicationSecret saved = secretRepository.saveAndFlush(secret);
         eventLogger.successAfterCommit(
                 "SECRET_CREATED",
-                Map.of("secretId", saved.getId(), "name", saved.getName(), "tagIds", tagIds(saved.getTags()), "valueRevision", saved.getValueRevision())
+                Map.of(
+                        "secretId", saved.getId(), "name", saved.getName(),
+                        "tagIds", tagIds(saved.getTags()), "valueRevision", saved.getValueRevision(),
+                        "writable", saved.isWritable()
+                )
         );
         return mapper.toResponse(saved);
     }
@@ -139,6 +143,10 @@ public class ApplicationSecretService {
             secret.replaceTags(tags);
             changedFields.add("tags");
         }
+        if (secret.isWritable() != request.writable()) {
+            secret.changeWritable(request.writable());
+            changedFields.add("writable");
+        }
 
         EncryptedSecretValue encrypted = encryptionService.encrypt(request.newValue());
         secret.replaceEncryptedValue(encrypted.encryptedValue(), encrypted.encryptionIv(), encrypted.valueHash(), encrypted.hashSalt(), encrypted.encryptionVersion());
@@ -152,6 +160,7 @@ public class ApplicationSecretService {
         logData.put("tagIds", tagIds(secret.getTags()));
         logData.put("changedFields", changedFields);
         logData.put("valueRevision", secret.getValueRevision());
+        logData.put("writable", secret.isWritable());
         eventLogger.successAfterCommit("SECRET_UPDATED", logData);
         return mapper.toResponse(secret);
     }

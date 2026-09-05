@@ -6,6 +6,7 @@ import app.alertify.alerts.AlertEvaluator;
 import app.alertify.alerts.AlertExecutionContext;
 import app.alertify.alerts.AlertResult;
 import app.alertify.alerts.template.annotation.AlertParameter;
+import app.alertify.alerts.template.annotation.AlertParameterSource;
 import app.alertify.alerts.template.annotation.AlertTemplate;
 import app.alertify.alerts.template.annotation.AlertTemplateTag;
 
@@ -45,6 +46,10 @@ public final class WritableParameterCopyAlertTemplate implements AlertEvaluator 
     @Override
     public AlertResult evaluate(AlertExecutionContext context) {
         writableValue = sourceValue;
+        if (context.getParameterSource("sourceValue") == AlertParameterSource.SECRET
+                || context.getParameterSource("writableValue") == AlertParameterSource.SECRET)
+            return AlertResult.success(Map.of());
+
         return AlertResult.success(Map.of("writtenValue", writableValue));
     }
 }

@@ -15,6 +15,7 @@ public record SecretResponse(
     String name,
     String description,
     Set<TagResponse> tags,
+    boolean writable,
     SecretRecoveryStatus recoveryStatus,
     long valueRevision,
     Instant createdAt,

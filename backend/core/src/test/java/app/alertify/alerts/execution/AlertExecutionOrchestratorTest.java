@@ -27,6 +27,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.google.protobuf.Timestamp;
 
+import app.alertify.alerts.template.annotation.AlertParameterSource;
 import app.alertify.grpc.AlertWorkerClient;
 import app.alertify.grpc.WorkerGrpcProperties;
 import app.alertify.grpc.discovery.SelectedWorker;
@@ -36,6 +37,7 @@ import app.alertify.grpc.discovery.WorkerStatusService;
 import app.alertify.logging.ApplicationEventLogger;
 import app.alertify.worker.contract.WorkerCapability;
 import app.alertify.worker.grpc.AlertExecutionResult;
+import app.alertify.worker.grpc.AlertParameterValueSource;
 import app.alertify.worker.grpc.ExecuteAlertRequest;
 import app.alertify.worker.grpc.ExecuteAlertResponse;
 import app.alertify.worker.grpc.SourceRequired;
@@ -112,6 +114,11 @@ class AlertExecutionOrchestratorTest {
             assertThat(request.getParametersCount()).isEqualTo(1);
             assertThat(request.getParameters(0).getName()).isEqualTo("endpoint");
             assertThat(request.getParameters(0).getValue()).isEqualTo("google");
+            assertThat(request.getParameters(0).getSource())
+                    .isEqualTo(AlertParameterValueSource.ALERT_PARAMETER_VALUE_SOURCE_SECRET);
+            assertThat(request.getParameters(0).getWritable()).isTrue();
+            assertThat(request.getParameters(0).getSecretId()).isEqualTo(73L);
+            assertThat(request.getParameters(0).getConfigurationId()).isZero();
         });
         ArgumentCaptor<SynchronizeTemplateRequest> synchronizationRequest =
                 ArgumentCaptor.forClass(SynchronizeTemplateRequest.class);
@@ -122,6 +129,35 @@ class AlertExecutionOrchestratorTest {
                 .isEqualTo("dynamic.SampleAlert");
         assertThat(synchronizationRequest.getValue().getSource()).isEqualTo("source");
         verify(reservation).close();
+    }
+
+    @Test
+    void transportsAReadOnlySecretSourceWithoutItsTargetId() {
+        PreparedAlertExecution prepared = new PreparedAlertExecution(
+                7L, "Sample alert", "dynamic.SampleAlert", WorkerCapability.STANDARD,
+                CHECKSUM, "source", "previous-state",
+                List.of(new ResolvedAlertParameter(
+                        "token", String.class.getName(), "secret-value", false,
+                        AlertParameterSource.SECRET, null, 73L, false
+                ))
+        );
+        when(preparationService.prepare(7L, false)).thenReturn(Optional.of(prepared));
+        when(workerStatusService.reserve(WorkerCapability.STANDARD)).thenReturn(reservation);
+        when(workerClient.execute(eq(ENDPOINT), any(), eq(Duration.ofMinutes(30))))
+                .thenReturn(ExecuteAlertResponse.newBuilder().setResult(successfulResult()).build());
+
+        orchestrator.trigger(7L, "Sample alert", false);
+
+        verify(persistenceService, org.mockito.Mockito.timeout(5000)).persistWorkerResult(
+                eq(7L), any(UUID.class), eq(ENDPOINT), any(AlertExecutionResult.class)
+        );
+        ArgumentCaptor<ExecuteAlertRequest> request = ArgumentCaptor.forClass(ExecuteAlertRequest.class);
+        verify(workerClient).execute(eq(ENDPOINT), request.capture(), eq(Duration.ofMinutes(30)));
+        assertThat(request.getValue().getParameters(0).getSource())
+                .isEqualTo(AlertParameterValueSource.ALERT_PARAMETER_VALUE_SOURCE_SECRET);
+        assertThat(request.getValue().getParameters(0).getSecretId()).isZero();
+        assertThat(request.getValue().getParameters(0).getConfigurationId()).isZero();
+        assertThat(request.getValue().getParameters(0).getWritable()).isFalse();
     }
 
     @Test
@@ -217,7 +253,8 @@ class AlertExecutionOrchestratorTest {
                 7L, "Sample alert", "dynamic.SampleAlert", WorkerCapability.STANDARD,
                 CHECKSUM, "source", "previous-state",
                 List.of(new ResolvedAlertParameter(
-                        "endpoint", String.class.getName(), "google", false
+                        "endpoint", String.class.getName(), "google", false,
+                        AlertParameterSource.SECRET, null, 73L, true
                 ))
         );
     }

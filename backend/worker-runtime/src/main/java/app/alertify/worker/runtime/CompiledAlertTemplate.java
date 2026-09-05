@@ -9,6 +9,7 @@ import java.util.Objects;
 import app.alertify.alerts.AlertEvaluator;
 import app.alertify.worker.grpc.AlertParameter;
 import app.alertify.worker.grpc.WritableConfigurationValue;
+import app.alertify.worker.grpc.WritableSecretValue;
 
 record CompiledAlertTemplate(
     String checksum,
@@ -39,14 +40,17 @@ record CompiledAlertTemplate(
         }
     }
 
-    List<WritableConfigurationValue> writableConfigurationValues(AlertEvaluator evaluator, List<AlertParameter> parameters) {
-        List<WritableConfigurationValue> values = new ArrayList<>();
+    WritableValues writableValues(AlertEvaluator evaluator, List<AlertParameter> parameters) {
+        List<WritableConfigurationValue> configurationValues = new ArrayList<>();
+        List<WritableSecretValue> secretValues = new ArrayList<>();
         for (AlertParameter parameter : parameters) {
             if (!parameter.getWritable())
                 continue;
 
-            if (parameter.getConfigurationId() <= 0)
-                throw new IllegalArgumentException("Writable parameter '" + parameter.getName() + "' has no configuration ID");
+            boolean configurationTarget = parameter.getConfigurationId() > 0;
+            boolean secretTarget = parameter.getSecretId() > 0;
+            if (configurationTarget == secretTarget)
+                throw new IllegalArgumentException("Writable parameter '" + parameter.getName() + "' must have exactly one target");
 
             try {
                 Field field = templateClass.getDeclaredField(parameter.getName());
@@ -56,19 +60,33 @@ record CompiledAlertTemplate(
                 if (Objects.equals(initialValue, finalValue))
                     continue;
 
-                WritableConfigurationValue.Builder value = WritableConfigurationValue.newBuilder()
-                        .setConfigurationId(parameter.getConfigurationId())
-                        .setParameterName(parameter.getName())
-                        .setNullValue(finalValue == null);
-                if (finalValue != null)
-                    value.setValue(AlertParameterConverter.serialize(finalValue, field.getType()));
+                String serialized = finalValue == null
+                        ? null
+                        : AlertParameterConverter.serialize(finalValue, field.getType());
+                if (configurationTarget) {
+                    WritableConfigurationValue.Builder value = WritableConfigurationValue.newBuilder()
+                            .setConfigurationId(parameter.getConfigurationId())
+                            .setParameterName(parameter.getName())
+                            .setNullValue(finalValue == null);
+                    if (serialized != null)
+                        value.setValue(serialized);
 
-                values.add(value.build());
+                    configurationValues.add(value.build());
+                } else {
+                    WritableSecretValue.Builder value = WritableSecretValue.newBuilder()
+                            .setSecretId(parameter.getSecretId())
+                            .setParameterName(parameter.getName())
+                            .setNullValue(finalValue == null);
+                    if (serialized != null)
+                        value.setValue(serialized);
+
+                    secretValues.add(value.build());
+                }
             } catch (ReflectiveOperationException exception) {
                 throw new IllegalStateException("Could not collect writable parameter '" + parameter.getName() + "'", exception);
             }
         }
-        return List.copyOf(values);
+        return new WritableValues(List.copyOf(configurationValues), List.copyOf(secretValues));
     }
 
     private Constructor<?> matchingConstructor(List<AlertParameter> parameters) {
@@ -94,5 +112,11 @@ record CompiledAlertTemplate(
                 return false;
         }
         return true;
+    }
+
+    record WritableValues(
+        List<WritableConfigurationValue> configurationValues,
+        List<WritableSecretValue> secretValues
+    ) {
     }
 }

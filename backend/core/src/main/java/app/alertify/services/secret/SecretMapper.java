@@ -35,7 +35,7 @@ class SecretMapper {
 
         return new SecretResponse(
                 secret.getId(), secret.getVersion(), secret.getName(), secret.getDescription(), tags,
-                recoveryStatus, secret.getValueRevision(), secret.getCreatedAt(), secret.getUpdatedAt()
+                secret.isWritable(), recoveryStatus, secret.getValueRevision(), secret.getCreatedAt(), secret.getUpdatedAt()
         );
     }
 

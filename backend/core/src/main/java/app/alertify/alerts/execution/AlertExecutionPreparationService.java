@@ -87,7 +87,7 @@ public class AlertExecutionPreparationService {
             String defaultValue = definition.getDefaultValue();
             return new ResolvedAlertParameter(
                     definition.getParameterKey(), definition.getJavaType(), defaultValue,
-                    defaultValue == null, null, false
+                    defaultValue == null, AlertParameterSource.TEXT, null, null, false
             );
         }
         String value = switch (configured.getSource()) {
@@ -97,11 +97,18 @@ public class AlertExecutionPreparationService {
         };
         return new ResolvedAlertParameter(
                 definition.getParameterKey(), definition.getJavaType(), value, value == null,
+                configured.getSource(),
                 configured.getSource() == AlertParameterSource.CONFIGURATION
                         ? configured.getConfiguration().getId()
                         : null,
-                configured.getSource() == AlertParameterSource.CONFIGURATION
-                        && configured.getConfiguration().isWritable()
+                configured.getSource() == AlertParameterSource.SECRET
+                        ? configured.getSecret().getId()
+                        : null,
+                switch (configured.getSource()) {
+                    case CONFIGURATION -> configured.getConfiguration().isWritable();
+                    case SECRET -> configured.getSecret().isWritable();
+                    case TEXT -> false;
+                }
         );
     }
 

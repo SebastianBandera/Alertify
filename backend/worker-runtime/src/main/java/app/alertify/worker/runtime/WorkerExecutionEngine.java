@@ -3,8 +3,10 @@ package app.alertify.worker.runtime;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.time.Instant;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,7 +17,9 @@ import app.alertify.alerts.AlertEvaluator;
 import app.alertify.alerts.AlertExecutionContext;
 import app.alertify.alerts.AlertResult;
 import app.alertify.alerts.execution.AlertExecutionStatus;
+import app.alertify.alerts.template.annotation.AlertParameterSource;
 import app.alertify.worker.grpc.AlertExecutionResult;
+import app.alertify.worker.grpc.AlertParameterValueSource;
 import app.alertify.worker.grpc.ExecuteAlertRequest;
 import app.alertify.worker.grpc.ExecutionError;
 import app.alertify.worker.grpc.WorkerExecutionStatus;
@@ -51,7 +55,12 @@ class WorkerExecutionEngine implements AutoCloseable {
         AlertExecutionStatus finalStatus = AlertExecutionStatus.ERROR;
         try {
             permit = tracker.acquire(request, startedAt);
-            context = new AlertExecutionContext(request.getState());
+            Map<String, AlertParameterSource> parameterSources = request.getParametersList().stream()
+                    .collect(Collectors.toUnmodifiableMap(
+                            parameter -> parameter.getName(),
+                            parameter -> source(parameter.getSource())
+                    ));
+            context = new AlertExecutionContext(request.getState(), parameterSources);
 
             CompiledAlertTemplate template = compiler.get(request.getTemplateClassName(), request.getSourceChecksum());
             AlertEvaluator evaluator = template.newInstance(request.getParametersList());
@@ -69,9 +78,11 @@ class WorkerExecutionEngine implements AutoCloseable {
                     .setState(context.getState())
                     .setWorkerName(properties.name())
                     .setWorkerInstanceId(instanceIdentity.id());
-            response.addAllWritableConfigurationValues(
-                    template.writableConfigurationValues(evaluator, request.getParametersList())
+            CompiledAlertTemplate.WritableValues writableValues = template.writableValues(
+                    evaluator, request.getParametersList()
             );
+            response.addAllWritableConfigurationValues(writableValues.configurationValues());
+            response.addAllWritableSecretValues(writableValues.secretValues());
             observer.onNext(response.build());
             observer.onCompleted();
         } catch (Throwable exception) {
@@ -103,6 +114,16 @@ class WorkerExecutionEngine implements AutoCloseable {
             case SUCCESS -> WorkerExecutionStatus.WORKER_EXECUTION_STATUS_SUCCESS;
             case WARN -> WorkerExecutionStatus.WORKER_EXECUTION_STATUS_WARN;
             case ERROR -> WorkerExecutionStatus.WORKER_EXECUTION_STATUS_ERROR;
+        };
+    }
+
+    private static AlertParameterSource source(AlertParameterValueSource source) {
+        return switch (source) {
+            case ALERT_PARAMETER_VALUE_SOURCE_TEXT -> AlertParameterSource.TEXT;
+            case ALERT_PARAMETER_VALUE_SOURCE_CONFIGURATION -> AlertParameterSource.CONFIGURATION;
+            case ALERT_PARAMETER_VALUE_SOURCE_SECRET -> AlertParameterSource.SECRET;
+            case ALERT_PARAMETER_VALUE_SOURCE_UNSPECIFIED, UNRECOGNIZED ->
+                    throw new IllegalArgumentException("Alert parameter source must be specified");
         };
     }
 
