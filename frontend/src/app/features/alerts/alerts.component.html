@@ -76,7 +76,7 @@
       </label>
       <label class="template-filter">
         <span>{{ localization.translate('alerts.templateFilter') }}</span>
-        <select [ngModel]="templateFilterId()" (ngModelChange)="templateFilterId.set($event)">
+        <select [ngModel]="templateFilterId()" (ngModelChange)="updateTemplateFilter($event)">
           <option [ngValue]="null">{{ localization.translate('alerts.allTemplates') }}</option>
           @for (template of sortedTemplates(); track template.id) {
             <option [ngValue]="template.id">{{ dynamic(template.nameKey) }}</option>

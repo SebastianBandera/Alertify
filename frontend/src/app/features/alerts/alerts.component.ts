@@ -380,6 +380,12 @@ export class AlertsComponent implements OnInit {
     void this.loadAlerts();
   }
 
+  protected updateTemplateFilter(templateId: number | null): void {
+    this.templateFilterId.set(templateId);
+    this.alertPage.set(0);
+    void this.loadAlerts();
+  }
+
   protected addTagFilter(event: Event): void {
     const select = event.target as HTMLSelectElement;
     const tagId = Number(select.value);
