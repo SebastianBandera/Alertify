@@ -530,7 +530,11 @@
                     @if (parameterForm(parameter.key).source === 'TEXT') {
                       <label class="full">
                         <span>{{ localization.translate('alerts.form.value') }}</span>
-                        <input type="text" [ngModel]="parameterForm(parameter.key).textValue" (ngModelChange)="patchParameter(parameter.key, { textValue: $event })" [name]="'text-' + parameter.id" required>
+                        @if (parameter.multiline) {
+                          <textarea [ngModel]="parameterForm(parameter.key).textValue" (ngModelChange)="patchParameter(parameter.key, { textValue: $event })" [name]="'text-' + parameter.id" rows="5" required></textarea>
+                        } @else {
+                          <input type="text" [ngModel]="parameterForm(parameter.key).textValue" (ngModelChange)="patchParameter(parameter.key, { textValue: $event })" [name]="'text-' + parameter.id" required>
+                        }
                       </label>
                     } @else if (parameterForm(parameter.key).source === 'OPTION') {
                       <label class="full">

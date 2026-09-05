@@ -259,7 +259,7 @@ class AlertCsvCodecTest {
     private static AlertTemplateParameterDefinition parameter(AlertTemplateDefinition template, String key, int order) {
         AlertTemplateParameterDefinition definition = new AlertTemplateParameterDefinition(
                 template, key, key + ".label", key + ".description", "java.lang.String",
-                List.of(), true, null, order, true
+                List.of(), true, null, false, order, true
         );
         ReflectionTestUtils.setField(definition, "id", (long) order);
         return definition;

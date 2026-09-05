@@ -37,6 +37,12 @@ public @interface AlertParameter {
      */
     String defaultValue() default "";
 
+    /**
+     * Whether direct text values should be edited as multiple lines in clients
+     * that render the template metadata.
+     */
+    boolean multiline() default false;
+
     int order() default Integer.MAX_VALUE;
 
     boolean required() default true;

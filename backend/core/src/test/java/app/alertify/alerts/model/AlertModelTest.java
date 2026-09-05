@@ -25,7 +25,7 @@ class AlertModelTest {
         AlertTemplateDefinition template = template();
         AlertTemplateParameterDefinition parameter = new AlertTemplateParameterDefinition(
                 template, "endpoint", "endpoint.label", "endpoint.description", String.class.getName(),
-                List.of("google", "cloudflare"), true, "google", 1, true
+                List.of("google", "cloudflare"), true, "google", false, 1, true
         );
         Alert alert = new Alert(template, "Internet", null, "0 */5 * * * *", true);
 
@@ -55,7 +55,7 @@ class AlertModelTest {
         AlertTemplateDefinition template = template();
         AlertTemplateParameterDefinition parameter = new AlertTemplateParameterDefinition(
                 template, "endpoint", "endpoint.label", "endpoint.description", String.class.getName(),
-                List.of("google", "cloudflare"), false, "google", 1, true
+                List.of("google", "cloudflare"), false, "google", false, 1, true
         );
         Alert alert = new Alert(template, "Internet", null, "0 */5 * * * *", true);
 
@@ -68,7 +68,7 @@ class AlertModelTest {
         AlertTemplateDefinition template = template();
         AlertTemplateParameterDefinition parameter = new AlertTemplateParameterDefinition(
                 template, "endpoint", "endpoint.label", "endpoint.description", String.class.getName(),
-                List.of("google", "cloudflare"), false, "google", 1, true
+                List.of("google", "cloudflare"), false, "google", false, 1, true
         );
         Alert alert = new Alert(template, "Internet", null, "0 */5 * * * *", true);
 
@@ -84,7 +84,7 @@ class AlertModelTest {
             () -> new AlertTemplateParameterDefinition(
                 template, "endpoint", "endpoint.label", "endpoint.description",
                 String.class.getName(), List.of("google", "cloudflare"),
-                false, "other", 1, true
+                false, "other", false, 1, true
             )
         );
     }

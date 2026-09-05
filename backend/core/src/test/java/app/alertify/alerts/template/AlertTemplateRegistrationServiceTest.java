@@ -23,6 +23,7 @@ import app.alertify.alerts.model.AlertTemplateParameterDefinition;
 import app.alertify.alerts.templates.HttpsCertificateExpiryAlertTemplate;
 import app.alertify.alerts.templates.InternetConnectionAlertTemplate;
 import app.alertify.alerts.templates.TcpConnectionAlertTemplate;
+import app.alertify.alerts.templates.WebRequestAlertTemplate;
 import app.alertify.alerts.templates.devtools.ConsoleParameterAlertTemplate;
 import app.alertify.alerts.templates.devtools.SimulatedLongRunningAlertTemplate;
 import app.alertify.alerts.templates.devtools.WritableParameterCopyAlertTemplate;
@@ -40,18 +41,21 @@ class AlertTemplateRegistrationServiceTest {
         String httpsCertificateTemplateKey = HttpsCertificateExpiryAlertTemplate.class.getName();
         String templateKey = InternetConnectionAlertTemplate.class.getName();
         String tcpConnectionTemplateKey = TcpConnectionAlertTemplate.class.getName();
+        String webRequestTemplateKey = WebRequestAlertTemplate.class.getName();
         String consoleParameterTemplateKey = ConsoleParameterAlertTemplate.class.getName();
         String devToolsTemplateKey = SimulatedLongRunningAlertTemplate.class.getName();
         String writableParameterCopyTemplateKey = WritableParameterCopyAlertTemplate.class.getName();
         when(templateRepository.findByTemplateKey(httpsCertificateTemplateKey)).thenReturn(Optional.empty());
         when(templateRepository.findByTemplateKey(templateKey)).thenReturn(Optional.empty());
         when(templateRepository.findByTemplateKey(tcpConnectionTemplateKey)).thenReturn(Optional.empty());
+        when(templateRepository.findByTemplateKey(webRequestTemplateKey)).thenReturn(Optional.empty());
         when(templateRepository.findByTemplateKey(consoleParameterTemplateKey)).thenReturn(Optional.empty());
         when(templateRepository.findByTemplateKey(devToolsTemplateKey)).thenReturn(Optional.empty());
         when(templateRepository.findByTemplateKey(writableParameterCopyTemplateKey)).thenReturn(Optional.empty());
         when(parameterRepository.findAllByTemplate_TemplateKey(httpsCertificateTemplateKey)).thenReturn(List.of());
         when(parameterRepository.findAllByTemplate_TemplateKey(templateKey)).thenReturn(List.of());
         when(parameterRepository.findAllByTemplate_TemplateKey(tcpConnectionTemplateKey)).thenReturn(List.of());
+        when(parameterRepository.findAllByTemplate_TemplateKey(webRequestTemplateKey)).thenReturn(List.of());
         when(parameterRepository.findAllByTemplate_TemplateKey(consoleParameterTemplateKey)).thenReturn(List.of());
         when(parameterRepository.findAllByTemplate_TemplateKey(devToolsTemplateKey)).thenReturn(List.of());
         when(parameterRepository.findAllByTemplate_TemplateKey(writableParameterCopyTemplateKey)).thenReturn(List.of());
@@ -61,12 +65,12 @@ class AlertTemplateRegistrationServiceTest {
 
         AlertTemplateRegistrationSummary summary = service.scanAndRegister();
 
-        assertEquals(6, summary.templates());
-        assertEquals(16, summary.parameters());
+        assertEquals(7, summary.templates());
+        assertEquals(23, summary.parameters());
 
         ArgumentCaptor<AlertTemplateDefinition> templateCaptor =
             ArgumentCaptor.forClass(AlertTemplateDefinition.class);
-        verify(templateRepository, times(6)).save(templateCaptor.capture());
+        verify(templateRepository, times(7)).save(templateCaptor.capture());
         AlertTemplateDefinition httpsCertificateTemplate = templateCaptor.getAllValues().get(0);
         assertEquals(httpsCertificateTemplateKey, httpsCertificateTemplate.getTemplateKey());
         assertEquals("alerts.template.httpsCertificate.name", httpsCertificateTemplate.getNameKey());
@@ -91,14 +95,21 @@ class AlertTemplateRegistrationServiceTest {
         assertEquals("alerts.templateTag.network", template.getTags().get(0).nameKey());
         assertEquals("#0EA5E9", template.getTags().get(0).color());
 
-        AlertTemplateDefinition consoleParameterTemplate = templateCaptor.getAllValues().get(3);
+        AlertTemplateDefinition webRequestTemplate = templateCaptor.getAllValues().get(3);
+        assertEquals(webRequestTemplateKey, webRequestTemplate.getTemplateKey());
+        assertEquals(
+            "app/alertify/alerts/templates/WebRequestAlertTemplate.java",
+            webRequestTemplate.getSourcePath()
+        );
+
+        AlertTemplateDefinition consoleParameterTemplate = templateCaptor.getAllValues().get(4);
         assertEquals(1, consoleParameterTemplate.getTags().size());
         assertEquals("alerts.templateTag.development", consoleParameterTemplate.getTags().get(0).nameKey());
         assertNull(consoleParameterTemplate.getTags().get(0).color());
 
         ArgumentCaptor<AlertTemplateParameterDefinition> parameterCaptor =
             ArgumentCaptor.forClass(AlertTemplateParameterDefinition.class);
-        verify(parameterRepository, times(16)).save(parameterCaptor.capture());
+        verify(parameterRepository, times(23)).save(parameterCaptor.capture());
         List<AlertTemplateParameterDefinition> parameters = parameterCaptor.getAllValues();
 
         assertEquals("endpoint", parameters.get(0).getParameterKey());

@@ -72,7 +72,7 @@ final class AlertMapper {
                 parameter.getId(), parameter.getVersion(), parameter.getParameterKey(),
                 parameter.getLabelKey(), parameter.getDescriptionKey(), parameter.getJavaType(),
                 parameter.getOptions(), parameter.isBindingAllowed(), parameter.getDefaultValue(),
-                parameter.getParameterOrder(), parameter.isRequired(), parameter.getCreatedAt(),
+                parameter.isMultiline(), parameter.getParameterOrder(), parameter.isRequired(), parameter.getCreatedAt(),
                 parameter.getUpdatedAt()
         );
     }

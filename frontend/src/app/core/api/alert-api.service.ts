@@ -28,6 +28,7 @@ export interface AlertTemplateParameter {
   readonly options: readonly string[];
   readonly bindingAllowed: boolean;
   readonly defaultValue: string | null;
+  readonly multiline: boolean;
   readonly order: number;
   readonly required: boolean;
   readonly createdAt: string;

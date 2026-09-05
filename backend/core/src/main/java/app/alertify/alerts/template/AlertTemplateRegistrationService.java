@@ -151,6 +151,7 @@ public class AlertTemplateRegistrationService {
                 options,
                 metadata.bindingAllowed(),
                 defaultValue,
+                metadata.multiline(),
                 metadata.order(),
                 metadata.required()
             );
@@ -162,6 +163,7 @@ public class AlertTemplateRegistrationService {
                 options,
                 metadata.bindingAllowed(),
                 defaultValue,
+                metadata.multiline(),
                 metadata.order(),
                 metadata.required()
             );

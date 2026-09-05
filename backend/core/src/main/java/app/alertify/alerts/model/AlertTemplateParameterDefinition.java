@@ -77,6 +77,9 @@ public class AlertTemplateParameterDefinition {
     @Column(name = "default_value", columnDefinition = "text")
     private String defaultValue;
 
+    @Column(nullable = false)
+    private boolean multiline;
+
     @Column(name = "parameter_order", nullable = false)
     private int parameterOrder;
 
@@ -96,12 +99,12 @@ public class AlertTemplateParameterDefinition {
     protected AlertTemplateParameterDefinition() {
     }
 
-    public AlertTemplateParameterDefinition(AlertTemplateDefinition template, String parameterKey, String labelKey, String descriptionKey, String javaType, List<String> options, boolean bindingAllowed, String defaultValue, int parameterOrder, boolean required) {
+    public AlertTemplateParameterDefinition(AlertTemplateDefinition template, String parameterKey, String labelKey, String descriptionKey, String javaType, List<String> options, boolean bindingAllowed, String defaultValue, boolean multiline, int parameterOrder, boolean required) {
         this.template = Objects.requireNonNull(template, "template must not be null");
         this.parameterKey = Objects.requireNonNull(parameterKey, "parameterKey must not be null");
         synchronize(
             labelKey, descriptionKey, javaType, options, bindingAllowed,
-            defaultValue, parameterOrder, required
+            defaultValue, multiline, parameterOrder, required
         );
     }
 
@@ -145,6 +148,10 @@ public class AlertTemplateParameterDefinition {
         return defaultValue;
     }
 
+    public boolean isMultiline() {
+        return multiline;
+    }
+
     public int getParameterOrder() {
         return parameterOrder;
     }
@@ -161,13 +168,14 @@ public class AlertTemplateParameterDefinition {
         return updatedAt;
     }
 
-    public void synchronize(String labelKey, String descriptionKey, String javaType, List<String> options, boolean bindingAllowed, String defaultValue, int parameterOrder, boolean required) {
+    public void synchronize(String labelKey, String descriptionKey, String javaType, List<String> options, boolean bindingAllowed, String defaultValue, boolean multiline, int parameterOrder, boolean required) {
         this.labelKey = Objects.requireNonNull(labelKey, "labelKey must not be null");
         this.descriptionKey = Objects.requireNonNull(descriptionKey, "descriptionKey must not be null");
         this.javaType = Objects.requireNonNull(javaType, "javaType must not be null");
         replaceOptions(options);
         this.bindingAllowed = bindingAllowed;
         this.defaultValue = defaultValue;
+        this.multiline = multiline;
         validateBindingMetadata();
         if (parameterOrder < 0)
             throw new IllegalArgumentException("parameterOrder must not be negative");
