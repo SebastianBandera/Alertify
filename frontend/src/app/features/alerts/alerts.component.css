@@ -68,8 +68,18 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monosp
 .tag { --tag-color: #6d5dfc; display: inline-flex; align-items: center; padding: 5px 8px; border: 1px solid color-mix(in srgb, var(--tag-color) 38%, white); border-radius: 999px; background: color-mix(in srgb, var(--tag-color) 12%, white); color: color-mix(in srgb, var(--tag-color) 76%, #101828); font-size: 11px; font-weight: 700; white-space: nowrap; }
 .muted { color: var(--text-muted); font-size: 12px; }
 .actions { white-space: nowrap; }
+.actions__group { display: flex; align-items: center; gap: 2px; }
 .actions button { padding: 4px 6px; border: 0; background: transparent; color: var(--primary-strong); cursor: pointer; font: inherit; font-weight: 700; }
 .actions .danger { color: #b42318; }
+
+/* "Run now" is an execution, not an edit: it gets a button shape of its own,
+   set apart from the Edit/Delete text actions by a divider. */
+.actions button.actions__run { display: inline-flex; align-items: center; gap: 6px; margin-right: 6px; padding: 5px 11px; border: 1px solid #d0d5dd; border-radius: 7px; background: white; color: #344054; }
+.actions button.actions__run:hover:not(:disabled) { border-color: var(--primary); background: #f5f4ff; color: var(--primary-strong); }
+.actions button.actions__run:disabled { cursor: not-allowed; opacity: .5; }
+/* Play triangle drawn with borders, so no glyph can turn into an emoji. */
+.actions__run-icon { flex: none; width: 0; height: 0; border-style: solid; border-width: 4px 0 4px 6px; border-color: transparent transparent transparent currentColor; }
+.actions__divider { flex: none; width: 1px; height: 18px; margin-right: 6px; background: var(--border); }
 .template-count { min-width: 30px; padding: 3px 8px; border: 0; border-radius: 7px; background: #f4f3ff; color: var(--primary-strong); cursor: pointer; font: inherit; font-weight: 750; text-decoration: underline; text-underline-offset: 2px; }
 .template-count:hover { background: #ebe9fe; }
 details summary { color: var(--primary-strong); cursor: pointer; font-weight: 700; }

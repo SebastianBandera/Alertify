@@ -149,16 +149,21 @@
                 </td>
                 <td>{{ alert.updatedAt | date:'medium' }}</td>
                 <td class="actions">
-                  <button
-                    type="button"
-                    [disabled]="runningAlertId() !== null"
-                    [title]="localization.translate('alerts.runNowHint')"
-                    (click)="runAlertNow(alert)"
-                  >
-                    {{ localization.translate(runningAlertId() === alert.id ? 'alerts.runStarting' : 'alerts.runNow') }}
-                  </button>
-                  <button type="button" (click)="openEdit(alert)">{{ localization.translate('alerts.edit') }}</button>
-                  <button class="danger" type="button" (click)="deleteAlert(alert)">{{ localization.translate('alerts.delete') }}</button>
+                  <div class="actions__group">
+                    <button
+                      class="actions__run"
+                      type="button"
+                      [disabled]="runningAlertId() !== null"
+                      [title]="localization.translate('alerts.runNowHint')"
+                      (click)="runAlertNow(alert)"
+                    >
+                      <span class="actions__run-icon" aria-hidden="true"></span>
+                      {{ localization.translate(runningAlertId() === alert.id ? 'alerts.runStarting' : 'alerts.runNow') }}
+                    </button>
+                    <span class="actions__divider" aria-hidden="true"></span>
+                    <button type="button" (click)="openEdit(alert)">{{ localization.translate('alerts.edit') }}</button>
+                    <button class="danger" type="button" (click)="deleteAlert(alert)">{{ localization.translate('alerts.delete') }}</button>
+                  </div>
                 </td>
               </tr>
             }
