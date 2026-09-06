@@ -6,8 +6,11 @@ import { WorkerCapability } from './alert-api.service';
 
 export interface WorkerTaskStatus {
   readonly executionId: string;
-  readonly alertId: number;
-  readonly alertName: string;
+  readonly kind: 'ALERT' | 'PROCEDURE';
+  readonly resourceId: number;
+  readonly resourceName: string;
+  readonly parentExecutionId: string | null;
+  readonly depth: number;
   readonly queuedAt: string;
   readonly workStartedAt: string | null;
   readonly elapsedMillis: number;
@@ -26,6 +29,9 @@ export interface WorkerNodeStatus {
   readonly maxConcurrentAlerts: number;
   readonly runningTasks: readonly WorkerTaskStatus[];
   readonly waitingTasks: readonly WorkerTaskStatus[];
+  readonly totalExecutedProcedures: number;
+  readonly runningProcedureCount: number;
+  readonly runningProcedures: readonly WorkerTaskStatus[];
   readonly error: string | null;
 }
 

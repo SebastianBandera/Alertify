@@ -32,6 +32,7 @@ interface ParameterForm {
   textValue: string;
   configurationId: number | null;
   secretId: number | null;
+  procedureId: number | null;
 }
 
 interface AlertForm {
@@ -52,7 +53,7 @@ interface TagForm {
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100, 250, 500, 1000] as const;
 const PAGE_SIZE_STORAGE_KEY = 'alertify.alerts.page-size';
-const EMPTY_BINDINGS: AlertBindingOptions = { configurations: [], secrets: [] };
+const EMPTY_BINDINGS: AlertBindingOptions = { configurations: [], secrets: [], procedures: [] };
 const NOTICE_TIMEOUT_SECONDS = 8;
 
 function readStoredPageSize(): number {
@@ -496,6 +497,7 @@ export class AlertsComponent implements OnInit {
         textValue: value.textValue ?? '',
         configurationId: value.configurationId,
         secretId: value.secretId,
+        procedureId: value.procedureId,
       };
     }
     this.editingAlert.set(alert);
@@ -597,6 +599,7 @@ export class AlertsComponent implements OnInit {
         textValue: source === 'TEXT' ? value.textValue : null,
         configurationId: source === 'CONFIGURATION' ? value.configurationId : null,
         secretId: source === 'SECRET' ? value.secretId : null,
+        procedureId: source === 'PROCEDURE' ? value.procedureId : null,
       });
     }
 
@@ -836,10 +839,13 @@ export class AlertsComponent implements OnInit {
   private defaultParameterForm(parameter: AlertTemplateParameter): ParameterForm {
     return {
       configured: parameter.required || parameter.defaultValue !== null || !parameter.bindingAllowed,
-      source: parameter.options.length ? 'OPTION' : 'TEXT',
+      source: parameter.javaType === 'app.alertify.procedures.Procedure'
+        ? 'PROCEDURE'
+        : parameter.options.length ? 'OPTION' : 'TEXT',
       textValue: parameter.defaultValue ?? parameter.options[0] ?? '',
       configurationId: null,
       secretId: null,
+      procedureId: null,
     };
   }
 

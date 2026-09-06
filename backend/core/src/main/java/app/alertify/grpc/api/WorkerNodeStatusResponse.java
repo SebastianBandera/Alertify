@@ -19,6 +19,9 @@ public record WorkerNodeStatusResponse(
     int maxConcurrentAlerts,
     List<WorkerTaskStatusResponse> runningTasks,
     List<WorkerTaskStatusResponse> waitingTasks,
+    long totalExecutedProcedures,
+    int runningProcedureCount,
+    List<WorkerTaskStatusResponse> runningProcedures,
     String error
 ) {
 }

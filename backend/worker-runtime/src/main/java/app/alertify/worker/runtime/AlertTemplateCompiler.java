@@ -27,11 +27,21 @@ import javax.tools.StandardLocation;
 import javax.tools.ToolProvider;
 
 import app.alertify.alerts.AlertEvaluator;
+import app.alertify.procedures.ProcedureEvaluator;
+import app.alertify.worker.grpc.TemplateKind;
 
+/**
+ * Compiles alert and procedure template sources received from the backend and
+ * caches the resulting classes per fully qualified name. The cached entry is
+ * keyed by the source checksum, so a template is only recompiled when the
+ * backend synchronizes a different source; a mismatch is reported as a
+ * synchronization error instead of silently running stale bytecode.
+ */
 class AlertTemplateCompiler {
 
     private final WorkerRuntimeProperties properties;
     private final Map<String, CompiledAlertTemplate> templates = new ConcurrentHashMap<>();
+    private final Map<String, CompiledProcedureTemplate> procedures = new ConcurrentHashMap<>();
 
     AlertTemplateCompiler(WorkerRuntimeProperties properties) {
         this.properties = properties;
@@ -39,6 +49,11 @@ class AlertTemplateCompiler {
 
     boolean isAvailable(String className, String checksum) {
         CompiledAlertTemplate template = templates.get(className);
+        return template != null && template.checksum().equals(checksum);
+    }
+
+    boolean isProcedureAvailable(String className, String checksum) {
+        CompiledProcedureTemplate template = procedures.get(className);
         return template != null && template.checksum().equals(checksum);
     }
 
@@ -50,8 +65,23 @@ class AlertTemplateCompiler {
         return template;
     }
 
+    CompiledProcedureTemplate getProcedure(String className, String checksum) {
+        CompiledProcedureTemplate template = procedures.get(className);
+        if (template == null || !template.checksum().equals(checksum))
+            throw new IllegalStateException("Procedure template source is not synchronized");
+
+        return template;
+    }
+
     synchronized void synchronize(String className, String checksum, String source) {
-        if (isAvailable(className, checksum))
+        synchronize(className, checksum, source, TemplateKind.TEMPLATE_KIND_ALERT);
+    }
+
+    synchronized void synchronize(String className, String checksum, String source, TemplateKind kind) {
+        TemplateKind resolvedKind = kind == TemplateKind.TEMPLATE_KIND_UNSPECIFIED
+                ? TemplateKind.TEMPLATE_KIND_ALERT : kind;
+        if (resolvedKind == TemplateKind.TEMPLATE_KIND_ALERT && isAvailable(className, checksum)
+                || resolvedKind == TemplateKind.TEMPLATE_KIND_PROCEDURE && isProcedureAvailable(className, checksum))
             return;
 
         if (!SourceVersion.isName(className))
@@ -92,18 +122,27 @@ class AlertTemplateCompiler {
             throw new TemplateCompilationException("Could not compile alert template " + className, exception);
         }
 
-        templates.put(className, load(className, outputDirectory, checksum));
+        load(className, outputDirectory, checksum, resolvedKind);
     }
 
-    private CompiledAlertTemplate load(String className, Path outputDirectory, String checksum) {
+    private void load(String className, Path outputDirectory, String checksum, TemplateKind kind) {
         try {
             URLClassLoader classLoader = new URLClassLoader(new URL[] { outputDirectory.toUri().toURL() }, AlertEvaluator.class.getClassLoader());
             Class<?> loaded = Class.forName(className, true, classLoader);
-            if (!AlertEvaluator.class.isAssignableFrom(loaded)) {
+            if (kind == TemplateKind.TEMPLATE_KIND_ALERT && !AlertEvaluator.class.isAssignableFrom(loaded)) {
                 classLoader.close();
                 throw new TemplateCompilationException("Compiled class does not implement AlertEvaluator: " + className);
             }
-            return new CompiledAlertTemplate(checksum, loaded.asSubclass(AlertEvaluator.class));
+            if (kind == TemplateKind.TEMPLATE_KIND_PROCEDURE && !ProcedureEvaluator.class.isAssignableFrom(loaded)) {
+                classLoader.close();
+                throw new TemplateCompilationException("Compiled class does not implement ProcedureEvaluator: " + className);
+            }
+            if (kind == TemplateKind.TEMPLATE_KIND_ALERT)
+                templates.put(className, new CompiledAlertTemplate(checksum, loaded.asSubclass(AlertEvaluator.class)));
+            else if (kind == TemplateKind.TEMPLATE_KIND_PROCEDURE)
+                procedures.put(className, new CompiledProcedureTemplate(checksum, loaded.asSubclass(ProcedureEvaluator.class)));
+            else
+                throw new TemplateCompilationException("Unsupported template kind " + kind);
         } catch (IOException | ClassNotFoundException | LinkageError exception) {
             throw new TemplateCompilationException("Could not load compiled alert template " + className, exception);
         }

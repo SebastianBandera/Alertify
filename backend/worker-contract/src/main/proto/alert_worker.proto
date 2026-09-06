@@ -10,9 +10,27 @@ import "google/protobuf/empty.proto";
 import "google/protobuf/timestamp.proto";
 
 service AlertWorkerService {
-  rpc ExecuteAlert(ExecuteAlertRequest) returns (ExecuteAlertResponse);
-  rpc SynchronizeTemplate(SynchronizeTemplateRequest) returns (SynchronizeTemplateResponse);
+  rpc Execute(stream ExecutionClientMessage) returns (stream ExecutionWorkerMessage);
   rpc GetStatus(google.protobuf.Empty) returns (WorkerStatusResponse);
+}
+
+message ExecutionClientMessage {
+  oneof payload {
+    ExecuteAlertRequest start_alert = 1;
+    ExecuteProcedureRequest start_procedure = 2;
+    SynchronizeTemplateRequest template_source = 3;
+    ProcedureInvocationReply procedure_reply = 4;
+  }
+}
+
+message ExecutionWorkerMessage {
+  oneof payload {
+    SourceRequired source_required = 1;
+    SynchronizeTemplateResponse template_synchronization = 2;
+    ProcedureInvocationCall procedure_call = 3;
+    AlertExecutionResult alert_result = 4;
+    ProcedureExecutionResult procedure_result = 5;
+  }
 }
 
 message ExecuteAlertRequest {
@@ -34,6 +52,8 @@ message AlertParameter {
   int64 configuration_id = 6;
   int64 secret_id = 7;
   AlertParameterValueSource source = 8;
+  int64 procedure_id = 9;
+  string invocation_token = 10;
 }
 
 enum AlertParameterValueSource {
@@ -41,13 +61,66 @@ enum AlertParameterValueSource {
   ALERT_PARAMETER_VALUE_SOURCE_TEXT = 1;
   ALERT_PARAMETER_VALUE_SOURCE_CONFIGURATION = 2;
   ALERT_PARAMETER_VALUE_SOURCE_SECRET = 3;
+  ALERT_PARAMETER_VALUE_SOURCE_PROCEDURE = 4;
 }
 
-message ExecuteAlertResponse {
+message ExecuteProcedureRequest {
+  string execution_id = 1;
+  int64 procedure_id = 2;
+  string procedure_name = 3;
+  int64 procedure_version = 4;
+  string template_class_name = 5;
+  string source_checksum = 6;
+  repeated AlertParameter parameters = 7;
+  string root_execution_id = 8;
+  string parent_execution_id = 9;
+  ProcedureParentKind parent_kind = 10;
+  int32 depth = 11;
+}
+
+message ProcedureInvocationCall {
+  string invocation_id = 1;
+  string invocation_token = 2;
+}
+
+message ProcedureInvocationReply {
+  string invocation_id = 1;
   oneof outcome {
-    SourceRequired source_required = 1;
-    AlertExecutionResult result = 2;
+    ProcedureInvocationResult result = 2;
+    ProcedureInvocationFailure failure = 3;
   }
+}
+
+message InvokeProcedureResponse {
+  oneof outcome {
+    ProcedureInvocationResult result = 1;
+    ProcedureInvocationFailure failure = 2;
+  }
+}
+
+message ProcedureInvocationResult {
+  string execution_id = 1;
+  string result_json = 2;
+}
+
+enum ProcedureInvocationFailureKind {
+  PROCEDURE_INVOCATION_FAILURE_KIND_UNSPECIFIED = 0;
+  PROCEDURE_INVOCATION_FAILURE_KIND_DISABLED = 1;
+  PROCEDURE_INVOCATION_FAILURE_KIND_DEPTH_EXCEEDED = 2;
+  PROCEDURE_INVOCATION_FAILURE_KIND_ERROR = 3;
+}
+
+message ProcedureInvocationFailure {
+  ProcedureInvocationFailureKind kind = 1;
+  string execution_id = 2;
+  string message = 3;
+  ExecutionError error = 4;
+}
+
+enum ProcedureParentKind {
+  PROCEDURE_PARENT_KIND_UNSPECIFIED = 0;
+  PROCEDURE_PARENT_KIND_ALERT = 1;
+  PROCEDURE_PARENT_KIND_PROCEDURE = 2;
 }
 
 message SourceRequired {
@@ -59,6 +132,13 @@ message SynchronizeTemplateRequest {
   string template_class_name = 1;
   string source_checksum = 2;
   string source = 3;
+  TemplateKind template_kind = 4;
+}
+
+enum TemplateKind {
+  TEMPLATE_KIND_UNSPECIFIED = 0;
+  TEMPLATE_KIND_ALERT = 1;
+  TEMPLATE_KIND_PROCEDURE = 2;
 }
 
 message SynchronizeTemplateResponse {
@@ -85,6 +165,19 @@ message AlertExecutionResult {
   string worker_instance_id = 9;
   repeated WritableConfigurationValue writable_configuration_values = 10;
   repeated WritableSecretValue writable_secret_values = 11;
+}
+
+message ProcedureExecutionResult {
+  bool successful = 1;
+  google.protobuf.Timestamp started_at = 2;
+  google.protobuf.Timestamp work_started_at = 3;
+  google.protobuf.Timestamp finished_at = 4;
+  string result_json = 5;
+  ExecutionError error = 6;
+  string worker_name = 7;
+  string worker_instance_id = 8;
+  repeated WritableConfigurationValue writable_configuration_values = 9;
+  repeated WritableSecretValue writable_secret_values = 10;
 }
 
 message WritableConfigurationValue {
@@ -118,6 +211,9 @@ message WorkerStatusResponse {
   string worker_instance_id = 8;
   int32 max_concurrent_alerts = 9;
   google.protobuf.Timestamp worker_started_at = 10;
+  int64 total_executed_procedures = 11;
+  int32 running_procedure_count = 12;
+  repeated WorkerTask running_procedures = 13;
 }
 
 message WorkerTask {
@@ -126,4 +222,13 @@ message WorkerTask {
   string alert_name = 3;
   google.protobuf.Timestamp queued_at = 4;
   google.protobuf.Timestamp work_started_at = 5;
+  WorkerTaskKind kind = 6;
+  string parent_execution_id = 7;
+  int32 depth = 8;
+}
+
+enum WorkerTaskKind {
+  WORKER_TASK_KIND_UNSPECIFIED = 0;
+  WORKER_TASK_KIND_ALERT = 1;
+  WORKER_TASK_KIND_PROCEDURE = 2;
 }

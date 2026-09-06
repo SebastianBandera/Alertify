@@ -43,6 +43,7 @@ import app.alertify.jpa.repository.AlertTemplateDefinitionRepository;
 import app.alertify.jpa.repository.ApplicationConfigurationRepository;
 import app.alertify.jpa.repository.ApplicationSecretRepository;
 import app.alertify.jpa.repository.TagRepository;
+import app.alertify.jpa.repository.ProcedureRepository;
 import app.alertify.worker.contract.WorkerCapability;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.StringNode;
@@ -61,6 +62,7 @@ class AlertCsvServiceTest {
     @Mock private ApplicationConfigurationRepository configurationRepository;
     @Mock private ApplicationSecretRepository secretRepository;
     @Mock private TagRepository tagRepository;
+    @Mock private ProcedureRepository procedureRepository;
     @Mock private AlertManagementService alertManagementService;
 
     private final AlertTemplateDefinition template = template(TEMPLATE_KEY, 7L);
@@ -231,7 +233,7 @@ class AlertCsvServiceTest {
     private AlertCsvService service() {
         return new AlertCsvService(
                 alertRepository, parameterValueRepository, templateRepository, configurationRepository,
-                secretRepository, tagRepository, alertManagementService,
+                secretRepository, procedureRepository, tagRepository, alertManagementService,
                 new AlertCsvCodec(JsonMapper.builder().build())
         );
     }

@@ -27,6 +27,14 @@ import app.alertify.worker.contract.WorkerCapability;
 import app.alertify.worker.grpc.WorkerStatusResponse;
 import app.alertify.worker.grpc.WorkerTask;
 
+/**
+ * Inspects the discovered workers in parallel and selects the one that will run
+ * an execution. Selection is serialized: among the workers supporting the
+ * requested capability it keeps those with the lowest effective load, which
+ * counts the reservations already handed out but not yet visible in the worker
+ * status, and rotates between ties so equally loaded workers take turns. The
+ * returned reservation must be closed to release that count.
+ */
 @Service
 public class WorkerStatusService implements AutoCloseable {
 
@@ -129,7 +137,7 @@ public class WorkerStatusService implements AutoCloseable {
         if (!result.available()) {
             return new WorkerNodeStatusResponse(
                     result.endpoint().toString(), false, null, null, null, result.capabilities(),
-                    0, 0, 0, 0, List.of(), List.of(), result.error()
+                    0, 0, 0, 0, List.of(), List.of(), 0, 0, List.of(), result.error()
             );
         }
         WorkerStatusResponse status = result.status();
@@ -143,6 +151,8 @@ public class WorkerStatusService implements AutoCloseable {
                 status.getMaxConcurrentAlerts(),
                 status.getRunningTasksList().stream().map(task -> task(task, now, true)).toList(),
                 status.getWaitingTasksList().stream().map(task -> task(task, now, false)).toList(),
+                status.getTotalExecutedProcedures(), status.getRunningProcedureCount(),
+                status.getRunningProceduresList().stream().map(task -> task(task, now, true)).toList(),
                 null
         );
     }
@@ -152,7 +162,8 @@ public class WorkerStatusService implements AutoCloseable {
         Instant workStartedAt = task.hasWorkStartedAt() ? instant(task.getWorkStartedAt()) : null;
         Instant elapsedFrom = running && workStartedAt != null ? workStartedAt : queuedAt;
         return new WorkerTaskStatusResponse(
-                task.getExecutionId(), task.getAlertId(), task.getAlertName(), queuedAt,
+                task.getExecutionId(), task.getKind().name(), task.getAlertId(), task.getAlertName(),
+                task.getParentExecutionId().isBlank() ? null : task.getParentExecutionId(), task.getDepth(), queuedAt,
                 workStartedAt, Math.max(0, Duration.between(elapsedFrom, now).toMillis())
         );
     }

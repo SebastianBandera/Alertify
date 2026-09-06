@@ -18,6 +18,7 @@ import app.alertify.alerts.model.AlertTemplateDefinition;
 import app.alertify.alerts.model.AlertTemplateParameterDefinition;
 import app.alertify.configuration.api.TagResponse;
 
+/** Converts alert entities into the API responses served by the controllers. */
 final class AlertMapper {
 
     private AlertMapper() {
@@ -85,6 +86,8 @@ final class AlertMapper {
                 value.getConfiguration() == null ? null : value.getConfiguration().getName(),
                 value.getSecret() == null ? null : value.getSecret().getId(),
                 value.getSecret() == null ? null : value.getSecret().getName(),
+                value.getProcedure() == null ? null : value.getProcedure().getId(),
+                value.getProcedure() == null ? null : value.getProcedure().getName(),
                 value.getCreatedAt(), value.getUpdatedAt()
         );
     }

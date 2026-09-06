@@ -18,6 +18,8 @@ public record AlertParameterValueResponse(
     String configurationName,
     Long secretId,
     String secretName,
+    Long procedureId,
+    String procedureName,
     Instant createdAt,
     Instant updatedAt
 ) {

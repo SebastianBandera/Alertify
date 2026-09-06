@@ -41,10 +41,16 @@ public class WritableConfigurationService {
 
     public void apply(long alertId, String alertName, UUID executionId, Iterable<WritableConfigurationValue> values) {
         for (WritableConfigurationValue value : values)
-            applyOne(alertId, alertName, executionId, value);
+            applyOne(new Owner("alert", alertId, alertName, "CONFIGURATION_OVERWRITTEN_BY_ALERT"), executionId, value);
     }
 
-    private void applyOne(long alertId, String alertName, UUID executionId, WritableConfigurationValue result) {
+    public void applyProcedure(long procedureId, String procedureName, UUID executionId, Iterable<WritableConfigurationValue> values) {
+        for (WritableConfigurationValue value : values)
+            applyOne(new Owner("procedure", procedureId, procedureName,
+                    "CONFIGURATION_OVERWRITTEN_BY_PROCEDURE"), executionId, value);
+    }
+
+    private void applyOne(Owner owner, UUID executionId, WritableConfigurationValue result) {
         ApplicationConfiguration configuration = configurationRepository.findById(result.getConfigurationId()).orElse(null);
         if (configuration == null || !configuration.isWritable())
             return;
@@ -70,11 +76,11 @@ public class WritableConfigurationService {
             configurationRepository.flush();
             cacheInvalidator.evictAfterCommit(configuration.getId(), Set.of(configuration.getName()));
 
-            Map<String, Object> data = context(alertId, alertName, executionId, result, configuration);
+            Map<String, Object> data = context(owner, executionId, result, configuration);
             data.put("valueType", configuration.getValueType().name());
-            eventLogger.successAfterCommit("CONFIGURATION_OVERWRITTEN_BY_ALERT", data);
+            eventLogger.successAfterCommit(owner.successEvent(), data);
         } catch (RuntimeException exception) {
-            Map<String, Object> data = context(alertId, alertName, executionId, result, configuration);
+            Map<String, Object> data = context(owner, executionId, result, configuration);
             data.put("reason", exception.getMessage() == null ? exception.getClass().getName() : exception.getMessage());
             eventLogger.errorAfterCommit("CONFIGURATION_OVERWRITE_REJECTED", data);
         }
@@ -100,14 +106,16 @@ public class WritableConfigurationService {
         return first.equals(second);
     }
 
-    private static Map<String, Object> context(long alertId, String alertName, UUID executionId, WritableConfigurationValue result, ApplicationConfiguration configuration) {
+    private static Map<String, Object> context(Owner owner, UUID executionId, WritableConfigurationValue result, ApplicationConfiguration configuration) {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("configurationId", configuration.getId());
         data.put("configurationName", configuration.getName());
-        data.put("alertId", alertId);
-        data.put("alertName", alertName);
+        data.put(owner.type() + "Id", owner.id());
+        data.put(owner.type() + "Name", owner.name());
         data.put("executionId", executionId);
         data.put("parameterName", result.getParameterName());
         return data;
     }
+
+    private record Owner(String type, long id, String name, String successEvent) { }
 }

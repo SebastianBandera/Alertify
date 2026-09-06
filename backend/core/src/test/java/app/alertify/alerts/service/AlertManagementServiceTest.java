@@ -40,6 +40,7 @@ import app.alertify.jpa.repository.AlertTemplateParameterDefinitionRepository;
 import app.alertify.jpa.repository.ApplicationConfigurationRepository;
 import app.alertify.jpa.repository.ApplicationSecretRepository;
 import app.alertify.jpa.repository.TagRepository;
+import app.alertify.jpa.repository.ProcedureRepository;
 import app.alertify.logging.ApplicationEventLogger;
 import app.alertify.worker.contract.WorkerCapability;
 
@@ -56,6 +57,7 @@ class AlertManagementServiceTest {
     @Mock private ApplicationConfigurationRepository configurationRepository;
     @Mock private ApplicationSecretRepository secretRepository;
     @Mock private TagRepository tagRepository;
+    @Mock private ProcedureRepository procedureRepository;
     @Mock private ApplicationEventLogger eventLogger;
     @Mock private AlertScheduleService scheduleService;
     @Mock private AlertExecutionOrchestrator executionOrchestrator;
@@ -150,7 +152,7 @@ class AlertManagementServiceTest {
         return new AlertManagementService(
                 alertRepository, templateRepository, templateParameterRepository, parameterValueRepository,
                 executionRepository, stateRepository, configurationRepository, secretRepository,
-                tagRepository, eventLogger, scheduleService, executionOrchestrator
+                procedureRepository, tagRepository, eventLogger, scheduleService, executionOrchestrator
         );
     }
 

@@ -35,14 +35,15 @@ import app.alertify.grpc.discovery.WorkerEndpoint;
 import app.alertify.grpc.discovery.WorkerReservation;
 import app.alertify.grpc.discovery.WorkerStatusService;
 import app.alertify.logging.ApplicationEventLogger;
+import app.alertify.procedures.Procedure;
+import app.alertify.procedures.execution.ProcedureExecutionOrchestrator;
+import app.alertify.procedures.execution.ProcedureInvocationRegistry;
+import app.alertify.procedures.execution.ProcedureInvocationTokenService;
 import app.alertify.worker.contract.WorkerCapability;
 import app.alertify.worker.grpc.AlertExecutionResult;
 import app.alertify.worker.grpc.AlertParameterValueSource;
 import app.alertify.worker.grpc.ExecuteAlertRequest;
-import app.alertify.worker.grpc.ExecuteAlertResponse;
-import app.alertify.worker.grpc.SourceRequired;
 import app.alertify.worker.grpc.SynchronizeTemplateRequest;
-import app.alertify.worker.grpc.SynchronizeTemplateResponse;
 import app.alertify.worker.grpc.WorkerExecutionStatus;
 import app.alertify.worker.grpc.WorkerStatusResponse;
 
@@ -59,6 +60,9 @@ class AlertExecutionOrchestratorTest {
     @Mock private AlertWorkerClient workerClient;
     @Mock private ApplicationEventLogger eventLogger;
     @Mock private WorkerReservation reservation;
+    @Mock private ProcedureInvocationTokenService procedureTokenService;
+    @Mock private ProcedureInvocationRegistry procedureInvocationRegistry;
+    @Mock private ProcedureExecutionOrchestrator procedureExecutionOrchestrator;
 
     private AlertExecutionOrchestrator orchestrator;
 
@@ -74,7 +78,7 @@ class AlertExecutionOrchestratorTest {
         ));
         orchestrator = new AlertExecutionOrchestrator(
                 preparationService, persistenceService, workerStatusService, workerClient,
-                properties(), eventLogger
+                properties(), eventLogger, procedureTokenService, procedureInvocationRegistry, procedureExecutionOrchestrator
         );
     }
 
@@ -84,16 +88,12 @@ class AlertExecutionOrchestratorTest {
     }
 
     @Test
-    void synchronizesMissingSourceAndRetriesTheExecutionOnTheSameWorker() {
+    void suppliesTemplateSourceOnTheSameExecutionStream() {
         PreparedAlertExecution prepared = prepared();
         AlertExecutionResult result = successfulResult();
         when(preparationService.prepare(7L, false)).thenReturn(Optional.of(prepared));
         when(workerStatusService.reserve(WorkerCapability.STANDARD)).thenReturn(reservation);
-        when(workerClient.execute(eq(ENDPOINT), any(), eq(Duration.ofMinutes(30))))
-                .thenReturn(sourceRequired(), ExecuteAlertResponse.newBuilder().setResult(result).build());
-        when(workerClient.synchronize(
-                eq(ENDPOINT), any(), eq(Duration.ofSeconds(30))
-        )).thenReturn(SynchronizeTemplateResponse.newBuilder().setSynchronized(true).build());
+        when(workerClient.executeAlert(eq(ENDPOINT), any(), any(), any(Duration.class), any())).thenReturn(result);
 
         orchestrator.trigger(7L, "Sample alert", false);
 
@@ -102,10 +102,9 @@ class AlertExecutionOrchestratorTest {
         );
         ArgumentCaptor<ExecuteAlertRequest> executionRequest =
                 ArgumentCaptor.forClass(ExecuteAlertRequest.class);
-        verify(workerClient, times(2)).execute(
-                eq(ENDPOINT), executionRequest.capture(), eq(Duration.ofMinutes(30))
-        );
-        assertThat(executionRequest.getAllValues()).allSatisfy(request -> {
+        ArgumentCaptor<SynchronizeTemplateRequest> synchronizationRequest = ArgumentCaptor.forClass(SynchronizeTemplateRequest.class);
+        verify(workerClient).executeAlert(eq(ENDPOINT), executionRequest.capture(), synchronizationRequest.capture(), any(Duration.class), any());
+        assertThat(executionRequest.getValue()).satisfies(request -> {
             assertThat(request.getAlertId()).isEqualTo(7L);
             assertThat(request.getAlertName()).isEqualTo("Sample alert");
             assertThat(request.getTemplateClassName()).isEqualTo("dynamic.SampleAlert");
@@ -120,11 +119,6 @@ class AlertExecutionOrchestratorTest {
             assertThat(request.getParameters(0).getSecretId()).isEqualTo(73L);
             assertThat(request.getParameters(0).getConfigurationId()).isZero();
         });
-        ArgumentCaptor<SynchronizeTemplateRequest> synchronizationRequest =
-                ArgumentCaptor.forClass(SynchronizeTemplateRequest.class);
-        verify(workerClient).synchronize(
-                eq(ENDPOINT), synchronizationRequest.capture(), eq(Duration.ofSeconds(30))
-        );
         assertThat(synchronizationRequest.getValue().getTemplateClassName())
                 .isEqualTo("dynamic.SampleAlert");
         assertThat(synchronizationRequest.getValue().getSource()).isEqualTo("source");
@@ -143,8 +137,7 @@ class AlertExecutionOrchestratorTest {
         );
         when(preparationService.prepare(7L, false)).thenReturn(Optional.of(prepared));
         when(workerStatusService.reserve(WorkerCapability.STANDARD)).thenReturn(reservation);
-        when(workerClient.execute(eq(ENDPOINT), any(), eq(Duration.ofMinutes(30))))
-                .thenReturn(ExecuteAlertResponse.newBuilder().setResult(successfulResult()).build());
+        when(workerClient.executeAlert(eq(ENDPOINT), any(), any(), any(Duration.class), any())).thenReturn(successfulResult());
 
         orchestrator.trigger(7L, "Sample alert", false);
 
@@ -152,7 +145,7 @@ class AlertExecutionOrchestratorTest {
                 eq(7L), any(UUID.class), eq(ENDPOINT), any(AlertExecutionResult.class)
         );
         ArgumentCaptor<ExecuteAlertRequest> request = ArgumentCaptor.forClass(ExecuteAlertRequest.class);
-        verify(workerClient).execute(eq(ENDPOINT), request.capture(), eq(Duration.ofMinutes(30)));
+        verify(workerClient).executeAlert(eq(ENDPOINT), request.capture(), any(), any(Duration.class), any());
         assertThat(request.getValue().getParameters(0).getSource())
                 .isEqualTo(AlertParameterValueSource.ALERT_PARAMETER_VALUE_SOURCE_SECRET);
         assertThat(request.getValue().getParameters(0).getSecretId()).isZero();
@@ -161,18 +154,48 @@ class AlertExecutionOrchestratorTest {
     }
 
     @Test
+    void transportsAProcedureAsANonNullSignedHandle() {
+        PreparedAlertExecution prepared = new PreparedAlertExecution(
+                7L, "Sample alert", "dynamic.SampleAlert", WorkerCapability.STANDARD,
+                CHECKSUM, "source", "previous-state",
+                List.of(new ResolvedAlertParameter(
+                        "procedure", Procedure.class.getName(), null, true,
+                        AlertParameterSource.PROCEDURE, null, null, 42L, false
+                ))
+        );
+        when(preparationService.prepare(7L, false)).thenReturn(Optional.of(prepared));
+        when(workerStatusService.reserve(WorkerCapability.STANDARD)).thenReturn(reservation);
+        when(procedureTokenService.issue(eq(42L), any(UUID.class), any(UUID.class), any(),
+                eq(1), any(Instant.class))).thenReturn("signed-token");
+        when(workerClient.executeAlert(eq(ENDPOINT), any(), any(), any(Duration.class), any())).thenReturn(successfulResult());
+
+        orchestrator.trigger(7L, "Sample alert", false);
+
+        verify(persistenceService, org.mockito.Mockito.timeout(5000)).persistWorkerResult(
+                eq(7L), any(UUID.class), eq(ENDPOINT), any(AlertExecutionResult.class)
+        );
+        ArgumentCaptor<ExecuteAlertRequest> request = ArgumentCaptor.forClass(ExecuteAlertRequest.class);
+        verify(workerClient).executeAlert(eq(ENDPOINT), request.capture(), any(), any(Duration.class), any());
+        assertThat(request.getValue().getParameters(0).getSource())
+                .isEqualTo(AlertParameterValueSource.ALERT_PARAMETER_VALUE_SOURCE_PROCEDURE);
+        assertThat(request.getValue().getParameters(0).getNullValue()).isFalse();
+        assertThat(request.getValue().getParameters(0).getProcedureId()).isEqualTo(42L);
+        assertThat(request.getValue().getParameters(0).getInvocationToken()).isEqualTo("signed-token");
+    }
+
+    @Test
     void skipsANewTriggerWhileTheSameAlertIsAlreadyRunningByDefault() throws Exception {
         CountDownLatch executionStarted = new CountDownLatch(1);
         CountDownLatch releaseExecution = new CountDownLatch(1);
         when(preparationService.prepare(7L, false)).thenReturn(Optional.of(prepared()));
         when(workerStatusService.reserve(WorkerCapability.STANDARD)).thenReturn(reservation);
-        when(workerClient.execute(eq(ENDPOINT), any(), eq(Duration.ofMinutes(30))))
+        when(workerClient.executeAlert(eq(ENDPOINT), any(), any(), any(Duration.class), any()))
                 .thenAnswer(invocation -> {
                     executionStarted.countDown();
                     if (!releaseExecution.await(5, TimeUnit.SECONDS))
                         throw new IllegalStateException("Test did not release the worker execution");
 
-                    return ExecuteAlertResponse.newBuilder().setResult(successfulResult()).build();
+                    return successfulResult();
                 });
 
         orchestrator.trigger(7L, "Sample alert", false);
@@ -185,15 +208,14 @@ class AlertExecutionOrchestratorTest {
         verify(persistenceService, org.mockito.Mockito.timeout(5000)).persistWorkerResult(
                 eq(7L), any(UUID.class), eq(ENDPOINT), any(AlertExecutionResult.class)
         );
-        verify(workerClient).execute(eq(ENDPOINT), any(), eq(Duration.ofMinutes(30)));
+        verify(workerClient).executeAlert(eq(ENDPOINT), any(), any(), any(Duration.class), any());
     }
 
     @Test
     void manualTriggerRunsDisabledAlertsAndRecordsTheOperator() {
         when(preparationService.prepare(7L, true)).thenReturn(Optional.of(prepared()));
         when(workerStatusService.reserve(WorkerCapability.STANDARD)).thenReturn(reservation);
-        when(workerClient.execute(eq(ENDPOINT), any(), eq(Duration.ofMinutes(30))))
-                .thenReturn(ExecuteAlertResponse.newBuilder().setResult(successfulResult()).build());
+        when(workerClient.executeAlert(eq(ENDPOINT), any(), any(), any(Duration.class), any())).thenReturn(successfulResult());
 
         boolean accepted = orchestrator.trigger(
                 7L, "Sample alert", false, AlertExecutionTrigger.MANUAL, "sebastian"
@@ -219,13 +241,13 @@ class AlertExecutionOrchestratorTest {
         CountDownLatch releaseExecution = new CountDownLatch(1);
         when(preparationService.prepare(7L, false)).thenReturn(Optional.of(prepared()));
         when(workerStatusService.reserve(WorkerCapability.STANDARD)).thenReturn(reservation);
-        when(workerClient.execute(eq(ENDPOINT), any(), eq(Duration.ofMinutes(30))))
+        when(workerClient.executeAlert(eq(ENDPOINT), any(), any(), any(Duration.class), any()))
                 .thenAnswer(invocation -> {
                     executionStarted.countDown();
                     if (!releaseExecution.await(5, TimeUnit.SECONDS))
                         throw new IllegalStateException("Test did not release the worker execution");
 
-                    return ExecuteAlertResponse.newBuilder().setResult(successfulResult()).build();
+                    return successfulResult();
                 });
 
         orchestrator.trigger(7L, "Sample alert", false);
@@ -259,14 +281,6 @@ class AlertExecutionOrchestratorTest {
         );
     }
 
-    private static ExecuteAlertResponse sourceRequired() {
-        return ExecuteAlertResponse.newBuilder()
-                .setSourceRequired(SourceRequired.newBuilder()
-                        .setTemplateClassName("dynamic.SampleAlert")
-                        .setSourceChecksum(CHECKSUM))
-                .build();
-    }
-
     private static AlertExecutionResult successfulResult() {
         Instant startedAt = Instant.parse("2026-08-30T12:00:00Z");
         return AlertExecutionResult.newBuilder()
@@ -296,7 +310,7 @@ class AlertExecutionOrchestratorTest {
                         true, Duration.ofSeconds(30), Duration.ZERO, Duration.ofSeconds(2)
                 ),
                 new WorkerGrpcProperties.Execution(
-                        Duration.ofMinutes(30), Duration.ofSeconds(30), Path.of("src")
+                        Duration.ofMinutes(30), Path.of("src")
                 )
         );
     }

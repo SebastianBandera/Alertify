@@ -4,7 +4,7 @@ import { AuthService } from '../auth/auth.service';
 import { RUNTIME_CONFIG } from '../config/runtime-config';
 import { ApiRequestError, PageResponse, TagMatchMode } from './configuration-api.service';
 
-export type AlertParameterSource = 'TEXT' | 'CONFIGURATION' | 'SECRET';
+export type AlertParameterSource = 'TEXT' | 'CONFIGURATION' | 'SECRET' | 'PROCEDURE';
 export type AlertExecutionStatus = 'SUCCESS' | 'WARN' | 'ERROR';
 export type WorkerCapability = 'STANDARD' | 'PLAYWRIGHT';
 
@@ -64,6 +64,8 @@ export interface AlertParameterValue {
   readonly configurationName: string | null;
   readonly secretId: number | null;
   readonly secretName: string | null;
+  readonly procedureId: number | null;
+  readonly procedureName: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
 }
@@ -91,6 +93,7 @@ export interface AlertParameterWriteRequest {
   readonly textValue: string | null;
   readonly configurationId: number | null;
   readonly secretId: number | null;
+  readonly procedureId: number | null;
 }
 
 export interface AlertWriteRequest {
@@ -115,11 +118,13 @@ export interface AlertBindingOption {
   readonly id: number;
   readonly name: string;
   readonly description: string | null;
+  readonly enabled: boolean;
 }
 
 export interface AlertBindingOptions {
   readonly configurations: readonly AlertBindingOption[];
   readonly secrets: readonly AlertBindingOption[];
+  readonly procedures: readonly AlertBindingOption[];
 }
 
 export interface AlertExecution {

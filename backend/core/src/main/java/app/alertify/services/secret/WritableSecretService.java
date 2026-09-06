@@ -30,10 +30,16 @@ public class WritableSecretService {
 
     public void apply(long alertId, String alertName, UUID executionId, Iterable<WritableSecretValue> values) {
         for (WritableSecretValue value : values)
-            applyOne(alertId, alertName, executionId, value);
+            applyOne(new Owner("alert", alertId, alertName, "SECRET_OVERWRITTEN_BY_ALERT"), executionId, value);
     }
 
-    private void applyOne(long alertId, String alertName, UUID executionId, WritableSecretValue result) {
+    public void applyProcedure(long procedureId, String procedureName, UUID executionId, Iterable<WritableSecretValue> values) {
+        for (WritableSecretValue value : values)
+            applyOne(new Owner("procedure", procedureId, procedureName,
+                    "SECRET_OVERWRITTEN_BY_PROCEDURE"), executionId, value);
+    }
+
+    private void applyOne(Owner owner, UUID executionId, WritableSecretValue result) {
         ApplicationSecret secret = secretRepository.findById(result.getSecretId()).orElse(null);
         if (secret == null || !secret.isWritable())
             return;
@@ -48,26 +54,25 @@ public class WritableSecretService {
                     encrypted.hashSalt(), encrypted.encryptionVersion()
             );
             secretRepository.flush();
-            eventLogger.successAfterCommit(
-                    "SECRET_OVERWRITTEN_BY_ALERT",
-                    context(alertId, alertName, executionId, result, secret)
-            );
+            eventLogger.successAfterCommit(owner.successEvent(), context(owner, executionId, result, secret));
         } catch (RuntimeException exception) {
-            Map<String, Object> data = context(alertId, alertName, executionId, result, secret);
+            Map<String, Object> data = context(owner, executionId, result, secret);
             data.put("reason", exception.getMessage() == null ? exception.getClass().getName() : exception.getMessage());
             eventLogger.errorAfterCommit("SECRET_OVERWRITE_REJECTED", data);
         }
     }
 
-    private static Map<String, Object> context(long alertId, String alertName, UUID executionId, WritableSecretValue result, ApplicationSecret secret) {
+    private static Map<String, Object> context(Owner owner, UUID executionId, WritableSecretValue result, ApplicationSecret secret) {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("secretId", secret.getId());
         data.put("secretName", secret.getName());
-        data.put("alertId", alertId);
-        data.put("alertName", alertName);
+        data.put(owner.type() + "Id", owner.id());
+        data.put(owner.type() + "Name", owner.name());
         data.put("executionId", executionId);
         data.put("parameterName", result.getParameterName());
         data.put("valueRevision", secret.getValueRevision());
         return data;
     }
+
+    private record Owner(String type, long id, String name, String successEvent) { }
 }

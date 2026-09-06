@@ -26,6 +26,15 @@ export const routes: Routes = [
           ),
       },
       {
+        path: 'procedures',
+        title: 'Procedures | Alertify',
+        canActivate: [adminGuard],
+        loadComponent: () =>
+          import('./features/procedures/procedures.component').then(
+            (component) => component.ProceduresComponent,
+          ),
+      },
+      {
         path: 'status',
         title: 'Status | Alertify',
         canActivate: [adminGuard],

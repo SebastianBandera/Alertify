@@ -90,7 +90,7 @@ class AlertExecutionPreparationServiceTest {
                 configurationExpressionService, secretAccessService,
                 new WorkerGrpcProperties(
                         "worker", 9090, null, null,
-                        new WorkerGrpcProperties.Execution(null, null, sourceRoot)
+                        new WorkerGrpcProperties.Execution(null, sourceRoot)
                 )
         );
     }

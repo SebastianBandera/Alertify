@@ -24,8 +24,16 @@ import app.alertify.worker.grpc.ExecuteAlertRequest;
 import app.alertify.worker.grpc.ExecutionError;
 import app.alertify.worker.grpc.WorkerExecutionStatus;
 import io.grpc.stub.StreamObserver;
+import io.grpc.Deadline;
 import tools.jackson.databind.json.JsonMapper;
 
+/**
+ * Runs one alert template per request on a virtual thread, bounded by the
+ * permits handed out by {@link WorkerExecutionTracker}. Every outcome, success
+ * or failure, is reported as an {@link AlertExecutionResult} on the observer so
+ * the caller always receives timings, the resulting state and any writable
+ * parameter value the template changed.
+ */
 class WorkerExecutionEngine implements AutoCloseable {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(WorkerExecutionEngine.class);
@@ -45,11 +53,15 @@ class WorkerExecutionEngine implements AutoCloseable {
     }
 
     void execute(ExecuteAlertRequest request, StreamObserver<AlertExecutionResult> observer) {
-        Instant queuedAt = Instant.now();
-        executor.submit(() -> run(request, observer, queuedAt));
+        execute(request, observer, null, unavailableProcedureHandles());
     }
 
-    private void run(ExecuteAlertRequest request, StreamObserver<AlertExecutionResult> observer, Instant startedAt) {
+    void execute(ExecuteAlertRequest request, StreamObserver<AlertExecutionResult> observer, Deadline deadline, ProcedureHandleFactory procedureHandles) {
+        Instant queuedAt = Instant.now();
+        executor.submit(() -> run(request, observer, queuedAt, deadline, procedureHandles));
+    }
+
+    private void run(ExecuteAlertRequest request, StreamObserver<AlertExecutionResult> observer, Instant startedAt, Deadline deadline, ProcedureHandleFactory procedureHandles) {
         WorkerExecutionTracker.Permit permit = null;
         AlertExecutionContext context = null;
         AlertExecutionStatus finalStatus = AlertExecutionStatus.ERROR;
@@ -63,7 +75,7 @@ class WorkerExecutionEngine implements AutoCloseable {
             context = new AlertExecutionContext(request.getState(), parameterSources);
 
             CompiledAlertTemplate template = compiler.get(request.getTemplateClassName(), request.getSourceChecksum());
-            AlertEvaluator evaluator = template.newInstance(request.getParametersList());
+            AlertEvaluator evaluator = template.newInstance(request.getParametersList(), procedureHandles, deadline);
             AlertResult result = evaluator.evaluate(context);
 
             finalStatus = result.status();
@@ -109,6 +121,10 @@ class WorkerExecutionEngine implements AutoCloseable {
         }
     }
 
+    private static ProcedureHandleFactory unavailableProcedureHandles() {
+        return new ProcedureHandleFactory((_, _) -> { throw new IllegalStateException("Procedure invocation requires an execution stream"); });
+    }
+
     private static WorkerExecutionStatus toGrpcStatus(AlertExecutionStatus status) {
         return switch (status) {
             case SUCCESS -> WorkerExecutionStatus.WORKER_EXECUTION_STATUS_SUCCESS;
@@ -122,6 +138,7 @@ class WorkerExecutionEngine implements AutoCloseable {
             case ALERT_PARAMETER_VALUE_SOURCE_TEXT -> AlertParameterSource.TEXT;
             case ALERT_PARAMETER_VALUE_SOURCE_CONFIGURATION -> AlertParameterSource.CONFIGURATION;
             case ALERT_PARAMETER_VALUE_SOURCE_SECRET -> AlertParameterSource.SECRET;
+            case ALERT_PARAMETER_VALUE_SOURCE_PROCEDURE -> AlertParameterSource.PROCEDURE;
             case ALERT_PARAMETER_VALUE_SOURCE_UNSPECIFIED, UNRECOGNIZED ->
                     throw new IllegalArgumentException("Alert parameter source must be specified");
         };

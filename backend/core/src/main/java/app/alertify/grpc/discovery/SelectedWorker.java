@@ -8,6 +8,6 @@ public record SelectedWorker(
 ) {
 
     public int currentLoad() {
-        return status.getRunningCount() + status.getWaitingCount();
+        return status.getRunningCount() + status.getWaitingCount() + status.getRunningProcedureCount();
     }
 }

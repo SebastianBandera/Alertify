@@ -36,7 +36,6 @@ public record WorkerGrpcProperties(
 
     public record Execution(
         Duration timeout,
-        Duration sourceSynchronizationTimeout,
         Path sourceRoot
     ) {
     }

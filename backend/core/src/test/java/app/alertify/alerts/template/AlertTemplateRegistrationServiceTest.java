@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.anyString;
 
 import java.util.List;
 import java.util.Optional;
@@ -45,32 +46,20 @@ class AlertTemplateRegistrationServiceTest {
         String consoleParameterTemplateKey = ConsoleParameterAlertTemplate.class.getName();
         String devToolsTemplateKey = SimulatedLongRunningAlertTemplate.class.getName();
         String writableParameterCopyTemplateKey = WritableParameterCopyAlertTemplate.class.getName();
-        when(templateRepository.findByTemplateKey(httpsCertificateTemplateKey)).thenReturn(Optional.empty());
-        when(templateRepository.findByTemplateKey(templateKey)).thenReturn(Optional.empty());
-        when(templateRepository.findByTemplateKey(tcpConnectionTemplateKey)).thenReturn(Optional.empty());
-        when(templateRepository.findByTemplateKey(webRequestTemplateKey)).thenReturn(Optional.empty());
-        when(templateRepository.findByTemplateKey(consoleParameterTemplateKey)).thenReturn(Optional.empty());
-        when(templateRepository.findByTemplateKey(devToolsTemplateKey)).thenReturn(Optional.empty());
-        when(templateRepository.findByTemplateKey(writableParameterCopyTemplateKey)).thenReturn(Optional.empty());
-        when(parameterRepository.findAllByTemplate_TemplateKey(httpsCertificateTemplateKey)).thenReturn(List.of());
-        when(parameterRepository.findAllByTemplate_TemplateKey(templateKey)).thenReturn(List.of());
-        when(parameterRepository.findAllByTemplate_TemplateKey(tcpConnectionTemplateKey)).thenReturn(List.of());
-        when(parameterRepository.findAllByTemplate_TemplateKey(webRequestTemplateKey)).thenReturn(List.of());
-        when(parameterRepository.findAllByTemplate_TemplateKey(consoleParameterTemplateKey)).thenReturn(List.of());
-        when(parameterRepository.findAllByTemplate_TemplateKey(devToolsTemplateKey)).thenReturn(List.of());
-        when(parameterRepository.findAllByTemplate_TemplateKey(writableParameterCopyTemplateKey)).thenReturn(List.of());
+        when(templateRepository.findByTemplateKey(anyString())).thenReturn(Optional.empty());
+        when(parameterRepository.findAllByTemplate_TemplateKey(anyString())).thenReturn(List.of());
         var service = new AlertTemplateRegistrationService(
             templateRepository, parameterRepository, new DefaultResourceLoader()
         );
 
         AlertTemplateRegistrationSummary summary = service.scanAndRegister();
 
-        assertEquals(7, summary.templates());
-        assertEquals(23, summary.parameters());
+        assertEquals(8, summary.templates());
+        assertEquals(24, summary.parameters());
 
         ArgumentCaptor<AlertTemplateDefinition> templateCaptor =
             ArgumentCaptor.forClass(AlertTemplateDefinition.class);
-        verify(templateRepository, times(7)).save(templateCaptor.capture());
+        verify(templateRepository, times(8)).save(templateCaptor.capture());
         AlertTemplateDefinition httpsCertificateTemplate = templateCaptor.getAllValues().get(0);
         assertEquals(httpsCertificateTemplateKey, httpsCertificateTemplate.getTemplateKey());
         assertEquals("alerts.template.httpsCertificate.name", httpsCertificateTemplate.getNameKey());
@@ -109,7 +98,7 @@ class AlertTemplateRegistrationServiceTest {
 
         ArgumentCaptor<AlertTemplateParameterDefinition> parameterCaptor =
             ArgumentCaptor.forClass(AlertTemplateParameterDefinition.class);
-        verify(parameterRepository, times(23)).save(parameterCaptor.capture());
+        verify(parameterRepository, times(24)).save(parameterCaptor.capture());
         List<AlertTemplateParameterDefinition> parameters = parameterCaptor.getAllValues();
 
         assertEquals("endpoint", parameters.get(0).getParameterKey());

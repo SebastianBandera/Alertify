@@ -516,14 +516,16 @@
 
                 @if (parameterForm(parameter.key).configured) {
                   <div class="parameter-fields">
-                    @if (parameter.bindingAllowed || parameter.options.length) {
+                    @if (parameter.bindingAllowed || parameter.options.length || parameter.javaType === 'app.alertify.procedures.Procedure') {
                       <label>
                         <span>{{ localization.translate('alerts.form.source') }}</span>
                         <select [ngModel]="parameterForm(parameter.key).source" (ngModelChange)="patchParameter(parameter.key, { source: $event })" [name]="'source-' + parameter.id">
                           @if (parameter.options.length) {
                             <option value="OPTION">{{ localization.translate('alerts.source.option') }}</option>
                           }
-                          @if (parameter.bindingAllowed) {
+                          @if (parameter.javaType === 'app.alertify.procedures.Procedure') {
+                            <option value="PROCEDURE">{{ localization.translate('alerts.source.procedure') }}</option>
+                          } @else if (parameter.bindingAllowed) {
                             <option value="TEXT">{{ localization.translate('alerts.source.text') }}</option>
                             <option value="CONFIGURATION">{{ localization.translate('alerts.source.configuration') }}</option>
                             <option value="SECRET">{{ localization.translate('alerts.source.secret') }}</option>
@@ -564,6 +566,16 @@
                           @for (option of bindings().secrets; track option.id) { <option [ngValue]="option.id">{{ option.name }}</option> }
                         </select>
                       </label>
+                    } @else if (parameterForm(parameter.key).source === 'PROCEDURE') {
+                      <label class="full">
+                        <span>{{ localization.translate('alerts.form.procedure') }}</span>
+                        <select [ngModel]="parameterForm(parameter.key).procedureId" (ngModelChange)="patchParameter(parameter.key, { procedureId: $event })" [name]="'procedure-' + parameter.id" required>
+                          <option [ngValue]="null" disabled>{{ localization.translate('alerts.form.selectProcedure') }}</option>
+                          @for (option of bindings().procedures; track option.id) {
+                            <option [ngValue]="option.id">{{ option.name }}{{ option.enabled ? '' : ' (' + localization.translate('alerts.status.disabled') + ')' }}</option>
+                          }
+                        </select>
+                      </label>
                     }
                   </div>
                 }
@@ -591,8 +603,14 @@
       </header>
       <div class="tag-manager-body">
         <form class="tag-form" (ngSubmit)="saveTag()">
-          <label><span>{{ localization.translate('alerts.tags.name') }}</span><input name="tagName" required maxlength="100" [ngModel]="tagForm().name" (ngModelChange)="updateTagForm('name', $event)"></label>
-          <label><span>{{ localization.translate('alerts.tags.color') }}</span><input name="tagColor" type="color" [ngModel]="tagForm().color" (ngModelChange)="updateTagForm('color', $event)"></label>
+          <label>
+            <span>{{ localization.translate('alerts.tags.name') }}</span>
+            <input name="tagName" required maxlength="100" [ngModel]="tagForm().name" (ngModelChange)="updateTagForm('name', $event)" [placeholder]="localization.translate('alerts.tags.name')">
+          </label>
+          <label>
+            <span>{{ localization.translate('alerts.tags.color') }}</span>
+            <input name="tagColor" type="color" [ngModel]="tagForm().color" (ngModelChange)="updateTagForm('color', $event)">
+          </label>
           <button class="button button--primary" type="submit" [disabled]="saving() || !tagForm().name.trim()">{{ localization.translate(editingTag() ? 'alerts.tags.update' : 'alerts.tags.add') }}</button>
         </form>
         @if (tagError()) { <p class="form-error" role="alert">{{ tagError() }}</p> }
@@ -601,10 +619,8 @@
             <div class="tag-manager-row">
               <span class="tag" [style.--tag-color]="tag.color">{{ tag.name }}</span>
               <code>{{ tag.color }}</code>
-              <div class="actions">
-                <button type="button" (click)="editTag(tag)">{{ localization.translate('alerts.tags.edit') }}</button>
-                <button class="danger" type="button" (click)="deleteTag(tag)">{{ localization.translate('alerts.tags.delete') }}</button>
-              </div>
+              <button class="button button--secondary" type="button" (click)="editTag(tag)">{{ localization.translate('alerts.tags.edit') }}</button>
+              <button class="button button--secondary danger" type="button" (click)="deleteTag(tag)">{{ localization.translate('alerts.tags.delete') }}</button>
             </div>
           } @empty {
             <p class="muted">{{ localization.translate('alerts.tags.empty') }}</p>

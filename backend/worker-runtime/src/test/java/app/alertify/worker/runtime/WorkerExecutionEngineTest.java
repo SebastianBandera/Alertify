@@ -238,9 +238,7 @@ class WorkerExecutionEngineTest {
         );
     }
 
-    private static StreamObserver<AlertExecutionResult> observer(
-        CompletableFuture<AlertExecutionResult> result
-    ) {
+    private static StreamObserver<AlertExecutionResult> observer(CompletableFuture<AlertExecutionResult> result) {
         return new StreamObserver<>() {
             @Override
             public void onNext(AlertExecutionResult value) {

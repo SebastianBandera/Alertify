@@ -15,18 +15,33 @@ import org.springframework.stereotype.Service;
 import app.alertify.alerts.template.annotation.AlertParameterSource;
 import app.alertify.grpc.AlertWorkerClient;
 import app.alertify.grpc.WorkerGrpcProperties;
+import app.alertify.grpc.WorkerTemplateSynchronizationException;
 import app.alertify.grpc.discovery.SelectedWorker;
 import app.alertify.grpc.discovery.WorkerEndpoint;
 import app.alertify.grpc.discovery.WorkerStatusService;
 import app.alertify.grpc.discovery.WorkerReservation;
 import app.alertify.logging.ApplicationEventLogger;
+import app.alertify.procedures.execution.ProcedureInvocationRegistry;
+import app.alertify.procedures.execution.ProcedureInvocationTokenService;
+import app.alertify.procedures.execution.ProcedureExecutionOrchestrator;
+import app.alertify.worker.grpc.AlertExecutionResult;
 import app.alertify.worker.grpc.AlertParameter;
 import app.alertify.worker.grpc.AlertParameterValueSource;
 import app.alertify.worker.grpc.ExecuteAlertRequest;
-import app.alertify.worker.grpc.ExecuteAlertResponse;
 import app.alertify.worker.grpc.SynchronizeTemplateRequest;
-import app.alertify.worker.grpc.SynchronizeTemplateResponse;
+import app.alertify.worker.grpc.ProcedureParentKind;
+import app.alertify.worker.grpc.TemplateKind;
 
+/**
+ * Drives one alert execution end to end: it prepares the alert, reserves a
+ * worker, opens a bidirectional execution stream, supplies the template source
+ * when the worker does not have it, and persists the outcome. Executions run on virtual threads
+ * and an in-memory counter enforces the per-alert concurrency policy.
+ *
+ * <p>It is also the root of an execution tree: a procedure-sourced parameter is
+ * sent as an invocation token instead of a value, so the worker can call the
+ * procedure through the same stream within this execution's deadline.
+ */
 @Service
 public class AlertExecutionOrchestrator implements AutoCloseable {
 
@@ -36,16 +51,22 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
     private final AlertWorkerClient workerClient;
     private final WorkerGrpcProperties properties;
     private final ApplicationEventLogger eventLogger;
+    private final ProcedureInvocationTokenService procedureTokenService;
+    private final ProcedureInvocationRegistry procedureInvocationRegistry;
+    private final ProcedureExecutionOrchestrator procedureExecutionOrchestrator;
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
     private final ConcurrentMap<Long, AtomicInteger> activeAlerts = new ConcurrentHashMap<>();
 
-    public AlertExecutionOrchestrator(AlertExecutionPreparationService preparationService, AlertExecutionPersistenceService persistenceService, WorkerStatusService workerStatusService, AlertWorkerClient workerClient, WorkerGrpcProperties properties, ApplicationEventLogger eventLogger) {
+    public AlertExecutionOrchestrator(AlertExecutionPreparationService preparationService, AlertExecutionPersistenceService persistenceService, WorkerStatusService workerStatusService, AlertWorkerClient workerClient, WorkerGrpcProperties properties, ApplicationEventLogger eventLogger, ProcedureInvocationTokenService procedureTokenService, ProcedureInvocationRegistry procedureInvocationRegistry, ProcedureExecutionOrchestrator procedureExecutionOrchestrator) {
         this.preparationService = preparationService;
         this.persistenceService = persistenceService;
         this.workerStatusService = workerStatusService;
         this.workerClient = workerClient;
         this.properties = properties;
         this.eventLogger = eventLogger;
+        this.procedureTokenService = procedureTokenService;
+        this.procedureInvocationRegistry = procedureInvocationRegistry;
+        this.procedureExecutionOrchestrator = procedureExecutionOrchestrator;
     }
 
     public void trigger(long alertId, String alertName, boolean allowConcurrentExecutions) {
@@ -94,6 +115,7 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
         WorkerEndpoint endpoint = null;
         String workerName = null;
         String workerInstanceId = null;
+        Instant deadline = startedAt.plus(properties.execution().timeout());
         try {
             // A manual run also covers alerts that are currently disabled.
             PreparedAlertExecution execution = preparationService
@@ -115,37 +137,18 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
                 started.put("workerLoad", worker.currentLoad());
                 eventLogger.success("ALERT_EXECUTION_STARTED", started);
 
-                ExecuteAlertRequest request = request(executionId.toString(), execution);
-                ExecuteAlertResponse response = workerClient.execute(
-                        endpoint, request, properties.execution().timeout()
-                );
-                if (response.hasSourceRequired()) {
-                    SynchronizeTemplateResponse synchronization = workerClient.synchronize(
-                            endpoint,
-                            SynchronizeTemplateRequest.newBuilder()
-                                    .setTemplateClassName(execution.templateClassName())
-                                    .setSourceChecksum(execution.sourceChecksum())
-                                    .setSource(execution.source())
-                                    .build(),
-                            properties.execution().sourceSynchronizationTimeout()
-                    );
-                    if (!synchronization.getSynchronized()) {
-                        Instant finishedAt = Instant.now();
-                        persistenceService.persistRemoteFailure(
-                                alertId, executionId, endpoint, workerName, workerInstanceId,
-                                startedAt, finishedAt, finishedAt,
-                                synchronization.getError()
-                        );
-                        return;
-                    }
-                    response = workerClient.execute(endpoint, request, properties.execution().timeout());
+                procedureInvocationRegistry.register(executionId, deadline);
+                ExecuteAlertRequest request = request(executionId.toString(), execution, deadline);
+                SynchronizeTemplateRequest templateSource = SynchronizeTemplateRequest.newBuilder().setTemplateClassName(execution.templateClassName()).setSourceChecksum(execution.sourceChecksum()).setSource(execution.source()).setTemplateKind(TemplateKind.TEMPLATE_KIND_ALERT).build();
+                AlertExecutionResult result;
+                try {
+                    result = workerClient.executeAlert(endpoint, request, templateSource, remaining(deadline), procedureExecutionOrchestrator::invokeToken);
+                } catch (WorkerTemplateSynchronizationException exception) {
+                    Instant finishedAt = Instant.now();
+                    persistenceService.persistRemoteFailure(alertId, executionId, endpoint, workerName, workerInstanceId, startedAt, finishedAt, finishedAt, exception.error());
+                    return;
                 }
-                if (!response.hasResult())
-                    throw new IllegalStateException("Worker did not return an execution result");
-
-                persistenceService.persistWorkerResult(
-                        alertId, executionId, endpoint, response.getResult()
-                );
+                persistenceService.persistWorkerResult(alertId, executionId, endpoint, result);
             }
         } catch (Throwable exception) {
             if (exception instanceof InterruptedException)
@@ -170,11 +173,12 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
                 eventLogger.error("ALERT_EXECUTION_DISPATCH_FAILED", data);
             }
         } finally {
+            procedureInvocationRegistry.unregister(executionId);
             leave(alertId);
         }
     }
 
-    private static ExecuteAlertRequest request(String executionId, PreparedAlertExecution execution) {
+    private ExecuteAlertRequest request(String executionId, PreparedAlertExecution execution, Instant deadline) {
         ExecuteAlertRequest.Builder request = ExecuteAlertRequest.newBuilder()
                 .setExecutionId(executionId)
                 .setAlertId(execution.alertId())
@@ -186,9 +190,16 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
             AlertParameter.Builder value = AlertParameter.newBuilder()
                     .setName(parameter.name())
                     .setJavaType(parameter.javaType())
-                    .setNullValue(parameter.nullValue())
+                    .setNullValue(parameter.source() != AlertParameterSource.PROCEDURE
+                            && parameter.nullValue())
                     .setSource(toGrpcSource(parameter.source()));
-            if (!parameter.nullValue())
+            if (parameter.source() == AlertParameterSource.PROCEDURE) {
+                UUID parentExecutionId = UUID.fromString(executionId);
+                value.setProcedureId(parameter.procedureId())
+                        .setInvocationToken(procedureTokenService.issue(parameter.procedureId(),
+                                parentExecutionId, parentExecutionId,
+                                ProcedureParentKind.PROCEDURE_PARENT_KIND_ALERT, 1, deadline));
+            } else if (!parameter.nullValue())
                 value.setValue(parameter.value());
 
             if (parameter.writable()) {
@@ -214,7 +225,16 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
             case TEXT -> AlertParameterValueSource.ALERT_PARAMETER_VALUE_SOURCE_TEXT;
             case CONFIGURATION -> AlertParameterValueSource.ALERT_PARAMETER_VALUE_SOURCE_CONFIGURATION;
             case SECRET -> AlertParameterValueSource.ALERT_PARAMETER_VALUE_SOURCE_SECRET;
+            case PROCEDURE -> AlertParameterValueSource.ALERT_PARAMETER_VALUE_SOURCE_PROCEDURE;
         };
+    }
+
+    private static java.time.Duration remaining(Instant deadline) {
+        java.time.Duration value = java.time.Duration.between(Instant.now(), deadline);
+        if (value.isZero() || value.isNegative())
+            throw new IllegalStateException("Alert execution deadline has expired");
+
+        return value;
     }
 
     private boolean enter(long alertId, boolean concurrent) {

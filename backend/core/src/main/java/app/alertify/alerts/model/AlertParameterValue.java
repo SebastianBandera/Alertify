@@ -12,6 +12,7 @@ import org.hibernate.envers.NotAudited;
 import app.alertify.alerts.template.annotation.AlertParameterSource;
 import app.alertify.jpa.entity.ApplicationConfiguration;
 import app.alertify.jpa.entity.ApplicationSecret;
+import app.alertify.procedures.model.Procedure;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -28,7 +29,8 @@ import jakarta.persistence.Version;
 
 /**
  * Configured value for one alert parameter. Exactly one source-specific field
- * is populated: text, configuration reference, or secret reference.
+ * is populated: text, configuration reference, secret reference, or a reference
+ * to the procedure that produces the value.
  */
 @Entity
 @Audited
@@ -75,6 +77,10 @@ public class AlertParameterValue {
     @JoinColumn(name = "secret_id")
     private ApplicationSecret secret;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "procedure_id")
+    private Procedure procedure;
+
     @CreationTimestamp
     @NotAudited
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -113,6 +119,12 @@ public class AlertParameterValue {
         return parameterValue;
     }
 
+    public static AlertParameterValue procedure(Alert alert, AlertTemplateParameterDefinition templateParameter, Procedure procedure) {
+        AlertParameterValue parameterValue = new AlertParameterValue(alert, templateParameter);
+        parameterValue.replaceWithProcedure(procedure);
+        return parameterValue;
+    }
+
     public Long getId() {
         return id;
     }
@@ -145,6 +157,10 @@ public class AlertParameterValue {
         return secret;
     }
 
+    public Procedure getProcedure() {
+        return procedure;
+    }
+
     public Instant getCreatedAt() {
         return createdAt;
     }
@@ -154,6 +170,7 @@ public class AlertParameterValue {
     }
 
     public void replaceWithText(String value) {
+        requireNonProcedureValue();
         Objects.requireNonNull(value, "value must not be null");
         if (!templateParameter.isBindingAllowed()
                 && !templateParameter.getOptions().contains(value)) {
@@ -166,22 +183,39 @@ public class AlertParameterValue {
         textValue = value;
         configuration = null;
         secret = null;
+        procedure = null;
     }
 
     public void replaceWithConfiguration(ApplicationConfiguration configuration) {
+        requireNonProcedureValue();
         requireBindingAllowed();
         source = AlertParameterSource.CONFIGURATION;
         textValue = null;
         this.configuration = Objects.requireNonNull(configuration, "configuration must not be null");
         secret = null;
+        procedure = null;
     }
 
     public void replaceWithSecret(ApplicationSecret secret) {
+        requireNonProcedureValue();
         requireBindingAllowed();
         source = AlertParameterSource.SECRET;
         textValue = null;
         configuration = null;
         this.secret = Objects.requireNonNull(secret, "secret must not be null");
+        procedure = null;
+    }
+
+    public void replaceWithProcedure(Procedure procedure) {
+        requireBindingAllowed();
+        if (!app.alertify.procedures.Procedure.class.getName().equals(templateParameter.getJavaType()))
+            throw new IllegalArgumentException("procedure binding requires a Procedure parameter");
+
+        source = AlertParameterSource.PROCEDURE;
+        textValue = null;
+        configuration = null;
+        secret = null;
+        this.procedure = Objects.requireNonNull(procedure, "procedure must not be null");
     }
 
     private void requireBindingAllowed() {
@@ -190,5 +224,10 @@ public class AlertParameterValue {
                 "binding is not allowed for parameter " + templateParameter.getParameterKey()
             );
         }
+    }
+
+    private void requireNonProcedureValue() {
+        if (app.alertify.procedures.Procedure.class.getName().equals(templateParameter.getJavaType()))
+            throw new IllegalArgumentException("Procedure parameters require a procedure binding");
     }
 }

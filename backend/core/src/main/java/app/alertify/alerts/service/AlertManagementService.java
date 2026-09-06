@@ -52,10 +52,18 @@ import app.alertify.jpa.repository.AlertTemplateDefinitionRepository;
 import app.alertify.jpa.repository.AlertTemplateParameterDefinitionRepository;
 import app.alertify.jpa.repository.ApplicationConfigurationRepository;
 import app.alertify.jpa.repository.ApplicationSecretRepository;
+import app.alertify.jpa.repository.ProcedureRepository;
 import app.alertify.jpa.repository.TagRepository;
 import app.alertify.jpa.specification.AlertSpecifications;
 import app.alertify.logging.ApplicationEventLogger;
 
+/**
+ * CRUD, manual runs and stored state for user-configured alerts. Updates and
+ * deletions are guarded by the optimistic version sent by the client, and
+ * parameter values are always synchronized against the template definition, so
+ * an unknown or duplicated parameter is rejected and a missing one falls back
+ * to its default.
+ */
 @Service
 public class AlertManagementService {
 
@@ -73,12 +81,13 @@ public class AlertManagementService {
     private final AlertStateRepository stateRepository;
     private final ApplicationConfigurationRepository configurationRepository;
     private final ApplicationSecretRepository secretRepository;
+    private final ProcedureRepository procedureRepository;
     private final TagRepository tagRepository;
     private final ApplicationEventLogger eventLogger;
     private final AlertScheduleService scheduleService;
     private final AlertExecutionOrchestrator executionOrchestrator;
 
-    public AlertManagementService(AlertRepository alertRepository, AlertTemplateDefinitionRepository templateRepository, AlertTemplateParameterDefinitionRepository templateParameterRepository, AlertParameterValueRepository parameterValueRepository, AlertExecutionRepository executionRepository, AlertStateRepository stateRepository, ApplicationConfigurationRepository configurationRepository, ApplicationSecretRepository secretRepository, TagRepository tagRepository, ApplicationEventLogger eventLogger, AlertScheduleService scheduleService, AlertExecutionOrchestrator executionOrchestrator) {
+    public AlertManagementService(AlertRepository alertRepository, AlertTemplateDefinitionRepository templateRepository, AlertTemplateParameterDefinitionRepository templateParameterRepository, AlertParameterValueRepository parameterValueRepository, AlertExecutionRepository executionRepository, AlertStateRepository stateRepository, ApplicationConfigurationRepository configurationRepository, ApplicationSecretRepository secretRepository, ProcedureRepository procedureRepository, TagRepository tagRepository, ApplicationEventLogger eventLogger, AlertScheduleService scheduleService, AlertExecutionOrchestrator executionOrchestrator) {
         this.alertRepository = alertRepository;
         this.templateRepository = templateRepository;
         this.templateParameterRepository = templateParameterRepository;
@@ -87,6 +96,7 @@ public class AlertManagementService {
         this.stateRepository = stateRepository;
         this.configurationRepository = configurationRepository;
         this.secretRepository = secretRepository;
+        this.procedureRepository = procedureRepository;
         this.tagRepository = tagRepository;
         this.eventLogger = eventLogger;
         this.scheduleService = scheduleService;
@@ -100,12 +110,15 @@ public class AlertManagementService {
         Specification<Alert> specification = (_, _, cb) -> cb.conjunction();
         if (normalizedName != null)
             specification = specification.and(AlertSpecifications.nameContains(normalizedName));
+
         if (templateId != null)
             specification = specification.and(AlertSpecifications.hasTemplateId(templateId));
+
         if (!tagIds.isEmpty())
             specification = specification.and(matchAllTags
                     ? AlertSpecifications.hasAllTagIds(tagIds)
                     : AlertSpecifications.hasAnyTagId(tagIds));
+
         Page<Alert> alerts = alertRepository.findAll(specification, pageable);
         Page<AlertResponse> result = alerts.map(
                 alert -> AlertMapper.toAlert(alert, parameterValueRepository.findAllByAlertIdOrdered(alert.getId()))
@@ -136,10 +149,7 @@ public class AlertManagementService {
                 request.allowConcurrentExecutions(), tags
         ));
         List<AlertParameterValue> values = synchronizeParameters(alert, request.parameters(), List.of());
-        eventLogger.successAfterCommit("ALERT_CREATED", Map.of(
-                "alertId", alert.getId(), "name", alert.getName(), "templateId", template.getId(),
-                "allowConcurrentExecutions", alert.isConcurrentExecutionAllowed()
-        ));
+        eventLogger.successAfterCommit("ALERT_CREATED", Map.of("alertId", alert.getId(), "name", alert.getName(), "templateId", template.getId(), "allowConcurrentExecutions", alert.isConcurrentExecutionAllowed()));
         scheduleService.rescheduleAfterCommit(alert.getId());
         return AlertMapper.toAlert(alert, values);
     }
@@ -157,16 +167,14 @@ public class AlertManagementService {
             alert.enable();
         else
             alert.disable();
+
         alert.changeConcurrentExecution(request.allowConcurrentExecutions());
         alert.replaceTags(resolveAlertTags(request.tagIds()));
 
         List<AlertParameterValue> existing = parameterValueRepository.findAllByAlertIdOrdered(id);
         List<AlertParameterValue> values = synchronizeParameters(alert, request.parameters(), existing);
         alertRepository.flush();
-        eventLogger.successAfterCommit("ALERT_UPDATED", Map.of(
-                "alertId", alert.getId(), "name", alert.getName(), "version", alert.getVersion(),
-                "allowConcurrentExecutions", alert.isConcurrentExecutionAllowed()
-        ));
+        eventLogger.successAfterCommit("ALERT_UPDATED", Map.of("alertId", alert.getId(), "name", alert.getName(), "version", alert.getVersion(), "allowConcurrentExecutions", alert.isConcurrentExecutionAllowed()));
         scheduleService.rescheduleAfterCommit(alert.getId());
         return AlertMapper.toAlert(alert, values);
     }
@@ -206,9 +214,7 @@ public class AlertManagementService {
         parameterValueRepository.deleteAll(values);
         parameterValueRepository.flush();
         alertRepository.delete(alert);
-        eventLogger.successAfterCommit("ALERT_DELETED", Map.of(
-                "alertId", id, "name", alert.getName(), "executionsDeleted", executionsDeleted
-        ));
+        eventLogger.successAfterCommit("ALERT_DELETED", Map.of("alertId", id, "name", alert.getName(), "executionsDeleted", executionsDeleted));
         scheduleService.removeAfterCommit(id);
     }
 
@@ -248,7 +254,7 @@ public class AlertManagementService {
             if (value == null && definition.getDefaultValue() != null) {
                 value = new AlertParameterValueRequest(
                         definition.getParameterKey(), AlertParameterSource.TEXT,
-                        definition.getDefaultValue(), null, null
+                        definition.getDefaultValue(), null, null, null
                 );
             }
             if (value == null) {
@@ -285,6 +291,7 @@ public class AlertManagementService {
                 case TEXT -> AlertParameterValue.text(alert, definition, validateText(definition, request.textValue()));
                 case CONFIGURATION -> AlertParameterValue.configuration(alert, definition, configuration(request.configurationId()));
                 case SECRET -> AlertParameterValue.secret(alert, definition, secret(request.secretId()));
+                case PROCEDURE -> AlertParameterValue.procedure(alert, definition, procedure(request.procedureId()));
             };
         } catch (IllegalArgumentException exception) {
             throw invalid(exception.getMessage(), exception);
@@ -297,6 +304,7 @@ public class AlertManagementService {
                 case TEXT -> target.replaceWithText(validateText(definition, request.textValue()));
                 case CONFIGURATION -> target.replaceWithConfiguration(configuration(request.configurationId()));
                 case SECRET -> target.replaceWithSecret(secret(request.secretId()));
+                case PROCEDURE -> target.replaceWithProcedure(procedure(request.procedureId()));
             }
         } catch (IllegalArgumentException exception) {
             throw invalid(exception.getMessage(), exception);
@@ -316,6 +324,10 @@ public class AlertManagementService {
         return secretRepository.findById(id).orElseThrow(() -> notFound("Secret", id));
     }
 
+    private app.alertify.procedures.model.Procedure procedure(Long id) {
+        return procedureRepository.findById(id).orElseThrow(() -> notFound("Procedure", id));
+    }
+
     private Set<Tag> resolveAlertTags(Set<Long> requestedIds) {
         if (requestedIds.isEmpty())
             return Set.of();
@@ -328,6 +340,9 @@ public class AlertManagementService {
     }
 
     private String validateText(AlertTemplateParameterDefinition definition, String value) {
+        if (app.alertify.procedures.Procedure.class.getName().equals(definition.getJavaType()))
+            throw invalid("Procedure parameter '" + definition.getParameterKey() + "' must use a procedure binding");
+
         if (value == null)
             throw invalid("Text value is required for parameter '" + definition.getParameterKey() + "'");
 

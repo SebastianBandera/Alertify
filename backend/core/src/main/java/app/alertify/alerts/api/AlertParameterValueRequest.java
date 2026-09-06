@@ -9,7 +9,7 @@ import jakarta.validation.constraints.Size;
 
 /**
  * Parameter binding supplied when creating or updating an alert. The selected
- * source determines which one of textValue, configurationId, or secretId is
+ * source determines which one of textValue, configurationId, secretId, or procedureId is
  * accepted by the future alert service.
  */
 public record AlertParameterValueRequest(
@@ -17,8 +17,14 @@ public record AlertParameterValueRequest(
     @NotNull AlertParameterSource source,
     @Size(max = 1048576) String textValue,
     @Positive Long configurationId,
-    @Positive Long secretId
+    @Positive Long secretId,
+    @Positive Long procedureId
 ) {
+
+    public AlertParameterValueRequest(String parameterKey, AlertParameterSource source,
+            String textValue, Long configurationId, Long secretId) {
+        this(parameterKey, source, textValue, configurationId, secretId, null);
+    }
 
     @AssertTrue(message = "exactly one value matching source must be provided")
     public boolean isSourceSelectionValid() {
@@ -26,9 +32,10 @@ public record AlertParameterValueRequest(
             return true;
 
         return switch (source) {
-            case TEXT -> textValue != null && configurationId == null && secretId == null;
-            case CONFIGURATION -> textValue == null && configurationId != null && secretId == null;
-            case SECRET -> textValue == null && configurationId == null && secretId != null;
+            case TEXT -> textValue != null && configurationId == null && secretId == null && procedureId == null;
+            case CONFIGURATION -> textValue == null && configurationId != null && secretId == null && procedureId == null;
+            case SECRET -> textValue == null && configurationId == null && secretId != null && procedureId == null;
+            case PROCEDURE -> textValue == null && configurationId == null && secretId == null && procedureId != null;
         };
     }
 }

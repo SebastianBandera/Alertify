@@ -44,6 +44,16 @@
       <span>{{ localization.translate('status.waitingTasks') }}</span>
       <strong>{{ waitingCount() }}</strong>
     </article>
+    <article class="status-summary__procedure">
+      <span>{{ localization.translate('status.totalExecutedProcedures') }}</span>
+      <strong>{{ totalExecutedProcedures() }}</strong>
+      <small>{{ localization.translate('status.proceduresOutsideSemaphore') }}</small>
+    </article>
+    <article class="status-summary__procedure">
+      <span>{{ localization.translate('status.runningProcedures') }}</span>
+      <strong>{{ runningProcedureCount() }}</strong>
+      <small>{{ localization.translate('status.proceduresOutsideSemaphore') }}</small>
+    </article>
   </div>
 
   @if (loading()) {
@@ -119,6 +129,15 @@
               <dt>{{ localization.translate('status.waitingTasks') }}</dt>
               <dd>{{ worker.waitingCount }}</dd>
             </div>
+            <div class="worker-metrics__procedure">
+              <dt>{{ localization.translate('status.totalExecutedProcedures') }}</dt>
+              <dd>{{ worker.totalExecutedProcedures }}</dd>
+            </div>
+            <div class="worker-metrics__procedure">
+              <dt>{{ localization.translate('status.runningProcedures') }}</dt>
+              <dd>{{ worker.runningProcedureCount }}</dd>
+              <small class="worker-metrics__secondary">{{ localization.translate('status.notSemaphoreLimited') }}</small>
+            </div>
           </dl>
 
           <section class="task-section">
@@ -130,8 +149,31 @@
                 @for (task of worker.runningTasks; track task.executionId) {
                   <article class="task-item">
                     <div>
-                      <strong>{{ task.alertName }}</strong>
-                      <small>#{{ task.alertId }} · {{ task.executionId }}</small>
+                      <strong>{{ task.resourceName }}</strong>
+                      <small>#{{ task.resourceId }} · {{ task.executionId }}</small>
+                    </div>
+                    <div class="task-item__time">
+                      <strong>{{ formatDuration(task.elapsedMillis) }}</strong>
+                      <small>{{ taskStartedAt(task) | date:'mediumTime' }}</small>
+                    </div>
+                  </article>
+                }
+              </div>
+            }
+          </section>
+
+          <section class="task-section task-section--procedures">
+            <h3>{{ localization.translate('status.runningProcedureDetails') }}</h3>
+            <p class="task-section__hint">{{ localization.translate('status.proceduresOutsideSemaphore') }}</p>
+            @if (!worker.runningProcedures.length) {
+              <p>{{ localization.translate('status.noRunningProcedures') }}</p>
+            } @else {
+              <div class="task-list">
+                @for (task of worker.runningProcedures; track task.executionId) {
+                  <article class="task-item">
+                    <div>
+                      <strong>{{ task.resourceName }}</strong>
+                      <small>#{{ task.resourceId }} · {{ task.executionId }} · {{ localization.translate('status.procedureDepth') }} {{ task.depth }}</small>
                     </div>
                     <div class="task-item__time">
                       <strong>{{ formatDuration(task.elapsedMillis) }}</strong>
@@ -152,8 +194,8 @@
                 @for (task of worker.waitingTasks; track task.executionId) {
                   <article class="task-item">
                     <div>
-                      <strong>{{ task.alertName }}</strong>
-                      <small>#{{ task.alertId }} · {{ task.executionId }}</small>
+                      <strong>{{ task.resourceName }}</strong>
+                      <small>#{{ task.resourceId }} · {{ task.executionId }}</small>
                     </div>
                     <div class="task-item__time">
                       <strong>{{ formatDuration(task.elapsedMillis) }}</strong>

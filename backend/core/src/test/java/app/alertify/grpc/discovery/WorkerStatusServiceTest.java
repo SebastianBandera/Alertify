@@ -129,7 +129,7 @@ class WorkerStatusServiceTest {
                         true, Duration.ofSeconds(30), Duration.ZERO, TIMEOUT
                 ),
                 new WorkerGrpcProperties.Execution(
-                        Duration.ofMinutes(30), Duration.ofSeconds(30), Path.of("src")
+                        Duration.ofMinutes(30), Path.of("src")
                 )
         );
     }

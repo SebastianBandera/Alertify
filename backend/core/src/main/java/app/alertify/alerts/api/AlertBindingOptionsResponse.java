@@ -4,6 +4,7 @@ import java.util.List;
 
 public record AlertBindingOptionsResponse(
     List<AlertBindingOptionResponse> configurations,
-    List<AlertBindingOptionResponse> secrets
+    List<AlertBindingOptionResponse> secrets,
+    List<AlertBindingOptionResponse> procedures
 ) {
 }

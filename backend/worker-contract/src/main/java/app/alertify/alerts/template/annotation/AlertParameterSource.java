@@ -8,5 +8,6 @@ public enum AlertParameterSource {
 
     TEXT,
     CONFIGURATION,
-    SECRET
+    SECRET,
+    PROCEDURE
 }

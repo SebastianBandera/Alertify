@@ -53,6 +53,12 @@ export class StatusComponent implements OnInit {
   protected readonly waitingCount = computed(
     () => this.workers().reduce((total, worker) => total + worker.waitingCount, 0),
   );
+  protected readonly totalExecutedProcedures = computed(
+    () => this.workers().reduce((total, worker) => total + worker.totalExecutedProcedures, 0),
+  );
+  protected readonly runningProcedureCount = computed(
+    () => this.workers().reduce((total, worker) => total + worker.runningProcedureCount, 0),
+  );
   private intervalId: number | null = null;
   private requestInFlight = false;
   private destroyed = false;

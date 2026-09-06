@@ -532,6 +532,7 @@ function buildPlan(environment, options = {}) {
     workerGrpcPort: null,
     workerGrpcTlsEnabled: false,
     workerGrpcTlsServerName: null,
+    procedureMaxDepth: null,
     grpcCertificateValidityDays: null,
     rotateGrpcCertificates: false,
     skipWorkerStandard,
@@ -609,6 +610,7 @@ function buildPlan(environment, options = {}) {
       throw new Error('WORKER_GRPC_TLS_ENABLED must be true for local backend and worker communication.');
     }
     plan.workerGrpcTlsServerName = dnsNameValue(environment, 'WORKER_GRPC_TLS_SERVER_NAME');
+    plan.procedureMaxDepth = positiveIntegerValue(environment, 'PROCEDURE_MAX_DEPTH');
     plan.grpcCertificateValidityDays = positiveIntegerValue(environment, 'GRPC_CERTIFICATE_VALIDITY_DAYS');
     plan.rotateGrpcCertificates = !skipBackend && !skipWorkerStandard && !skipWorkerPlaywright;
     booleanValue(environment, 'WORKER_DISCOVERY_ENABLED');
@@ -760,6 +762,7 @@ function printPlan(plan, environment) {
         `certificate validity ${plan.grpcCertificateValidityDays} days; ` +
         `${plan.rotateGrpcCertificates ? 'leaf certificates will be renewed' : 'existing certificates will be reused without modification'}`,
     );
+    console.log(`  - Procedures: bidirectional worker streams, maximum nested depth ${plan.procedureMaxDepth}`);
     if (plan.backendDebugEnabled) {
       console.log(
         `  - Java remote debug: enabled on port ${plan.backendDebugPort} ` +

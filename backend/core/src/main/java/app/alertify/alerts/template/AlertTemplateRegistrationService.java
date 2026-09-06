@@ -32,6 +32,7 @@ import app.alertify.alerts.template.annotation.AlertTemplate;
 import app.alertify.alerts.template.annotation.AlertTemplateKey;
 import app.alertify.jpa.repository.AlertTemplateDefinitionRepository;
 import app.alertify.jpa.repository.AlertTemplateParameterDefinitionRepository;
+import app.alertify.procedures.Procedure;
 
 /**
  * Discovers alert template implementations and synchronizes their declarative
@@ -129,11 +130,7 @@ public class AlertTemplateRegistrationService {
         return parameterFields.size();
     }
 
-    private void synchronizeParameter(
-        AlertTemplateDefinition template,
-        Field field,
-        AlertTemplateParameterDefinition existing
-    ) {
+    private void synchronizeParameter(AlertTemplateDefinition template, Field field, AlertTemplateParameterDefinition existing) {
         AlertParameter metadata = field.getAnnotation(AlertParameter.class);
         List<String> options = List.of(metadata.options());
         String defaultValue = metadata.defaultValue().isEmpty()
@@ -230,6 +227,14 @@ public class AlertTemplateRegistrationService {
                         + templateClass.getName() + "." + field.getName()
                 );
             }
+            if (field.getType() == Procedure.class
+                    && (!parameter.bindingAllowed() || !parameter.defaultValue().isEmpty()
+                    || parameter.options().length > 0)) {
+                throw new IllegalStateException(
+                    "Procedure alert parameters must allow binding and cannot declare text defaults or options: "
+                        + templateClass.getName() + "." + field.getName()
+                );
+            }
         }
     }
 
@@ -251,11 +256,7 @@ public class AlertTemplateRegistrationService {
         }
     }
 
-    private static void validateOptions(
-        AlertParameter parameter,
-        Class<?> templateClass,
-        Field field
-    ) {
+    private static void validateOptions(AlertParameter parameter, Class<?> templateClass, Field field) {
         var uniqueOptions = new java.util.HashSet<String>();
         for (String option : parameter.options()) {
             if (!StringUtils.hasText(option) || !option.equals(option.trim())) {

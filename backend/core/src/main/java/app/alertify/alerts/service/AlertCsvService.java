@@ -36,6 +36,8 @@ import app.alertify.jpa.repository.AlertTemplateDefinitionRepository;
 import app.alertify.jpa.repository.ApplicationConfigurationRepository;
 import app.alertify.jpa.repository.ApplicationSecretRepository;
 import app.alertify.jpa.repository.TagRepository;
+import app.alertify.jpa.repository.ProcedureRepository;
+import app.alertify.procedures.model.Procedure;
 
 /**
  * CSV export and import of alert definitions. Import upserts by name and
@@ -53,16 +55,18 @@ public class AlertCsvService {
     private final ApplicationConfigurationRepository configurationRepository;
     private final ApplicationSecretRepository secretRepository;
     private final TagRepository tagRepository;
+    private final ProcedureRepository procedureRepository;
     private final AlertManagementService alertManagementService;
     private final AlertCsvCodec csvCodec;
 
-    AlertCsvService(AlertRepository alertRepository, AlertParameterValueRepository parameterValueRepository, AlertTemplateDefinitionRepository templateRepository, ApplicationConfigurationRepository configurationRepository, ApplicationSecretRepository secretRepository, TagRepository tagRepository, AlertManagementService alertManagementService, AlertCsvCodec csvCodec) {
+    AlertCsvService(AlertRepository alertRepository, AlertParameterValueRepository parameterValueRepository, AlertTemplateDefinitionRepository templateRepository, ApplicationConfigurationRepository configurationRepository, ApplicationSecretRepository secretRepository, ProcedureRepository procedureRepository, TagRepository tagRepository, AlertManagementService alertManagementService, AlertCsvCodec csvCodec) {
         this.alertRepository = alertRepository;
         this.parameterValueRepository = parameterValueRepository;
         this.templateRepository = templateRepository;
         this.configurationRepository = configurationRepository;
         this.secretRepository = secretRepository;
         this.tagRepository = tagRepository;
+        this.procedureRepository = procedureRepository;
         this.alertManagementService = alertManagementService;
         this.csvCodec = csvCodec;
     }
@@ -104,6 +108,9 @@ public class AlertCsvService {
         Map<String, ApplicationSecret> secretsByName = byLowercaseName(
                 secretRepository.findAll(), ApplicationSecret::getName
         );
+        Map<String, Procedure> proceduresByName = byLowercaseName(
+                procedureRepository.findAll(), Procedure::getName
+        );
 
         int created = 0;
         int updated = 0;
@@ -130,7 +137,7 @@ public class AlertCsvService {
 
             List<AlertParameterValueRequest> parameters = new ArrayList<>();
             for (AlertCsvCodec.ImportParameter parameter : row.parameters())
-                parameters.add(toParameterRequest(row, parameter, configurationsByName, secretsByName));
+                parameters.add(toParameterRequest(row, parameter, configurationsByName, secretsByName, proceduresByName));
 
             String alertKey = row.name().toLowerCase(Locale.ROOT);
             Alert alert = alertsByName.get(alertKey);
@@ -171,7 +178,7 @@ public class AlertCsvService {
         return new AlertImportResult(rows.size(), created, updated, unchanged, tagsCreated);
     }
 
-    private AlertParameterValueRequest toParameterRequest(AlertCsvCodec.ImportRow row, AlertCsvCodec.ImportParameter parameter, Map<String, ApplicationConfiguration> configurationsByName, Map<String, ApplicationSecret> secretsByName) {
+    private AlertParameterValueRequest toParameterRequest(AlertCsvCodec.ImportRow row, AlertCsvCodec.ImportParameter parameter, Map<String, ApplicationConfiguration> configurationsByName, Map<String, ApplicationSecret> secretsByName, Map<String, Procedure> proceduresByName) {
         String reference = parameter.value().toLowerCase(Locale.ROOT);
         return switch (parameter.source()) {
             case TEXT -> new AlertParameterValueRequest(
@@ -193,6 +200,15 @@ public class AlertCsvService {
 
                 yield new AlertParameterValueRequest(
                         parameter.key(), AlertParameterSource.SECRET, null, null, secret.getId()
+                );
+            }
+            case PROCEDURE -> {
+                Procedure procedure = proceduresByName.get(reference);
+                if (procedure == null)
+                    throw rowError(row, "procedure '" + parameter.value() + "' was not found");
+
+                yield new AlertParameterValueRequest(
+                        parameter.key(), AlertParameterSource.PROCEDURE, null, null, null, procedure.getId()
                 );
             }
         };
@@ -241,6 +257,7 @@ public class AlertCsvService {
             case TEXT -> value.getTextValue();
             case CONFIGURATION -> String.valueOf(value.getConfiguration().getId());
             case SECRET -> String.valueOf(value.getSecret().getId());
+            case PROCEDURE -> String.valueOf(value.getProcedure().getId());
         };
         return value.getSource() + " " + reference;
     }
@@ -250,6 +267,7 @@ public class AlertCsvService {
             case TEXT -> request.textValue();
             case CONFIGURATION -> String.valueOf(request.configurationId());
             case SECRET -> String.valueOf(request.secretId());
+            case PROCEDURE -> String.valueOf(request.procedureId());
         };
         return request.source() + " " + reference;
     }

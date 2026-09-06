@@ -13,15 +13,25 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import app.alertify.worker.grpc.ExecuteAlertRequest;
+import app.alertify.worker.grpc.ExecuteProcedureRequest;
 
+/**
+ * Holds the worker concurrency limit and the in-flight task inventory reported
+ * on the status endpoint. Alert executions must acquire a fair semaphore permit
+ * and may queue for it, while procedure executions are only registered: they
+ * run outside the semaphore because they are usually nested inside a task that
+ * already holds a permit.
+ */
 class WorkerExecutionTracker {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(WorkerExecutionTracker.class);
 
     private final Semaphore semaphore;
     private final LongAdder totalExecuted = new LongAdder();
+    private final LongAdder totalExecutedProcedures = new LongAdder();
     private final Map<String, TaskState> waiting = new ConcurrentHashMap<>();
     private final Map<String, TaskState> running = new ConcurrentHashMap<>();
+    private final Map<String, ProcedureTaskState> runningProcedures = new ConcurrentHashMap<>();
 
     WorkerExecutionTracker(WorkerRuntimeProperties properties) {
         if (properties.maxConcurrentAlerts() <= 0)
@@ -60,6 +70,20 @@ class WorkerExecutionTracker {
         return totalExecuted.sum();
     }
 
+    ProcedurePermit startProcedure(ExecuteProcedureRequest request, Instant startedAt) {
+        ProcedureTaskState task = new ProcedureTaskState(request.getExecutionId(), request.getProcedureId(),
+                request.getProcedureName(), request.getParentExecutionId(), request.getDepth(), startedAt);
+        runningProcedures.put(request.getExecutionId(), task);
+        LOGGER.info("Procedure execution started outside the alert semaphore: executionId={}, procedureId={}, procedureName={}, depth={}", request.getExecutionId(), request.getProcedureId(), request.getProcedureName(), request.getDepth());
+        return new ProcedurePermit(request.getExecutionId(), startedAt);
+    }
+
+    long totalExecutedProcedures() { return totalExecutedProcedures.sum(); }
+
+    List<ProcedureTaskState> runningProcedureTasks() {
+        return runningProcedures.values().stream().sorted(Comparator.comparing(ProcedureTaskState::workStartedAt)).toList();
+    }
+
     List<TaskState> waitingTasks() {
         return snapshots(waiting);
     }
@@ -87,6 +111,9 @@ class WorkerExecutionTracker {
         }
     }
 
+    record ProcedureTaskState(String executionId, long procedureId, String procedureName,
+            String parentExecutionId, int depth, Instant workStartedAt) { }
+
     final class Permit implements AutoCloseable {
 
         private final String executionId;
@@ -111,6 +138,29 @@ class WorkerExecutionTracker {
             running.remove(executionId);
             totalExecuted.increment();
             semaphore.release();
+        }
+    }
+
+    final class ProcedurePermit implements AutoCloseable {
+        private final String executionId;
+        private final Instant workStartedAt;
+        private boolean closed;
+
+        private ProcedurePermit(String executionId, Instant workStartedAt) {
+            this.executionId = executionId;
+            this.workStartedAt = workStartedAt;
+        }
+
+        Instant workStartedAt() { return workStartedAt; }
+
+        @Override
+        public void close() {
+            if (closed)
+                return;
+
+            closed = true;
+            runningProcedures.remove(executionId);
+            totalExecutedProcedures.increment();
         }
     }
 }

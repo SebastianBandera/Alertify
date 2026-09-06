@@ -7,16 +7,30 @@ import java.util.List;
 import java.util.Objects;
 
 import app.alertify.alerts.AlertEvaluator;
+import app.alertify.procedures.Procedure;
 import app.alertify.worker.grpc.AlertParameter;
 import app.alertify.worker.grpc.WritableConfigurationValue;
 import app.alertify.worker.grpc.WritableSecretValue;
+import io.grpc.Deadline;
 
+/**
+ * One compiled alert template class together with the checksum of the source it
+ * was built from. Instances are created by reflection: the request parameters
+ * are matched positionally against a constructor, a {@link Procedure} parameter
+ * becomes a callable handle instead of a converted value, and after the run the
+ * writable parameter fields are read back to detect the values the template
+ * changed.
+ */
 record CompiledAlertTemplate(
     String checksum,
     Class<? extends AlertEvaluator> templateClass
 ) {
 
     AlertEvaluator newInstance(List<AlertParameter> parameters) {
+        return newInstance(parameters, null, null);
+    }
+
+    AlertEvaluator newInstance(List<AlertParameter> parameters, ProcedureHandleFactory handles, Deadline deadline) {
         Constructor<?> constructor = matchingConstructor(parameters);
         Object[] values = new Object[parameters.size()];
         Class<?>[] parameterTypes = constructor.getParameterTypes();
@@ -28,7 +42,9 @@ record CompiledAlertTemplate(
                         + parameterTypes[index].getName() + " but received " + parameter.getJavaType()
                 );
             }
-            values[index] = AlertParameterConverter.convert(parameter, parameterTypes[index]);
+            values[index] = parameterTypes[index] == Procedure.class && !parameter.getNullValue()
+                    ? requireHandles(handles).create(parameter, deadline)
+                    : AlertParameterConverter.convert(parameter, parameterTypes[index]);
         }
         try {
             constructor.setAccessible(true);
@@ -38,6 +54,13 @@ record CompiledAlertTemplate(
                 "Could not create alert template " + templateClass.getName(), exception
             );
         }
+    }
+
+    private static ProcedureHandleFactory requireHandles(ProcedureHandleFactory handles) {
+        if (handles == null)
+            throw new IllegalStateException("Procedure handles are unavailable");
+
+        return handles;
     }
 
     WritableValues writableValues(AlertEvaluator evaluator, List<AlertParameter> parameters) {

@@ -70,7 +70,7 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monosp
 .actions { white-space: nowrap; }
 .actions__group { display: flex; align-items: center; gap: 2px; }
 .actions button { padding: 4px 6px; border: 0; background: transparent; color: var(--primary-strong); cursor: pointer; font: inherit; font-weight: 700; }
-.actions .danger { color: #b42318; }
+.actions .danger, .danger { color: #b42318; }
 
 /* "Run now" is an execution, not an edit: it gets a button shape of its own,
    set apart from the Edit/Delete text actions by a divider. */
@@ -136,7 +136,7 @@ details summary { color: var(--primary-strong); cursor: pointer; font-weight: 70
 .tag-manager-body .tag-form { padding: 0; }
 .tag-form input[type='color'] { padding: 4px; }
 .tag-manager-list { overflow: hidden; border: 1px solid var(--border); border-radius: 10px; }
-.tag-manager-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 12px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+.tag-manager-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; align-items: center; gap: 12px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
 .tag-manager-row:last-child { border-bottom: 0; }
 .tag-manager-row > .tag { justify-self: start; }
 .tag-manager-row code { color: var(--text-muted); font-size: 11px; }

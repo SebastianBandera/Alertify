@@ -79,6 +79,7 @@ class AlertCsvCodec {
             case TEXT -> value.getTextValue();
             case CONFIGURATION -> value.getConfiguration().getName();
             case SECRET -> value.getSecret().getName();
+            case PROCEDURE -> value.getProcedure().getName();
         };
         return new ExportParameter(
                 value.getTemplateParameter().getParameterKey(), value.getSource(),

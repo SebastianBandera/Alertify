@@ -19,7 +19,6 @@ public record WorkerRuntimeProperties(
     Path compilerClasspathDirectory,
     Tls tls
 ) {
-
     public record Tls(
         boolean enabled,
         Path certificateChain,

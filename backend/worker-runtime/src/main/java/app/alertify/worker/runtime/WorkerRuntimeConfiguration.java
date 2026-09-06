@@ -11,6 +11,7 @@ import org.springframework.context.annotation.Import;
     AlertTemplateCompiler.class,
     WorkerExecutionTracker.class,
     WorkerExecutionEngine.class,
+    ProcedureExecutionEngine.class,
     AlertWorkerGrpcService.class,
     WorkerGrpcServer.class
 })

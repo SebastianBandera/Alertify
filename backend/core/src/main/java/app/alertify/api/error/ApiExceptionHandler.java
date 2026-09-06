@@ -68,6 +68,11 @@ public class ApiExceptionHandler {
         return response(HttpStatus.BAD_REQUEST, "INVALID_ALERT_IMPORT", exception.getMessage(), Map.of(), exception, request);
     }
 
+    @ExceptionHandler(InvalidProcedureImportException.class)
+    ResponseEntity<ApiError> handleInvalidProcedureImport(InvalidProcedureImportException exception, HttpServletRequest request) {
+        return response(HttpStatus.BAD_REQUEST, "INVALID_PROCEDURE_IMPORT", exception.getMessage(), Map.of(), exception, request);
+    }
+
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     ResponseEntity<ApiError> handleUploadTooLarge(MaxUploadSizeExceededException exception, HttpServletRequest request) {
         return response(HttpStatus.BAD_REQUEST, "PAYLOAD_TOO_LARGE", "The uploaded file is too large", Map.of(), exception, request);
@@ -91,6 +96,11 @@ public class ApiExceptionHandler {
     @ExceptionHandler(InvalidAlertRequestException.class)
     ResponseEntity<ApiError> handleInvalidAlertRequest(InvalidAlertRequestException exception, HttpServletRequest request) {
         return response(HttpStatus.BAD_REQUEST, "INVALID_ALERT_REQUEST", exception.getMessage(), Map.of(), exception, request);
+    }
+
+    @ExceptionHandler(InvalidProcedureRequestException.class)
+    ResponseEntity<ApiError> handleInvalidProcedureRequest(InvalidProcedureRequestException exception, HttpServletRequest request) {
+        return response(HttpStatus.BAD_REQUEST, "INVALID_PROCEDURE_REQUEST", exception.getMessage(), Map.of(), exception, request);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

@@ -4,8 +4,11 @@ import java.time.Instant;
 
 public record WorkerTaskStatusResponse(
     String executionId,
-    long alertId,
-    String alertName,
+    String kind,
+    long resourceId,
+    String resourceName,
+    String parentExecutionId,
+    int depth,
     Instant queuedAt,
     Instant workStartedAt,
     long elapsedMillis

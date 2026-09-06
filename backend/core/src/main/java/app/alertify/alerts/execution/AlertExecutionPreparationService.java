@@ -28,6 +28,13 @@ import app.alertify.jpa.repository.AlertStateRepository;
 import app.alertify.jpa.repository.AlertTemplateParameterDefinitionRepository;
 import app.alertify.services.secret.SecretAccessService;
 
+/**
+ * Builds the immutable snapshot an alert execution needs before any worker is
+ * contacted: template metadata, the template source with its checksum, the
+ * persisted alert state, and every parameter resolved to the value that will be
+ * sent. Configuration and secret bindings are resolved here, while a procedure
+ * binding is left unresolved so it is only invoked if the template asks for it.
+ */
 @Service
 public class AlertExecutionPreparationService {
 
@@ -87,16 +94,18 @@ public class AlertExecutionPreparationService {
             String defaultValue = definition.getDefaultValue();
             return new ResolvedAlertParameter(
                     definition.getParameterKey(), definition.getJavaType(), defaultValue,
-                    defaultValue == null, AlertParameterSource.TEXT, null, null, false
+                    defaultValue == null, AlertParameterSource.TEXT, null, null, null, false
             );
         }
         String value = switch (configured.getSource()) {
             case TEXT -> configured.getTextValue();
             case CONFIGURATION -> configurationExpressionService.getResolvedValueByName(configured.getConfiguration().getName());
             case SECRET -> secretAccessService.getValueByName(configured.getSecret().getName());
+            case PROCEDURE -> null;
         };
         return new ResolvedAlertParameter(
-                definition.getParameterKey(), definition.getJavaType(), value, value == null,
+                definition.getParameterKey(), definition.getJavaType(), value,
+                value == null && configured.getSource() != AlertParameterSource.PROCEDURE,
                 configured.getSource(),
                 configured.getSource() == AlertParameterSource.CONFIGURATION
                         ? configured.getConfiguration().getId()
@@ -104,10 +113,13 @@ public class AlertExecutionPreparationService {
                 configured.getSource() == AlertParameterSource.SECRET
                         ? configured.getSecret().getId()
                         : null,
+                configured.getSource() == AlertParameterSource.PROCEDURE
+                        ? configured.getProcedure().getId()
+                        : null,
                 switch (configured.getSource()) {
                     case CONFIGURATION -> configured.getConfiguration().isWritable();
                     case SECRET -> configured.getSecret().isWritable();
-                    case TEXT -> false;
+                    case TEXT, PROCEDURE -> false;
                 }
         );
     }
