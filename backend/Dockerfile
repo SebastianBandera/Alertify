@@ -37,8 +37,11 @@ COPY --from=builder --chown=application:application \
     /application/alert-template-sources
 
 COPY --chown=application:application start-backend.sh /application/start-backend.sh
+COPY --chown=application:application secrets-tool.sh /application/secrets-tool.sh
 
-RUN chmod 0755 /application/start-backend.sh
+RUN chmod 0755 /application/start-backend.sh /application/secrets-tool.sh \
+    && mkdir -p /application/export \
+    && chown application:application /application/export
 
 USER application
 
