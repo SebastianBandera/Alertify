@@ -20,17 +20,18 @@ CREATE TABLE core.configurations (
     description text,
     value_type varchar(32) NOT NULL,
     configuration_value jsonb NOT NULL,
+    writable boolean NOT NULL DEFAULT false,
     created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
     updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
     CONSTRAINT pk_configurations PRIMARY KEY (id),
     CONSTRAINT uq_configurations_name UNIQUE (name),
     CONSTRAINT ck_configurations_name_trimmed CHECK (name = btrim(name) AND name <> ''),
     CONSTRAINT ck_configurations_value_type CHECK (value_type IN (
-        'STRING', 'EXPRESSION', 'INTEGER', 'DECIMAL', 'BOOLEAN', 'DATE', 'DATE_TIME', 'JSON'
+        'STRING', 'EXPRESSION', 'INTEGER', 'DECIMAL', 'BOOLEAN', 'DATE', 'TIME', 'DATE_TIME', 'JSON'
     )),
     CONSTRAINT ck_configurations_value_not_null CHECK (configuration_value <> 'null'::jsonb),
     CONSTRAINT ck_configurations_value_matches_type CHECK (
-        (value_type IN ('STRING', 'EXPRESSION', 'DATE', 'DATE_TIME')
+        (value_type IN ('STRING', 'EXPRESSION', 'DATE', 'TIME', 'DATE_TIME')
             AND jsonb_typeof(configuration_value) = 'string')
         OR (value_type = 'INTEGER'
             AND jsonb_typeof(configuration_value) = 'number'
@@ -70,7 +71,9 @@ CREATE TABLE core.tags (
     CONSTRAINT pk_tags PRIMARY KEY (id),
     CONSTRAINT uq_tags_scope_name UNIQUE (scope, name),
     CONSTRAINT uq_tags_id_scope UNIQUE (id, scope),
-    CONSTRAINT ck_tags_scope CHECK (scope IN ('CONFIGURATION', 'SECRET')),
+    CONSTRAINT ck_tags_scope CHECK (
+        scope IN ('CONFIGURATION', 'SECRET', 'ALERT', 'PROCEDURE')
+    ),
     CONSTRAINT ck_tags_name_trimmed CHECK (name = btrim(name) AND name <> ''),
     CONSTRAINT ck_tags_color CHECK (color ~ '^#[0-9A-F]{6}$')
 );
@@ -114,6 +117,7 @@ CREATE TABLE audit.configurations_aud (
     description text,
     value_type varchar(32),
     configuration_value jsonb,
+    writable boolean,
     CONSTRAINT pk_configurations_aud PRIMARY KEY (id, rev),
     CONSTRAINT fk_configurations_aud_rev FOREIGN KEY (rev) REFERENCES audit.revinfo (rev)
 );
@@ -155,6 +159,7 @@ CREATE TABLE secrets.secrets (
     hash_salt bytea NOT NULL,
     encryption_version smallint NOT NULL,
     value_revision bigint NOT NULL DEFAULT 1,
+    writable boolean NOT NULL DEFAULT false,
     created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
     updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
     CONSTRAINT pk_secrets PRIMARY KEY (id),
@@ -192,6 +197,7 @@ CREATE TABLE audit.secrets_aud (
     description text,
     encryption_version smallint,
     value_revision bigint,
+    writable boolean,
     CONSTRAINT pk_secrets_aud PRIMARY KEY (id, rev),
     CONSTRAINT fk_secrets_aud_rev FOREIGN KEY (rev) REFERENCES audit.revinfo (rev)
 );
@@ -245,8 +251,18 @@ INSERT INTO audit.log_events (code) VALUES
     ('ALERT_BINDING_CATALOG_ACCESSED'),
     ('ALERT_CREATED'),
     ('ALERT_DELETED'),
+    ('ALERT_EXECUTION_COMPLETED'),
+    ('ALERT_EXECUTION_DISPATCH_FAILED'),
     ('ALERT_EXECUTION_HISTORY_VIEWED'),
+    ('ALERT_EXECUTION_SKIPPED'),
+    ('ALERT_EXECUTION_STARTED'),
+    ('ALERT_EXECUTION_TRIGGERED'),
     ('ALERT_PAGE_VIEWED'),
+    ('ALERT_SCHEDULE_REGISTERED'),
+    ('ALERT_SCHEDULE_REMOVED'),
+    ('ALERT_TAG_CREATED'),
+    ('ALERT_TAG_DELETED'),
+    ('ALERT_TAG_UPDATED'),
     ('ALERT_TEMPLATE_CATALOG_VIEWED'),
     ('ALERT_UPDATED'),
     ('API_ERROR_SHOWN'),
@@ -254,16 +270,50 @@ INSERT INTO audit.log_events (code) VALUES
     ('API_UNHANDLED_ERROR'),
     ('CONFIGURATION_CREATED'),
     ('CONFIGURATION_DELETED'),
+    ('CONFIGURATION_EXPRESSION_EVALUATED'),
+    ('CONFIGURATION_OVERWRITTEN_BY_ALERT'),
+    ('CONFIGURATION_OVERWRITTEN_BY_PROCEDURE'),
+    ('CONFIGURATION_OVERWRITE_REJECTED'),
     ('CONFIGURATION_PAGE_VIEWED'),
     ('CONFIGURATION_TAG_CREATED'),
     ('CONFIGURATION_TAG_DELETED'),
     ('CONFIGURATION_TAG_UPDATED'),
     ('CONFIGURATION_UPDATED'),
     ('CONFIGURATION_VIEWED'),
-    ('CONFIGURATION_EXPRESSION_EVALUATED'),
+    ('HOOK_CREATED'),
+    ('HOOK_DELETED'),
+    ('HOOK_INVOCATION_ACCEPTED'),
+    ('HOOK_INVOCATION_COMPLETED'),
+    ('HOOK_INVOCATION_HISTORY_VIEWED'),
+    ('HOOK_INVOCATION_REJECTED'),
+    ('HOOK_INVOCATION_TIMEOUT'),
+    ('HOOK_INVOCATION_WAITING'),
+    ('HOOK_OPTIONS_VIEWED'),
+    ('HOOK_PAGE_VIEWED'),
+    ('HOOK_ROTATED'),
+    ('HOOK_UPDATED'),
+    ('PROCEDURE_BINDING_CATALOG_ACCESSED'),
+    ('PROCEDURE_CREATED'),
+    ('PROCEDURE_DELETED'),
+    ('PROCEDURE_EXECUTION_COMPLETED'),
+    ('PROCEDURE_EXECUTION_HISTORY_VIEWED'),
+    ('PROCEDURE_EXECUTION_REJECTED'),
+    ('PROCEDURE_EXECUTION_STARTED'),
+    ('PROCEDURE_EXECUTION_TRIGGERED'),
+    ('PROCEDURE_EXPORT'),
+    ('PROCEDURE_IMPORT'),
+    ('PROCEDURE_PAGE_VIEWED'),
+    ('PROCEDURE_TAG_CREATED'),
+    ('PROCEDURE_TAG_DELETED'),
+    ('PROCEDURE_TAG_UPDATED'),
+    ('PROCEDURE_TEMPLATE_CATALOG_VIEWED'),
+    ('PROCEDURE_UPDATED'),
     ('SECRET_CATALOG_ACCESSED'),
     ('SECRET_CREATED'),
     ('SECRET_DELETED'),
+    ('SECRET_OVERWRITTEN_BY_ALERT'),
+    ('SECRET_OVERWRITTEN_BY_PROCEDURE'),
+    ('SECRET_OVERWRITE_REJECTED'),
     ('SECRET_PAGE_VIEWED'),
     ('SECRET_TAG_CREATED'),
     ('SECRET_TAG_DELETED'),
@@ -278,7 +328,8 @@ INSERT INTO audit.log_events (code) VALUES
     ('WORKER_IP_AVAILABLE'),
     ('WORKER_IP_DISCOVERED'),
     ('WORKER_IP_REMOVED'),
-    ('WORKER_IP_UNAVAILABLE');
+    ('WORKER_IP_UNAVAILABLE'),
+    ('WORKER_STATUS_VIEWED');
 
 CREATE TABLE audit.logs (
     id bigint GENERATED BY DEFAULT AS IDENTITY,
@@ -316,7 +367,9 @@ CREATE TABLE core.alert_templates (
     template_key text NOT NULL,
     name_key text NOT NULL,
     description_key text NOT NULL,
+    source_path text NOT NULL DEFAULT '',
     required_capability varchar(32) NOT NULL,
+    tags jsonb NOT NULL DEFAULT '[]'::jsonb,
     created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
     updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
     CONSTRAINT pk_alert_templates PRIMARY KEY (id),
@@ -330,9 +383,13 @@ CREATE TABLE core.alert_templates (
     CONSTRAINT ck_alert_templates_description_key_trimmed CHECK (
         description_key = btrim(description_key) AND description_key <> ''
     ),
+    CONSTRAINT ck_alert_templates_source_path_trimmed CHECK (
+        source_path = btrim(source_path)
+    ),
     CONSTRAINT ck_alert_templates_required_capability CHECK (
         required_capability IN ('STANDARD', 'PLAYWRIGHT')
-    )
+    ),
+    CONSTRAINT ck_alert_templates_tags_array CHECK (jsonb_typeof(tags) = 'array')
 );
 
 CREATE INDEX idx_alert_templates_required_capability
@@ -349,6 +406,7 @@ CREATE TABLE core.alert_template_parameters (
     options jsonb NOT NULL DEFAULT '[]'::jsonb,
     binding_allowed boolean NOT NULL,
     default_value text,
+    multiline boolean NOT NULL DEFAULT false,
     parameter_order integer NOT NULL,
     required boolean NOT NULL,
     created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
@@ -388,6 +446,180 @@ CREATE TABLE core.alert_template_parameters (
 CREATE INDEX idx_alert_template_parameters_template_order
     ON core.alert_template_parameters (alert_template_id, parameter_order, id);
 
+CREATE TABLE core.procedure_templates (
+    id bigint GENERATED BY DEFAULT AS IDENTITY,
+    version bigint NOT NULL DEFAULT 0,
+    template_key text NOT NULL,
+    name_key text NOT NULL,
+    description_key text NOT NULL,
+    source_path text NOT NULL,
+    required_capability varchar(32) NOT NULL,
+    sensitive_result boolean NOT NULL DEFAULT false,
+    tags jsonb NOT NULL DEFAULT '[]'::jsonb,
+    created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    CONSTRAINT pk_procedure_templates PRIMARY KEY (id),
+    CONSTRAINT uq_procedure_templates_template_key UNIQUE (template_key),
+    CONSTRAINT ck_procedure_templates_template_key_trimmed CHECK (
+        template_key = btrim(template_key) AND template_key <> ''
+    ),
+    CONSTRAINT ck_procedure_templates_name_key_trimmed CHECK (
+        name_key = btrim(name_key) AND name_key <> ''
+    ),
+    CONSTRAINT ck_procedure_templates_description_key_trimmed CHECK (
+        description_key = btrim(description_key) AND description_key <> ''
+    ),
+    CONSTRAINT ck_procedure_templates_source_path_trimmed CHECK (
+        source_path = btrim(source_path) AND source_path <> ''
+    ),
+    CONSTRAINT ck_procedure_templates_required_capability CHECK (
+        required_capability IN ('STANDARD', 'PLAYWRIGHT')
+    ),
+    CONSTRAINT ck_procedure_templates_tags_array CHECK (jsonb_typeof(tags) = 'array')
+);
+
+CREATE INDEX idx_procedure_templates_required_capability
+    ON core.procedure_templates (required_capability);
+
+CREATE TABLE core.procedure_template_parameters (
+    id bigint GENERATED BY DEFAULT AS IDENTITY,
+    version bigint NOT NULL DEFAULT 0,
+    procedure_template_id bigint NOT NULL,
+    parameter_key text NOT NULL,
+    label_key text NOT NULL,
+    description_key text NOT NULL,
+    java_type text NOT NULL,
+    options jsonb NOT NULL DEFAULT '[]'::jsonb,
+    binding_allowed boolean NOT NULL,
+    default_value text,
+    multiline boolean NOT NULL DEFAULT false,
+    parameter_order integer NOT NULL,
+    required boolean NOT NULL,
+    allowed_sources jsonb NOT NULL DEFAULT '["TEXT","CONFIGURATION","SECRET"]'::jsonb,
+    created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    CONSTRAINT pk_procedure_template_parameters PRIMARY KEY (id),
+    CONSTRAINT uq_procedure_template_parameters_template_key UNIQUE (
+        procedure_template_id, parameter_key
+    ),
+    CONSTRAINT ck_procedure_template_parameters_key_trimmed CHECK (
+        parameter_key = btrim(parameter_key) AND parameter_key <> ''
+    ),
+    CONSTRAINT ck_procedure_template_parameters_label_key_trimmed CHECK (
+        label_key = btrim(label_key) AND label_key <> ''
+    ),
+    CONSTRAINT ck_procedure_template_parameters_description_key_trimmed CHECK (
+        description_key = btrim(description_key) AND description_key <> ''
+    ),
+    CONSTRAINT ck_procedure_template_parameters_java_type_trimmed CHECK (
+        java_type = btrim(java_type) AND java_type <> ''
+    ),
+    CONSTRAINT ck_procedure_template_parameters_options CHECK (
+        jsonb_typeof(options) = 'array'
+    ),
+    CONSTRAINT ck_procedure_template_parameters_allowed_sources CHECK (
+        jsonb_typeof(allowed_sources) = 'array' AND jsonb_array_length(allowed_sources) > 0
+    ),
+    CONSTRAINT ck_procedure_template_parameters_nonbinding_options CHECK (
+        binding_allowed OR jsonb_array_length(options) > 0
+    ),
+    CONSTRAINT ck_procedure_template_parameters_nonbinding_default CHECK (
+        default_value IS NULL OR binding_allowed OR options ? default_value
+    ),
+    CONSTRAINT ck_procedure_template_parameters_order CHECK (parameter_order >= 0),
+    CONSTRAINT fk_procedure_template_parameters_template
+        FOREIGN KEY (procedure_template_id)
+        REFERENCES core.procedure_templates (id) ON DELETE RESTRICT
+);
+
+CREATE INDEX idx_procedure_template_parameters_template_order
+    ON core.procedure_template_parameters (procedure_template_id, parameter_order, id);
+
+CREATE TABLE core.procedures (
+    id bigint GENERATED BY DEFAULT AS IDENTITY,
+    version bigint NOT NULL DEFAULT 0,
+    procedure_template_id bigint NOT NULL,
+    name text NOT NULL,
+    description text,
+    enabled boolean NOT NULL DEFAULT true,
+    created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    CONSTRAINT pk_procedures PRIMARY KEY (id),
+    CONSTRAINT uq_procedures_name UNIQUE (name),
+    CONSTRAINT ck_procedures_name_trimmed CHECK (name = btrim(name) AND name <> ''),
+    CONSTRAINT fk_procedures_template FOREIGN KEY (procedure_template_id)
+        REFERENCES core.procedure_templates (id) ON DELETE RESTRICT
+);
+
+CREATE UNIQUE INDEX uq_procedures_name_ci ON core.procedures (lower(name));
+CREATE INDEX idx_procedures_template ON core.procedures (procedure_template_id);
+CREATE INDEX idx_procedures_enabled ON core.procedures (enabled) WHERE enabled;
+
+CREATE TABLE core.procedure_tag (
+    procedure_id bigint NOT NULL,
+    tag_id bigint NOT NULL,
+    tag_scope varchar(32) NOT NULL DEFAULT 'PROCEDURE',
+    CONSTRAINT pk_procedure_tag PRIMARY KEY (procedure_id, tag_id),
+    CONSTRAINT ck_procedure_tag_scope CHECK (tag_scope = 'PROCEDURE'),
+    CONSTRAINT fk_procedure_tag_procedure
+        FOREIGN KEY (procedure_id) REFERENCES core.procedures (id) ON DELETE CASCADE,
+    CONSTRAINT fk_procedure_tag_tag_scope
+        FOREIGN KEY (tag_id, tag_scope) REFERENCES core.tags (id, scope) ON DELETE RESTRICT
+);
+
+CREATE INDEX idx_procedure_tag_tag ON core.procedure_tag (tag_id, procedure_id);
+
+CREATE TABLE core.procedure_parameter_values (
+    id bigint GENERATED BY DEFAULT AS IDENTITY,
+    version bigint NOT NULL DEFAULT 0,
+    owner_procedure_id bigint NOT NULL,
+    template_parameter_id bigint NOT NULL,
+    source varchar(32) NOT NULL,
+    text_value text,
+    configuration_id bigint,
+    secret_id bigint,
+    referenced_procedure_id bigint,
+    created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    CONSTRAINT pk_procedure_parameter_values PRIMARY KEY (id),
+    CONSTRAINT uq_procedure_parameter_values_owner_parameter UNIQUE (
+        owner_procedure_id, template_parameter_id
+    ),
+    CONSTRAINT ck_procedure_parameter_values_source CHECK (
+        source IN ('TEXT', 'CONFIGURATION', 'SECRET', 'PROCEDURE')
+    ),
+    CONSTRAINT ck_procedure_parameter_values_selected_source CHECK (
+        (source = 'TEXT' AND text_value IS NOT NULL AND configuration_id IS NULL
+            AND secret_id IS NULL AND referenced_procedure_id IS NULL)
+        OR (source = 'CONFIGURATION' AND text_value IS NULL AND configuration_id IS NOT NULL
+            AND secret_id IS NULL AND referenced_procedure_id IS NULL)
+        OR (source = 'SECRET' AND text_value IS NULL AND configuration_id IS NULL
+            AND secret_id IS NOT NULL AND referenced_procedure_id IS NULL)
+        OR (source = 'PROCEDURE' AND text_value IS NULL AND configuration_id IS NULL
+            AND secret_id IS NULL AND referenced_procedure_id IS NOT NULL)
+    ),
+    CONSTRAINT fk_procedure_parameter_values_owner FOREIGN KEY (owner_procedure_id)
+        REFERENCES core.procedures (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_procedure_parameter_values_template_parameter FOREIGN KEY (template_parameter_id)
+        REFERENCES core.procedure_template_parameters (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_procedure_parameter_values_configuration FOREIGN KEY (configuration_id)
+        REFERENCES core.configurations (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_procedure_parameter_values_secret FOREIGN KEY (secret_id)
+        REFERENCES secrets.secrets (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_procedure_parameter_values_referenced_procedure FOREIGN KEY (referenced_procedure_id)
+        REFERENCES core.procedures (id) ON DELETE RESTRICT
+);
+
+CREATE INDEX idx_procedure_parameter_values_template_parameter
+    ON core.procedure_parameter_values (template_parameter_id);
+CREATE INDEX idx_procedure_parameter_values_configuration
+    ON core.procedure_parameter_values (configuration_id) WHERE configuration_id IS NOT NULL;
+CREATE INDEX idx_procedure_parameter_values_secret
+    ON core.procedure_parameter_values (secret_id) WHERE secret_id IS NOT NULL;
+CREATE INDEX idx_procedure_parameter_values_referenced
+    ON core.procedure_parameter_values (referenced_procedure_id)
+    WHERE referenced_procedure_id IS NOT NULL;
+
 CREATE TABLE core.alerts (
     id bigint GENERATED BY DEFAULT AS IDENTITY,
     version bigint NOT NULL DEFAULT 0,
@@ -396,6 +628,7 @@ CREATE TABLE core.alerts (
     description text,
     cron_expression text NOT NULL,
     enabled boolean NOT NULL DEFAULT true,
+    allow_concurrent_executions boolean NOT NULL DEFAULT false,
     state text NOT NULL DEFAULT '',
     created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
     updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
@@ -413,6 +646,20 @@ CREATE UNIQUE INDEX uq_alerts_name_ci ON core.alerts (lower(name));
 CREATE INDEX idx_alerts_template ON core.alerts (alert_template_id);
 CREATE INDEX idx_alerts_enabled ON core.alerts (enabled) WHERE enabled;
 
+CREATE TABLE core.alert_tag (
+    alert_id bigint NOT NULL,
+    tag_id bigint NOT NULL,
+    tag_scope varchar(32) NOT NULL DEFAULT 'ALERT',
+    CONSTRAINT pk_alert_tag PRIMARY KEY (alert_id, tag_id),
+    CONSTRAINT ck_alert_tag_scope CHECK (tag_scope = 'ALERT'),
+    CONSTRAINT fk_alert_tag_alert
+        FOREIGN KEY (alert_id) REFERENCES core.alerts (id) ON DELETE CASCADE,
+    CONSTRAINT fk_alert_tag_tag_scope
+        FOREIGN KEY (tag_id, tag_scope) REFERENCES core.tags (id, scope) ON DELETE RESTRICT
+);
+
+CREATE INDEX idx_alert_tag_tag ON core.alert_tag (tag_id, alert_id);
+
 CREATE TABLE core.alert_parameter_values (
     id bigint GENERATED BY DEFAULT AS IDENTITY,
     version bigint NOT NULL DEFAULT 0,
@@ -422,6 +669,7 @@ CREATE TABLE core.alert_parameter_values (
     text_value text,
     configuration_id bigint,
     secret_id bigint,
+    procedure_id bigint,
     created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
     updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
     CONSTRAINT pk_alert_parameter_values PRIMARY KEY (id),
@@ -429,21 +677,29 @@ CREATE TABLE core.alert_parameter_values (
         alert_id, template_parameter_id
     ),
     CONSTRAINT ck_alert_parameter_values_source CHECK (
-        source IN ('TEXT', 'CONFIGURATION', 'SECRET')
+        source IN ('TEXT', 'CONFIGURATION', 'SECRET', 'PROCEDURE')
     ),
     CONSTRAINT ck_alert_parameter_values_selected_source CHECK (
         (source = 'TEXT'
             AND text_value IS NOT NULL
             AND configuration_id IS NULL
-            AND secret_id IS NULL)
+            AND secret_id IS NULL
+            AND procedure_id IS NULL)
         OR (source = 'CONFIGURATION'
             AND text_value IS NULL
             AND configuration_id IS NOT NULL
-            AND secret_id IS NULL)
+            AND secret_id IS NULL
+            AND procedure_id IS NULL)
         OR (source = 'SECRET'
             AND text_value IS NULL
             AND configuration_id IS NULL
-            AND secret_id IS NOT NULL)
+            AND secret_id IS NOT NULL
+            AND procedure_id IS NULL)
+        OR (source = 'PROCEDURE'
+            AND text_value IS NULL
+            AND configuration_id IS NULL
+            AND secret_id IS NULL
+            AND procedure_id IS NOT NULL)
     ),
     CONSTRAINT fk_alert_parameter_values_alert FOREIGN KEY (alert_id)
         REFERENCES core.alerts (id) ON DELETE RESTRICT,
@@ -452,7 +708,9 @@ CREATE TABLE core.alert_parameter_values (
     CONSTRAINT fk_alert_parameter_values_configuration FOREIGN KEY (configuration_id)
         REFERENCES core.configurations (id) ON DELETE RESTRICT,
     CONSTRAINT fk_alert_parameter_values_secret FOREIGN KEY (secret_id)
-        REFERENCES secrets.secrets (id) ON DELETE RESTRICT
+        REFERENCES secrets.secrets (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_alert_parameter_values_procedure FOREIGN KEY (procedure_id)
+        REFERENCES core.procedures (id) ON DELETE RESTRICT
 );
 
 CREATE INDEX idx_alert_parameter_values_template_parameter
@@ -461,26 +719,54 @@ CREATE INDEX idx_alert_parameter_values_configuration
     ON core.alert_parameter_values (configuration_id) WHERE configuration_id IS NOT NULL;
 CREATE INDEX idx_alert_parameter_values_secret
     ON core.alert_parameter_values (secret_id) WHERE secret_id IS NOT NULL;
+CREATE INDEX idx_alert_parameter_values_procedure
+    ON core.alert_parameter_values (procedure_id) WHERE procedure_id IS NOT NULL;
 
 CREATE TABLE core.alert_executions (
     id bigint GENERATED BY DEFAULT AS IDENTITY,
+    execution_id uuid NOT NULL,
     alert_id bigint NOT NULL,
+    trigger varchar(16),
+    triggered_by text,
     status varchar(16) NOT NULL,
     started_at timestamptz NOT NULL,
+    work_started_at timestamptz NOT NULL,
     finished_at timestamptz NOT NULL,
     status_message jsonb,
     error_type text,
     error_message text,
     error_stack_trace text,
+    worker_name text,
+    worker_ip_address varchar(45),
+    worker_port integer,
+    worker_instance_id uuid,
     CONSTRAINT pk_alert_executions PRIMARY KEY (id),
     CONSTRAINT ck_alert_executions_status CHECK (status IN ('SUCCESS', 'WARN', 'ERROR')),
-    CONSTRAINT ck_alert_executions_time CHECK (finished_at >= started_at),
+    CONSTRAINT ck_alert_executions_trigger CHECK (
+        trigger IS NULL OR trigger IN ('CRON', 'MANUAL', 'HOOK')
+    ),
+    CONSTRAINT ck_alert_executions_time CHECK (
+        work_started_at >= started_at AND finished_at >= work_started_at
+    ),
     CONSTRAINT ck_alert_executions_error_fields CHECK (
         (status IN ('SUCCESS', 'WARN')
             AND error_type IS NULL
             AND error_message IS NULL
             AND error_stack_trace IS NULL)
         OR (status = 'ERROR' AND error_type IS NOT NULL AND btrim(error_type) <> '')
+    ),
+    CONSTRAINT ck_alert_executions_worker_port CHECK (
+        worker_port IS NULL OR worker_port BETWEEN 1 AND 65535
+    ),
+    CONSTRAINT ck_alert_executions_worker_identity CHECK (
+        (worker_name IS NULL
+            AND worker_ip_address IS NULL
+            AND worker_port IS NULL
+            AND worker_instance_id IS NULL)
+        OR (worker_name IS NOT NULL AND btrim(worker_name) <> ''
+            AND worker_ip_address IS NOT NULL AND btrim(worker_ip_address) <> ''
+            AND worker_port IS NOT NULL
+            AND worker_instance_id IS NOT NULL)
     ),
     CONSTRAINT fk_alert_executions_alert FOREIGN KEY (alert_id)
         REFERENCES core.alerts (id) ON DELETE RESTRICT
@@ -490,6 +776,243 @@ CREATE INDEX idx_alert_executions_alert_started
     ON core.alert_executions (alert_id, started_at DESC);
 CREATE INDEX idx_alert_executions_status_started
     ON core.alert_executions (status, started_at DESC);
+CREATE INDEX idx_alert_executions_execution_id
+    ON core.alert_executions (execution_id);
+CREATE INDEX idx_alert_executions_worker_instance_started
+    ON core.alert_executions (worker_instance_id, started_at DESC)
+    WHERE worker_instance_id IS NOT NULL;
+
+CREATE TABLE core.procedure_executions (
+    id bigint GENERATED BY DEFAULT AS IDENTITY,
+    execution_id uuid NOT NULL,
+    procedure_id bigint NOT NULL,
+    procedure_version bigint NOT NULL,
+    status varchar(16) NOT NULL,
+    trigger varchar(16) NOT NULL,
+    root_execution_id uuid NOT NULL,
+    parent_alert_execution_id uuid,
+    parent_procedure_execution_id uuid,
+    depth integer NOT NULL,
+    started_at timestamptz NOT NULL,
+    work_started_at timestamptz,
+    finished_at timestamptz,
+    result_json jsonb,
+    result_redacted boolean NOT NULL DEFAULT false,
+    error_type text,
+    error_message text,
+    error_stack_trace text,
+    worker_name text,
+    worker_ip_address varchar(45),
+    worker_port integer,
+    worker_instance_id uuid,
+    triggered_by text,
+    CONSTRAINT pk_procedure_executions PRIMARY KEY (id),
+    CONSTRAINT uq_procedure_executions_execution_id UNIQUE (execution_id),
+    CONSTRAINT ck_procedure_executions_status CHECK (
+        status IN ('RUNNING', 'COMPLETED', 'ERROR')
+    ),
+    CONSTRAINT ck_procedure_executions_trigger CHECK (
+        trigger IN ('MANUAL', 'ALERT', 'PROCEDURE', 'HOOK')
+    ),
+    CONSTRAINT ck_procedure_executions_depth CHECK (depth BETWEEN 1 AND 16),
+    CONSTRAINT ck_procedure_executions_parent CHECK (
+        (trigger IN ('MANUAL', 'HOOK') AND parent_alert_execution_id IS NULL
+            AND parent_procedure_execution_id IS NULL AND depth = 1)
+        OR (trigger = 'ALERT' AND parent_alert_execution_id IS NOT NULL
+            AND parent_procedure_execution_id IS NULL)
+        OR (trigger = 'PROCEDURE' AND parent_alert_execution_id IS NULL
+            AND parent_procedure_execution_id IS NOT NULL)
+    ),
+    CONSTRAINT ck_procedure_executions_time CHECK (
+        work_started_at IS NULL OR work_started_at >= started_at
+    ),
+    CONSTRAINT ck_procedure_executions_finished_time CHECK (
+        finished_at IS NULL OR (work_started_at IS NOT NULL AND finished_at >= work_started_at)
+    ),
+    CONSTRAINT ck_procedure_executions_outcome CHECK (
+        (status = 'RUNNING' AND finished_at IS NULL AND result_json IS NULL
+            AND NOT result_redacted AND error_type IS NULL AND error_message IS NULL
+            AND error_stack_trace IS NULL)
+        OR (status = 'COMPLETED' AND finished_at IS NOT NULL
+            AND (result_json IS NOT NULL OR result_redacted)
+            AND error_type IS NULL AND error_message IS NULL AND error_stack_trace IS NULL)
+        OR (status = 'ERROR' AND finished_at IS NOT NULL AND result_json IS NULL
+            AND NOT result_redacted AND error_type IS NOT NULL AND btrim(error_type) <> '')
+    ),
+    CONSTRAINT ck_procedure_executions_worker_port CHECK (
+        worker_port IS NULL OR worker_port BETWEEN 1 AND 65535
+    ),
+    CONSTRAINT ck_procedure_executions_worker_identity CHECK (
+        (worker_name IS NULL AND worker_ip_address IS NULL AND worker_port IS NULL
+            AND worker_instance_id IS NULL)
+        OR (worker_name IS NOT NULL AND worker_ip_address IS NOT NULL
+            AND worker_port IS NOT NULL AND worker_instance_id IS NOT NULL)
+    ),
+    CONSTRAINT fk_procedure_executions_procedure FOREIGN KEY (procedure_id)
+        REFERENCES core.procedures (id) ON DELETE RESTRICT
+);
+
+CREATE INDEX idx_procedure_executions_procedure_started
+    ON core.procedure_executions (procedure_id, started_at DESC);
+CREATE INDEX idx_procedure_executions_status_started
+    ON core.procedure_executions (status, started_at DESC);
+CREATE INDEX idx_procedure_executions_root
+    ON core.procedure_executions (root_execution_id, started_at);
+CREATE INDEX idx_procedure_executions_parent_alert
+    ON core.procedure_executions (parent_alert_execution_id)
+    WHERE parent_alert_execution_id IS NOT NULL;
+CREATE INDEX idx_procedure_executions_parent_procedure
+    ON core.procedure_executions (parent_procedure_execution_id)
+    WHERE parent_procedure_execution_id IS NOT NULL;
+
+CREATE TABLE core.hooks (
+    id bigint GENERATED BY DEFAULT AS IDENTITY,
+    version bigint NOT NULL DEFAULT 0,
+    public_id uuid NOT NULL,
+    name text NOT NULL,
+    description text,
+    enabled boolean NOT NULL DEFAULT false,
+    mode varchar(16) NOT NULL,
+    token_secret_id bigint,
+    max_concurrent_invocations integer,
+    rate_limit_count integer,
+    rate_limit_window_seconds bigint,
+    created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    CONSTRAINT pk_hooks PRIMARY KEY (id),
+    CONSTRAINT uq_hooks_public_id UNIQUE (public_id),
+    CONSTRAINT uq_hooks_name UNIQUE (name),
+    CONSTRAINT ck_hooks_name_trimmed CHECK (name = btrim(name) AND name <> ''),
+    CONSTRAINT ck_hooks_mode CHECK (mode IN ('PARALLEL', 'SEQUENTIAL')),
+    CONSTRAINT ck_hooks_max_concurrent CHECK (
+        max_concurrent_invocations IS NULL OR max_concurrent_invocations > 0
+    ),
+    CONSTRAINT ck_hooks_rate_limit CHECK (
+        (rate_limit_count IS NULL AND rate_limit_window_seconds IS NULL)
+        OR (rate_limit_count > 0 AND rate_limit_window_seconds > 0)
+    ),
+    CONSTRAINT fk_hooks_token_secret FOREIGN KEY (token_secret_id)
+        REFERENCES secrets.secrets (id) ON DELETE RESTRICT
+);
+
+CREATE UNIQUE INDEX uq_hooks_name_ci ON core.hooks (lower(name));
+CREATE INDEX idx_hooks_enabled ON core.hooks (enabled) WHERE enabled;
+CREATE INDEX idx_hooks_token_secret ON core.hooks (token_secret_id) WHERE token_secret_id IS NOT NULL;
+
+CREATE TABLE core.hook_targets (
+    id bigint GENERATED BY DEFAULT AS IDENTITY,
+    version bigint NOT NULL DEFAULT 0,
+    hook_id bigint NOT NULL,
+    target_type varchar(16) NOT NULL,
+    alert_id bigint,
+    procedure_id bigint,
+    position integer NOT NULL,
+    continue_on jsonb NOT NULL DEFAULT '["SUCCESS"]'::jsonb,
+    busy_wait_timeout_millis bigint,
+    created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    CONSTRAINT pk_hook_targets PRIMARY KEY (id),
+    CONSTRAINT uq_hook_targets_position UNIQUE (hook_id, position),
+    CONSTRAINT uq_hook_targets_alert UNIQUE (hook_id, alert_id),
+    CONSTRAINT uq_hook_targets_procedure UNIQUE (hook_id, procedure_id),
+    CONSTRAINT ck_hook_targets_type CHECK (target_type IN ('ALERT', 'PROCEDURE')),
+    CONSTRAINT ck_hook_targets_resource CHECK (
+        (target_type = 'ALERT' AND alert_id IS NOT NULL AND procedure_id IS NULL)
+        OR (target_type = 'PROCEDURE' AND alert_id IS NULL AND procedure_id IS NOT NULL)
+    ),
+    CONSTRAINT ck_hook_targets_position CHECK (position >= 0),
+    CONSTRAINT ck_hook_targets_continue_on CHECK (
+        jsonb_typeof(continue_on) = 'array'
+        AND continue_on <@ '["SUCCESS","WARN","ERROR"]'::jsonb
+    ),
+    CONSTRAINT ck_hook_targets_busy_wait CHECK (
+        (target_type = 'ALERT' AND busy_wait_timeout_millis > 0)
+        OR (target_type = 'PROCEDURE' AND busy_wait_timeout_millis IS NULL)
+    ),
+    CONSTRAINT fk_hook_targets_hook FOREIGN KEY (hook_id)
+        REFERENCES core.hooks (id) ON DELETE CASCADE,
+    CONSTRAINT fk_hook_targets_alert FOREIGN KEY (alert_id)
+        REFERENCES core.alerts (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_hook_targets_procedure FOREIGN KEY (procedure_id)
+        REFERENCES core.procedures (id) ON DELETE RESTRICT
+);
+
+CREATE INDEX idx_hook_targets_hook_position ON core.hook_targets (hook_id, position);
+CREATE INDEX idx_hook_targets_alert ON core.hook_targets (alert_id) WHERE alert_id IS NOT NULL;
+CREATE INDEX idx_hook_targets_procedure ON core.hook_targets (procedure_id) WHERE procedure_id IS NOT NULL;
+
+CREATE TABLE core.hook_invocations (
+    id bigint GENERATED BY DEFAULT AS IDENTITY,
+    invocation_id uuid NOT NULL,
+    hook_id bigint NOT NULL,
+    hook_public_id uuid NOT NULL,
+    hook_name text NOT NULL,
+    mode varchar(16) NOT NULL,
+    status varchar(16) NOT NULL,
+    accepted_at timestamptz NOT NULL,
+    finished_at timestamptz,
+    CONSTRAINT pk_hook_invocations PRIMARY KEY (id),
+    CONSTRAINT uq_hook_invocations_invocation_id UNIQUE (invocation_id),
+    CONSTRAINT ck_hook_invocations_mode CHECK (mode IN ('PARALLEL', 'SEQUENTIAL')),
+    CONSTRAINT ck_hook_invocations_status CHECK (
+        status IN ('RUNNING', 'COMPLETED', 'PARTIAL', 'FAILED')
+    ),
+    CONSTRAINT ck_hook_invocations_finished CHECK (
+        (status = 'RUNNING' AND finished_at IS NULL)
+        OR (status <> 'RUNNING' AND finished_at IS NOT NULL AND finished_at >= accepted_at)
+    ),
+    CONSTRAINT fk_hook_invocations_hook FOREIGN KEY (hook_id)
+        REFERENCES core.hooks (id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_hook_invocations_hook_accepted ON core.hook_invocations (hook_id, accepted_at DESC);
+CREATE INDEX idx_hook_invocations_status ON core.hook_invocations (status, accepted_at);
+
+CREATE TABLE core.hook_invocation_targets (
+    id bigint GENERATED BY DEFAULT AS IDENTITY,
+    hook_invocation_id bigint NOT NULL,
+    target_type varchar(16) NOT NULL,
+    resource_id bigint NOT NULL,
+    resource_name text NOT NULL,
+    position integer NOT NULL,
+    continue_on jsonb NOT NULL,
+    busy_wait_timeout_millis bigint,
+    status varchar(32) NOT NULL,
+    outcome varchar(16),
+    execution_id uuid,
+    started_at timestamptz,
+    finished_at timestamptz,
+    error_code varchar(64),
+    CONSTRAINT pk_hook_invocation_targets PRIMARY KEY (id),
+    CONSTRAINT uq_hook_invocation_targets_position UNIQUE (hook_invocation_id, position),
+    CONSTRAINT ck_hook_invocation_targets_type CHECK (target_type IN ('ALERT', 'PROCEDURE')),
+    CONSTRAINT ck_hook_invocation_targets_position CHECK (position >= 0),
+    CONSTRAINT ck_hook_invocation_targets_continue_on CHECK (
+        jsonb_typeof(continue_on) = 'array'
+        AND continue_on <@ '["SUCCESS","WARN","ERROR"]'::jsonb
+    ),
+    CONSTRAINT ck_hook_invocation_targets_busy_wait CHECK (
+        (target_type = 'ALERT' AND busy_wait_timeout_millis > 0)
+        OR (target_type = 'PROCEDURE' AND busy_wait_timeout_millis IS NULL)
+    ),
+    CONSTRAINT ck_hook_invocation_targets_status CHECK (
+        status IN ('PENDING', 'WAITING_ALERT', 'RUNNING', 'SUCCESS', 'WARN', 'ERROR',
+            'SKIPPED_DISABLED', 'SKIPPED_SEQUENCE', 'ALERT_BUSY_TIMEOUT')
+    ),
+    CONSTRAINT ck_hook_invocation_targets_outcome CHECK (
+        outcome IS NULL OR outcome IN ('SUCCESS', 'WARN', 'ERROR')
+    ),
+    CONSTRAINT ck_hook_invocation_targets_time CHECK (
+        started_at IS NULL OR finished_at IS NULL OR finished_at >= started_at
+    ),
+    CONSTRAINT fk_hook_invocation_targets_invocation FOREIGN KEY (hook_invocation_id)
+        REFERENCES core.hook_invocations (id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_hook_invocation_targets_invocation_position
+    ON core.hook_invocation_targets (hook_invocation_id, position);
+CREATE INDEX idx_hook_invocation_targets_execution
+    ON core.hook_invocation_targets (execution_id) WHERE execution_id IS NOT NULL;
 
 CREATE TABLE audit.alert_templates_aud (
     id bigint NOT NULL,
@@ -498,7 +1021,9 @@ CREATE TABLE audit.alert_templates_aud (
     template_key text,
     name_key text,
     description_key text,
+    source_path text,
     required_capability varchar(32),
+    tags jsonb,
     CONSTRAINT pk_alert_templates_aud PRIMARY KEY (id, rev),
     CONSTRAINT fk_alert_templates_aud_rev FOREIGN KEY (rev) REFERENCES audit.revinfo (rev)
 );
@@ -517,6 +1042,7 @@ CREATE TABLE audit.alert_template_parameters_aud (
     options jsonb,
     binding_allowed boolean,
     default_value text,
+    multiline boolean,
     parameter_order integer,
     required boolean,
     CONSTRAINT pk_alert_template_parameters_aud PRIMARY KEY (id, rev),
@@ -535,6 +1061,7 @@ CREATE TABLE audit.alerts_aud (
     description text,
     cron_expression text,
     enabled boolean,
+    allow_concurrent_executions boolean,
     CONSTRAINT pk_alerts_aud PRIMARY KEY (id, rev),
     CONSTRAINT fk_alerts_aud_rev FOREIGN KEY (rev) REFERENCES audit.revinfo (rev)
 );
@@ -551,9 +1078,151 @@ CREATE TABLE audit.alert_parameter_values_aud (
     text_value text,
     configuration_id bigint,
     secret_id bigint,
+    procedure_id bigint,
     CONSTRAINT pk_alert_parameter_values_aud PRIMARY KEY (id, rev),
     CONSTRAINT fk_alert_parameter_values_aud_rev FOREIGN KEY (rev) REFERENCES audit.revinfo (rev)
 );
 
 CREATE INDEX idx_alert_parameter_values_aud_rev
     ON audit.alert_parameter_values_aud (rev);
+
+CREATE TABLE audit.alert_tag_aud (
+    alert_id bigint NOT NULL,
+    tag_id bigint NOT NULL,
+    rev bigint NOT NULL,
+    revtype smallint,
+    CONSTRAINT pk_alert_tag_aud PRIMARY KEY (alert_id, tag_id, rev),
+    CONSTRAINT fk_alert_tag_aud_rev FOREIGN KEY (rev) REFERENCES audit.revinfo (rev)
+);
+
+CREATE INDEX idx_alert_tag_aud_rev ON audit.alert_tag_aud (rev);
+
+CREATE TABLE audit.procedure_templates_aud (
+    id bigint NOT NULL,
+    rev bigint NOT NULL,
+    revtype smallint,
+    template_key text,
+    name_key text,
+    description_key text,
+    source_path text,
+    required_capability varchar(32),
+    sensitive_result boolean,
+    tags jsonb,
+    CONSTRAINT pk_procedure_templates_aud PRIMARY KEY (id, rev),
+    CONSTRAINT fk_procedure_templates_aud_rev FOREIGN KEY (rev) REFERENCES audit.revinfo (rev)
+);
+
+CREATE TABLE audit.procedure_template_parameters_aud (
+    id bigint NOT NULL,
+    rev bigint NOT NULL,
+    revtype smallint,
+    procedure_template_id bigint,
+    parameter_key text,
+    label_key text,
+    description_key text,
+    java_type text,
+    options jsonb,
+    binding_allowed boolean,
+    default_value text,
+    multiline boolean,
+    parameter_order integer,
+    required boolean,
+    allowed_sources jsonb,
+    CONSTRAINT pk_procedure_template_parameters_aud PRIMARY KEY (id, rev),
+    CONSTRAINT fk_procedure_template_parameters_aud_rev FOREIGN KEY (rev) REFERENCES audit.revinfo (rev)
+);
+
+CREATE TABLE audit.procedures_aud (
+    id bigint NOT NULL,
+    rev bigint NOT NULL,
+    revtype smallint,
+    procedure_template_id bigint,
+    name text,
+    description text,
+    enabled boolean,
+    CONSTRAINT pk_procedures_aud PRIMARY KEY (id, rev),
+    CONSTRAINT fk_procedures_aud_rev FOREIGN KEY (rev) REFERENCES audit.revinfo (rev)
+);
+
+CREATE TABLE audit.procedure_parameter_values_aud (
+    id bigint NOT NULL,
+    rev bigint NOT NULL,
+    revtype smallint,
+    owner_procedure_id bigint,
+    template_parameter_id bigint,
+    source varchar(32),
+    text_value text,
+    configuration_id bigint,
+    secret_id bigint,
+    referenced_procedure_id bigint,
+    CONSTRAINT pk_procedure_parameter_values_aud PRIMARY KEY (id, rev),
+    CONSTRAINT fk_procedure_parameter_values_aud_rev FOREIGN KEY (rev) REFERENCES audit.revinfo (rev)
+);
+
+CREATE TABLE audit.procedure_tag_aud (
+    procedure_id bigint NOT NULL,
+    tag_id bigint NOT NULL,
+    rev bigint NOT NULL,
+    revtype smallint,
+    CONSTRAINT pk_procedure_tag_aud PRIMARY KEY (procedure_id, tag_id, rev),
+    CONSTRAINT fk_procedure_tag_aud_rev FOREIGN KEY (rev) REFERENCES audit.revinfo (rev)
+);
+
+CREATE INDEX idx_procedure_templates_aud_rev ON audit.procedure_templates_aud (rev);
+CREATE INDEX idx_procedure_template_parameters_aud_rev ON audit.procedure_template_parameters_aud (rev);
+CREATE INDEX idx_procedures_aud_rev ON audit.procedures_aud (rev);
+CREATE INDEX idx_procedure_parameter_values_aud_rev ON audit.procedure_parameter_values_aud (rev);
+CREATE INDEX idx_procedure_tag_aud_rev ON audit.procedure_tag_aud (rev);
+
+CREATE TABLE audit.hooks_aud (
+    id bigint NOT NULL,
+    rev bigint NOT NULL,
+    revtype smallint,
+    public_id uuid,
+    name text,
+    description text,
+    enabled boolean,
+    mode varchar(16),
+    token_secret_id bigint,
+    max_concurrent_invocations integer,
+    rate_limit_count integer,
+    rate_limit_window_seconds bigint,
+    CONSTRAINT pk_hooks_aud PRIMARY KEY (id, rev),
+    CONSTRAINT fk_hooks_aud_rev FOREIGN KEY (rev) REFERENCES audit.revinfo (rev)
+);
+
+CREATE TABLE audit.hook_targets_aud (
+    id bigint NOT NULL,
+    rev bigint NOT NULL,
+    revtype smallint,
+    hook_id bigint,
+    target_type varchar(16),
+    alert_id bigint,
+    procedure_id bigint,
+    position integer,
+    continue_on jsonb,
+    busy_wait_timeout_millis bigint,
+    CONSTRAINT pk_hook_targets_aud PRIMARY KEY (id, rev),
+    CONSTRAINT fk_hook_targets_aud_rev FOREIGN KEY (rev) REFERENCES audit.revinfo (rev)
+);
+
+CREATE INDEX idx_hooks_aud_rev ON audit.hooks_aud (rev);
+CREATE INDEX idx_hook_targets_aud_rev ON audit.hook_targets_aud (rev);
+
+-- Seeds a starter tag catalog for alerts and procedures. This migration is
+-- applied once, so tags renamed or deleted by users are never restored.
+INSERT INTO core.tags (scope, name, color)
+SELECT scopes.scope, seed.name, seed.color
+FROM (VALUES
+        ('Production',     '#D64545'),
+        ('Pre-Production', '#E39A2B'),
+        ('Staging',        '#9B6DD6'),
+        ('QA',             '#3BA55D'),
+        ('Dev',            '#4C8DF6'),
+        ('Local',          '#7A8899'),
+        ('Critical',       '#B02A37'),
+        ('High',           '#E2681A'),
+        ('Medium',         '#C9A227'),
+        ('Low',            '#6C8EA4')
+     ) AS seed (name, color)
+CROSS JOIN (VALUES ('ALERT'), ('PROCEDURE')) AS scopes (scope);
