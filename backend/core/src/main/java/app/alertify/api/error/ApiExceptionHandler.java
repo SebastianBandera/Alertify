@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import app.alertify.jpa.specification.InvalidFilterException;
+import app.alertify.hooks.HookInvocationRejectedException;
 import app.alertify.logging.ApiRequestLoggingFilter;
 import app.alertify.logging.ApiResponseLogLevelResolver;
 import app.alertify.logging.ApplicationEventLogger;
@@ -101,6 +102,16 @@ public class ApiExceptionHandler {
     @ExceptionHandler(InvalidProcedureRequestException.class)
     ResponseEntity<ApiError> handleInvalidProcedureRequest(InvalidProcedureRequestException exception, HttpServletRequest request) {
         return response(HttpStatus.BAD_REQUEST, "INVALID_PROCEDURE_REQUEST", exception.getMessage(), Map.of(), exception, request);
+    }
+
+    @ExceptionHandler(InvalidHookRequestException.class)
+    ResponseEntity<ApiError> handleInvalidHookRequest(InvalidHookRequestException exception, HttpServletRequest request) {
+        return response(HttpStatus.BAD_REQUEST, "INVALID_HOOK_REQUEST", exception.getMessage(), Map.of(), exception, request);
+    }
+
+    @ExceptionHandler(HookInvocationRejectedException.class)
+    ResponseEntity<ApiError> handleHookInvocationRejected(HookInvocationRejectedException exception, HttpServletRequest request) {
+        return response(exception.getStatus(), exception.getCode(), exception.getMessage(), Map.of(), exception, request);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

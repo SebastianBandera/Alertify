@@ -1,0 +1,202 @@
+<section class="hooks-page">
+  <header class="page-header">
+    <div>
+      <h1>{{ dynamic('hooks.title') }}</h1>
+      <p>{{ dynamic('hooks.description') }}</p>
+    </div>
+    <button class="button button--primary" type="button" (click)="openCreate()">{{ dynamic('hooks.create') }}</button>
+  </header>
+
+  <nav class="tabs" [attr.aria-label]="dynamic('hooks.tabs.label')">
+    <button type="button" [class.active]="activeTab() === 'hooks'" (click)="changeTab('hooks')">
+      {{ dynamic('hooks.tabs.hooks') }} <span>{{ totalElements() }}</span>
+    </button>
+    <button type="button" [class.active]="activeTab() === 'history'" (click)="changeTab('history')">
+      {{ dynamic('hooks.tabs.history') }}
+    </button>
+  </nav>
+
+  @if (error()) { <p class="state state--error" role="alert">{{ error() }}</p> }
+  @if (notice()) { <p class="state state--success" role="status">{{ notice() }}</p> }
+
+  @if (activeTab() === 'hooks') {
+    <form class="toolbar" (ngSubmit)="applySearch()">
+      <label class="search-field">
+        <span>{{ dynamic('hooks.search') }}</span>
+        <input type="search" name="search" [ngModel]="search()" (ngModelChange)="search.set($event)" [placeholder]="dynamic('hooks.searchPlaceholder')">
+      </label>
+      <button class="button button--secondary" type="submit">{{ dynamic('hooks.search') }}</button>
+    </form>
+
+    @if (loading()) {
+      <p class="state">{{ dynamic('hooks.loading') }}</p>
+    } @else if (!hooks().length) {
+      <p class="state">{{ dynamic('hooks.empty') }}</p>
+    } @else {
+      <div class="table-shell">
+        <table>
+          <thead><tr>
+            <th>{{ dynamic('hooks.column.name') }}</th>
+            <th>{{ dynamic('hooks.column.url') }}</th>
+            <th>{{ dynamic('hooks.column.mode') }}</th>
+            <th>{{ dynamic('hooks.column.targets') }}</th>
+            <th>{{ dynamic('hooks.column.status') }}</th>
+            <th>{{ dynamic('hooks.column.actions') }}</th>
+          </tr></thead>
+          <tbody>
+            @for (hook of hooks(); track hook.id) {
+              <tr>
+                <td><strong>{{ hook.name }}</strong><small>{{ hook.description || '—' }}</small></td>
+                <td>
+                  <code class="url">{{ invocationUrl(hook) }}</code>
+                  <button class="text-button" type="button" (click)="copyUrl(hook)">{{ dynamic('hooks.copy') }}</button>
+                  @if (hook.tokenSecretId === null) { <small class="warning">{{ dynamic('hooks.noToken') }}</small> }
+                </td>
+                <td>{{ dynamic('hooks.mode.' + hook.mode) }}</td>
+                <td>
+                  <ol class="compact-list">
+                    @for (target of hook.targets; track target.id) {
+                      <li><span class="type">{{ dynamic('hooks.type.' + target.type) }}</span> {{ target.resourceName }}</li>
+                    }
+                  </ol>
+                </td>
+                <td><span class="badge" [class.badge--disabled]="!hook.enabled">{{ dynamic(hook.enabled ? 'hooks.enabled' : 'hooks.disabled') }}</span></td>
+                <td class="actions">
+                  <button type="button" (click)="openEdit(hook)">{{ dynamic('hooks.edit') }}</button>
+                  <button type="button" (click)="rotate(hook)">{{ dynamic('hooks.rotate') }}</button>
+                  <button class="danger" type="button" (click)="remove(hook)">{{ dynamic('hooks.delete') }}</button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      <div class="pagination">
+        <span>{{ dynamic('hooks.pagination.page') }} {{ totalPages() ? pageIndex() + 1 : 0 }} / {{ totalPages() }}</span>
+        <div>
+          <button type="button" [disabled]="pageIndex() === 0" (click)="goToPage(pageIndex() - 1)">‹</button>
+          <button type="button" [disabled]="pageIndex() + 1 >= totalPages()" (click)="goToPage(pageIndex() + 1)">›</button>
+        </div>
+      </div>
+    }
+  } @else {
+    <div class="toolbar history-toolbar">
+      <label>
+        <span>{{ dynamic('hooks.history.hook') }}</span>
+        <select [ngModel]="historyHookId()" (ngModelChange)="selectHistoryHook($event)">
+          <option [ngValue]="null">{{ dynamic('hooks.history.select') }}</option>
+          @for (hook of hookChoices(); track hook.id) { <option [ngValue]="hook.id">{{ hook.name }}</option> }
+        </select>
+      </label>
+      <button class="button button--secondary" type="button" (click)="loadHistory()">{{ dynamic('hooks.history.refresh') }}</button>
+    </div>
+    @if (!invocations().length) {
+      <p class="state">{{ dynamic('hooks.history.empty') }}</p>
+    } @else {
+      <div class="invocations">
+        @for (invocation of invocations(); track invocation.invocationId) {
+          <article class="invocation">
+            <header>
+              <div><strong>{{ invocation.hookName }}</strong><code>{{ invocation.invocationId }}</code></div>
+              <span class="badge status--{{ invocation.status.toLowerCase() }}">{{ dynamic('hooks.invocation.' + invocation.status) }}</span>
+            </header>
+            <p class="invocation__meta">{{ invocation.acceptedAt | date:'medium' }} @if (invocation.finishedAt) { · {{ invocation.finishedAt | date:'medium' }} }</p>
+            <table>
+              <thead><tr>
+                <th>#</th><th>{{ dynamic('hooks.history.target') }}</th><th>{{ dynamic('hooks.history.status') }}</th><th>{{ dynamic('hooks.history.execution') }}</th>
+              </tr></thead>
+              <tbody>
+                @for (target of invocation.targets; track target.position) {
+                  <tr>
+                    <td>{{ target.position + 1 }}</td>
+                    <td><span class="type">{{ dynamic('hooks.type.' + target.type) }}</span> {{ target.resourceName }}</td>
+                    <td>{{ dynamic('hooks.targetStatus.' + target.status) }}</td>
+                    <td>
+                      @if (target.executionId) {
+                        <a [routerLink]="target.type === 'ALERT' ? '/alerts' : '/procedures'" [queryParams]="{ tab: 'history', executionId: target.executionId }">{{ target.executionId }}</a>
+                      } @else { — }
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </article>
+        }
+      </div>
+      <div class="pagination">
+        <span>{{ dynamic('hooks.pagination.page') }} {{ historyTotalPages() ? historyPageIndex() + 1 : 0 }} / {{ historyTotalPages() }}</span>
+        <div>
+          <button type="button" [disabled]="historyPageIndex() === 0" (click)="goToHistoryPage(historyPageIndex() - 1)">‹</button>
+          <button type="button" [disabled]="historyPageIndex() + 1 >= historyTotalPages()" (click)="goToHistoryPage(historyPageIndex() + 1)">›</button>
+        </div>
+      </div>
+    }
+  }
+</section>
+
+@if (editorOpen()) {
+  <div class="modal-backdrop" (mousedown)="closeEditor()">
+    <section class="modal" role="dialog" aria-modal="true" (mousedown)="$event.stopPropagation()">
+      <header>
+        <h2>{{ dynamic(editing() ? 'hooks.form.editTitle' : 'hooks.form.createTitle') }}</h2>
+        <button class="close" type="button" (click)="closeEditor()">×</button>
+      </header>
+      <form (ngSubmit)="save()">
+        <div class="form-grid">
+          <label><span>{{ dynamic('hooks.form.name') }}</span><input name="name" required maxlength="255" [ngModel]="form().name" (ngModelChange)="patchForm('name', $event)"></label>
+          <label><span>{{ dynamic('hooks.form.mode') }}</span><select name="mode" [ngModel]="form().mode" (ngModelChange)="patchForm('mode', $event)"><option value="PARALLEL">{{ dynamic('hooks.mode.PARALLEL') }}</option><option value="SEQUENTIAL">{{ dynamic('hooks.mode.SEQUENTIAL') }}</option></select></label>
+          <label class="full"><span>{{ dynamic('hooks.form.description') }}</span><textarea name="description" rows="2" maxlength="4000" [ngModel]="form().description" (ngModelChange)="patchForm('description', $event)"></textarea></label>
+          @if (editing()) {
+            <label class="checkbox full"><input type="checkbox" name="enabled" [ngModel]="form().enabled" (ngModelChange)="patchForm('enabled', $event)"><span>{{ dynamic('hooks.form.enabled') }}</span></label>
+          } @else {
+            <p class="info full">{{ dynamic('hooks.form.createdDisabled') }}</p>
+          }
+          <label>
+            <span>{{ dynamic('hooks.form.token') }}</span>
+            <select name="token" [ngModel]="form().tokenSecretId" (ngModelChange)="patchForm('tokenSecretId', $event)">
+              <option [ngValue]="null">{{ dynamic('hooks.form.noToken') }}</option>
+              @for (secret of options().secrets; track secret.id) { <option [ngValue]="secret.id" [disabled]="!secret.recoverable">{{ secret.name }}{{ secret.recoverable ? '' : ' (' + dynamic('hooks.form.unrecoverable') + ')' }}</option> }
+            </select>
+          </label>
+          <label><span>{{ dynamic('hooks.form.maxConcurrent') }}</span><input type="number" name="maxConcurrent" min="1" [ngModel]="form().maxConcurrentInvocations" (ngModelChange)="patchForm('maxConcurrentInvocations', $event)"></label>
+          <label><span>{{ dynamic('hooks.form.rateCount') }}</span><input type="number" name="rateCount" min="1" [ngModel]="form().rateLimitCount" (ngModelChange)="patchForm('rateLimitCount', $event)"></label>
+          <label><span>{{ dynamic('hooks.form.rateWindow') }}</span><input type="number" name="rateWindow" min="1" [ngModel]="form().rateLimitWindowSeconds" (ngModelChange)="patchForm('rateLimitWindowSeconds', $event)"></label>
+        </div>
+
+        <section class="target-editor">
+          <h3>{{ dynamic('hooks.form.targets') }}</h3>
+          <p>{{ dynamic('hooks.form.targetsHelp') }}</p>
+          <div class="target-adder">
+            <label><span>{{ dynamic('hooks.form.type') }}</span><select name="newTargetType" [ngModel]="newTargetType()" (ngModelChange)="changeNewTargetType($event)"><option value="ALERT">{{ dynamic('hooks.type.ALERT') }}</option><option value="PROCEDURE">{{ dynamic('hooks.type.PROCEDURE') }}</option></select></label>
+            <label><span>{{ dynamic('hooks.form.resource') }}</span><select name="newTarget" [ngModel]="newTargetId()" (ngModelChange)="newTargetId.set($event)"><option [ngValue]="null">{{ dynamic('hooks.form.selectResource') }}</option>@for (option of targetOptions(); track option.id) { <option [ngValue]="option.id">{{ option.name }}{{ option.enabled ? '' : ' (' + dynamic('hooks.disabled') + ')' }}</option> }</select></label>
+            <button class="button button--secondary" type="button" [disabled]="newTargetId() === null" (click)="addTarget()">{{ dynamic('hooks.form.addTarget') }}</button>
+          </div>
+
+          @for (target of form().targets; track target.type + '-' + target.resourceId; let index = $index) {
+            <article class="target-card">
+              <header>
+                <div><span class="order">{{ index + 1 }}</span><strong>{{ target.resourceName }}</strong><span class="type">{{ dynamic('hooks.type.' + target.type) }}</span>@if (!target.enabled) { <span class="warning">{{ dynamic('hooks.form.currentlyDisabled') }}</span> }</div>
+                <div class="order-actions"><button type="button" [disabled]="$first" (click)="moveTarget(index, -1)">↑</button><button type="button" [disabled]="$last" (click)="moveTarget(index, 1)">↓</button><button class="danger" type="button" (click)="removeTarget(index)">{{ dynamic('hooks.form.remove') }}</button></div>
+              </header>
+              <div class="target-fields">
+                <fieldset>
+                  <legend>{{ dynamic('hooks.form.continueOn') }}</legend>
+                  @for (outcome of outcomes; track outcome) {
+                    <label class="checkbox"><input type="checkbox" [name]="'continue-' + index + '-' + outcome" [ngModel]="target.continueOn.includes(outcome)" (ngModelChange)="toggleOutcome(index, outcome, $event)"><span>{{ dynamic('hooks.outcome.' + outcome) }}</span></label>
+                  }
+                </fieldset>
+                @if (target.type === 'ALERT') {
+                  <label><span>{{ dynamic('hooks.form.busyWait') }}</span><input type="number" [name]="'busyWait-' + index" min="1" [ngModel]="target.busyWaitMinutes" (ngModelChange)="patchTarget(index, 'busyWaitMinutes', $event)"></label>
+                }
+              </div>
+            </article>
+          } @empty {
+            <p class="target-empty">{{ dynamic('hooks.form.noTargets') }}</p>
+          }
+        </section>
+        @if (formError()) { <p class="form-error" role="alert">{{ formError() }}</p> }
+        <footer><button class="button button--secondary" type="button" (click)="closeEditor()">{{ dynamic('hooks.cancel') }}</button><button class="button button--primary" type="submit" [disabled]="saving()">{{ dynamic('hooks.save') }}</button></footer>
+      </form>
+    </section>
+  </div>
+}

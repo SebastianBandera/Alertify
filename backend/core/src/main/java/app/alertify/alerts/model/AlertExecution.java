@@ -8,6 +8,7 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 import app.alertify.alerts.execution.AlertExecutionStatus;
+import app.alertify.alerts.execution.AlertExecutionTrigger;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -78,10 +79,17 @@ public class AlertExecution {
     @Column(name = "worker_instance_id", updatable = false)
     private UUID workerInstanceId;
 
+    @Enumerated(EnumType.STRING)
+    @Column(length = 16, updatable = false)
+    private AlertExecutionTrigger trigger;
+
+    @Column(name = "triggered_by", columnDefinition = "text", updatable = false)
+    private String triggeredBy;
+
     protected AlertExecution() {
     }
 
-    private AlertExecution(UUID executionId, Alert alert, AlertExecutionWorker worker, AlertExecutionStatus status, Instant startedAt, Instant workStartedAt, Instant finishedAt, JsonNode statusMessage, String errorType, String errorMessage, String errorStackTrace) {
+    private AlertExecution(UUID executionId, Alert alert, AlertExecutionWorker worker, AlertExecutionStatus status, Instant startedAt, Instant workStartedAt, Instant finishedAt, JsonNode statusMessage, String errorType, String errorMessage, String errorStackTrace, AlertExecutionTrigger trigger, String triggeredBy) {
         this.executionId = Objects.requireNonNull(executionId, "executionId must not be null");
         this.alert = Objects.requireNonNull(alert, "alert must not be null");
         this.status = Objects.requireNonNull(status, "status must not be null");
@@ -95,6 +103,8 @@ public class AlertExecution {
         this.errorType = errorType;
         this.errorMessage = errorMessage;
         this.errorStackTrace = errorStackTrace;
+        this.trigger = trigger;
+        this.triggeredBy = triggeredBy;
         if (worker != null) {
             this.workerName = worker.name();
             this.workerIpAddress = worker.ipAddress();
@@ -104,16 +114,24 @@ public class AlertExecution {
     }
 
     public static AlertExecution result(UUID executionId, Alert alert, AlertExecutionWorker worker, AlertExecutionStatus status, Instant startedAt, Instant workStartedAt, Instant finishedAt, JsonNode statusMessage) {
+        return result(executionId, alert, worker, status, startedAt, workStartedAt, finishedAt, statusMessage, null, null);
+    }
+
+    public static AlertExecution result(UUID executionId, Alert alert, AlertExecutionWorker worker, AlertExecutionStatus status, Instant startedAt, Instant workStartedAt, Instant finishedAt, JsonNode statusMessage, AlertExecutionTrigger trigger, String triggeredBy) {
         if (status == AlertExecutionStatus.ERROR)
             throw new IllegalArgumentException("ERROR is reserved for exception executions");
 
-        return new AlertExecution(executionId, alert, worker, status, startedAt, workStartedAt, finishedAt, statusMessage, null, null, null);
+        return new AlertExecution(executionId, alert, worker, status, startedAt, workStartedAt, finishedAt, statusMessage, null, null, null, trigger, triggeredBy);
     }
 
     public static AlertExecution error(UUID executionId, Alert alert, AlertExecutionWorker worker, Instant startedAt, Instant workStartedAt, Instant finishedAt, String errorType, String errorMessage, String errorStackTrace) {
+        return error(executionId, alert, worker, startedAt, workStartedAt, finishedAt, errorType, errorMessage, errorStackTrace, null, null);
+    }
+
+    public static AlertExecution error(UUID executionId, Alert alert, AlertExecutionWorker worker, Instant startedAt, Instant workStartedAt, Instant finishedAt, String errorType, String errorMessage, String errorStackTrace, AlertExecutionTrigger trigger, String triggeredBy) {
         return new AlertExecution(
                 executionId, alert, worker, AlertExecutionStatus.ERROR, startedAt, workStartedAt, finishedAt, null,
-                Objects.requireNonNull(errorType, "errorType must not be null"), errorMessage, errorStackTrace
+                Objects.requireNonNull(errorType, "errorType must not be null"), errorMessage, errorStackTrace, trigger, triggeredBy
         );
     }
 
@@ -176,4 +194,7 @@ public class AlertExecution {
     public UUID getWorkerInstanceId() {
         return workerInstanceId;
     }
+
+    public AlertExecutionTrigger getTrigger() { return trigger; }
+    public String getTriggeredBy() { return triggeredBy; }
 }

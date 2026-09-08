@@ -57,7 +57,7 @@ final class AlertMapper {
     static AlertExecutionResponse toExecution(AlertExecution execution) {
         return new AlertExecutionResponse(
                 execution.getId(), execution.getExecutionId(), execution.getAlert().getId(), execution.getAlert().getName(),
-                execution.getStatus(), execution.getStartedAt(), execution.getWorkStartedAt(),
+                execution.getStatus(), execution.getTrigger(), execution.getTriggeredBy(), execution.getStartedAt(), execution.getWorkStartedAt(),
                 execution.getFinishedAt(),
                 Duration.between(execution.getStartedAt(), execution.getFinishedAt()).toMillis(),
                 Duration.between(execution.getStartedAt(), execution.getWorkStartedAt()).toMillis(),

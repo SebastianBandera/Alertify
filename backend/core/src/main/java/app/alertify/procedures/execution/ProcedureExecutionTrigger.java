@@ -7,5 +7,6 @@ package app.alertify.procedures.execution;
 public enum ProcedureExecutionTrigger {
     MANUAL,
     ALERT,
-    PROCEDURE
+    PROCEDURE,
+    HOOK
 }

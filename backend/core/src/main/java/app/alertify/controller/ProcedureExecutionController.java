@@ -1,5 +1,7 @@
 package app.alertify.controller;
 
+import java.util.UUID;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
@@ -25,7 +27,7 @@ public class ProcedureExecutionController {
     }
 
     @GetMapping
-    public Page<ProcedureExecutionResponse> search(@RequestParam(required = false) Long procedureId, @RequestParam(required = false) ProcedureExecutionStatus status, @PageableDefault(size = 20, sort = "startedAt", direction = org.springframework.data.domain.Sort.Direction.DESC) Pageable pageable) {
-        return service.search(procedureId, status, pageable);
+    public Page<ProcedureExecutionResponse> search(@RequestParam(required = false) Long procedureId, @RequestParam(required = false) ProcedureExecutionStatus status, @RequestParam(required = false) UUID executionId, @PageableDefault(size = 20, sort = "startedAt", direction = org.springframework.data.domain.Sort.Direction.DESC) Pageable pageable) {
+        return service.search(procedureId, status, executionId, pageable);
     }
 }

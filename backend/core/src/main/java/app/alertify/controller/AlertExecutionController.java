@@ -1,5 +1,7 @@
 package app.alertify.controller;
 
+import java.util.UUID;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
@@ -25,7 +27,7 @@ public class AlertExecutionController {
     }
 
     @GetMapping
-    public Page<AlertExecutionResponse> search(@RequestParam(required = false) Long alertId, @RequestParam(required = false) AlertExecutionStatus status, @PageableDefault(size = 20, sort = "startedAt", direction = org.springframework.data.domain.Sort.Direction.DESC) Pageable pageable) {
-        return service.search(alertId, status, pageable);
+    public Page<AlertExecutionResponse> search(@RequestParam(required = false) Long alertId, @RequestParam(required = false) AlertExecutionStatus status, @RequestParam(required = false) UUID executionId, @PageableDefault(size = 20, sort = "startedAt", direction = org.springframework.data.domain.Sort.Direction.DESC) Pageable pageable) {
+        return service.search(alertId, status, executionId, pageable);
     }
 }

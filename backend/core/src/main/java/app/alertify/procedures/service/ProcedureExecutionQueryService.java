@@ -3,6 +3,7 @@ package app.alertify.procedures.service;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -31,10 +32,12 @@ public class ProcedureExecutionQueryService {
     }
 
     @Transactional(readOnly = true)
-    public Page<ProcedureExecutionResponse> search(Long procedureId, ProcedureExecutionStatus status, Pageable pageable) {
+    public Page<ProcedureExecutionResponse> search(Long procedureId, ProcedureExecutionStatus status, UUID executionId, Pageable pageable) {
         SearchValidation.validateSort(pageable, SORT_FIELDS);
         Page<ProcedureExecutionResponse> result;
-        if (procedureId != null && status != null)
+        if (executionId != null)
+            result = repository.findAllByExecutionId(executionId, pageable).map(ProcedureMapper::toExecution);
+        else if (procedureId != null && status != null)
             result = repository.findAllByProcedure_IdAndStatus(procedureId, status, pageable).map(ProcedureMapper::toExecution);
         else if (procedureId != null)
             result = repository.findAllByProcedure_Id(procedureId, pageable).map(ProcedureMapper::toExecution);
@@ -47,6 +50,9 @@ public class ProcedureExecutionQueryService {
         data.put("page", result.getNumber());
         data.put("size", result.getSize());
         data.put("totalElements", result.getTotalElements());
+        if (executionId != null)
+            data.put("executionId", executionId);
+
         eventLogger.success("PROCEDURE_EXECUTION_HISTORY_VIEWED", data);
         return result;
     }

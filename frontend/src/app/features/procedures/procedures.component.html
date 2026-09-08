@@ -190,6 +190,9 @@
       </div>
     }
   } @else {
+    @if (historyExecutionId()) {
+      <div class="execution-filter"><code>{{ historyExecutionId() }}</code><button type="button" (click)="clearHistoryExecutionFilter()">{{ localization.translate('procedures.history.clearExecution') }}</button></div>
+    }
     <form class="toolbar history-filters" (ngSubmit)="loadHistory()">
       <label>
         <span>{{ localization.translate('procedures.tabs.procedures') }}</span>

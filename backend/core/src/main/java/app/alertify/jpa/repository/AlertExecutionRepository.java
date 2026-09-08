@@ -1,5 +1,7 @@
 package app.alertify.jpa.repository;
 
+import java.util.UUID;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
@@ -34,4 +36,7 @@ public interface AlertExecutionRepository extends JpaRepository<AlertExecution, 
 
     @EntityGraph(attributePaths = "alert")
     Page<AlertExecution> findAllByAlert_IdAndStatus(Long alertId, AlertExecutionStatus status, Pageable pageable);
+
+    @EntityGraph(attributePaths = "alert")
+    Page<AlertExecution> findAllByExecutionId(UUID executionId, Pageable pageable);
 }

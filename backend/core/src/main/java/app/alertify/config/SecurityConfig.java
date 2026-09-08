@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.oauth2.server.resource.authentication.DelegatingJwtGrantedAuthoritiesConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
@@ -45,8 +46,8 @@ public class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(List.of(allowedOrigin));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type"));
-        configuration.setExposedHeaders(List.of(ApiRequestLoggingFilter.REQUEST_ID_HEADER));
+        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Alertify-Hook-Token"));
+        configuration.setExposedHeaders(List.of(ApiRequestLoggingFilter.REQUEST_ID_HEADER, "Location"));
         configuration.setMaxAge(3600L);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
@@ -62,6 +63,10 @@ public class SecurityConfig {
                 .authorizeHttpRequests(
                         authorize -> authorize
                                 .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info")
+                                .permitAll()
+                                .requestMatchers(HttpMethod.POST, "/api/hooks/*/invoke")
+                                .permitAll()
+                                .requestMatchers(HttpMethod.GET, "/api/hooks/*/invocations/*")
                                 .permitAll()
                                 .anyRequest()
                                 .authenticated()

@@ -20,7 +20,7 @@ import { TranslationKey } from '../../core/i18n/localization.types';
 interface NavigationItem {
   readonly labelKey: TranslationKey;
   readonly path: string;
-  readonly icon: 'dashboard' | 'alerts' | 'procedures' | 'status' | 'configs' | 'secrets' | 'logs';
+  readonly icon: 'dashboard' | 'alerts' | 'procedures' | 'hooks' | 'status' | 'configs' | 'secrets' | 'logs';
 }
 
 @Component({
@@ -43,6 +43,9 @@ export class AppShellComponent {
       : []),
     ...(this.authService.isAdmin
       ? [{ labelKey: 'navigation.procedures' as const, path: '/procedures', icon: 'procedures' as const }]
+      : []),
+    ...(this.authService.isAdmin
+      ? [{ labelKey: 'navigation.hooks' as const, path: '/hooks', icon: 'hooks' as const }]
       : []),
     ...(this.authService.isAdmin
       ? [{ labelKey: 'navigation.status' as const, path: '/status', icon: 'status' as const }]
@@ -104,6 +107,9 @@ export class AppShellComponent {
     }
     if (url.startsWith('/procedures')) {
       return 'navigation.procedures';
+    }
+    if (url.startsWith('/hooks')) {
+      return 'navigation.hooks';
     }
     if (url.startsWith('/status')) {
       return 'navigation.status';

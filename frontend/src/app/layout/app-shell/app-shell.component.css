@@ -180,6 +180,11 @@
   -webkit-mask-image: url('../../../../public/icons/procedures.svg');
 }
 
+.navigation__icon--hooks {
+  mask-image: url('../../../../public/icons/hooks.svg');
+  -webkit-mask-image: url('../../../../public/icons/hooks.svg');
+}
+
 .navigation__icon--status {
   mask-image: url('../../../../public/icons/status.svg');
   -webkit-mask-image: url('../../../../public/icons/status.svg');

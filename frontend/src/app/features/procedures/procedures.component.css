@@ -15,6 +15,8 @@ h2 { font-size: 20px; }
 .tabs span { min-width: 22px; padding: 2px 6px; border-radius: 999px; background: #f2f4f7; color: #475467; font-size: 10px; text-align: center; }
 
 .toolbar { display: flex; align-items: end; gap: 10px; padding: 16px 26px; border-bottom: 1px solid var(--border); background: var(--surface-muted); }
+.execution-filter { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 26px; border-bottom: 1px solid #d9d6fe; background: #f4f3ff; color: #5925dc; }
+.execution-filter button { border: 0; background: transparent; color: var(--primary-strong); cursor: pointer; font: inherit; font-size: 12px; font-weight: 700; }
 .search-field { width: min(420px, 100%); }
 .template-filter { width: min(280px, 100%); }
 .history-filters label { min-width: 220px; }

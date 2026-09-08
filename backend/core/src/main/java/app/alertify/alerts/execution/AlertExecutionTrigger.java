@@ -7,5 +7,6 @@ package app.alertify.alerts.execution;
 public enum AlertExecutionTrigger {
 
     CRON,
-    MANUAL
+    MANUAL,
+    HOOK
 }

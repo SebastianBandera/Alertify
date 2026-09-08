@@ -172,6 +172,7 @@ export class AlertsComponent implements OnInit {
   });
   protected readonly historyAlertId = signal<number | null>(null);
   protected readonly historyStatus = signal<AlertExecutionStatus | ''>('');
+  protected readonly historyExecutionId = signal<string | null>(null);
   protected readonly editorOpen = signal(false);
   protected readonly editingAlert = signal<Alert | null>(null);
   protected readonly form = signal<AlertForm>(this.emptyForm());
@@ -208,7 +209,9 @@ export class AlertsComponent implements OnInit {
   async ngOnInit(): Promise<void> {
     this.destroyRef.onDestroy(() => this.clearNoticeTimer());
     const requestedTab = this.route.snapshot.queryParamMap.get('tab');
-    this.activeTab.set(alertTab(requestedTab));
+    const requestedExecutionId = this.route.snapshot.queryParamMap.get('executionId');
+    this.historyExecutionId.set(requestedExecutionId);
+    this.activeTab.set(requestedExecutionId ? 'history' : alertTab(requestedTab));
     this.route.queryParamMap
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((parameters) => {
@@ -363,7 +366,7 @@ export class AlertsComponent implements OnInit {
     this.error.set(null);
     try {
       const page = await this.api.listExecutions(
-        this.historyAlertId(), this.historyStatus(), this.historyPage(), this.pageSize(),
+        this.historyAlertId(), this.historyStatus(), this.historyPage(), this.pageSize(), this.historyExecutionId(),
       );
       this.executions.set(page.content);
       this.historyPage.set(page.page.number);
@@ -438,9 +441,15 @@ export class AlertsComponent implements OnInit {
   }
 
   protected applyHistoryFilters(): void {
+    if (this.historyExecutionId() !== null) {
+      this.historyExecutionId.set(null);
+      void this.router.navigate([], { relativeTo: this.route, queryParams: { executionId: null }, queryParamsHandling: 'merge', replaceUrl: true });
+    }
     this.historyPage.set(0);
     void this.loadHistory();
   }
+
+  protected clearHistoryExecutionFilter(): void { this.applyHistoryFilters(); }
 
   protected updateHistoryAlertFilter(alertId: number | null): void {
     this.historyAlertId.set(alertId);

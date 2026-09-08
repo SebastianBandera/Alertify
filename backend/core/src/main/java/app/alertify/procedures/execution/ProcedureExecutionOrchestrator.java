@@ -93,6 +93,25 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
         });
     }
 
+    public ProcedureHookExecution executeHook(long procedureId, String procedureName, String triggeredBy) {
+        UUID executionId = UUID.randomUUID();
+        Instant deadline = Instant.now().plus(properties.execution().timeout());
+        eventLogger.success("PROCEDURE_EXECUTION_TRIGGERED", data(procedureId, procedureName, executionId, ProcedureExecutionTrigger.HOOK, triggeredBy));
+        try {
+            execute(procedureId, executionId, executionId, null, null, 1,
+                    ProcedureExecutionTrigger.HOOK, triggeredBy, deadline, false);
+            return new ProcedureHookExecution(executionId, true, false);
+        } catch (ProcedureDisabledException exception) {
+            return new ProcedureHookExecution(null, false, true);
+        } catch (RuntimeException exception) {
+            UUID persistedId = exception instanceof ProcedureExecutionException executionException
+                    ? executionException.getExecutionId() : executionId;
+            return new ProcedureHookExecution(persistedId, false, false);
+        }
+    }
+
+    public record ProcedureHookExecution(UUID executionId, boolean successful, boolean disabled) { }
+
     public InvokeProcedureResponse invoke(ProcedureInvocationTokenService.Claims claims) {
         UUID executionId = UUID.randomUUID();
         ProcedureExecutionTrigger trigger = claims.parentKind() == ProcedureParentKind.PROCEDURE_PARENT_KIND_ALERT

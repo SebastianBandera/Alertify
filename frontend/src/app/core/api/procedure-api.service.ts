@@ -114,7 +114,7 @@ export interface ProcedureExecution {
   readonly procedureName: string;
   readonly procedureVersion: number;
   readonly status: ProcedureExecutionStatus;
-  readonly trigger: 'MANUAL' | 'ALERT' | 'PROCEDURE';
+  readonly trigger: 'MANUAL' | 'ALERT' | 'PROCEDURE' | 'HOOK';
   readonly rootExecutionId: string;
   readonly parentAlertExecutionId: string | null;
   readonly parentProcedureExecutionId: string | null;
@@ -187,11 +187,11 @@ export class ProcedureApiService {
     return this.request('/api/procedures/binding-options');
   }
 
-  async listExecutions(procedureId: number | null, status: ProcedureExecutionStatus | '', page = 0,
-      size = 20): Promise<PageResponse<ProcedureExecution>> {
+  async listExecutions(procedureId: number | null, status: ProcedureExecutionStatus | '', page = 0, size = 20, executionId: string | null = null): Promise<PageResponse<ProcedureExecution>> {
     const params = new URLSearchParams({ page: String(page), size: String(size), sort: 'startedAt,desc' });
     if (procedureId !== null) params.set('procedureId', String(procedureId));
     if (status) params.set('status', status);
+    if (executionId) params.set('executionId', executionId);
     return this.request(`/api/procedure-executions?${params}`);
   }
 

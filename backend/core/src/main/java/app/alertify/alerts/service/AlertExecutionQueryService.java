@@ -3,6 +3,7 @@ package app.alertify.alerts.service;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -29,10 +30,12 @@ public class AlertExecutionQueryService {
     }
 
     @Transactional(readOnly = true)
-    public Page<AlertExecutionResponse> search(Long alertId, AlertExecutionStatus status, Pageable pageable) {
+    public Page<AlertExecutionResponse> search(Long alertId, AlertExecutionStatus status, UUID executionId, Pageable pageable) {
         SearchValidation.validateSort(pageable, SORT_FIELDS);
         Page<AlertExecutionResponse> result;
-        if (alertId != null && status != null)
+        if (executionId != null)
+            result = executionRepository.findAllByExecutionId(executionId, pageable).map(AlertMapper::toExecution);
+        else if (alertId != null && status != null)
             result = executionRepository.findAllByAlert_IdAndStatus(alertId, status, pageable).map(AlertMapper::toExecution);
         else if (alertId != null)
             result = executionRepository.findAllByAlert_Id(alertId, pageable).map(AlertMapper::toExecution);
@@ -50,6 +53,9 @@ public class AlertExecutionQueryService {
 
         if (status != null)
             data.put("status", status.name());
+
+        if (executionId != null)
+            data.put("executionId", executionId);
 
         eventLogger.success("ALERT_EXECUTION_HISTORY_VIEWED", data);
         return result;

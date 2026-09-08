@@ -1,6 +1,7 @@
 import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, ElementRef, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { ActivatedRoute, Router } from '@angular/router';
 
 import { AlertParameterSource } from '../../core/api/alert-api.service';
 import { ApiRequestError } from '../../core/api/configuration-api.service';
@@ -51,6 +52,8 @@ export class ProceduresComponent implements OnInit {
   protected readonly localization = inject(LocalizationService);
   private readonly api = inject(ProcedureApiService);
   private readonly elementRef: ElementRef<HTMLElement> = inject(ElementRef);
+  private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
 
   protected readonly activeTab = signal<ProcedureTab>('procedures');
   protected readonly procedures = signal<readonly Procedure[]>([]);
@@ -67,6 +70,7 @@ export class ProceduresComponent implements OnInit {
   protected readonly templateFilterId = signal<number | null>(null);
   protected readonly historyProcedureId = signal<number | null>(null);
   protected readonly historyStatus = signal<ProcedureExecutionStatus | ''>('');
+  protected readonly historyExecutionId = signal<string | null>(null);
   protected readonly editorOpen = signal(false);
   protected readonly editing = signal<Procedure | null>(null);
   protected readonly form = signal<ProcedureForm>(this.emptyForm());
@@ -81,6 +85,9 @@ export class ProceduresComponent implements OnInit {
   protected readonly tagError = signal<string | null>(null);
 
   async ngOnInit(): Promise<void> {
+    const executionId = this.route.snapshot.queryParamMap.get('executionId');
+    this.historyExecutionId.set(executionId);
+    if (executionId) this.activeTab.set('history');
     await this.loadAll();
   }
 
@@ -366,8 +373,14 @@ export class ProceduresComponent implements OnInit {
   }
 
   protected async loadHistory(): Promise<void> {
-    const page = await this.api.listExecutions(this.historyProcedureId(), this.historyStatus(), 0, 200);
+    const page = await this.api.listExecutions(this.historyProcedureId(), this.historyStatus(), 0, 200, this.historyExecutionId());
     this.executions.set(page.content);
+  }
+
+  protected async clearHistoryExecutionFilter(): Promise<void> {
+    this.historyExecutionId.set(null);
+    await this.router.navigate([], { relativeTo: this.route, queryParams: { executionId: null }, queryParamsHandling: 'merge', replaceUrl: true });
+    await this.loadHistory();
   }
 
   private emptyForm(): ProcedureForm {

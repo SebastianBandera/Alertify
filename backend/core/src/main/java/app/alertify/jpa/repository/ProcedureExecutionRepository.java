@@ -12,6 +12,7 @@ import app.alertify.procedures.model.ProcedureExecution;
 
 public interface ProcedureExecutionRepository extends JpaRepository<ProcedureExecution, Long> {
     Optional<ProcedureExecution> findByExecutionId(UUID executionId);
+    Page<ProcedureExecution> findAllByExecutionId(UUID executionId, Pageable pageable);
     Page<ProcedureExecution> findAllByProcedure_Id(Long procedureId, Pageable pageable);
     Page<ProcedureExecution> findAllByStatus(ProcedureExecutionStatus status, Pageable pageable);
     Page<ProcedureExecution> findAllByProcedure_IdAndStatus(Long procedureId, ProcedureExecutionStatus status, Pageable pageable);

@@ -300,6 +300,9 @@
   }
 
   @if (activeTab() === 'history') {
+    @if (historyExecutionId()) {
+      <div class="execution-filter"><code>{{ historyExecutionId() }}</code><button type="button" (click)="clearHistoryExecutionFilter()">{{ localization.translate('alerts.history.clearExecution') }}</button></div>
+    }
     <div class="toolbar history-filters">
       <label>
         <span>{{ localization.translate('alerts.history.alert') }}</span>

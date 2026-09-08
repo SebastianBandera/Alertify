@@ -7,6 +7,8 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,6 +41,7 @@ public class AlertExecutionPersistenceService {
     private final WritableConfigurationService writableConfigurationService;
     private final WritableSecretService writableSecretService;
     private final JsonMapper jsonMapper;
+    private final ConcurrentMap<UUID, TriggerContext> triggerContexts = new ConcurrentHashMap<>();
 
     public AlertExecutionPersistenceService(AlertRepository alertRepository, AlertExecutionRepository executionRepository, AlertStateRepository stateRepository, ApplicationEventLogger eventLogger, JsonMapper jsonMapper, WritableConfigurationService writableConfigurationService, WritableSecretService writableSecretService) {
         this.alertRepository = alertRepository;
@@ -50,8 +53,15 @@ public class AlertExecutionPersistenceService {
         this.writableSecretService = writableSecretService;
     }
 
+    public void registerTrigger(UUID executionId, AlertExecutionTrigger trigger, String triggeredBy) {
+        triggerContexts.put(executionId, new TriggerContext(trigger, triggeredBy));
+    }
+
+    public void clearTrigger(UUID executionId) { triggerContexts.remove(executionId); }
+
     @Transactional
     public void persistWorkerResult(long alertId, UUID executionId, WorkerEndpoint endpoint, AlertExecutionResult result) {
+        TriggerContext context = triggerContexts.get(executionId);
         Alert alert = alert(alertId);
         Instant startedAt = instant(result.getStartedAt());
         Instant workStartedAt = instant(result.getWorkStartedAt());
@@ -64,12 +74,12 @@ public class AlertExecutionPersistenceService {
             execution = AlertExecution.error(
                     executionId, alert, worker, startedAt, workStartedAt, finishedAt,
                     required(error.getType(), "Worker error type"), emptyToNull(error.getMessage()),
-                    emptyToNull(error.getStackTrace())
+                    emptyToNull(error.getStackTrace()), trigger(context), actor(context)
             );
         } else {
             execution = AlertExecution.result(
                     executionId, alert, worker, status(result.getStatus()), startedAt, workStartedAt, finishedAt,
-                    statusMessage(result.getStatusMessageJson())
+                    statusMessage(result.getStatusMessageJson()), trigger(context), actor(context)
             );
         }
 
@@ -127,9 +137,10 @@ public class AlertExecutionPersistenceService {
     }
 
     private void persistFailure(long alertId, UUID executionId, AlertExecutionWorker worker, Instant startedAt, Instant workStartedAt, Instant finishedAt, String errorType, String errorMessage, String errorStackTrace) {
+        TriggerContext context = triggerContexts.get(executionId);
         AlertExecution execution = AlertExecution.error(
                 executionId, alert(alertId), worker, startedAt, workStartedAt, finishedAt,
-                errorType, errorMessage, errorStackTrace
+                errorType, errorMessage, errorStackTrace, trigger(context), actor(context)
         );
         executionRepository.save(execution);
         logResult(execution);
@@ -224,4 +235,8 @@ public class AlertExecutionPersistenceService {
     private static String emptyToNull(String value) {
         return value == null || value.isEmpty() ? null : value;
     }
+
+    private static AlertExecutionTrigger trigger(TriggerContext context) { return context == null ? null : context.trigger(); }
+    private static String actor(TriggerContext context) { return context == null ? null : context.triggeredBy(); }
+    private record TriggerContext(AlertExecutionTrigger trigger, String triggeredBy) { }
 }

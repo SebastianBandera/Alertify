@@ -1,6 +1,9 @@
 package app.alertify.alerts.execution;
 
 import java.time.Instant;
+import java.time.Duration;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -8,7 +11,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import org.springframework.stereotype.Service;
 
@@ -55,7 +57,7 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
     private final ProcedureInvocationRegistry procedureInvocationRegistry;
     private final ProcedureExecutionOrchestrator procedureExecutionOrchestrator;
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
-    private final ConcurrentMap<Long, AtomicInteger> activeAlerts = new ConcurrentHashMap<>();
+    private final ConcurrentMap<Long, AlertGate> alertGates = new ConcurrentHashMap<>();
 
     public AlertExecutionOrchestrator(AlertExecutionPreparationService preparationService, AlertExecutionPersistenceService persistenceService, WorkerStatusService workerStatusService, AlertWorkerClient workerClient, WorkerGrpcProperties properties, ApplicationEventLogger eventLogger, ProcedureInvocationTokenService procedureTokenService, ProcedureInvocationRegistry procedureInvocationRegistry, ProcedureExecutionOrchestrator procedureExecutionOrchestrator) {
         this.preparationService = preparationService;
@@ -88,8 +90,30 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
             return false;
         }
         eventLogger.success("ALERT_EXECUTION_TRIGGERED", data(alertId, alertName, source, triggeredBy));
-        executor.submit(() -> execute(alertId, source, triggeredBy));
+        UUID executionId = UUID.randomUUID();
+        executor.submit(() -> execute(alertId, source, triggeredBy, executionId));
         return true;
+    }
+
+    public AlertHookExecution executeHook(long alertId, String alertName, boolean allowConcurrentExecutions, Duration busyWaitTimeout, String triggeredBy, Runnable waitingCallback, Runnable acquiredCallback) {
+        AlertGate gate = alertGates.computeIfAbsent(alertId, _ -> new AlertGate());
+        boolean acquired;
+        try {
+            acquired = gate.awaitTurn(allowConcurrentExecutions, busyWaitTimeout, waitingCallback);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            return new AlertHookExecution(null, AlertExecutionStatus.ERROR, false, false);
+        }
+        if (!acquired) {
+            cleanup(alertId, gate);
+            return new AlertHookExecution(null, AlertExecutionStatus.ERROR, false, true);
+        }
+
+        runCallback(acquiredCallback);
+        UUID executionId = UUID.randomUUID();
+        eventLogger.success("ALERT_EXECUTION_TRIGGERED", data(alertId, alertName, AlertExecutionTrigger.HOOK, triggeredBy));
+        AlertExecutionStatus status = execute(alertId, AlertExecutionTrigger.HOOK, triggeredBy, executionId);
+        return new AlertHookExecution(status == null ? null : executionId, status, status == null, false);
     }
 
     private static Map<String, Object> data(long alertId, String alertName, AlertExecutionTrigger source, String triggeredBy, String... extra) {
@@ -105,24 +129,24 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
     }
 
     public boolean isRunning(long alertId) {
-        AtomicInteger count = activeAlerts.get(alertId);
-        return count != null && count.get() > 0;
+        AlertGate gate = alertGates.get(alertId);
+        return gate != null && gate.isActive();
     }
 
-    private void execute(long alertId, AlertExecutionTrigger source, String triggeredBy) {
-        UUID executionId = UUID.randomUUID();
+    private AlertExecutionStatus execute(long alertId, AlertExecutionTrigger source, String triggeredBy, UUID executionId) {
         Instant startedAt = Instant.now();
         WorkerEndpoint endpoint = null;
         String workerName = null;
         String workerInstanceId = null;
         Instant deadline = startedAt.plus(properties.execution().timeout());
+        persistenceService.registerTrigger(executionId, source, triggeredBy);
         try {
             // A manual run also covers alerts that are currently disabled.
             PreparedAlertExecution execution = preparationService
                     .prepare(alertId, source == AlertExecutionTrigger.MANUAL)
                     .orElse(null);
             if (execution == null)
-                return;
+                return null;
 
             try (WorkerReservation reservation = workerStatusService.reserve(execution.requiredCapability())) {
                 SelectedWorker worker = reservation.worker();
@@ -146,9 +170,14 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
                 } catch (WorkerTemplateSynchronizationException exception) {
                     Instant finishedAt = Instant.now();
                     persistenceService.persistRemoteFailure(alertId, executionId, endpoint, workerName, workerInstanceId, startedAt, finishedAt, finishedAt, exception.error());
-                    return;
+                    return AlertExecutionStatus.ERROR;
                 }
                 persistenceService.persistWorkerResult(alertId, executionId, endpoint, result);
+                return switch (result.getStatus()) {
+                    case WORKER_EXECUTION_STATUS_SUCCESS -> AlertExecutionStatus.SUCCESS;
+                    case WORKER_EXECUTION_STATUS_WARN -> AlertExecutionStatus.WARN;
+                    default -> AlertExecutionStatus.ERROR;
+                };
             }
         } catch (Throwable exception) {
             if (exception instanceof InterruptedException)
@@ -172,8 +201,10 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
                 data.put("persistenceExceptionType", persistenceException.getClass().getName());
                 eventLogger.error("ALERT_EXECUTION_DISPATCH_FAILED", data);
             }
+            return AlertExecutionStatus.ERROR;
         } finally {
             procedureInvocationRegistry.unregister(executionId);
+            persistenceService.clearTrigger(executionId);
             leave(alertId);
         }
     }
@@ -238,24 +269,104 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
     }
 
     private boolean enter(long alertId, boolean concurrent) {
-        if (!concurrent)
-            return activeAlerts.putIfAbsent(alertId, new AtomicInteger(1)) == null;
+        AlertGate gate = alertGates.computeIfAbsent(alertId, _ -> new AlertGate());
+        boolean entered = gate.tryEnter(concurrent);
+        if (!entered)
+            cleanup(alertId, gate);
 
-        activeAlerts.compute(alertId, (key, count) -> {
-            if (count == null)
-                return new AtomicInteger(1);
-
-            count.incrementAndGet();
-            return count;
-        });
-        return true;
+        return entered;
     }
 
     private void leave(long alertId) {
-        activeAlerts.computeIfPresent(alertId, (key, count) ->
-            count.decrementAndGet() <= 0 ? null : count
-        );
+        AlertGate gate = alertGates.get(alertId);
+        if (gate == null)
+            return;
+
+        gate.leave();
+        cleanup(alertId, gate);
     }
+
+    private void cleanup(long alertId, AlertGate gate) {
+        if (gate.isIdle())
+            alertGates.remove(alertId, gate);
+    }
+
+    private static void runCallback(Runnable callback) {
+        try {
+            callback.run();
+        } catch (RuntimeException ignored) {
+            // Invocation state can be reconciled; callback failures must never leak an alert gate permit.
+        }
+    }
+
+    public record AlertHookExecution(UUID executionId, AlertExecutionStatus status, boolean disabled, boolean busyTimeout) { }
+
+    static final class AlertGate {
+        private int active;
+        private final Deque<Waiter> waiters = new ArrayDeque<>();
+
+        synchronized boolean tryEnter(boolean concurrent) {
+            if (!concurrent && (active > 0 || !waiters.isEmpty()))
+                return false;
+
+            active++;
+            return true;
+        }
+
+        boolean awaitTurn(boolean concurrent, Duration timeout, Runnable waitingCallback) throws InterruptedException {
+            Waiter waiter;
+            synchronized (this) {
+                if (concurrent || (active == 0 && waiters.isEmpty())) {
+                    active++;
+                    return true;
+                }
+
+                waiter = new Waiter();
+                waiters.addLast(waiter);
+            }
+
+            runCallback(waitingCallback);
+            synchronized (this) {
+                long remaining = timeout.toNanos();
+                long started = System.nanoTime();
+                try {
+                    while (!waiter.assigned && remaining > 0) {
+                        long millis = Math.max(1, Math.min(Duration.ofNanos(remaining).toMillis(), Integer.MAX_VALUE));
+                        wait(millis);
+                        remaining = timeout.toNanos() - (System.nanoTime() - started);
+                    }
+                } catch (InterruptedException exception) {
+                    if (waiter.assigned) {
+                        Thread.currentThread().interrupt();
+                        return true;
+                    }
+
+                    waiters.remove(waiter);
+                    throw exception;
+                }
+                if (waiter.assigned)
+                    return true;
+
+                waiters.remove(waiter);
+                return false;
+            }
+        }
+
+        synchronized void leave() {
+            active--;
+            Waiter next = active == 0 ? waiters.pollFirst() : null;
+            if (next != null) {
+                active = 1;
+                next.assigned = true;
+                notifyAll();
+            }
+        }
+
+        synchronized boolean isActive() { return active > 0; }
+        synchronized boolean isIdle() { return active == 0 && waiters.isEmpty(); }
+    }
+
+    private static final class Waiter { private boolean assigned; }
 
     @Override
     public void close() {
