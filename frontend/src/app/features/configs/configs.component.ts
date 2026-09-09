@@ -104,7 +104,6 @@ export class ConfigsComponent implements OnInit {
   protected readonly editorOpen = signal(false);
   protected readonly editingConfiguration = signal<ApplicationConfiguration | null>(null);
   protected readonly configurationForm = signal<ConfigurationForm>(this.emptyConfigurationForm());
-  protected readonly sensitiveChangeConfirmed = signal(false);
   protected readonly formError = signal<string | null>(null);
   protected readonly evaluatingExpression = signal(false);
   protected readonly evaluatedExpression = signal<string | null>(null);
@@ -298,7 +297,6 @@ export class ConfigsComponent implements OnInit {
   protected openCreate(): void {
     this.editingConfiguration.set(null);
     this.configurationForm.set(this.emptyConfigurationForm());
-    this.sensitiveChangeConfirmed.set(false);
     this.formError.set(null);
     this.resetExpressionEditorState();
     this.editorOpen.set(true);
@@ -310,13 +308,10 @@ export class ConfigsComponent implements OnInit {
       name: configuration.name,
       description: configuration.description ?? '',
       valueType: configuration.valueType,
-      rawValue: configuration.valueHidden
-        ? ''
-        : this.toEditorValue(configuration.valueType, configuration.value),
+      rawValue: this.toEditorValue(configuration.valueType, configuration.value),
       tagIds: configuration.tags.map((tag) => tag.id),
       writable: configuration.writable,
     });
-    this.sensitiveChangeConfirmed.set(false);
     this.formError.set(null);
     this.resetExpressionEditorState();
     this.editorOpen.set(true);
@@ -436,24 +431,12 @@ export class ConfigsComponent implements OnInit {
     return this.configurationForm().tagIds.includes(tagId);
   }
 
-  protected generateKeyPart(): void {
-    const bytes = crypto.getRandomValues(new Uint8Array(32));
-    const value = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
-    this.patchConfigurationForm({ rawValue: value });
-    this.sensitiveChangeConfirmed.set(false);
-  }
-
   protected async saveConfiguration(): Promise<void> {
     const form = this.configurationForm();
     const editing = this.editingConfiguration();
     this.formError.set(null);
 
     if (!form.name.trim()) return;
-    if (editing?.valueHidden && !form.rawValue) {
-      this.formError.set(this.localization.translate('configs.keyPart.valueRequired'));
-      return;
-    }
-    if (editing?.changeWarning === 'SECRET_LOSS' && !this.sensitiveChangeConfirmed()) return;
 
     let value: unknown;
     try {
@@ -493,7 +476,6 @@ export class ConfigsComponent implements OnInit {
   }
 
   protected async deleteConfiguration(configuration: ApplicationConfiguration): Promise<void> {
-    if (!configuration.deletable) return;
     if (!window.confirm(this.localization.translate('configs.deleteConfirm'))) return;
 
     this.error.set(null);
@@ -512,7 +494,6 @@ export class ConfigsComponent implements OnInit {
   }
 
   protected valuePreview(configuration: ApplicationConfiguration): string {
-    if (configuration.valueHidden) return '••••••••••••••••';
     if (configuration.valueType === 'EXPRESSION') {
       return this.localization.translate('configs.expression.onDemand');
     }

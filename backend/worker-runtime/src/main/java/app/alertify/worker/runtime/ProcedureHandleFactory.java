@@ -3,6 +3,7 @@ package app.alertify.worker.runtime;
 import java.util.UUID;
 
 import app.alertify.procedures.Procedure;
+import app.alertify.procedures.ProcedureBusyException;
 import app.alertify.procedures.ProcedureDepthExceededException;
 import app.alertify.procedures.ProcedureDisabledException;
 import app.alertify.procedures.ProcedureExecutionException;
@@ -67,6 +68,7 @@ class ProcedureHandleFactory {
         return switch (kind) {
             case PROCEDURE_INVOCATION_FAILURE_KIND_DISABLED -> new ProcedureDisabledException(message);
             case PROCEDURE_INVOCATION_FAILURE_KIND_DEPTH_EXCEEDED -> new ProcedureDepthExceededException(message);
+            case PROCEDURE_INVOCATION_FAILURE_KIND_BUSY -> new ProcedureBusyException(message);
             case PROCEDURE_INVOCATION_FAILURE_KIND_ERROR,
                     PROCEDURE_INVOCATION_FAILURE_KIND_UNSPECIFIED,
                     UNRECOGNIZED -> new ProcedureExecutionException(executionId, message);

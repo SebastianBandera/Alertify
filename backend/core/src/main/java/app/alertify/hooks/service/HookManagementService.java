@@ -172,19 +172,16 @@ public class HookManagementService {
                 throw invalid("A hook cannot contain the same resource more than once");
 
             List<String> outcomes = request.continueOn().stream().map(Enum::name).sorted().toList();
-            if (request.type() == HookTargetType.ALERT) {
-                Duration timeout = request.busyWaitTimeout() == null ? Duration.ofMillis(HookTarget.DEFAULT_BUSY_WAIT_MILLIS) : request.busyWaitTimeout();
-                if (timeout.isZero() || timeout.isNegative())
-                    throw invalid("Alert busy wait timeout must be positive");
+            Duration timeout = request.busyWaitTimeout() == null ? Duration.ofMillis(HookTarget.DEFAULT_BUSY_WAIT_MILLIS) : request.busyWaitTimeout();
+            if (timeout.isZero() || timeout.isNegative())
+                throw invalid("Target busy wait timeout must be positive");
 
+            if (request.type() == HookTargetType.ALERT) {
                 Alert alert = alertRepository.findById(request.resourceId()).orElseThrow(() -> new ResourceNotFoundException("Alert " + request.resourceId() + " was not found"));
                 result.add(HookTarget.alert(hook, alert, position, outcomes, timeout.toMillis()));
             } else {
-                if (request.busyWaitTimeout() != null)
-                    throw invalid("Procedure targets cannot have an alert busy wait timeout");
-
                 Procedure procedure = procedureRepository.findById(request.resourceId()).orElseThrow(() -> new ResourceNotFoundException("Procedure " + request.resourceId() + " was not found"));
-                result.add(HookTarget.procedure(hook, procedure, position, outcomes));
+                result.add(HookTarget.procedure(hook, procedure, position, outcomes, timeout.toMillis()));
             }
         }
         return result;

@@ -14,6 +14,7 @@ public record ProcedureCreateRequest(
     @NotBlank @Size(max = 200) String name,
     @Size(max = 2000) String description,
     boolean enabled,
+    Boolean allowConcurrentExecutions,
     @NotNull @Size(max = 100) List<@Valid ProcedureParameterValueRequest> parameters,
     @NotNull @Size(max = 100) Set<@Positive Long> tagIds
 ) {

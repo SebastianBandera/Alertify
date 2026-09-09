@@ -39,6 +39,7 @@ final class ProcedureMapper {
         return new ProcedureResponse(
                 procedure.getId(), procedure.getVersion(), template.getId(), template.getTemplateKey(),
                 template.getNameKey(), procedure.getName(), procedure.getDescription(), procedure.isEnabled(),
+                procedure.isConcurrentExecutionAllowed(),
                 procedure.getTags().stream()
                         .sorted(Comparator.comparing(tag -> tag.getName().toLowerCase(java.util.Locale.ROOT)))
                         .map(tag -> new TagResponse(tag.getId(), tag.getVersion(), tag.getScope(), tag.getName(),

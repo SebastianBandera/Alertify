@@ -102,6 +102,7 @@ public class ProcedureExecutionPreparationService {
                             });
                 }).toList();
         return new PreparedProcedureExecution(procedure.getId(), procedure.getVersion(), procedure.getName(),
+                procedure.isConcurrentExecutionAllowed(),
                 template.getTemplateKey(), template.getRequiredCapability(), template.isSensitiveResult(),
                 source.checksum(), source.content(), parameters);
     }

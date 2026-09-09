@@ -28,7 +28,6 @@ import app.alertify.procedures.api.ProcedureTemplateResponse;
 @Service
 public class ProcedureCatalogService {
 
-    private static final String HIDDEN_CONFIGURATION = "KEY_PART";
     private final ProcedureTemplateDefinitionRepository templateRepository;
     private final ProcedureTemplateParameterDefinitionRepository parameterRepository;
     private final ProcedureRepository procedureRepository;
@@ -65,7 +64,6 @@ public class ProcedureCatalogService {
     @Transactional(readOnly = true)
     public ProcedureBindingOptionsResponse bindingOptions() {
         var configurations = configurationRepository.findAll(Sort.by("name")).stream()
-                .filter(value -> !HIDDEN_CONFIGURATION.equalsIgnoreCase(value.getName()))
                 .map(value -> new ProcedureBindingOptionResponse(value.getId(), value.getName(), value.getDescription(), true))
                 .toList();
         var secrets = secretRepository.findAll(Sort.by("name")).stream()

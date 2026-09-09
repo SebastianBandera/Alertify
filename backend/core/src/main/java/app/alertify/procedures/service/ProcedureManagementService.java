@@ -65,8 +65,7 @@ import app.alertify.procedures.model.ProcedureTemplateParameterDefinition;
 @Service
 public class ProcedureManagementService {
 
-    private static final String HIDDEN_CONFIGURATION = "KEY_PART";
-    private static final Set<String> SORT_FIELDS = Set.of("id", "version", "name", "enabled", "createdAt", "updatedAt");
+    private static final Set<String> SORT_FIELDS = Set.of("id", "version", "name", "enabled", "allowConcurrentExecutions", "createdAt", "updatedAt");
 
     private final ProcedureRepository procedureRepository;
     private final ProcedureTemplateDefinitionRepository templateRepository;
@@ -131,9 +130,10 @@ public class ProcedureManagementService {
         ProcedureTemplateDefinition template = templateRepository.findById(request.templateId())
                 .orElseThrow(() -> notFound("Procedure template", request.templateId()));
         Procedure procedure = procedureRepository.saveAndFlush(new Procedure(template, name,
-                optional(request.description()), request.enabled(), resolveTags(request.tagIds())));
+                optional(request.description()), request.enabled(), request.allowConcurrentExecutions() == null || request.allowConcurrentExecutions(),
+                resolveTags(request.tagIds())));
         List<ProcedureParameterValue> values = synchronizeParameters(procedure, request.parameters(), List.of());
-        eventLogger.successAfterCommit("PROCEDURE_CREATED", Map.of("procedureId", procedure.getId(), "name", procedure.getName(), "templateId", template.getId()));
+        eventLogger.successAfterCommit("PROCEDURE_CREATED", Map.of("procedureId", procedure.getId(), "name", procedure.getName(), "templateId", template.getId(), "allowConcurrentExecutions", procedure.isConcurrentExecutionAllowed()));
         return ProcedureMapper.toProcedure(procedure, values);
     }
 
@@ -152,18 +152,23 @@ public class ProcedureManagementService {
         else
             procedure.disable();
 
+        procedure.changeConcurrentExecution(request.allowConcurrentExecutions());
         procedure.replaceTags(resolveTags(request.tagIds()));
         List<ProcedureParameterValue> values = synchronizeParameters(procedure, request.parameters(),
                 parameterValueRepository.findAllByOwnerIdOrdered(id));
         procedureRepository.flush();
-        eventLogger.successAfterCommit("PROCEDURE_UPDATED", Map.of("procedureId", id, "name", procedure.getName(), "version", procedure.getVersion()));
+        eventLogger.successAfterCommit("PROCEDURE_UPDATED", Map.of("procedureId", id, "name", procedure.getName(), "version", procedure.getVersion(), "allowConcurrentExecutions", procedure.isConcurrentExecutionAllowed()));
         return ProcedureMapper.toProcedure(procedure, values);
     }
 
     @Transactional(readOnly = true)
     public void runNow(Long id) {
         Procedure procedure = procedureRepository.findById(id).orElseThrow(() -> notFound("Procedure", id));
-        orchestrator.triggerManual(procedure.getId(), procedure.getName(), eventLogger.currentUsername());
+        boolean accepted = orchestrator.triggerManual(procedure.getId(), procedure.getName(), procedure.isConcurrentExecutionAllowed(), eventLogger.currentUsername());
+        if (!accepted)
+            throw new ConflictException("PROCEDURE_ALREADY_RUNNING",
+                    "Procedure '" + procedure.getName() + "' is already running and does not allow concurrent executions",
+                    Map.of("procedureName", procedure.getName()));
     }
 
     @Transactional(readOnly = true)
@@ -275,11 +280,7 @@ public class ProcedureManagementService {
     }
 
     private ApplicationConfiguration configuration(Long id) {
-        ApplicationConfiguration value = configurationRepository.findById(id).orElseThrow(() -> notFound("Configuration", id));
-        if (HIDDEN_CONFIGURATION.equalsIgnoreCase(value.getName()))
-            throw invalid("Configuration 'KEY_PART' cannot be used as a procedure binding");
-
-        return value;
+        return configurationRepository.findById(id).orElseThrow(() -> notFound("Configuration", id));
     }
 
     private ApplicationSecret secret(Long id) {

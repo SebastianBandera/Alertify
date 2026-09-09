@@ -51,8 +51,8 @@ public class HookInvocationTarget {
     @Column(name = "continue_on", nullable = false, updatable = false, columnDefinition = "jsonb")
     private List<String> continueOn = new ArrayList<>();
 
-    @Column(name = "busy_wait_timeout_millis", updatable = false)
-    private Long busyWaitTimeoutMillis;
+    @Column(name = "busy_wait_timeout_millis", nullable = false, updatable = false)
+    private long busyWaitTimeoutMillis;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 32)
@@ -94,7 +94,7 @@ public class HookInvocationTarget {
     public String getResourceName() { return resourceName; }
     public int getPosition() { return position; }
     public List<String> getContinueOn() { return Collections.unmodifiableList(continueOn); }
-    public Long getBusyWaitTimeoutMillis() { return busyWaitTimeoutMillis; }
+    public long getBusyWaitTimeoutMillis() { return busyWaitTimeoutMillis; }
     public HookTargetStatus getStatus() { return status; }
     public HookOutcome getOutcome() { return outcome; }
     public UUID getExecutionId() { return executionId; }
@@ -104,7 +104,8 @@ public class HookInvocationTarget {
 
     public void transition(HookTargetStatus value) {
         status = Objects.requireNonNull(value);
-        if (startedAt == null && (value == HookTargetStatus.WAITING_ALERT || value == HookTargetStatus.RUNNING))
+        if (startedAt == null && (value == HookTargetStatus.WAITING_ALERT
+                || value == HookTargetStatus.WAITING_PROCEDURE || value == HookTargetStatus.RUNNING))
             startedAt = Instant.now();
     }
 

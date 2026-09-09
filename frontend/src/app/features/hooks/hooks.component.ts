@@ -235,7 +235,7 @@ export class HooksComponent implements OnInit, OnDestroy {
     if (form.maxConcurrentInvocations !== null && form.maxConcurrentInvocations < 1
         || form.rateLimitCount !== null && form.rateLimitCount < 1
         || form.rateLimitWindowSeconds !== null && form.rateLimitWindowSeconds < 1
-        || form.targets.some((target) => target.type === 'ALERT' && target.busyWaitMinutes < 1)) {
+        || form.targets.some((target) => target.busyWaitMinutes < 1)) {
       this.formError.set(this.dynamic('hooks.form.positive'));
       return;
     }
@@ -244,7 +244,7 @@ export class HooksComponent implements OnInit, OnDestroy {
       type: target.type,
       resourceId: target.resourceId,
       continueOn: target.continueOn,
-      busyWaitTimeout: target.type === 'ALERT' ? `PT${target.busyWaitMinutes}M` : null,
+      busyWaitTimeout: `PT${target.busyWaitMinutes}M`,
     }));
     this.saving.set(true);
     this.formError.set(null);

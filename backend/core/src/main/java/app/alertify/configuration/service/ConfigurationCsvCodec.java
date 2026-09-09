@@ -21,9 +21,7 @@ import tools.jackson.databind.node.StringNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Encodes and validates the configuration CSV import/export format. Hidden
- * system configurations such as {@code KEY_PART} are deliberately excluded
- * from exports.
+ * Encodes and validates the configuration CSV import/export format.
  */
 @Component
 class ConfigurationCsvCodec {
@@ -45,9 +43,6 @@ class ConfigurationCsvCodec {
         CsvSupport.appendRow(csv, HEADER);
 
         for (ApplicationConfiguration configuration : configurations) {
-            if (SystemConfigurationPolicy.isValueHidden(configuration.getName()))
-                continue;
-
             List<ExportTag> tags = configuration.getTags().stream()
                     .sorted(Comparator.comparing(Tag::getName, String.CASE_INSENSITIVE_ORDER))
                     .map(tag -> new ExportTag(tag.getName(), tag.getColor()))

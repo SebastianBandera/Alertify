@@ -74,9 +74,6 @@ public class ConfigurationExpressionParser {
             if (name.isBlank() || !name.equals(name.trim()) || name.contains("{") || name.contains("}")) {
                 throw new InvalidConfigurationExpressionException("Invalid configuration reference '{{" + token + "}}'");
             }
-            if (SystemConfigurationPolicy.isValueHidden(name)) {
-                throw new InvalidConfigurationExpressionException("Configuration '" + SystemConfigurationPolicy.KEY_PART + "' cannot be referenced by expressions");
-            }
             return new ExpressionReference(ReferenceType.CONFIGURATION, name, start, end);
         }
         if (token.startsWith("env.")) {

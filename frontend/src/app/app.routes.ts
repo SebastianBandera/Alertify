@@ -62,6 +62,15 @@ export const routes: Routes = [
           ),
       },
       {
+        path: 'system-configs',
+        title: 'System Configs | Alertify',
+        canActivate: [adminGuard],
+        loadComponent: () =>
+          import('./features/system-configs/system-configs.component').then(
+            (component) => component.SystemConfigsComponent,
+          ),
+      },
+      {
         path: 'secrets',
         title: 'Secrets | Alertify',
         canActivate: [adminGuard],

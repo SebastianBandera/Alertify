@@ -1,6 +1,5 @@
 package app.alertify.jpa.specification;
 
-import java.util.Locale;
 import java.util.Set;
 
 import org.hibernate.query.criteria.JpaExpression;
@@ -32,11 +31,6 @@ public final class ApplicationConfigurationSpecifications {
             Expression<String> normalizedSearch = cb.lower(cb.function("unaccent", String.class, cb.literal(search)));
             return cb.like(normalizedValue, normalizedSearch, '\\');
         };
-    }
-
-    public static Specification<ApplicationConfiguration> nameNotEqualIgnoreCase(String name) {
-        String normalizedName = name.toLowerCase(Locale.ROOT);
-        return (root, _, cb) -> cb.notEqual(cb.lower(root.get("name")), normalizedName);
     }
 
     private static String escapeLikeValue(String value) {

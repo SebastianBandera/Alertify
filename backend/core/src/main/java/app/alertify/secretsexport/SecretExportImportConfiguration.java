@@ -9,11 +9,11 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 
 import app.alertify.jpa.audit.AuditRevisionEntity;
-import app.alertify.jpa.entity.ApplicationConfiguration;
 import app.alertify.jpa.entity.ApplicationSecret;
+import app.alertify.jpa.entity.SystemConfiguration;
 import app.alertify.jpa.entity.Tag;
-import app.alertify.jpa.repository.ApplicationConfigurationRepository;
 import app.alertify.jpa.repository.ApplicationSecretRepository;
+import app.alertify.jpa.repository.SystemConfigurationRepository;
 import app.alertify.jpa.repository.TagRepository;
 import app.alertify.services.secret.ApplicationSecretService;
 import app.alertify.services.secret.SecretAccessService;
@@ -27,10 +27,14 @@ import app.alertify.services.secret.WritableSecretService;
  * repositories and encryption services the tool needs, instead of reusing
  * {@code AlertifyApplication}'s component scan, so that running it as a
  * separate process never triggers the main application's hook reconciliation,
- * gRPC discovery or scheduling side effects. {@code ApplicationConfiguration}
- * is scanned only because {@code DatabaseKeyPartSource} reads the symmetric
- * key part from it, not because configuration values are exported.
- * {@code AuditRevisionEntity} must be included too: all three audited
+ * gRPC discovery or scheduling side effects. {@code SystemConfiguration} is
+ * scanned both because {@code DatabaseKeyPartSource} reads the KEY_PART
+ * system configuration from it to derive the encryption key, and because
+ * {@link SecretExportImportService} exports/imports every system
+ * configuration into its own {@code system-configurations.json} entry
+ * alongside {@code secrets.json}.
+ *
+ * <p>{@code AuditRevisionEntity} must be included too: all three audited
  * entities need Envers to resolve the custom revision entity in
  * {@code app.alertify.jpa.audit}, or it falls back to Envers' own default
  * revision entity, whose mapping does not match the {@code audit.revinfo}
@@ -67,12 +71,12 @@ import app.alertify.services.secret.WritableSecretService;
 @Configuration
 @Profile(SecretExportImportConfiguration.PROFILE)
 @EnableAutoConfiguration
-@EntityScan(basePackageClasses = { ApplicationSecret.class, Tag.class, ApplicationConfiguration.class, AuditRevisionEntity.class })
+@EntityScan(basePackageClasses = { ApplicationSecret.class, Tag.class, SystemConfiguration.class, AuditRevisionEntity.class })
 @EnableJpaRepositories(
         basePackageClasses = ApplicationSecretRepository.class,
         includeFilters = @ComponentScan.Filter(
                 type = FilterType.ASSIGNABLE_TYPE,
-                classes = { ApplicationSecretRepository.class, TagRepository.class, ApplicationConfigurationRepository.class }
+                classes = { ApplicationSecretRepository.class, TagRepository.class, SystemConfigurationRepository.class }
         )
 )
 @ComponentScan(basePackageClasses = { SymmetricKeyService.class, SecretExportImportConfiguration.class }, excludeFilters = @ComponentScan.Filter(

@@ -30,8 +30,6 @@ import app.alertify.logging.ApplicationEventLogger;
 @Service
 public class AlertCatalogService {
 
-    private static final String HIDDEN_CONFIGURATION = "KEY_PART";
-
     private final AlertTemplateDefinitionRepository templateRepository;
     private final AlertTemplateParameterDefinitionRepository parameterRepository;
     private final AlertRepository alertRepository;
@@ -77,7 +75,6 @@ public class AlertCatalogService {
         List<AlertBindingOptionResponse> configurations = configurationRepository
                 .findAll(Sort.by(Sort.Direction.ASC, "name"))
                 .stream()
-                .filter(configuration -> !HIDDEN_CONFIGURATION.equalsIgnoreCase(configuration.getName()))
                 .map(AlertCatalogService::toBindingOption)
                 .toList();
         List<AlertBindingOptionResponse> secrets = secretRepository

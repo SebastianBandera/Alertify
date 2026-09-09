@@ -52,10 +52,10 @@ class ProcedureExecutionPreparationServiceTest {
                 List.of(), true, null, false, 1, false, List.of(AlertParameterSource.PROCEDURE));
         ReflectionTestUtils.setField(definition, "id", 3L);
         app.alertify.procedures.model.Procedure owner = new app.alertify.procedures.model.Procedure(
-                template, "Parent", null, true, Set.of());
+                template, "Parent", null, true, true, Set.of());
         ReflectionTestUtils.setField(owner, "id", 7L);
         app.alertify.procedures.model.Procedure referenced = new app.alertify.procedures.model.Procedure(
-                template, "Nested", null, true, Set.of());
+                template, "Nested", null, true, true, Set.of());
         ReflectionTestUtils.setField(referenced, "id", 42L);
         ProcedureParameterValue configured = ProcedureParameterValue.procedure(owner, definition, referenced);
         Files.writeString(sourceRoot.resolve("ParentProcedure.java"), "source", StandardCharsets.UTF_8);

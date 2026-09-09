@@ -62,6 +62,9 @@ public class Procedure {
     @Column(nullable = false)
     private boolean enabled;
 
+    @Column(name = "allow_concurrent_executions", nullable = false)
+    private boolean allowConcurrentExecutions;
+
     @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(name = "procedure_tag", schema = "core",
             joinColumns = @JoinColumn(name = "procedure_id"),
@@ -82,12 +85,12 @@ public class Procedure {
     protected Procedure() {
     }
 
-    public Procedure(ProcedureTemplateDefinition template, String name, String description,
-            boolean enabled, Set<Tag> tags) {
+    public Procedure(ProcedureTemplateDefinition template, String name, String description, boolean enabled, boolean allowConcurrentExecutions, Set<Tag> tags) {
         this.template = Objects.requireNonNull(template, "template must not be null");
         this.name = Objects.requireNonNull(name, "name must not be null");
         this.description = description;
         this.enabled = enabled;
+        this.allowConcurrentExecutions = allowConcurrentExecutions;
         replaceTags(tags);
     }
 
@@ -97,6 +100,7 @@ public class Procedure {
     public String getName() { return name; }
     public String getDescription() { return description; }
     public boolean isEnabled() { return enabled; }
+    public boolean isConcurrentExecutionAllowed() { return allowConcurrentExecutions; }
     public Set<Tag> getTags() { return Collections.unmodifiableSet(tags); }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
@@ -104,6 +108,7 @@ public class Procedure {
     public void changeDescription(String value) { description = value; }
     public void enable() { enabled = true; }
     public void disable() { enabled = false; }
+    public void changeConcurrentExecution(boolean value) { allowConcurrentExecutions = value; }
     public void replaceTags(Set<Tag> values) {
         tags.clear();
         if (values != null)

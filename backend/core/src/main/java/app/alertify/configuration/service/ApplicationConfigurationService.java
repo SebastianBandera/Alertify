@@ -90,15 +90,7 @@ public class ApplicationConfigurationService {
         Specification<ApplicationConfiguration> specification = DynamicSpecification.from(dynamicParams, FILTER_ALIASES, FILTER_FIELDS);
 
         if (valueContains != null && !valueContains.isBlank()) {
-            // Hidden values must not participate in value searches; otherwise
-            // result membership could be used to infer a secret.
-            specification = specification
-                    .and(ApplicationConfigurationSpecifications.valueContains(valueContains))
-                    .and(
-                            ApplicationConfigurationSpecifications.nameNotEqualIgnoreCase(
-                                    SystemConfigurationPolicy.KEY_PART
-                            )
-                    );
+            specification = specification.and(ApplicationConfigurationSpecifications.valueContains(valueContains));
         }
 
         Set<Long> tagIds = parseTagIds(params.get("tagId"));
@@ -133,10 +125,7 @@ public class ApplicationConfigurationService {
     @Transactional(readOnly = true)
     public byte[] exportCsv() {
         List<ApplicationConfiguration> configurations = configurationRepository
-                .findAll(Sort.by(Sort.Direction.ASC, "name"))
-                .stream()
-                .filter(configuration -> !SystemConfigurationPolicy.isValueHidden(configuration.getName()))
-                .toList();
+                .findAll(Sort.by(Sort.Direction.ASC, "name"));
         return csvCodec.write(configurations);
     }
 
@@ -182,12 +171,6 @@ public class ApplicationConfigurationService {
         int tagsCreated = 0;
 
         for (ConfigurationCsvCodec.ImportRow row : rows) {
-            if (SystemConfigurationPolicy.isSystemManaged(row.name())) {
-                throw new InvalidConfigurationImportException(
-                        "CSV row " + row.rowNumber() + ": configuration '" + SystemConfigurationPolicy.KEY_PART + "' cannot be imported"
-                );
-            }
-
             JsonNode value;
             try {
                 value = valueValidator.validateAndNormalize(row.valueType(), row.value());
@@ -278,11 +261,9 @@ public class ApplicationConfigurationService {
     @Transactional
     public ConfigurationResponse create(ConfigurationCreateRequest request) {
         String name = normalizeRequired(request.name());
-        SystemConfigurationPolicy.validateCreation(name);
         ensureNameAvailable(name, null);
 
         JsonNode value = valueValidator.validateAndNormalize(request.valueType(), request.value());
-        SystemConfigurationPolicy.validateWritable(name, request.writable());
         Set<Tag> tags = resolveConfigurationTags(request.tagIds());
         ApplicationConfiguration configuration = new ApplicationConfiguration(
                 name, normalizeOptional(request.description()), request.valueType(), value, tags,
@@ -311,11 +292,6 @@ public class ApplicationConfigurationService {
         String name = normalizeRequired(request.name());
         String description = normalizeOptional(request.description());
         JsonNode value = valueValidator.validateAndNormalize(request.valueType(), request.value());
-
-        SystemConfigurationPolicy.validateUpdate(
-                configuration, name, request.valueType(), value
-        );
-        SystemConfigurationPolicy.validateWritable(name, request.writable());
 
         Set<Tag> tags = resolveConfigurationTags(request.tagIds());
         Set<String> changedFields = new LinkedHashSet<>();
@@ -373,7 +349,6 @@ public class ApplicationConfigurationService {
     public void delete(Long id, long version) {
         ApplicationConfiguration configuration = find(id);
         verifyVersion(configuration.getVersion(), version, "Configuration");
-        SystemConfigurationPolicy.validateDeletion(configuration);
         expressionService.ensureNotReferenced(configuration, "deleted");
         String name = configuration.getName();
         configurationRepository.delete(configuration);

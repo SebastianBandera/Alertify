@@ -27,7 +27,7 @@ class ProcedureCsvCodecTest {
     @Test
     void exportsOnlyASecretReferenceName() {
         ProcedureTemplateDefinition template = template();
-        Procedure procedure = new Procedure(template, "totp", null, true, Set.of());
+        Procedure procedure = new Procedure(template, "totp", null, true, true, Set.of());
         ReflectionTestUtils.setField(procedure, "id", 7L);
         ProcedureTemplateParameterDefinition parameter = new ProcedureTemplateParameterDefinition(
                 template, "secret", "label", "description", String.class.getName(), List.of(),
@@ -45,11 +45,12 @@ class ProcedureCsvCodecTest {
 
     @Test
     void readsProcedureReferencesForRecursiveImports() {
-        String csv = "\uFEFFname,description,templateKey,enabled,parameters,tags\r\n"
-                + "A,,template.A,true,\"[{\"\"key\"\":\"\"next\"\",\"\"source\"\":\"\"PROCEDURE\"\",\"\"value\"\":\"\"B\"\"}]\",[]\r\n";
+        String csv = "\uFEFFname,description,templateKey,enabled,allowConcurrentExecutions,parameters,tags\r\n"
+                + "A,,template.A,true,false,\"[{\"\"key\"\":\"\"next\"\",\"\"source\"\":\"\"PROCEDURE\"\",\"\"value\"\":\"\"B\"\"}]\",[]\r\n";
 
         ProcedureCsvCodec.ImportRow row = codec.read(csv.getBytes(StandardCharsets.UTF_8)).getFirst();
 
+        assertThat(row.allowConcurrentExecutions()).isFalse();
         assertThat(row.parameters()).singleElement().satisfies(parameter -> {
             assertThat(parameter.source()).isEqualTo(AlertParameterSource.PROCEDURE);
             assertThat(parameter.value()).isEqualTo("B");

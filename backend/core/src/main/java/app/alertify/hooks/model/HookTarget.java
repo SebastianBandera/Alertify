@@ -69,8 +69,8 @@ public class HookTarget {
     @Column(name = "continue_on", nullable = false, columnDefinition = "jsonb")
     private List<String> continueOn = new ArrayList<>();
 
-    @Column(name = "busy_wait_timeout_millis")
-    private Long busyWaitTimeoutMillis;
+    @Column(name = "busy_wait_timeout_millis", nullable = false)
+    private long busyWaitTimeoutMillis;
 
     @CreationTimestamp
     @NotAudited
@@ -85,7 +85,7 @@ public class HookTarget {
     protected HookTarget() {
     }
 
-    private HookTarget(Hook hook, HookTargetType targetType, Alert alert, Procedure procedure, int position, List<String> continueOn, Long busyWaitTimeoutMillis) {
+    private HookTarget(Hook hook, HookTargetType targetType, Alert alert, Procedure procedure, int position, List<String> continueOn, long busyWaitTimeoutMillis) {
         this.hook = Objects.requireNonNull(hook);
         this.targetType = Objects.requireNonNull(targetType);
         this.alert = alert;
@@ -99,8 +99,8 @@ public class HookTarget {
         return new HookTarget(hook, HookTargetType.ALERT, Objects.requireNonNull(alert), null, position, continueOn, busyWaitTimeoutMillis);
     }
 
-    public static HookTarget procedure(Hook hook, Procedure procedure, int position, List<String> continueOn) {
-        return new HookTarget(hook, HookTargetType.PROCEDURE, null, Objects.requireNonNull(procedure), position, continueOn, null);
+    public static HookTarget procedure(Hook hook, Procedure procedure, int position, List<String> continueOn, long busyWaitTimeoutMillis) {
+        return new HookTarget(hook, HookTargetType.PROCEDURE, null, Objects.requireNonNull(procedure), position, continueOn, busyWaitTimeoutMillis);
     }
 
     public Long getId() { return id; }
@@ -109,11 +109,11 @@ public class HookTarget {
     public Procedure getProcedure() { return procedure; }
     public int getPosition() { return position; }
     public List<String> getContinueOn() { return Collections.unmodifiableList(continueOn); }
-    public Long getBusyWaitTimeoutMillis() { return busyWaitTimeoutMillis; }
+    public long getBusyWaitTimeoutMillis() { return busyWaitTimeoutMillis; }
 
     public void moveTemporarily(int value) { position = value; }
 
-    public void reconfigure(int value, List<String> outcomes, Long timeoutMillis) {
+    public void reconfigure(int value, List<String> outcomes, long timeoutMillis) {
         position = value;
         continueOn.clear();
         continueOn.addAll(outcomes);

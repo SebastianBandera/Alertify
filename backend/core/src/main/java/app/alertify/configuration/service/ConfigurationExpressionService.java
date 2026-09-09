@@ -81,9 +81,7 @@ public class ConfigurationExpressionService {
 
     @Transactional(readOnly = true)
     public ConfigurationExpressionSuggestionsResponse suggestions() {
-        List<String> configurations = configurationRepository.findAllNames().stream()
-                .filter(name -> !SystemConfigurationPolicy.isValueHidden(name))
-                .toList();
+        List<String> configurations = configurationRepository.findAllNames();
         return new ConfigurationExpressionSuggestionsResponse(
                 configurations, environmentVariables.allowedNames(), utilities.names()
         );
@@ -127,12 +125,6 @@ public class ConfigurationExpressionService {
     }
 
     private String resolveConfiguration(ApplicationConfiguration configuration, DraftExpression draft, Set<String> path, int depth, ZonedDateTime now) {
-        if (SystemConfigurationPolicy.isValueHidden(configuration.getName())) {
-            throw new InvalidConfigurationExpressionException(
-                    "Configuration '" + SystemConfigurationPolicy.KEY_PART + "' cannot be referenced by expressions"
-            );
-        }
-
         String key = normalizedKey(configuration.getName());
         enter(path, key, configuration.getName(), depth);
         try {

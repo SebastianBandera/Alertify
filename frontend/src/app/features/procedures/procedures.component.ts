@@ -35,6 +35,7 @@ interface ProcedureForm {
   name: string;
   description: string;
   enabled: boolean;
+  allowConcurrentExecutions: boolean;
   tagIds: number[];
   parameters: Readonly<Record<string, ParameterForm>>;
 }
@@ -145,6 +146,7 @@ export class ProceduresComponent implements OnInit {
       name: procedure.name,
       description: procedure.description ?? '',
       enabled: procedure.enabled,
+      allowConcurrentExecutions: procedure.allowConcurrentExecutions,
       tagIds: procedure.tags.map((tag) => tag.id),
       parameters,
     });
@@ -164,6 +166,7 @@ export class ProceduresComponent implements OnInit {
       name: current.name,
       description: current.description,
       enabled: current.enabled,
+      allowConcurrentExecutions: current.allowConcurrentExecutions,
       tagIds: current.tagIds,
     });
   }
@@ -220,6 +223,7 @@ export class ProceduresComponent implements OnInit {
         name: form.name.trim(),
         description: form.description.trim() || null,
         enabled: form.enabled,
+        allowConcurrentExecutions: form.allowConcurrentExecutions,
         tagIds: form.tagIds,
         parameters,
       };
@@ -384,7 +388,7 @@ export class ProceduresComponent implements OnInit {
   }
 
   private emptyForm(): ProcedureForm {
-    return { templateId: null, name: '', description: '', enabled: true, tagIds: [], parameters: {} };
+    return { templateId: null, name: '', description: '', enabled: true, allowConcurrentExecutions: true, tagIds: [], parameters: {} };
   }
 
   private formForTemplate(template: ProcedureTemplate | null): ProcedureForm {

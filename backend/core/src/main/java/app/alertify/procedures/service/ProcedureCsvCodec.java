@@ -26,7 +26,7 @@ import tools.jackson.databind.json.JsonMapper;
 @Component
 class ProcedureCsvCodec {
     private static final List<String> HEADER = List.of(
-            "name", "description", "templateKey", "enabled", "parameters", "tags"
+            "name", "description", "templateKey", "enabled", "allowConcurrentExecutions", "parameters", "tags"
     );
     private static final int MAX_ROWS = 10_000;
     private static final Pattern TAG_COLOR = Pattern.compile("^#[0-9A-Fa-f]{6}$");
@@ -45,7 +45,7 @@ class ProcedureCsvCodec {
                     .map(tag -> new ExportTag(tag.getName(), tag.getColor())).toList();
             CsvSupport.appendRow(csv, List.of(procedure.getName(), nullable(procedure.getDescription()),
                     procedure.getTemplate().getTemplateKey(), Boolean.toString(procedure.isEnabled()),
-                    json(parameters), json(tags)));
+                    Boolean.toString(procedure.isConcurrentExecutionAllowed()), json(parameters), json(tags)));
         }
         return csv.toString().getBytes(StandardCharsets.UTF_8);
     }
@@ -103,9 +103,10 @@ class ProcedureCsvCodec {
             if (templateKey.isEmpty()) throw error(row, "templateKey is required");
 
             boolean enabled = parseBoolean(fields.get(3), row);
+            boolean allowConcurrentExecutions = parseBoolean(fields.get(4), row, "allowConcurrentExecutions");
 
-            result.add(new ImportRow(row, name, description, templateKey, enabled,
-                    parameters(fields.get(4), row), tags(fields.get(5), row)));
+            result.add(new ImportRow(row, name, description, templateKey, enabled, allowConcurrentExecutions,
+                    parameters(fields.get(5), row), tags(fields.get(6), row)));
         }
         return List.copyOf(result);
     }
@@ -180,10 +181,14 @@ class ProcedureCsvCodec {
     }
 
     private static boolean parseBoolean(String value, int row) {
+        return parseBoolean(value, row, "enabled");
+    }
+
+    private static boolean parseBoolean(String value, int row, String field) {
         return switch (value.trim().toLowerCase(Locale.ROOT)) {
             case "true" -> true;
             case "false" -> false;
-            default -> throw error(row, "enabled must be true or false");
+            default -> throw error(row, field + " must be true or false");
         };
     }
 
@@ -200,8 +205,7 @@ class ProcedureCsvCodec {
         return new InvalidProcedureImportException("CSV row " + row + ": " + message, cause);
     }
 
-    record ImportRow(int rowNumber, String name, String description, String templateKey,
-            boolean enabled, List<ImportParameter> parameters, List<ImportTag> tags) { }
+    record ImportRow(int rowNumber, String name, String description, String templateKey, boolean enabled, boolean allowConcurrentExecutions, List<ImportParameter> parameters, List<ImportTag> tags) { }
     record ImportParameter(String key, AlertParameterSource source, String value) { }
     record ImportTag(String name, String color) { }
     private record ExportParameter(String key, AlertParameterSource source, String value) { }

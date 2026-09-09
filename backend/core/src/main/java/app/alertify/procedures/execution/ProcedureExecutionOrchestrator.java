@@ -9,7 +9,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import org.springframework.stereotype.Service;
 
@@ -22,6 +21,7 @@ import app.alertify.grpc.discovery.WorkerEndpoint;
 import app.alertify.grpc.discovery.WorkerReservation;
 import app.alertify.grpc.discovery.WorkerStatusService;
 import app.alertify.logging.ApplicationEventLogger;
+import app.alertify.procedures.ProcedureBusyException;
 import app.alertify.procedures.ProcedureDisabledException;
 import app.alertify.procedures.ProcedureExecutionException;
 import app.alertify.worker.grpc.AlertParameter;
@@ -65,7 +65,7 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
     private final ApplicationEventLogger eventLogger;
     private final JsonMapper jsonMapper;
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
-    private final ConcurrentMap<Long, AtomicInteger> active = new ConcurrentHashMap<>();
+    private final ConcurrentMap<Long, ProcedureGate> procedureGates = new ConcurrentHashMap<>();
 
     public ProcedureExecutionOrchestrator(ProcedureExecutionPreparationService preparationService, ProcedureExecutionPersistenceService persistenceService, ProcedureInvocationTokenService tokenService, ProcedureInvocationRegistry invocationRegistry, WorkerStatusService workerStatusService, AlertWorkerClient workerClient, WorkerGrpcProperties properties, ApplicationEventLogger eventLogger, JsonMapper jsonMapper) {
         this.preparationService = preparationService;
@@ -79,38 +79,70 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
         this.jsonMapper = jsonMapper;
     }
 
-    public void triggerManual(long procedureId, String procedureName, String triggeredBy) {
-        UUID executionId = UUID.randomUUID();
-        Instant deadline = Instant.now().plus(properties.execution().timeout());
-        eventLogger.success("PROCEDURE_EXECUTION_TRIGGERED", data(procedureId, procedureName, executionId, ProcedureExecutionTrigger.MANUAL, triggeredBy));
-        executor.submit(() -> {
-            try {
-                execute(procedureId, executionId, executionId, null, null, 1,
-                        ProcedureExecutionTrigger.MANUAL, triggeredBy, deadline, true);
-            } catch (RuntimeException ignored) {
-                // Failure is persisted and audited by execute.
-            }
-        });
+    public boolean triggerManual(long procedureId, String procedureName, boolean allowConcurrentExecutions, String triggeredBy) {
+        if (!enter(procedureId, allowConcurrentExecutions)) {
+            eventLogger.failure("PROCEDURE_EXECUTION_REJECTED", rejectionData(procedureId, procedureName, ProcedureExecutionTrigger.MANUAL, triggeredBy));
+            return false;
+        }
+
+        try {
+            UUID executionId = UUID.randomUUID();
+            Instant deadline = Instant.now().plus(properties.execution().timeout());
+            eventLogger.success("PROCEDURE_EXECUTION_TRIGGERED", data(procedureId, procedureName, executionId, ProcedureExecutionTrigger.MANUAL, triggeredBy));
+            executor.submit(() -> {
+                try {
+                    execute(procedureId, executionId, executionId, null, null, 1,
+                            ProcedureExecutionTrigger.MANUAL, triggeredBy, deadline, true, null);
+                } catch (RuntimeException ignored) {
+                    // Failure is persisted and audited by execute.
+                }
+            });
+        } catch (RuntimeException exception) {
+            leave(procedureId);
+            throw exception;
+        }
+        return true;
     }
 
-    public ProcedureHookExecution executeHook(long procedureId, String procedureName, String triggeredBy) {
-        UUID executionId = UUID.randomUUID();
-        Instant deadline = Instant.now().plus(properties.execution().timeout());
-        eventLogger.success("PROCEDURE_EXECUTION_TRIGGERED", data(procedureId, procedureName, executionId, ProcedureExecutionTrigger.HOOK, triggeredBy));
+    public ProcedureHookExecution executeHook(long procedureId, String procedureName, boolean allowConcurrentExecutions, Duration busyWaitTimeout, String triggeredBy, Runnable waitingCallback, Runnable acquiredCallback) {
+        ProcedureGate gate = procedureGates.computeIfAbsent(procedureId, _ -> new ProcedureGate());
+        boolean acquired;
         try {
+            acquired = gate.awaitTurn(allowConcurrentExecutions, busyWaitTimeout, waitingCallback);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            cleanup(procedureId, gate);
+            return new ProcedureHookExecution(null, false, false, false);
+        }
+        if (!acquired) {
+            cleanup(procedureId, gate);
+            return new ProcedureHookExecution(null, false, false, true);
+        }
+
+        boolean executionStarted = false;
+        UUID executionId = null;
+        try {
+            runCallback(acquiredCallback);
+            executionId = UUID.randomUUID();
+            Instant deadline = Instant.now().plus(properties.execution().timeout());
+            eventLogger.success("PROCEDURE_EXECUTION_TRIGGERED", data(procedureId, procedureName, executionId, ProcedureExecutionTrigger.HOOK, triggeredBy));
+            executionStarted = true;
             execute(procedureId, executionId, executionId, null, null, 1,
-                    ProcedureExecutionTrigger.HOOK, triggeredBy, deadline, false);
-            return new ProcedureHookExecution(executionId, true, false);
+                    ProcedureExecutionTrigger.HOOK, triggeredBy, deadline, false, null);
+            return new ProcedureHookExecution(executionId, true, false, false);
         } catch (ProcedureDisabledException exception) {
-            return new ProcedureHookExecution(null, false, true);
+            return new ProcedureHookExecution(null, false, true, false);
         } catch (RuntimeException exception) {
             UUID persistedId = exception instanceof ProcedureExecutionException executionException
                     ? executionException.getExecutionId() : executionId;
-            return new ProcedureHookExecution(persistedId, false, false);
+            return new ProcedureHookExecution(persistedId, false, false, false);
+        } finally {
+            if (!executionStarted)
+                leave(procedureId);
         }
     }
 
-    public record ProcedureHookExecution(UUID executionId, boolean successful, boolean disabled) { }
+    public record ProcedureHookExecution(UUID executionId, boolean successful, boolean disabled, boolean busyTimeout) { }
 
     public InvokeProcedureResponse invoke(ProcedureInvocationTokenService.Claims claims) {
         UUID executionId = UUID.randomUUID();
@@ -119,8 +151,15 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
         UUID parentAlert = trigger == ProcedureExecutionTrigger.ALERT ? claims.parentExecutionId() : null;
         UUID parentProcedure = trigger == ProcedureExecutionTrigger.PROCEDURE ? claims.parentExecutionId() : null;
         try {
+            PreparedProcedureExecution prepared = preparationService.prepare(claims.procedureId(), false);
+            if (!enter(claims.procedureId(), prepared.allowConcurrentExecutions())) {
+                ProcedureBusyException exception = busy(prepared.procedureName());
+                eventLogger.failure("PROCEDURE_EXECUTION_REJECTED", rejectionData(claims.procedureId(), prepared.procedureName(), trigger, null));
+                return failure(ProcedureInvocationFailureKind.PROCEDURE_INVOCATION_FAILURE_KIND_BUSY, null, exception, null);
+            }
+
             JsonNode result = execute(claims.procedureId(), executionId, claims.rootExecutionId(),
-                    parentAlert, parentProcedure, claims.depth(), trigger, null, claims.deadline(), false);
+                    parentAlert, parentProcedure, claims.depth(), trigger, null, claims.deadline(), false, prepared);
             return InvokeProcedureResponse.newBuilder().setResult(ProcedureInvocationResult.newBuilder()
                     .setExecutionId(executionId.toString())
                     .setResultJson(jsonMapper.writeValueAsString(result))).build();
@@ -146,15 +185,14 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
         }
     }
 
-    private JsonNode execute(long procedureId, UUID executionId, UUID rootExecutionId, UUID parentAlertExecutionId, UUID parentProcedureExecutionId, int depth, ProcedureExecutionTrigger trigger, String triggeredBy, Instant deadline, boolean includeDisabled) {
+    private JsonNode execute(long procedureId, UUID executionId, UUID rootExecutionId, UUID parentAlertExecutionId, UUID parentProcedureExecutionId, int depth, ProcedureExecutionTrigger trigger, String triggeredBy, Instant deadline, boolean includeDisabled, PreparedProcedureExecution preparedExecution) {
         Instant startedAt = Instant.now();
         boolean started = false;
         WorkerEndpoint endpoint = null;
-        enter(procedureId);
         try {
             PreparedProcedureExecution prepared;
             try {
-                prepared = preparationService.prepare(procedureId, includeDisabled);
+                prepared = preparedExecution == null ? preparationService.prepare(procedureId, includeDisabled) : preparedExecution;
             } catch (ProcedureDisabledException exception) {
                 eventLogger.failure("PROCEDURE_EXECUTION_REJECTED", Map.of("procedureId", procedureId, "reason", "DISABLED", "parentExecutionId", parentAlertExecutionId != null ? parentAlertExecutionId : parentProcedureExecutionId));
                 throw exception;
@@ -319,23 +357,50 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
         return data;
     }
 
-    private void enter(long procedureId) {
-        active.compute(procedureId, (_, count) -> {
-            if (count == null)
-                return new AtomicInteger(1);
+    private boolean enter(long procedureId, boolean concurrent) {
+        ProcedureGate gate = procedureGates.computeIfAbsent(procedureId, _ -> new ProcedureGate());
+        boolean entered = gate.tryEnter(concurrent);
+        if (!entered)
+            cleanup(procedureId, gate);
 
-            count.incrementAndGet();
-            return count;
-        });
+        return entered;
     }
 
     private void leave(long procedureId) {
-        active.computeIfPresent(procedureId, (_, count) -> count.decrementAndGet() <= 0 ? null : count);
+        ProcedureGate gate = procedureGates.get(procedureId);
+        if (gate == null)
+            return;
+
+        gate.leave();
+        cleanup(procedureId, gate);
     }
 
     public boolean isRunning(long procedureId) {
-        AtomicInteger count = active.get(procedureId);
-        return count != null && count.get() > 0;
+        ProcedureGate gate = procedureGates.get(procedureId);
+        return gate != null && gate.isActive();
+    }
+
+    private void cleanup(long procedureId, ProcedureGate gate) {
+        if (gate.isIdle())
+            procedureGates.remove(procedureId, gate);
+    }
+
+    private static void runCallback(Runnable callback) {
+        try {
+            callback.run();
+        } catch (RuntimeException ignored) {
+            // Invocation state can be reconciled; callback failures must never leak a Procedure permit.
+        }
+    }
+
+    private static Map<String, Object> rejectionData(long procedureId, String procedureName, ProcedureExecutionTrigger trigger, String triggeredBy) {
+        Map<String, Object> data = data(procedureId, procedureName, null, trigger, triggeredBy);
+        data.put("reason", "ALREADY_RUNNING");
+        return data;
+    }
+
+    private static ProcedureBusyException busy(String procedureName) {
+        return new ProcedureBusyException("Procedure '" + procedureName + "' is already running and does not allow concurrent executions");
     }
 
     @Override

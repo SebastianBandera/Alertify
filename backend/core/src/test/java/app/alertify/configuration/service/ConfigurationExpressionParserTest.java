@@ -31,13 +31,6 @@ class ConfigurationExpressionParserTest {
     }
 
     @Test
-    void rejectsKeyPartReference() {
-        assertThatThrownBy(() -> parser.parse("{{configs.KEY_PART}}"))
-                .isInstanceOf(InvalidConfigurationExpressionException.class)
-                .hasMessageContaining("cannot be referenced");
-    }
-
-    @Test
     void rejectsInvalidUtilityName() {
         assertThatThrownBy(() -> parser.parse("{{utils.year}}"))
                 .isInstanceOf(InvalidConfigurationExpressionException.class)

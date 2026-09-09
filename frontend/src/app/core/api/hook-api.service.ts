@@ -8,8 +8,8 @@ export type HookMode = 'PARALLEL' | 'SEQUENTIAL';
 export type HookTargetType = 'ALERT' | 'PROCEDURE';
 export type HookOutcome = 'SUCCESS' | 'WARN' | 'ERROR';
 export type HookInvocationStatus = 'RUNNING' | 'COMPLETED' | 'PARTIAL' | 'FAILED';
-export type HookTargetStatus = 'PENDING' | 'WAITING_ALERT' | 'RUNNING' | HookOutcome
-  | 'SKIPPED_DISABLED' | 'SKIPPED_SEQUENCE' | 'ALERT_BUSY_TIMEOUT';
+export type HookTargetStatus = 'PENDING' | 'WAITING_ALERT' | 'WAITING_PROCEDURE' | 'RUNNING' | HookOutcome
+  | 'SKIPPED_DISABLED' | 'SKIPPED_SEQUENCE' | 'ALERT_BUSY_TIMEOUT' | 'PROCEDURE_BUSY_TIMEOUT';
 
 export interface HookTarget {
   readonly id: number;

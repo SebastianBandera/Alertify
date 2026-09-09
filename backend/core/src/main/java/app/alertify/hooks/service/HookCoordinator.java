@@ -160,8 +160,16 @@ public class HookCoordinator implements AutoCloseable {
             return new TargetResult(null, true);
         }
 
-        persistence.transitionTarget(target.getId(), HookTargetStatus.RUNNING);
-        ProcedureExecutionOrchestrator.ProcedureHookExecution execution = procedureOrchestrator.executeHook(procedure.getId(), target.getResourceName(), actor);
+        ProcedureExecutionOrchestrator.ProcedureHookExecution execution = procedureOrchestrator.executeHook(
+                procedure.getId(), target.getResourceName(), procedure.isConcurrentExecutionAllowed(),
+                Duration.ofMillis(target.getBusyWaitTimeoutMillis()), actor,
+                () -> persistence.transitionTarget(target.getId(), HookTargetStatus.WAITING_PROCEDURE),
+                () -> persistence.transitionTarget(target.getId(), HookTargetStatus.RUNNING)
+        );
+        if (execution.busyTimeout()) {
+            persistence.completeTarget(target.getId(), HookTargetStatus.PROCEDURE_BUSY_TIMEOUT, HookOutcome.ERROR, null, "PROCEDURE_BUSY_TIMEOUT");
+            return new TargetResult(HookOutcome.ERROR, false);
+        }
         if (execution.disabled()) {
             persistence.completeTarget(target.getId(), HookTargetStatus.SKIPPED_DISABLED, null, null, null);
             return new TargetResult(null, true);

@@ -69,6 +69,7 @@ export interface Procedure {
   readonly name: string;
   readonly description: string | null;
   readonly enabled: boolean;
+  readonly allowConcurrentExecutions: boolean;
   readonly tags: readonly ProcedureTag[];
   readonly parameters: readonly ProcedureParameterValue[];
   readonly createdAt: string;
@@ -90,6 +91,7 @@ export interface ProcedureWriteRequest {
   readonly name: string;
   readonly description: string | null;
   readonly enabled: boolean;
+  readonly allowConcurrentExecutions: boolean;
   readonly tagIds: readonly number[];
   readonly parameters: readonly ProcedureParameterWriteRequest[];
 }

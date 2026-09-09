@@ -282,6 +282,13 @@
             <input name="enabled" type="checkbox" [ngModel]="form().enabled" (ngModelChange)="patchForm({ enabled: $event })">
             <span>{{ localization.translate('procedures.form.enabled') }}</span>
           </label>
+          <label class="checkbox">
+            <input name="allowConcurrentExecutions" type="checkbox" [ngModel]="form().allowConcurrentExecutions" (ngModelChange)="patchForm({ allowConcurrentExecutions: $event })">
+            <span>
+              {{ localization.translate('procedures.form.allowConcurrentExecutions') }}
+              <small>{{ localization.translate('procedures.form.allowConcurrentExecutionsHelp') }}</small>
+            </span>
+          </label>
           <label class="full">
             <span>{{ localization.translate('procedures.form.description') }}</span>
             <textarea name="description" rows="2" maxlength="2000" [ngModel]="form().description" (ngModelChange)="patchForm({ description: $event })"></textarea>

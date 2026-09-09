@@ -18,8 +18,7 @@ class AlertifyRedisCacheConfigurationTest {
         var serializer = new JacksonJsonRedisSerializer<>(ConfigurationResponse.class);
         var response = new ConfigurationResponse(
             1L, 2L, "mail.host", "SMTP host", ConfigurationValueType.STRING,
-            StringNode.valueOf("smtp.example.test"), false, Set.of(),
-            false, true, null, null, null
+            StringNode.valueOf("smtp.example.test"), false, Set.of(), null, null
         );
 
         byte[] serialized = serializer.serialize(response);

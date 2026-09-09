@@ -71,8 +71,6 @@ public class AlertManagementService {
             "id", "version", "name", "cronExpression", "enabled",
             "allowConcurrentExecutions", "createdAt", "updatedAt"
     );
-    private static final String HIDDEN_CONFIGURATION = "KEY_PART";
-
     private final AlertRepository alertRepository;
     private final AlertTemplateDefinitionRepository templateRepository;
     private final AlertTemplateParameterDefinitionRepository templateParameterRepository;
@@ -312,12 +310,8 @@ public class AlertManagementService {
     }
 
     private ApplicationConfiguration configuration(Long id) {
-        ApplicationConfiguration configuration = configurationRepository.findById(id)
+        return configurationRepository.findById(id)
                 .orElseThrow(() -> notFound("Configuration", id));
-        if (HIDDEN_CONFIGURATION.equalsIgnoreCase(configuration.getName()))
-            throw invalid("Configuration 'KEY_PART' cannot be used as an alert binding");
-
-        return configuration;
     }
 
     private ApplicationSecret secret(Long id) {

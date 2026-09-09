@@ -53,7 +53,8 @@ public final class SecretExportImportCli {
     private static void runExport(SecretExportImportService service) {
         SecretExportImportService.ExportResult result = service.export(EXPORT_DIRECTORY);
         System.out.println();
-        System.out.println("Exported " + result.count() + " secret(s) to: " + result.file());
+        System.out.println("Exported " + result.secretCount() + " secret(s) and " + result.systemConfigurationCount()
+                + " system configuration(s) to: " + result.file());
         System.out.println();
         System.out.println("MASTER PASSWORD (shown only once, write it down now):");
         System.out.println("  " + result.password());
@@ -66,8 +67,11 @@ public final class SecretExportImportCli {
     private static void runImport(SecretExportImportService service, Path file, char[] password) {
         SecretExportImportService.ImportResult result = service.importFrom(file, password);
         System.out.println();
-        System.out.println("Created " + result.created().size() + " secret(s): " + result.created());
-        System.out.println("Skipped " + result.skipped().size() + " secret(s) that already existed: " + result.skipped());
+        System.out.println("Secrets: created " + result.secrets().created().size() + " " + result.secrets().created()
+                + ", skipped " + result.secrets().skipped().size() + " that already existed " + result.secrets().skipped());
+        System.out.println("System configurations: created " + result.systemConfigurations().created().size() + " "
+                + result.systemConfigurations().created() + ", skipped " + result.systemConfigurations().skipped().size()
+                + " that already existed " + result.systemConfigurations().skipped());
     }
 
     private static char[] readPasswordOrExit() {

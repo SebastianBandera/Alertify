@@ -12,6 +12,7 @@ public record PreparedProcedureExecution(
     long procedureId,
     long procedureVersion,
     String procedureName,
+    boolean allowConcurrentExecutions,
     String templateClassName,
     WorkerCapability requiredCapability,
     boolean sensitiveResult,

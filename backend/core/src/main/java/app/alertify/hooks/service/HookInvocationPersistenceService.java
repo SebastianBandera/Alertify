@@ -54,7 +54,7 @@ public class HookInvocationPersistenceService {
         HookInvocationTarget target = targetRepository.findById(targetId).orElseThrow();
         target.transition(status);
         targetRepository.flush();
-        if (status == HookTargetStatus.WAITING_ALERT)
+        if (status == HookTargetStatus.WAITING_ALERT || status == HookTargetStatus.WAITING_PROCEDURE)
             eventLogger.successAfterCommit("HOOK_INVOCATION_WAITING", Map.of("targetId", targetId, "resourceId", target.getResourceId()));
     }
 
@@ -63,8 +63,8 @@ public class HookInvocationPersistenceService {
         HookInvocationTarget target = targetRepository.findById(targetId).orElseThrow();
         target.complete(status, outcome, executionId, errorCode);
         targetRepository.flush();
-        if (status == HookTargetStatus.ALERT_BUSY_TIMEOUT)
-            eventLogger.failure("HOOK_INVOCATION_TIMEOUT", Map.of("targetId", targetId, "resourceId", target.getResourceId(), "errorCode", "ALERT_BUSY_TIMEOUT"));
+        if (status == HookTargetStatus.ALERT_BUSY_TIMEOUT || status == HookTargetStatus.PROCEDURE_BUSY_TIMEOUT)
+            eventLogger.failure("HOOK_INVOCATION_TIMEOUT", Map.of("targetId", targetId, "resourceId", target.getResourceId(), "errorCode", status.name()));
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -84,7 +84,8 @@ public class HookInvocationPersistenceService {
     public void reconcileInterrupted(UUID invocationId) {
         HookInvocation invocation = invocationRepository.findByInvocationId(invocationId).orElseThrow();
         for (HookInvocationTarget target : invocation.getTargets()) {
-            if (target.getStatus() == HookTargetStatus.PENDING || target.getStatus() == HookTargetStatus.WAITING_ALERT || target.getStatus() == HookTargetStatus.RUNNING)
+            if (target.getStatus() == HookTargetStatus.PENDING || target.getStatus() == HookTargetStatus.WAITING_ALERT
+                    || target.getStatus() == HookTargetStatus.WAITING_PROCEDURE || target.getStatus() == HookTargetStatus.RUNNING)
                 target.complete(HookTargetStatus.ERROR, HookOutcome.ERROR, target.getExecutionId(), "HOOK_INTERRUPTED");
         }
         boolean anyNonFailed = invocation.getTargets().stream().anyMatch(target -> target.getOutcome() == HookOutcome.SUCCESS || target.getOutcome() == HookOutcome.WARN);

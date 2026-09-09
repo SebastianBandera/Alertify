@@ -35,7 +35,7 @@ public class HookMapper {
                 alert ? target.getAlert().getName() : target.getProcedure().getName(),
                 alert ? target.getAlert().isEnabled() : target.getProcedure().isEnabled(), target.getPosition(),
                 target.getContinueOn().stream().map(HookOutcome::valueOf).collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new)),
-                target.getBusyWaitTimeoutMillis() == null ? null : Duration.ofMillis(target.getBusyWaitTimeoutMillis())
+                Duration.ofMillis(target.getBusyWaitTimeoutMillis())
         );
     }
 

@@ -185,9 +185,7 @@
                     <label class="checkbox"><input type="checkbox" [name]="'continue-' + index + '-' + outcome" [ngModel]="target.continueOn.includes(outcome)" (ngModelChange)="toggleOutcome(index, outcome, $event)"><span>{{ dynamic('hooks.outcome.' + outcome) }}</span></label>
                   }
                 </fieldset>
-                @if (target.type === 'ALERT') {
-                  <label><span>{{ dynamic('hooks.form.busyWait') }}</span><input type="number" [name]="'busyWait-' + index" min="1" [ngModel]="target.busyWaitMinutes" (ngModelChange)="patchTarget(index, 'busyWaitMinutes', $event)"></label>
-                }
+                <label><span>{{ dynamic('hooks.form.busyWait') }}</span><input type="number" [name]="'busyWait-' + index" min="1" [ngModel]="target.busyWaitMinutes" (ngModelChange)="patchTarget(index, 'busyWaitMinutes', $event)"></label>
               </div>
             </article>
           } @empty {

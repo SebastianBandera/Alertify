@@ -33,12 +33,8 @@ export interface ApplicationConfiguration {
   readonly description: string | null;
   readonly valueType: ConfigurationValueType;
   readonly value: unknown | null;
-  readonly valueHidden: boolean;
   readonly writable: boolean;
   readonly tags: readonly ConfigurationTag[];
-  readonly systemManaged: boolean;
-  readonly deletable: boolean;
-  readonly changeWarning: 'SECRET_LOSS' | null;
   readonly createdAt: string;
   readonly updatedAt: string;
 }

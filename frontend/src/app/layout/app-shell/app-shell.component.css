@@ -195,6 +195,11 @@
   -webkit-mask-image: url('../../../../public/icons/configs.svg');
 }
 
+.navigation__icon--system-configs {
+  mask-image: url('../../../../public/icons/configs.svg');
+  -webkit-mask-image: url('../../../../public/icons/configs.svg');
+}
+
 .navigation__icon--secrets {
   mask-image: url('../../../../public/icons/secrets.svg');
   -webkit-mask-image: url('../../../../public/icons/secrets.svg');

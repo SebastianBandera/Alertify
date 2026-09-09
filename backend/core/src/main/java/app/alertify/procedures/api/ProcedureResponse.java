@@ -15,6 +15,7 @@ public record ProcedureResponse(
     String name,
     String description,
     boolean enabled,
+    boolean allowConcurrentExecutions,
     Set<TagResponse> tags,
     List<ProcedureParameterValueResponse> parameters,
     Instant createdAt,

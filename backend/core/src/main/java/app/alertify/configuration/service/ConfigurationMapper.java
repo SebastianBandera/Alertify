@@ -9,8 +9,7 @@ import app.alertify.jpa.entity.ApplicationConfiguration;
 import app.alertify.jpa.entity.Tag;
 
 /**
- * Converts configuration entities to public responses and enforces the final
- * value-hiding boundary for system-managed sensitive configurations.
+ * Converts configuration entities to public responses.
  */
 final class ConfigurationMapper {
 
@@ -23,17 +22,10 @@ final class ConfigurationMapper {
                 .map(ConfigurationMapper::toResponse)
                 .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
 
-        boolean valueHidden = SystemConfigurationPolicy.isValueHidden(configuration.getName());
-
         return new ConfigurationResponse(
                 configuration.getId(), configuration.getVersion(), configuration.getName(),
                 configuration.getDescription(), configuration.getValueType(),
-                valueHidden ? null : configuration.getValue().deepCopy(), valueHidden,
-                configuration.isWritable(), 
-                tags,
-                SystemConfigurationPolicy.isSystemManaged(configuration.getName()),
-                SystemConfigurationPolicy.isDeletable(configuration.getName()),
-                SystemConfigurationPolicy.warning(configuration.getName()),
+                configuration.getValue().deepCopy(), configuration.isWritable(), tags,
                 configuration.getCreatedAt(), configuration.getUpdatedAt()
         );
     }
