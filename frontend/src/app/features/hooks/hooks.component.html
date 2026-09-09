@@ -157,10 +157,23 @@
               <option [ngValue]="null">{{ dynamic('hooks.form.noToken') }}</option>
               @for (secret of options().secrets; track secret.id) { <option [ngValue]="secret.id" [disabled]="!secret.recoverable">{{ secret.name }}{{ secret.recoverable ? '' : ' (' + dynamic('hooks.form.unrecoverable') + ')' }}</option> }
             </select>
+            <small class="field-help">{{ dynamic('hooks.form.tokenHelp') }}</small>
           </label>
-          <label><span>{{ dynamic('hooks.form.maxConcurrent') }}</span><input type="number" name="maxConcurrent" min="1" [ngModel]="form().maxConcurrentInvocations" (ngModelChange)="patchForm('maxConcurrentInvocations', $event)"></label>
-          <label><span>{{ dynamic('hooks.form.rateCount') }}</span><input type="number" name="rateCount" min="1" [ngModel]="form().rateLimitCount" (ngModelChange)="patchForm('rateLimitCount', $event)"></label>
-          <label><span>{{ dynamic('hooks.form.rateWindow') }}</span><input type="number" name="rateWindow" min="1" [ngModel]="form().rateLimitWindowSeconds" (ngModelChange)="patchForm('rateLimitWindowSeconds', $event)"></label>
+          <label>
+            <span>{{ dynamic('hooks.form.maxConcurrent') }}</span>
+            <input type="number" name="maxConcurrent" min="1" [ngModel]="form().maxConcurrentInvocations" (ngModelChange)="patchForm('maxConcurrentInvocations', $event)">
+            <small class="field-help">{{ dynamic('hooks.form.maxConcurrentHelp') }}</small>
+          </label>
+          <label>
+            <span>{{ dynamic('hooks.form.rateCount') }}</span>
+            <input type="number" name="rateCount" min="1" [ngModel]="form().rateLimitCount" (ngModelChange)="patchForm('rateLimitCount', $event)">
+            <small class="field-help">{{ dynamic('hooks.form.rateCountHelp') }}</small>
+          </label>
+          <label>
+            <span>{{ dynamic('hooks.form.rateWindow') }}</span>
+            <input type="number" name="rateWindow" min="1" [ngModel]="form().rateLimitWindowSeconds" (ngModelChange)="patchForm('rateLimitWindowSeconds', $event)">
+            <small class="field-help">{{ dynamic('hooks.form.rateWindowHelp') }}</small>
+          </label>
         </div>
 
         <section class="target-editor">

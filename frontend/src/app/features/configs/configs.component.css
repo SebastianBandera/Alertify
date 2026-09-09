@@ -250,6 +250,73 @@ select:disabled {
   overflow-x: auto;
 }
 
+.settings-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 24px 26px;
+}
+
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px 22px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-muted);
+}
+
+.settings-section__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settings-section__header > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-section__header small {
+  color: var(--text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.settings-section__help {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.settings-section__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settings-section__buttons {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.settings-section__manual-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px dashed #d0d5dd;
+  border-radius: 10px;
+  background: var(--surface);
+}
+
 .configs-pagination {
   min-height: 58px;
   display: flex;

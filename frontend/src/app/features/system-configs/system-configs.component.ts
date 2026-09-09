@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { JsonPipe } from '@angular/common';
 
 import {
   SystemConfiguration,
@@ -8,33 +9,57 @@ import {
 import { ApiRequestError } from '../../core/api/configuration-api.service';
 import { LocalizationService } from '../../core/i18n/localization.service';
 
-interface SystemConfigurationForm {
+const KEY_PART_NAME = 'KEY_PART';
+const QUIET_HOURS_NAME = 'CRON_QUIET_HOURS';
+
+interface KeyPartForm {
   description: string;
-  rawValue: string;
+  manualEntryOpen: boolean;
+  newValue: string;
+  confirmed: boolean;
 }
 
-const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
-const PAGE_SIZE_STORAGE_KEY = 'alertify.system-configs.page-size';
+interface QuietHoursValue {
+  enabled: boolean;
+  start: string;
+  end: string;
+}
 
-function readStoredPageSize(): number {
-  try {
-    const storedValue = Number(localStorage.getItem(PAGE_SIZE_STORAGE_KEY));
-    return PAGE_SIZE_OPTIONS.some((pageSize) => pageSize === storedValue) ? storedValue : 10;
-  } catch {
-    return 10;
-  }
+interface QuietHoursForm {
+  description: string;
+  enabled: boolean;
+  start: string;
+  end: string;
+}
+
+function emptyKeyPartForm(): KeyPartForm {
+  return { description: '', manualEntryOpen: false, newValue: '', confirmed: false };
+}
+
+function emptyQuietHoursForm(): QuietHoursForm {
+  return { description: '', enabled: false, start: '23:00', end: '07:00' };
+}
+
+function parseQuietHoursValue(value: unknown): QuietHoursValue {
+  const raw = (value ?? {}) as Partial<QuietHoursValue>;
+  return {
+    enabled: raw.enabled === true,
+    start: typeof raw.start === 'string' ? raw.start : '23:00',
+    end: typeof raw.end === 'string' ? raw.end : '07:00',
+  };
 }
 
 @Component({
   selector: 'app-system-configs',
-  imports: [FormsModule],
+  imports: [FormsModule, JsonPipe],
   templateUrl: './system-configs.component.html',
   styleUrl: '../configs/configs.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class SystemConfigsComponent implements OnInit {
   protected readonly localization = inject(LocalizationService);
-  protected readonly pageSizeOptions = PAGE_SIZE_OPTIONS;
+  protected readonly keyPartName = KEY_PART_NAME;
+  protected readonly quietHoursName = QUIET_HOURS_NAME;
 
   private readonly api = inject(SystemConfigurationApiService);
 
@@ -42,16 +67,17 @@ export class SystemConfigsComponent implements OnInit {
   protected readonly loading = signal(true);
   protected readonly saving = signal(false);
   protected readonly error = signal<string | null>(null);
-  protected readonly pageIndex = signal(0);
-  protected readonly pageSize = signal(readStoredPageSize());
-  protected readonly totalElements = signal(0);
-  protected readonly totalPages = signal(0);
+  protected readonly notice = signal<string | null>(null);
 
-  protected readonly editorOpen = signal(false);
-  protected readonly editingConfiguration = signal<SystemConfiguration | null>(null);
-  protected readonly configurationForm = signal<SystemConfigurationForm>({ description: '', rawValue: '' });
-  protected readonly changeConfirmed = signal(false);
-  protected readonly formError = signal<string | null>(null);
+  protected readonly keyPartConfiguration = signal<SystemConfiguration | null>(null);
+  protected readonly keyPartForm = signal<KeyPartForm>(emptyKeyPartForm());
+  protected readonly keyPartError = signal<string | null>(null);
+
+  protected readonly quietHoursConfiguration = signal<SystemConfiguration | null>(null);
+  protected readonly quietHoursForm = signal<QuietHoursForm>(emptyQuietHoursForm());
+  protected readonly quietHoursError = signal<string | null>(null);
+
+  protected readonly otherConfigurations = signal<readonly SystemConfiguration[]>([]);
 
   async ngOnInit(): Promise<void> {
     await this.loadConfigurations();
@@ -61,11 +87,23 @@ export class SystemConfigsComponent implements OnInit {
     this.loading.set(true);
     this.error.set(null);
     try {
-      const result = await this.api.listSystemConfigurations(this.pageIndex(), this.pageSize());
+      const result = await this.api.listSystemConfigurations(0, 100);
       this.configurations.set(result.content);
-      this.pageIndex.set(result.page.number);
-      this.totalElements.set(result.page.totalElements);
-      this.totalPages.set(result.page.totalPages);
+
+      const keyPart = result.content.find((configuration) => configuration.name === KEY_PART_NAME) ?? null;
+      this.keyPartConfiguration.set(keyPart);
+      this.keyPartForm.set({ ...emptyKeyPartForm(), description: keyPart?.description ?? '' });
+
+      const quietHours = result.content.find((configuration) => configuration.name === QUIET_HOURS_NAME) ?? null;
+      this.quietHoursConfiguration.set(quietHours);
+      const quietHoursValue = parseQuietHoursValue(quietHours?.value);
+      this.quietHoursForm.set({ description: quietHours?.description ?? '', ...quietHoursValue });
+
+      this.otherConfigurations.set(
+        result.content.filter(
+          (configuration) => configuration.name !== KEY_PART_NAME && configuration.name !== QUIET_HOURS_NAME,
+        ),
+      );
     } catch (error) {
       this.error.set(this.errorMessage(error));
     } finally {
@@ -73,73 +111,91 @@ export class SystemConfigsComponent implements OnInit {
     }
   }
 
-  protected updatePageSize(value: string | number): void {
-    const pageSize = Number(value);
-    if (!PAGE_SIZE_OPTIONS.some((option) => option === pageSize)) return;
+  // -- KEY_PART section --
 
-    this.pageSize.set(pageSize);
-    this.pageIndex.set(0);
-    try {
-      localStorage.setItem(PAGE_SIZE_STORAGE_KEY, String(pageSize));
-    } catch {
-      // The selection still applies to this page when browser storage is unavailable.
-    }
-    void this.loadConfigurations();
+  protected patchKeyPartForm(patch: Partial<KeyPartForm>): void {
+    this.keyPartForm.update((form) => ({ ...form, ...patch }));
+    this.keyPartError.set(null);
   }
 
-  protected goToPage(pageIndex: number): void {
-    if (pageIndex < 0 || pageIndex >= this.totalPages() || pageIndex === this.pageIndex()) return;
-    this.pageIndex.set(pageIndex);
-    void this.loadConfigurations();
+  protected toggleKeyPartManualEntry(): void {
+    this.keyPartForm.update((form) => ({
+      ...form,
+      manualEntryOpen: !form.manualEntryOpen,
+      newValue: '',
+      confirmed: false,
+    }));
+    this.keyPartError.set(null);
   }
 
-  protected openEdit(configuration: SystemConfiguration): void {
-    this.editingConfiguration.set(configuration);
-    this.configurationForm.set({ description: configuration.description ?? '', rawValue: '' });
-    this.changeConfirmed.set(false);
-    this.formError.set(null);
-    this.editorOpen.set(true);
-  }
-
-  protected closeEditor(): void {
-    if (!this.saving()) this.editorOpen.set(false);
-  }
-
-  protected patchConfigurationForm(patch: Partial<SystemConfigurationForm>): void {
-    this.configurationForm.update((form) => ({ ...form, ...patch }));
-    this.formError.set(null);
-  }
-
-  protected generateValue(): void {
-    const bytes = crypto.getRandomValues(new Uint8Array(32));
-    const value = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
-    this.patchConfigurationForm({ rawValue: value });
-    this.changeConfirmed.set(false);
-  }
-
-  protected async saveConfiguration(): Promise<void> {
-    const form = this.configurationForm();
-    const editing = this.editingConfiguration();
-    this.formError.set(null);
-    if (!editing) return;
-
-    if (!form.rawValue) {
-      this.formError.set(this.localization.translate('systemConfigs.valueRequired'));
-      return;
-    }
-    if (!this.changeConfirmed()) return;
+  protected async regenerateKeyPart(): Promise<void> {
+    const configuration = this.keyPartConfiguration();
+    const form = this.keyPartForm();
+    if (!configuration || !form.confirmed || this.saving()) return;
 
     this.saving.set(true);
+    this.keyPartError.set(null);
+    this.notice.set(null);
     try {
-      await this.api.updateSystemConfiguration(editing.id, {
-        version: editing.version,
-        description: form.description.trim() || null,
-        value: form.rawValue,
-      });
-      this.editorOpen.set(false);
+      await this.api.regenerateSystemConfiguration(configuration.id, configuration.version);
+      this.notice.set(this.localization.translate('systemConfigs.keyPart.regenerated'));
       await this.loadConfigurations();
     } catch (error) {
-      this.formError.set(this.errorMessage(error));
+      this.keyPartError.set(this.errorMessage(error));
+    } finally {
+      this.saving.set(false);
+    }
+  }
+
+  protected async saveKeyPartManualValue(): Promise<void> {
+    const configuration = this.keyPartConfiguration();
+    const form = this.keyPartForm();
+    if (!configuration) return;
+    if (!form.newValue || !form.confirmed) return;
+
+    this.saving.set(true);
+    this.keyPartError.set(null);
+    this.notice.set(null);
+    try {
+      await this.api.updateSystemConfiguration(configuration.id, {
+        version: configuration.version,
+        description: form.description.trim() || null,
+        value: form.newValue,
+      });
+      this.notice.set(this.localization.translate('systemConfigs.keyPart.updated'));
+      await this.loadConfigurations();
+    } catch (error) {
+      this.keyPartError.set(this.errorMessage(error));
+    } finally {
+      this.saving.set(false);
+    }
+  }
+
+  // -- CRON_QUIET_HOURS section --
+
+  protected patchQuietHoursForm(patch: Partial<QuietHoursForm>): void {
+    this.quietHoursForm.update((form) => ({ ...form, ...patch }));
+    this.quietHoursError.set(null);
+  }
+
+  protected async saveQuietHours(): Promise<void> {
+    const configuration = this.quietHoursConfiguration();
+    const form = this.quietHoursForm();
+    if (!configuration || this.saving()) return;
+
+    this.saving.set(true);
+    this.quietHoursError.set(null);
+    this.notice.set(null);
+    try {
+      await this.api.updateSystemConfiguration(configuration.id, {
+        version: configuration.version,
+        description: form.description.trim() || null,
+        value: { enabled: form.enabled, start: form.start, end: form.end },
+      });
+      this.notice.set(this.localization.translate('systemConfigs.quietHours.saved'));
+      await this.loadConfigurations();
+    } catch (error) {
+      this.quietHoursError.set(this.errorMessage(error));
     } finally {
       this.saving.set(false);
     }

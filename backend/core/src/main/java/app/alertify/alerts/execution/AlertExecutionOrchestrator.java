@@ -56,10 +56,11 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
     private final ProcedureInvocationTokenService procedureTokenService;
     private final ProcedureInvocationRegistry procedureInvocationRegistry;
     private final ProcedureExecutionOrchestrator procedureExecutionOrchestrator;
+    private final CronQuietHoursService quietHoursService;
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
     private final ConcurrentMap<Long, AlertGate> alertGates = new ConcurrentHashMap<>();
 
-    public AlertExecutionOrchestrator(AlertExecutionPreparationService preparationService, AlertExecutionPersistenceService persistenceService, WorkerStatusService workerStatusService, AlertWorkerClient workerClient, WorkerGrpcProperties properties, ApplicationEventLogger eventLogger, ProcedureInvocationTokenService procedureTokenService, ProcedureInvocationRegistry procedureInvocationRegistry, ProcedureExecutionOrchestrator procedureExecutionOrchestrator) {
+    public AlertExecutionOrchestrator(AlertExecutionPreparationService preparationService, AlertExecutionPersistenceService persistenceService, WorkerStatusService workerStatusService, AlertWorkerClient workerClient, WorkerGrpcProperties properties, ApplicationEventLogger eventLogger, ProcedureInvocationTokenService procedureTokenService, ProcedureInvocationRegistry procedureInvocationRegistry, ProcedureExecutionOrchestrator procedureExecutionOrchestrator, CronQuietHoursService quietHoursService) {
         this.preparationService = preparationService;
         this.persistenceService = persistenceService;
         this.workerStatusService = workerStatusService;
@@ -69,9 +70,20 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
         this.procedureTokenService = procedureTokenService;
         this.procedureInvocationRegistry = procedureInvocationRegistry;
         this.procedureExecutionOrchestrator = procedureExecutionOrchestrator;
+        this.quietHoursService = quietHoursService;
     }
 
+    /**
+     * Entry point used exclusively by the cron scheduler ({@code AlertScheduleService}).
+     * Silently does nothing during the configured quiet-hours window - no
+     * event is logged, unlike the {@code ALREADY_RUNNING} skip below, and
+     * already-running executions or manual/hook triggers are never affected
+     * since they never call this overload.
+     */
     public void trigger(long alertId, String alertName, boolean allowConcurrentExecutions) {
+        if (quietHoursService.isQuietNow())
+            return;
+
         trigger(alertId, alertName, allowConcurrentExecutions, AlertExecutionTrigger.CRON, null);
     }
 

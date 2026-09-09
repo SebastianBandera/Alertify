@@ -63,12 +63,15 @@ class AlertExecutionOrchestratorTest {
     @Mock private ProcedureInvocationTokenService procedureTokenService;
     @Mock private ProcedureInvocationRegistry procedureInvocationRegistry;
     @Mock private ProcedureExecutionOrchestrator procedureExecutionOrchestrator;
+    @Mock private CronQuietHoursService quietHoursService;
 
     private AlertExecutionOrchestrator orchestrator;
 
     @BeforeEach
     void setUp() {
-        when(reservation.worker()).thenReturn(new SelectedWorker(
+        // Lenient: the quiet-hours short-circuit test never reaches worker
+        // reservation, so this shared stub is unused there by design.
+        org.mockito.Mockito.lenient().when(reservation.worker()).thenReturn(new SelectedWorker(
                 ENDPOINT,
                 WorkerStatusResponse.newBuilder()
                         .setWorkerName("standard-worker")
@@ -78,7 +81,8 @@ class AlertExecutionOrchestratorTest {
         ));
         orchestrator = new AlertExecutionOrchestrator(
                 preparationService, persistenceService, workerStatusService, workerClient,
-                properties(), eventLogger, procedureTokenService, procedureInvocationRegistry, procedureExecutionOrchestrator
+                properties(), eventLogger, procedureTokenService, procedureInvocationRegistry, procedureExecutionOrchestrator,
+                quietHoursService
         );
     }
 
@@ -209,6 +213,35 @@ class AlertExecutionOrchestratorTest {
                 eq(7L), any(UUID.class), eq(ENDPOINT), any(AlertExecutionResult.class)
         );
         verify(workerClient).executeAlert(eq(ENDPOINT), any(), any(), any(Duration.class), any());
+    }
+
+    @Test
+    void cronTriggerDoesNothingDuringQuietHoursAndLogsNothing() {
+        when(quietHoursService.isQuietNow()).thenReturn(true);
+
+        orchestrator.trigger(7L, "Sample alert", false);
+
+        org.mockito.Mockito.verifyNoInteractions(preparationService, persistenceService, workerStatusService, workerClient);
+        org.mockito.Mockito.verifyNoInteractions(eventLogger);
+    }
+
+    @Test
+    void manualTriggerIgnoresQuietHours() {
+        // No stubbing of quietHoursService: the MANUAL path never consults it
+        // at all (only the CRON-only 3-arg trigger() overload does), so this
+        // test proves manual execution is unaffected without needing to.
+        when(preparationService.prepare(7L, true)).thenReturn(Optional.of(prepared()));
+        when(workerStatusService.reserve(WorkerCapability.STANDARD)).thenReturn(reservation);
+        when(workerClient.executeAlert(eq(ENDPOINT), any(), any(), any(Duration.class), any())).thenReturn(successfulResult());
+
+        boolean accepted = orchestrator.trigger(
+                7L, "Sample alert", false, AlertExecutionTrigger.MANUAL, "sebastian"
+        );
+
+        assertThat(accepted).isTrue();
+        verify(persistenceService, org.mockito.Mockito.timeout(5000)).persistWorkerResult(
+                eq(7L), any(UUID.class), eq(ENDPOINT), any(AlertExecutionResult.class)
+        );
     }
 
     @Test

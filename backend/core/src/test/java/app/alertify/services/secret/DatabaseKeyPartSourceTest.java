@@ -24,7 +24,7 @@ class DatabaseKeyPartSourceTest {
     void loadsAnyNonEmptyKeyPartAsUtf8Bytes() {
         String keyPart = "A key part with symbols: ñ-🔐-!@#$%^&*()";
         SystemConfiguration configuration = new SystemConfiguration(
-            "KEY_PART", null, StringNode.valueOf(keyPart)
+            "KEY_PART", null, StringNode.valueOf(keyPart), true
         );
         when(systemConfigurationRepository.findByNameIgnoreCase("KEY_PART")).thenReturn(Optional.of(configuration));
 

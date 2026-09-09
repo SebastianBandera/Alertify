@@ -1,5 +1,7 @@
 package app.alertify.systemconfiguration.service;
 
+import java.security.SecureRandom;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
@@ -11,11 +13,14 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import tools.jackson.databind.node.StringNode;
+
 import app.alertify.api.error.ConflictException;
 import app.alertify.api.error.ResourceNotFoundException;
 import app.alertify.jpa.entity.SystemConfiguration;
 import app.alertify.jpa.repository.SystemConfigurationRepository;
 import app.alertify.logging.ApplicationEventLogger;
+import app.alertify.systemconfiguration.api.SystemConfigurationRegenerateRequest;
 import app.alertify.systemconfiguration.api.SystemConfigurationResponse;
 import app.alertify.systemconfiguration.api.SystemConfigurationUpdateRequest;
 
@@ -27,8 +32,22 @@ import app.alertify.systemconfiguration.api.SystemConfigurationUpdateRequest;
 @Service
 public class SystemConfigurationService {
 
+    private static final int RANDOM_VALUE_BYTES = 32;
+
+    /**
+     * Names allowed to use {@link #regenerate}. An opaque random value only
+     * makes sense for a secret-shaped value nobody needs to inspect;
+     * regenerating a visible, structured entry (e.g. {@code CRON_QUIET_HOURS})
+     * would silently overwrite it with meaningless random hex instead of the
+     * shape its readers expect. Deliberately an explicit allowlist rather
+     * than inferred from {@code valueHidden} alone: a future hidden entry is
+     * not guaranteed to be a flat opaque string either.
+     */
+    private static final Set<String> REGENERATABLE_NAMES = Set.of("KEY_PART");
+
     private final SystemConfigurationRepository repository;
     private final ApplicationEventLogger eventLogger;
+    private final SecureRandom secureRandom = new SecureRandom();
 
     public SystemConfigurationService(SystemConfigurationRepository repository, ApplicationEventLogger eventLogger) {
         this.repository = repository;
@@ -82,6 +101,28 @@ public class SystemConfigurationService {
         logData.put("changed", !changedFields.isEmpty());
         logData.put("changedFields", changedFields);
         eventLogger.successAfterCommit("SYSTEM_CONFIGURATION_UPDATED", logData);
+        return SystemConfigurationMapper.toResponse(configuration);
+    }
+
+    @Transactional
+    public SystemConfigurationResponse regenerate(Long id, SystemConfigurationRegenerateRequest request) {
+        SystemConfiguration configuration = find(id);
+        verifyVersion(configuration.getVersion(), request.version());
+        if (!REGENERATABLE_NAMES.contains(configuration.getName())) {
+            throw new ConflictException(
+                    "System configuration '" + configuration.getName() + "' does not support regeneration"
+            );
+        }
+
+        byte[] randomBytes = new byte[RANDOM_VALUE_BYTES];
+        secureRandom.nextBytes(randomBytes);
+        configuration.changeValue(StringNode.valueOf(HexFormat.of().formatHex(randomBytes)));
+        repository.flush();
+
+        eventLogger.successAfterCommit(
+                "SYSTEM_CONFIGURATION_UPDATED",
+                Map.of("systemConfigurationId", id, "name", configuration.getName(), "changed", true, "changedFields", Set.of("value"))
+        );
         return SystemConfigurationMapper.toResponse(configuration);
     }
 

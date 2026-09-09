@@ -2,14 +2,17 @@ package app.alertify.alerts.template;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.Mockito.times;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.mockito.ArgumentMatchers.anyString;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
@@ -26,8 +29,6 @@ import app.alertify.alerts.templates.InternetConnectionAlertTemplate;
 import app.alertify.alerts.templates.TcpConnectionAlertTemplate;
 import app.alertify.alerts.templates.WebRequestAlertTemplate;
 import app.alertify.alerts.templates.devtools.ConsoleParameterAlertTemplate;
-import app.alertify.alerts.templates.devtools.SimulatedLongRunningAlertTemplate;
-import app.alertify.alerts.templates.devtools.WritableParameterCopyAlertTemplate;
 import app.alertify.jpa.repository.AlertTemplateDefinitionRepository;
 import app.alertify.jpa.repository.AlertTemplateParameterDefinitionRepository;
 
@@ -37,15 +38,16 @@ class AlertTemplateRegistrationServiceTest {
     @Mock private AlertTemplateDefinitionRepository templateRepository;
     @Mock private AlertTemplateParameterDefinitionRepository parameterRepository;
 
+    /**
+     * Only asserts on the templates tracked in this repository, looked up by
+     * template key rather than by position or exact total count. The scanned
+     * base package also allows an optional, gitignored
+     * {@code app.alertify.alerts.templates.custom} folder for a developer's
+     * own local example templates - whatever exists there on a given machine
+     * must never affect this test.
+     */
     @Test
     void discoversAndPersistsTheSharedTemplates() {
-        String httpsCertificateTemplateKey = HttpsCertificateExpiryAlertTemplate.class.getName();
-        String templateKey = InternetConnectionAlertTemplate.class.getName();
-        String tcpConnectionTemplateKey = TcpConnectionAlertTemplate.class.getName();
-        String webRequestTemplateKey = WebRequestAlertTemplate.class.getName();
-        String consoleParameterTemplateKey = ConsoleParameterAlertTemplate.class.getName();
-        String devToolsTemplateKey = SimulatedLongRunningAlertTemplate.class.getName();
-        String writableParameterCopyTemplateKey = WritableParameterCopyAlertTemplate.class.getName();
         when(templateRepository.findByTemplateKey(anyString())).thenReturn(Optional.empty());
         when(parameterRepository.findAllByTemplate_TemplateKey(anyString())).thenReturn(List.of());
         var service = new AlertTemplateRegistrationService(
@@ -54,14 +56,19 @@ class AlertTemplateRegistrationServiceTest {
 
         AlertTemplateRegistrationSummary summary = service.scanAndRegister();
 
-        assertEquals(8, summary.templates());
-        assertEquals(24, summary.parameters());
+        assertTrue(summary.templates() >= 7);
+        assertTrue(summary.parameters() >= 21);
 
         ArgumentCaptor<AlertTemplateDefinition> templateCaptor =
             ArgumentCaptor.forClass(AlertTemplateDefinition.class);
-        verify(templateRepository, times(8)).save(templateCaptor.capture());
-        AlertTemplateDefinition httpsCertificateTemplate = templateCaptor.getAllValues().get(0);
-        assertEquals(httpsCertificateTemplateKey, httpsCertificateTemplate.getTemplateKey());
+        verify(templateRepository, atLeast(7)).save(templateCaptor.capture());
+        Map<String, AlertTemplateDefinition> templatesByKey = new LinkedHashMap<>();
+        for (AlertTemplateDefinition template : templateCaptor.getAllValues())
+            templatesByKey.put(template.getTemplateKey(), template);
+
+        AlertTemplateDefinition httpsCertificateTemplate =
+            templatesByKey.get(HttpsCertificateExpiryAlertTemplate.class.getName());
+        assertNotNull(httpsCertificateTemplate);
         assertEquals("alerts.template.httpsCertificate.name", httpsCertificateTemplate.getNameKey());
         assertEquals(
             "app/alertify/alerts/templates/HttpsCertificateExpiryAlertTemplate.java",
@@ -73,82 +80,102 @@ class AlertTemplateRegistrationServiceTest {
         assertEquals("alerts.templateTag.security", httpsCertificateTemplate.getTags().get(1).nameKey());
         assertEquals("#7C3AED", httpsCertificateTemplate.getTags().get(1).color());
 
-        AlertTemplateDefinition template = templateCaptor.getAllValues().get(1);
-        assertEquals(templateKey, template.getTemplateKey());
-        assertEquals("alerts.template.internet.name", template.getNameKey());
+        AlertTemplateDefinition internetTemplate =
+            templatesByKey.get(InternetConnectionAlertTemplate.class.getName());
+        assertNotNull(internetTemplate);
+        assertEquals("alerts.template.internet.name", internetTemplate.getNameKey());
         assertEquals(
             "app/alertify/alerts/templates/InternetConnectionAlertTemplate.java",
-            template.getSourcePath()
+            internetTemplate.getSourcePath()
         );
-        assertEquals(1, template.getTags().size());
-        assertEquals("alerts.templateTag.network", template.getTags().get(0).nameKey());
-        assertEquals("#0EA5E9", template.getTags().get(0).color());
+        assertEquals(1, internetTemplate.getTags().size());
+        assertEquals("alerts.templateTag.network", internetTemplate.getTags().get(0).nameKey());
+        assertEquals("#0EA5E9", internetTemplate.getTags().get(0).color());
 
-        AlertTemplateDefinition webRequestTemplate = templateCaptor.getAllValues().get(3);
-        assertEquals(webRequestTemplateKey, webRequestTemplate.getTemplateKey());
+        AlertTemplateDefinition tcpTemplate = templatesByKey.get(TcpConnectionAlertTemplate.class.getName());
+        assertNotNull(tcpTemplate);
+
+        AlertTemplateDefinition webRequestTemplate =
+            templatesByKey.get(WebRequestAlertTemplate.class.getName());
+        assertNotNull(webRequestTemplate);
         assertEquals(
             "app/alertify/alerts/templates/WebRequestAlertTemplate.java",
             webRequestTemplate.getSourcePath()
         );
 
-        AlertTemplateDefinition consoleParameterTemplate = templateCaptor.getAllValues().get(4);
+        AlertTemplateDefinition consoleParameterTemplate =
+            templatesByKey.get(ConsoleParameterAlertTemplate.class.getName());
+        assertNotNull(consoleParameterTemplate);
         assertEquals(1, consoleParameterTemplate.getTags().size());
         assertEquals("alerts.templateTag.development", consoleParameterTemplate.getTags().get(0).nameKey());
         assertNull(consoleParameterTemplate.getTags().get(0).color());
 
         ArgumentCaptor<AlertTemplateParameterDefinition> parameterCaptor =
             ArgumentCaptor.forClass(AlertTemplateParameterDefinition.class);
-        verify(parameterRepository, times(24)).save(parameterCaptor.capture());
-        List<AlertTemplateParameterDefinition> parameters = parameterCaptor.getAllValues();
+        verify(parameterRepository, atLeast(21)).save(parameterCaptor.capture());
 
-        assertEquals("endpoint", parameters.get(0).getParameterKey());
-        assertEquals(String.class.getName(), parameters.get(0).getJavaType());
-        assertEquals(List.of(), parameters.get(0).getOptions());
-        assertTrue(parameters.get(0).isBindingAllowed());
-        assertNull(parameters.get(0).getDefaultValue());
+        List<AlertTemplateParameterDefinition> httpsParameters = parametersOf(parameterCaptor, httpsCertificateTemplate);
+        assertEquals(4, httpsParameters.size());
+        assertEquals("endpoint", httpsParameters.get(0).getParameterKey());
+        assertEquals(String.class.getName(), httpsParameters.get(0).getJavaType());
+        assertEquals(List.of(), httpsParameters.get(0).getOptions());
+        assertTrue(httpsParameters.get(0).isBindingAllowed());
+        assertNull(httpsParameters.get(0).getDefaultValue());
 
-        assertEquals("warningDays", parameters.get(1).getParameterKey());
-        assertEquals(int.class.getName(), parameters.get(1).getJavaType());
-        assertEquals(List.of("7", "14", "30", "60", "90"), parameters.get(1).getOptions());
-        assertTrue(parameters.get(1).isBindingAllowed());
-        assertEquals("30", parameters.get(1).getDefaultValue());
+        assertEquals("warningDays", httpsParameters.get(1).getParameterKey());
+        assertEquals(int.class.getName(), httpsParameters.get(1).getJavaType());
+        assertEquals(List.of("7", "14", "30", "60", "90"), httpsParameters.get(1).getOptions());
+        assertTrue(httpsParameters.get(1).isBindingAllowed());
+        assertEquals("30", httpsParameters.get(1).getDefaultValue());
 
-        assertEquals("timeoutSeconds", parameters.get(2).getParameterKey());
-        assertEquals(int.class.getName(), parameters.get(2).getJavaType());
-        assertEquals(List.of("3", "5", "10", "30"), parameters.get(2).getOptions());
-        assertTrue(parameters.get(2).isBindingAllowed());
-        assertEquals("10", parameters.get(2).getDefaultValue());
+        assertEquals("timeoutSeconds", httpsParameters.get(2).getParameterKey());
+        assertEquals(int.class.getName(), httpsParameters.get(2).getJavaType());
+        assertEquals(List.of("3", "5", "10", "30"), httpsParameters.get(2).getOptions());
+        assertTrue(httpsParameters.get(2).isBindingAllowed());
+        assertEquals("10", httpsParameters.get(2).getDefaultValue());
 
-        assertEquals("verifyHostname", parameters.get(3).getParameterKey());
-        assertEquals(boolean.class.getName(), parameters.get(3).getJavaType());
-        assertEquals(List.of("false", "true"), parameters.get(3).getOptions());
-        assertFalse(parameters.get(3).isBindingAllowed());
-        assertEquals("true", parameters.get(3).getDefaultValue());
+        assertEquals("verifyHostname", httpsParameters.get(3).getParameterKey());
+        assertEquals(boolean.class.getName(), httpsParameters.get(3).getJavaType());
+        assertEquals(List.of("false", "true"), httpsParameters.get(3).getOptions());
+        assertFalse(httpsParameters.get(3).isBindingAllowed());
+        assertEquals("true", httpsParameters.get(3).getDefaultValue());
 
-        assertEquals("endpoint", parameters.get(4).getParameterKey());
-        assertEquals(String.class.getName(), parameters.get(4).getJavaType());
-        assertEquals(List.of("google", "cloudflare"), parameters.get(4).getOptions());
-        assertTrue(parameters.get(4).isBindingAllowed());
-        assertEquals("google", parameters.get(4).getDefaultValue());
+        List<AlertTemplateParameterDefinition> internetParameters = parametersOf(parameterCaptor, internetTemplate);
+        assertEquals(2, internetParameters.size());
+        assertEquals("endpoint", internetParameters.get(0).getParameterKey());
+        assertEquals(String.class.getName(), internetParameters.get(0).getJavaType());
+        assertEquals(List.of("google", "cloudflare"), internetParameters.get(0).getOptions());
+        assertTrue(internetParameters.get(0).isBindingAllowed());
+        assertEquals("google", internetParameters.get(0).getDefaultValue());
 
-        assertEquals("timeoutSeconds", parameters.get(5).getParameterKey());
-        assertEquals(int.class.getName(), parameters.get(5).getJavaType());
-        assertEquals(List.of("1", "3", "5", "10"), parameters.get(5).getOptions());
-        assertTrue(parameters.get(5).isBindingAllowed());
-        assertEquals("3", parameters.get(5).getDefaultValue());
+        assertEquals("timeoutSeconds", internetParameters.get(1).getParameterKey());
+        assertEquals(int.class.getName(), internetParameters.get(1).getJavaType());
+        assertEquals(List.of("1", "3", "5", "10"), internetParameters.get(1).getOptions());
+        assertTrue(internetParameters.get(1).isBindingAllowed());
+        assertEquals("3", internetParameters.get(1).getDefaultValue());
 
-        assertEquals("host", parameters.get(6).getParameterKey());
-        assertEquals(String.class.getName(), parameters.get(6).getJavaType());
-        assertTrue(parameters.get(6).isBindingAllowed());
+        List<AlertTemplateParameterDefinition> tcpParameters = parametersOf(parameterCaptor, tcpTemplate);
+        assertEquals(3, tcpParameters.size());
+        assertEquals("host", tcpParameters.get(0).getParameterKey());
+        assertEquals(String.class.getName(), tcpParameters.get(0).getJavaType());
+        assertTrue(tcpParameters.get(0).isBindingAllowed());
 
-        assertEquals("port", parameters.get(7).getParameterKey());
-        assertEquals(int.class.getName(), parameters.get(7).getJavaType());
-        assertTrue(parameters.get(7).isBindingAllowed());
+        assertEquals("port", tcpParameters.get(1).getParameterKey());
+        assertEquals(int.class.getName(), tcpParameters.get(1).getJavaType());
+        assertTrue(tcpParameters.get(1).isBindingAllowed());
 
-        assertEquals("timeoutSeconds", parameters.get(8).getParameterKey());
-        assertEquals(int.class.getName(), parameters.get(8).getJavaType());
-        assertEquals(List.of("1", "3", "5", "10", "30"), parameters.get(8).getOptions());
-        assertTrue(parameters.get(8).isBindingAllowed());
-        assertEquals("3", parameters.get(8).getDefaultValue());
+        assertEquals("timeoutSeconds", tcpParameters.get(2).getParameterKey());
+        assertEquals(int.class.getName(), tcpParameters.get(2).getJavaType());
+        assertEquals(List.of("1", "3", "5", "10", "30"), tcpParameters.get(2).getOptions());
+        assertTrue(tcpParameters.get(2).isBindingAllowed());
+        assertEquals("3", tcpParameters.get(2).getDefaultValue());
+    }
+
+    private static List<AlertTemplateParameterDefinition> parametersOf(
+        ArgumentCaptor<AlertTemplateParameterDefinition> captor, AlertTemplateDefinition template
+    ) {
+        return captor.getAllValues().stream()
+            .filter(parameter -> parameter.getTemplate() == template)
+            .toList();
     }
 }

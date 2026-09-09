@@ -9,6 +9,8 @@ export interface SystemConfiguration {
   readonly version: number;
   readonly name: string;
   readonly description: string | null;
+  readonly value: unknown | null;
+  readonly valueHidden: boolean;
   readonly createdAt: string;
   readonly updatedAt: string;
 }
@@ -51,6 +53,18 @@ export class SystemConfigurationApiService {
     return this.request(`/api/system-configurations/${id}`, {
       method: 'PUT',
       body: JSON.stringify(request),
+    });
+  }
+
+  /**
+   * Regenerates the value entirely server-side (a fresh random value is
+   * generated and saved in the same request) - no value ever needs to be
+   * sent from the browser for this case.
+   */
+  async regenerateSystemConfiguration(id: number, version: number): Promise<SystemConfiguration> {
+    return this.request(`/api/system-configurations/${id}/regenerate`, {
+      method: 'POST',
+      body: JSON.stringify({ version }),
     });
   }
 

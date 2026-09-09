@@ -12,6 +12,6 @@ import tools.jackson.databind.JsonNode;
  */
 record SystemConfigurationExportPayload(Instant exportedAt, List<Entry> systemConfigurations) {
 
-    record Entry(String name, String description, JsonNode value) {
+    record Entry(String name, String description, JsonNode value, boolean valueHidden) {
     }
 }

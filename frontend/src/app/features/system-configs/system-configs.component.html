@@ -6,178 +6,195 @@
     </div>
   </header>
 
+  @if (notice()) {
+    <div class="alert alert--success" role="status">{{ notice() }}</div>
+  }
   @if (error()) {
     <div class="alert alert--error" role="alert">{{ error() }}</div>
   }
 
-  <div class="table-shell">
-    @if (loading()) {
-      <div class="configs__state">{{ localization.translate('configs.loading') }}</div>
-    } @else if (configurations().length === 0) {
-      <div class="configs__state">{{ localization.translate('systemConfigs.empty') }}</div>
-    } @else {
-      <table>
-        <thead>
-          <tr>
-            <th>{{ localization.translate('configs.column.name') }}</th>
-            <th>{{ localization.translate('configs.column.value') }}</th>
-            <th>{{ localization.translate('configs.column.updatedAt') }}</th>
-            <th class="actions-column">{{ localization.translate('configs.column.actions') }}</th>
-          </tr>
-        </thead>
-        <tbody>
-          @for (configuration of configurations(); track configuration.id) {
-            <tr>
-              <td>
-                <div class="config-name">
-                  <strong>{{ configuration.name }}</strong>
-                  <span class="system-badge">{{ localization.translate('configs.system') }}</span>
-                </div>
-                @if (configuration.description) {
-                  <small>{{ configuration.description }}</small>
-                }
-              </td>
-              <td><code class="value-preview">••••••••••••••••</code></td>
-              <td class="date-cell">{{ formatDate(configuration.updatedAt) }}</td>
-              <td>
-                <div class="row-actions">
-                  <button class="text-button" type="button" (click)="openEdit(configuration)">
-                    {{ localization.translate('configs.edit') }}
-                  </button>
-                </div>
-              </td>
-            </tr>
-          }
-        </tbody>
-      </table>
-    }
-  </div>
+  @if (loading()) {
+    <div class="configs__state">{{ localization.translate('configs.loading') }}</div>
+  } @else if (configurations().length === 0) {
+    <div class="configs__state">{{ localization.translate('systemConfigs.empty') }}</div>
+  } @else {
+    <div class="settings-sections">
 
-  @if (!loading()) {
-    <footer
-      class="configs-pagination"
-      [attr.aria-label]="localization.translate('configs.pagination.label')"
-    >
-      <span class="configs-pagination__total">
-        {{ totalElements() }} {{ localization.translate('configs.pagination.records') }}
-      </span>
-      <div class="configs-pagination__controls">
-        <label>
-          <span>{{ localization.translate('configs.pagination.rowsPerPage') }}</span>
-          <select
-            [ngModel]="pageSize()"
-            (ngModelChange)="updatePageSize($event)"
-            [attr.aria-label]="localization.translate('configs.pagination.rowsPerPage')"
-          >
-            @for (option of pageSizeOptions; track option) {
-              <option [value]="option">{{ option }}</option>
+      <!-- KEY_PART -->
+      @if (keyPartConfiguration(); as configuration) {
+        <section class="settings-section">
+          <header class="settings-section__header">
+            <div>
+              <h2>{{ keyPartName }}</h2>
+              <span class="system-badge">{{ localization.translate('configs.system') }}</span>
+            </div>
+            <small>{{ localization.translate('configs.column.updatedAt') }}: {{ formatDate(configuration.updatedAt) }}</small>
+          </header>
+
+          <label class="field">
+            <span>{{ localization.translate('configs.field.description') }}</span>
+            <textarea
+              rows="2"
+              maxlength="2000"
+              [ngModel]="keyPartForm().description"
+              (ngModelChange)="patchKeyPartForm({ description: $event })"
+              name="keyPartDescription"
+            ></textarea>
+          </label>
+
+          <div class="warning" role="note">
+            <strong>{{ localization.translate('systemConfigs.keyPart.warningTitle') }}</strong>
+            <p>{{ localization.translate('systemConfigs.keyPart.hiddenText') }}</p>
+            <p>{{ localization.translate('systemConfigs.keyPart.warningText') }}</p>
+          </div>
+
+          <div class="settings-section__actions">
+            <label class="confirmation">
+              <input
+                type="checkbox"
+                [checked]="keyPartForm().confirmed"
+                (change)="patchKeyPartForm({ confirmed: $any($event.target).checked })"
+              />
+              <span>{{ localization.translate('systemConfigs.keyPart.confirm') }}</span>
+            </label>
+
+            <div class="settings-section__buttons">
+              <button
+                class="button button--primary generate-button"
+                type="button"
+                [disabled]="saving() || !keyPartForm().confirmed"
+                (click)="regenerateKeyPart()"
+              >
+                {{ localization.translate('systemConfigs.keyPart.generate') }}
+              </button>
+              <button class="button button--secondary" type="button" (click)="toggleKeyPartManualEntry()">
+                {{ localization.translate(keyPartForm().manualEntryOpen ? 'systemConfigs.keyPart.manualEntryHide' : 'systemConfigs.keyPart.manualEntryShow') }}
+              </button>
+            </div>
+          </div>
+
+          @if (keyPartForm().manualEntryOpen) {
+            <form class="settings-section__manual-entry" (ngSubmit)="saveKeyPartManualValue()">
+              <label class="field">
+                <span>{{ localization.translate('systemConfigs.newValue') }}</span>
+                <input
+                  required
+                  type="password"
+                  autocomplete="new-password"
+                  [placeholder]="localization.translate('systemConfigs.newValuePlaceholder')"
+                  [ngModel]="keyPartForm().newValue"
+                  (ngModelChange)="patchKeyPartForm({ newValue: $event })"
+                  name="keyPartNewValue"
+                />
+              </label>
+              <button
+                class="button button--secondary"
+                type="submit"
+                [disabled]="saving() || !keyPartForm().newValue || !keyPartForm().confirmed"
+              >
+                {{ localization.translate(saving() ? 'configs.saving' : 'configs.save') }}
+              </button>
+            </form>
+          }
+
+          @if (keyPartError()) {
+            <div class="alert alert--error" role="alert">{{ keyPartError() }}</div>
+          }
+        </section>
+      }
+
+      <!-- CRON_QUIET_HOURS -->
+      @if (quietHoursConfiguration(); as configuration) {
+        <section class="settings-section">
+          <header class="settings-section__header">
+            <div>
+              <h2>{{ localization.translate('systemConfigs.quietHours.title') }}</h2>
+              <span class="system-badge">{{ localization.translate('configs.system') }}</span>
+            </div>
+            <small>{{ localization.translate('configs.column.updatedAt') }}: {{ formatDate(configuration.updatedAt) }}</small>
+          </header>
+
+          <p class="settings-section__help">{{ localization.translate('systemConfigs.quietHours.help') }}</p>
+
+          <form (ngSubmit)="saveQuietHours()">
+            <label class="field">
+              <span>{{ localization.translate('configs.field.description') }}</span>
+              <textarea
+                rows="2"
+                maxlength="2000"
+                [ngModel]="quietHoursForm().description"
+                (ngModelChange)="patchQuietHoursForm({ description: $event })"
+                name="quietHoursDescription"
+              ></textarea>
+            </label>
+
+            <label class="confirmation">
+              <input
+                type="checkbox"
+                [checked]="quietHoursForm().enabled"
+                (change)="patchQuietHoursForm({ enabled: $any($event.target).checked })"
+              />
+              <span>{{ localization.translate('systemConfigs.quietHours.enabled') }}</span>
+            </label>
+
+            <div class="form-grid">
+              <label class="field">
+                <span>{{ localization.translate('systemConfigs.quietHours.start') }}</span>
+                <input
+                  required
+                  type="time"
+                  step="60"
+                  [disabled]="!quietHoursForm().enabled"
+                  [ngModel]="quietHoursForm().start"
+                  (ngModelChange)="patchQuietHoursForm({ start: $event })"
+                  name="quietHoursStart"
+                />
+              </label>
+              <label class="field">
+                <span>{{ localization.translate('systemConfigs.quietHours.end') }}</span>
+                <input
+                  required
+                  type="time"
+                  step="60"
+                  [disabled]="!quietHoursForm().enabled"
+                  [ngModel]="quietHoursForm().end"
+                  (ngModelChange)="patchQuietHoursForm({ end: $event })"
+                  name="quietHoursEnd"
+                />
+              </label>
+            </div>
+
+            @if (quietHoursError()) {
+              <div class="alert alert--error" role="alert">{{ quietHoursError() }}</div>
             }
-          </select>
-        </label>
-        <span class="configs-pagination__page">
-          {{ localization.translate('configs.pagination.page') }}
-          {{ totalPages() === 0 ? 0 : pageIndex() + 1 }}
-          {{ localization.translate('configs.pagination.of') }}
-          {{ totalPages() }}
-        </span>
-        <button
-          class="pagination-button"
-          type="button"
-          [disabled]="pageIndex() === 0"
-          [attr.aria-label]="localization.translate('configs.pagination.previous')"
-          [title]="localization.translate('configs.pagination.previous')"
-          (click)="goToPage(pageIndex() - 1)"
-        >‹</button>
-        <button
-          class="pagination-button"
-          type="button"
-          [disabled]="pageIndex() + 1 >= totalPages()"
-          [attr.aria-label]="localization.translate('configs.pagination.next')"
-          [title]="localization.translate('configs.pagination.next')"
-          (click)="goToPage(pageIndex() + 1)"
-        >›</button>
-      </div>
-    </footer>
+
+            <div class="settings-section__actions">
+              <button class="button button--primary" type="submit" [disabled]="saving()">
+                {{ localization.translate(saving() ? 'configs.saving' : 'configs.save') }}
+              </button>
+            </div>
+          </form>
+        </section>
+      }
+
+      <!-- Any future system configuration without a dedicated section yet -->
+      @for (configuration of otherConfigurations(); track configuration.id) {
+        <section class="settings-section">
+          <header class="settings-section__header">
+            <div>
+              <h2>{{ configuration.name }}</h2>
+              <span class="system-badge">{{ localization.translate('configs.system') }}</span>
+            </div>
+            <small>{{ localization.translate('configs.column.updatedAt') }}: {{ formatDate(configuration.updatedAt) }}</small>
+          </header>
+          @if (configuration.description) {
+            <p class="settings-section__help">{{ configuration.description }}</p>
+          }
+          <code class="value-preview">
+            {{ configuration.valueHidden ? '••••••••••••••••' : (configuration.value | json) }}
+          </code>
+        </section>
+      }
+    </div>
   }
 </article>
-
-@if (editorOpen()) {
-  <div class="modal-backdrop" (mousedown)="closeEditor()">
-    <section class="modal" role="dialog" aria-modal="true" (mousedown)="$event.stopPropagation()">
-      <header class="modal__header">
-        <div>
-          <h2>{{ localization.translate('systemConfigs.dialog.editTitle') }}</h2>
-          <span class="system-badge">{{ localization.translate('configs.system') }}</span>
-        </div>
-        <button class="icon-button" type="button" aria-label="Close" (click)="closeEditor()">×</button>
-      </header>
-
-      <form class="modal__body" (ngSubmit)="saveConfiguration()">
-        <div class="warning" role="alert">
-          <strong>{{ localization.translate('systemConfigs.warningTitle') }}</strong>
-          <p>{{ localization.translate('systemConfigs.hiddenText') }}</p>
-          <p>{{ localization.translate('systemConfigs.warningText') }}</p>
-        </div>
-
-        <label class="field">
-          <span>{{ localization.translate('configs.field.name') }}</span>
-          <input [ngModel]="editingConfiguration()?.name" disabled name="systemConfigurationName" />
-        </label>
-
-        <label class="field">
-          <span>{{ localization.translate('configs.field.description') }}</span>
-          <textarea
-            rows="2"
-            maxlength="2000"
-            [ngModel]="configurationForm().description"
-            (ngModelChange)="patchConfigurationForm({ description: $event })"
-            name="systemConfigurationDescription"
-          ></textarea>
-        </label>
-
-        <label class="field">
-          <span>{{ localization.translate('systemConfigs.newValue') }}</span>
-          <input
-            required
-            type="password"
-            autocomplete="new-password"
-            [placeholder]="localization.translate('systemConfigs.newValuePlaceholder')"
-            [ngModel]="configurationForm().rawValue"
-            (ngModelChange)="patchConfigurationForm({ rawValue: $event })"
-            name="systemConfigurationValue"
-          />
-        </label>
-
-        <button class="button button--secondary generate-button" type="button" (click)="generateValue()">
-          {{ localization.translate('systemConfigs.generate') }}
-        </button>
-
-        <label class="confirmation">
-          <input
-            type="checkbox"
-            [checked]="changeConfirmed()"
-            (change)="changeConfirmed.set($any($event.target).checked)"
-          />
-          <span>{{ localization.translate('systemConfigs.confirm') }}</span>
-        </label>
-
-        @if (formError()) {
-          <div class="alert alert--error" role="alert">{{ formError() }}</div>
-        }
-
-        <footer class="modal__footer">
-          <button class="button button--secondary" type="button" (click)="closeEditor()">
-            {{ localization.translate('configs.cancel') }}
-          </button>
-          <button
-            class="button button--primary"
-            type="submit"
-            [disabled]="saving() || !configurationForm().rawValue || !changeConfirmed()"
-          >
-            {{ localization.translate(saving() ? 'configs.saving' : 'configs.save') }}
-          </button>
-        </footer>
-      </form>
-    </section>
-  </div>
-}

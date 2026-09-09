@@ -23,10 +23,13 @@ import jakarta.persistence.UniqueConstraint;
 import jakarta.persistence.Version;
 
 /**
- * Backend-owned setting (e.g. the symmetric-key part used to protect
- * secrets), kept separate from user-editable {@link ApplicationConfiguration}
- * rows. Every entry here is treated as sensitive by convention: the value is
- * never returned by the API and is excluded from Envers auditing.
+ * Backend-owned setting (e.g. the symmetric-key part used to protect secrets,
+ * or the cron quiet-hours window), kept separate from user-editable
+ * {@link ApplicationConfiguration} rows. {@link #isValueHidden()} decides
+ * whether the API ever returns the value at all; it is fixed per row when the
+ * row is created (by a migration, or by importing an export archive) and is
+ * never changed afterwards. The value itself is always excluded from Envers
+ * auditing regardless of this flag, since it can be sensitive.
  */
 @Entity
 @Audited
@@ -61,6 +64,9 @@ public class SystemConfiguration {
     @Column(nullable = false, columnDefinition = "jsonb")
     private JsonNode value;
 
+    @Column(name = "value_hidden", nullable = false)
+    private boolean valueHidden;
+
     @CreationTimestamp
     @NotAudited
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -74,10 +80,11 @@ public class SystemConfiguration {
     protected SystemConfiguration() {
     }
 
-    public SystemConfiguration(String name, String description, JsonNode value) {
+    public SystemConfiguration(String name, String description, JsonNode value, boolean valueHidden) {
         this.name = Objects.requireNonNull(name, "name must not be null");
         this.description = description;
         this.value = Objects.requireNonNull(value, "value must not be null");
+        this.valueHidden = valueHidden;
     }
 
     public Long getId() {
@@ -98,6 +105,10 @@ public class SystemConfiguration {
 
     public JsonNode getValue() {
         return value;
+    }
+
+    public boolean isValueHidden() {
+        return valueHidden;
     }
 
     public Instant getCreatedAt() {
