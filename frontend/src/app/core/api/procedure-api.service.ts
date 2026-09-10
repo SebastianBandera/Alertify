@@ -140,6 +140,15 @@ export interface ProcedureImportResult {
   readonly tagsCreated: number;
 }
 
+export interface TotpQrAnalysisResult {
+  readonly secretId: number;
+  readonly secretName: string;
+  readonly algorithm: 'SHA1' | 'SHA256' | 'SHA512';
+  readonly digits: number;
+  readonly periodSeconds: number;
+  readonly suggestedProcedureName: string;
+}
+
 interface ApiErrorResponse {
   readonly code?: string;
   readonly message?: string;
@@ -227,6 +236,17 @@ export class ProcedureApiService {
     const body = new FormData();
     body.append('file', file);
     const response = await fetch(`${this.apiBaseUrl}/api/procedures/import`, {
+      method: 'POST', headers: { Authorization: `Bearer ${token}` }, body,
+    });
+    if (!response.ok) throw await this.responseError(response);
+    return response.json();
+  }
+
+  async analyzeTotpQr(file: File): Promise<TotpQrAnalysisResult> {
+    const token = await this.authService.getAccessToken();
+    const body = new FormData();
+    body.append('file', file);
+    const response = await fetch(`${this.apiBaseUrl}/api/procedures/wizards/totp/qr`, {
       method: 'POST', headers: { Authorization: `Bearer ${token}` }, body,
     });
     if (!response.ok) throw await this.responseError(response);

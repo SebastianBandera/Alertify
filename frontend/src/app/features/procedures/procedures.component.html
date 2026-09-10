@@ -30,6 +30,9 @@
       {{ localization.translate('procedures.tabs.templates') }}
       <span>{{ templates().length }}</span>
     </button>
+    <button type="button" [class.active]="activeTab() === 'wizards'" (click)="changeTab('wizards')">
+      {{ localization.translate('procedures.tabs.wizards') }}
+    </button>
     <button type="button" [class.active]="activeTab() === 'history'" (click)="changeTab('history')">
       {{ localization.translate('procedures.tabs.history') }}
       <span>{{ executions().length }}</span>
@@ -187,6 +190,39 @@
             }
           </tbody>
         </table>
+      </div>
+    }
+  } @else if (activeTab() === 'wizards') {
+    @if (!selectedWizard()) {
+      <div class="wizard-grid">
+        @for (wizard of wizards; track wizard.key) {
+          <button type="button" class="wizard-card" (click)="selectWizard(wizard.key)">
+            <strong>{{ localization.translate(wizard.titleKey) }}</strong>
+            <p>{{ localization.translate(wizard.descriptionKey) }}</p>
+          </button>
+        }
+      </div>
+    } @else if (selectedWizard() === 'totp-qr') {
+      <div class="wizard-panel">
+        <header class="wizard-panel__header">
+          <button type="button" class="button button--secondary" (click)="backToWizardSelector()">
+            {{ localization.translate('procedures.wizards.back') }}
+          </button>
+          <h2>{{ localization.translate('procedures.wizards.totpQr.title') }}</h2>
+          <p>{{ localization.translate('procedures.wizards.totpQr.instructions') }}</p>
+        </header>
+        <textarea
+          readonly
+          class="wizard-panel__pastebox"
+          tabindex="0"
+          [placeholder]="localization.translate('procedures.wizards.totpQr.placeholder')"
+          (paste)="onTotpQrPaste($event)"
+        ></textarea>
+        @if (wizardStatus() === 'analyzing') {
+          <p class="state">{{ localization.translate('procedures.wizards.totpQr.analyzing') }}</p>
+        } @else if (wizardStatus() === 'error' && wizardError()) {
+          <p class="state state--error" role="alert">{{ wizardError() }}</p>
+        }
       </div>
     }
   } @else {

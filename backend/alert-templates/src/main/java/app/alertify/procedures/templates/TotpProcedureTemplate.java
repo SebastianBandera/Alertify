@@ -16,7 +16,15 @@ import app.alertify.procedures.template.annotation.ProcedureTemplateTag;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
-/** Generates one RFC 6238 code for the current execution instant. */
+/**
+ * Generates one RFC 6238 code for the current execution instant.
+ *
+ * <p>The worker compiles this file alone from its {@code sourcePath}, with no
+ * classpath access to the rest of {@code alert-templates} (see
+ * {@code AlertTemplateCompiler}), so the Base32 decoding below is
+ * intentionally inlined rather than shared with {@code TotpBase32}, which
+ * backs the TOTP QR wizard on the core application instead.
+ */
 @ProcedureTemplate(
     nameKey = "procedures.template.totp.name",
     descriptionKey = "procedures.template.totp.description",

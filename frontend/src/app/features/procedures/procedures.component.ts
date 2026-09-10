@@ -15,11 +15,27 @@ import {
   ProcedureTag,
   ProcedureTemplate,
   ProcedureTemplateParameter,
+  TotpQrAnalysisResult,
 } from '../../core/api/procedure-api.service';
 import { LocalizationService } from '../../core/i18n/localization.service';
+import { TranslationKey } from '../../core/i18n/localization.types';
 
-type ProcedureTab = 'procedures' | 'templates' | 'history';
+type ProcedureTab = 'procedures' | 'templates' | 'wizards' | 'history';
 type ParameterSource = AlertParameterSource | 'OPTION';
+type WizardKind = 'totp-qr';
+type WizardStatus = 'idle' | 'analyzing' | 'error';
+
+interface ProcedureWizardDefinition {
+  readonly key: WizardKind;
+  readonly titleKey: TranslationKey;
+  readonly descriptionKey: TranslationKey;
+}
+
+const TOTP_TEMPLATE_KEY = 'app.alertify.procedures.templates.TotpProcedureTemplate';
+
+const PROCEDURE_WIZARDS: readonly ProcedureWizardDefinition[] = [
+  { key: 'totp-qr', titleKey: 'procedures.wizards.totpQr.title', descriptionKey: 'procedures.wizards.totpQr.description' },
+];
 
 interface ParameterForm {
   configured: boolean;
@@ -75,6 +91,10 @@ export class ProceduresComponent implements OnInit {
   protected readonly editorOpen = signal(false);
   protected readonly editing = signal<Procedure | null>(null);
   protected readonly form = signal<ProcedureForm>(this.emptyForm());
+  protected readonly wizards = PROCEDURE_WIZARDS;
+  protected readonly selectedWizard = signal<WizardKind | null>(null);
+  protected readonly wizardStatus = signal<WizardStatus>('idle');
+  protected readonly wizardError = signal<string | null>(null);
   protected readonly selectedTemplate = computed(() =>
     this.templates().find((template) => template.id === this.form().templateId) ?? null,
   );
@@ -100,6 +120,62 @@ export class ProceduresComponent implements OnInit {
     this.activeTab.set(tab);
     if (tab === 'procedures') await this.loadProcedures();
     if (tab === 'history') await this.loadHistory();
+    if (tab === 'wizards') this.backToWizardSelector();
+  }
+
+  protected selectWizard(key: WizardKind): void {
+    this.selectedWizard.set(key);
+    this.wizardStatus.set('idle');
+    this.wizardError.set(null);
+  }
+
+  protected backToWizardSelector(): void {
+    this.selectedWizard.set(null);
+    this.wizardStatus.set('idle');
+    this.wizardError.set(null);
+  }
+
+  protected async onTotpQrPaste(event: ClipboardEvent): Promise<void> {
+    const items = event.clipboardData?.items;
+    const imageItem = items ? Array.from(items).find((item) => item.type.startsWith('image/')) : undefined;
+    if (!imageItem) return;
+    event.preventDefault();
+    const file = imageItem.getAsFile();
+    if (!file) return;
+    this.wizardStatus.set('analyzing');
+    this.wizardError.set(null);
+    try {
+      const result = await this.api.analyzeTotpQr(file);
+      await this.applyTotpQrResult(result);
+      this.wizardStatus.set('idle');
+    } catch (error) {
+      this.wizardStatus.set('error');
+      this.wizardError.set(this.errorMessage(error));
+    }
+  }
+
+  private async applyTotpQrResult(result: TotpQrAnalysisResult): Promise<void> {
+    try {
+      this.bindings.set(await this.api.bindingOptions());
+    } catch {
+      this.bindings.update((current) => ({
+        ...current,
+        secrets: [...current.secrets, { id: result.secretId, name: result.secretName, description: null, enabled: true }],
+      }));
+    }
+    const template = this.templates().find((candidate) => candidate.templateKey === TOTP_TEMPLATE_KEY) ?? null;
+    this.openCreate(template);
+    this.form.update((form) => ({
+      ...form,
+      name: result.suggestedProcedureName,
+      parameters: {
+        ...form.parameters,
+        secret: { ...form.parameters['secret'], configured: true, source: 'SECRET', secretId: result.secretId },
+        algorithm: { ...form.parameters['algorithm'], configured: true, source: 'OPTION', textValue: result.algorithm },
+        digits: { ...form.parameters['digits'], configured: true, source: 'OPTION', textValue: String(result.digits) },
+        periodSeconds: { ...form.parameters['periodSeconds'], configured: true, source: 'TEXT', textValue: String(result.periodSeconds) },
+      },
+    }));
   }
 
   protected async applySearch(): Promise<void> {
