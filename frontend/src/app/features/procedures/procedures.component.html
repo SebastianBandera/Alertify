@@ -5,16 +5,18 @@
       <p>{{ localization.translate('procedures.description') }}</p>
     </div>
     <div class="page-header__actions">
-      <input id="procedure-import" class="file-input" type="file" accept=".csv,text/csv" (change)="importCsv($event)">
-      <button class="button button--secondary" type="button" (click)="exportCsv()">
-        {{ localization.translate('procedures.export') }}
-      </button>
-      <button class="button button--secondary" type="button" (click)="selectImport()">
-        {{ localization.translate('procedures.import') }}
-      </button>
-      <button class="button button--secondary" type="button" (click)="openTagManager()">
-        {{ localization.translate('procedures.manageTags') }}
-      </button>
+      @if (activeTab() === 'procedures') {
+        <input id="procedure-import" class="file-input" type="file" accept=".csv,text/csv" (change)="importCsv($event)">
+        <button class="button button--secondary" type="button" (click)="exportCsv()">
+          {{ localization.translate('procedures.export') }}
+        </button>
+        <button class="button button--secondary" type="button" (click)="selectImport()">
+          {{ localization.translate('procedures.import') }}
+        </button>
+        <button class="button button--secondary" type="button" (click)="openTagManager()">
+          {{ localization.translate('procedures.manageTags') }}
+        </button>
+      }
       <button class="button button--primary" type="button" (click)="openCreate()" [disabled]="!templates().length">
         {{ localization.translate('procedures.create') }}
       </button>
