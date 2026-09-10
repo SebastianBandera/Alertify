@@ -11,7 +11,6 @@ final class SystemConfigurationMapper {
     static SystemConfigurationResponse toResponse(SystemConfiguration configuration) {
         return new SystemConfigurationResponse(
                 configuration.getId(), configuration.getVersion(), configuration.getName(),
-                configuration.getDescription(),
                 configuration.isValueHidden() ? null : configuration.getValue().deepCopy(),
                 configuration.isValueHidden(),
                 configuration.getCreatedAt(), configuration.getUpdatedAt()

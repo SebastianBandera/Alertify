@@ -25,22 +25,11 @@
         <section class="settings-section">
           <header class="settings-section__header">
             <div>
-              <h2>{{ keyPartName }}</h2>
+              <h2>{{ localization.translate('systemConfigs.keyPart.title') }}</h2>
               <span class="system-badge">{{ localization.translate('configs.system') }}</span>
             </div>
             <small>{{ localization.translate('configs.column.updatedAt') }}: {{ formatDate(configuration.updatedAt) }}</small>
           </header>
-
-          <label class="field">
-            <span>{{ localization.translate('configs.field.description') }}</span>
-            <textarea
-              rows="2"
-              maxlength="2000"
-              [ngModel]="keyPartForm().description"
-              (ngModelChange)="patchKeyPartForm({ description: $event })"
-              name="keyPartDescription"
-            ></textarea>
-          </label>
 
           <div class="warning" role="note">
             <strong>{{ localization.translate('systemConfigs.keyPart.warningTitle') }}</strong>
@@ -116,18 +105,7 @@
 
           <p class="settings-section__help">{{ localization.translate('systemConfigs.quietHours.help') }}</p>
 
-          <form (ngSubmit)="saveQuietHours()">
-            <label class="field">
-              <span>{{ localization.translate('configs.field.description') }}</span>
-              <textarea
-                rows="2"
-                maxlength="2000"
-                [ngModel]="quietHoursForm().description"
-                (ngModelChange)="patchQuietHoursForm({ description: $event })"
-                name="quietHoursDescription"
-              ></textarea>
-            </label>
-
+          <form class="settings-section__form" (ngSubmit)="saveQuietHours()">
             <label class="confirmation">
               <input
                 type="checkbox"
@@ -187,9 +165,6 @@
             </div>
             <small>{{ localization.translate('configs.column.updatedAt') }}: {{ formatDate(configuration.updatedAt) }}</small>
           </header>
-          @if (configuration.description) {
-            <p class="settings-section__help">{{ configuration.description }}</p>
-          }
           <code class="value-preview">
             {{ configuration.valueHidden ? '••••••••••••••••' : (configuration.value | json) }}
           </code>

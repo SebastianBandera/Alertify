@@ -307,6 +307,12 @@ select:disabled {
   gap: 10px;
 }
 
+.settings-section__form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
 .settings-section__manual-entry {
   display: flex;
   flex-direction: column;

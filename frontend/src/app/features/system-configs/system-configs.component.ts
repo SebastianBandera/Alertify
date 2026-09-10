@@ -13,7 +13,6 @@ const KEY_PART_NAME = 'KEY_PART';
 const QUIET_HOURS_NAME = 'CRON_QUIET_HOURS';
 
 interface KeyPartForm {
-  description: string;
   manualEntryOpen: boolean;
   newValue: string;
   confirmed: boolean;
@@ -26,18 +25,17 @@ interface QuietHoursValue {
 }
 
 interface QuietHoursForm {
-  description: string;
   enabled: boolean;
   start: string;
   end: string;
 }
 
 function emptyKeyPartForm(): KeyPartForm {
-  return { description: '', manualEntryOpen: false, newValue: '', confirmed: false };
+  return { manualEntryOpen: false, newValue: '', confirmed: false };
 }
 
 function emptyQuietHoursForm(): QuietHoursForm {
-  return { description: '', enabled: false, start: '23:00', end: '07:00' };
+  return { enabled: false, start: '23:00', end: '07:00' };
 }
 
 function parseQuietHoursValue(value: unknown): QuietHoursValue {
@@ -58,7 +56,6 @@ function parseQuietHoursValue(value: unknown): QuietHoursValue {
 })
 export class SystemConfigsComponent implements OnInit {
   protected readonly localization = inject(LocalizationService);
-  protected readonly keyPartName = KEY_PART_NAME;
   protected readonly quietHoursName = QUIET_HOURS_NAME;
 
   private readonly api = inject(SystemConfigurationApiService);
@@ -92,12 +89,11 @@ export class SystemConfigsComponent implements OnInit {
 
       const keyPart = result.content.find((configuration) => configuration.name === KEY_PART_NAME) ?? null;
       this.keyPartConfiguration.set(keyPart);
-      this.keyPartForm.set({ ...emptyKeyPartForm(), description: keyPart?.description ?? '' });
+      this.keyPartForm.set(emptyKeyPartForm());
 
       const quietHours = result.content.find((configuration) => configuration.name === QUIET_HOURS_NAME) ?? null;
       this.quietHoursConfiguration.set(quietHours);
-      const quietHoursValue = parseQuietHoursValue(quietHours?.value);
-      this.quietHoursForm.set({ description: quietHours?.description ?? '', ...quietHoursValue });
+      this.quietHoursForm.set(parseQuietHoursValue(quietHours?.value));
 
       this.otherConfigurations.set(
         result.content.filter(
@@ -159,7 +155,6 @@ export class SystemConfigsComponent implements OnInit {
     try {
       await this.api.updateSystemConfiguration(configuration.id, {
         version: configuration.version,
-        description: form.description.trim() || null,
         value: form.newValue,
       });
       this.notice.set(this.localization.translate('systemConfigs.keyPart.updated'));
@@ -189,7 +184,6 @@ export class SystemConfigsComponent implements OnInit {
     try {
       await this.api.updateSystemConfiguration(configuration.id, {
         version: configuration.version,
-        description: form.description.trim() || null,
         value: { enabled: form.enabled, start: form.start, end: form.end },
       });
       this.notice.set(this.localization.translate('systemConfigs.quietHours.saved'));

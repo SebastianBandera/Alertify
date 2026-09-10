@@ -93,7 +93,7 @@ class SecretExportImportService {
         List<SystemConfigurationExportPayload.Entry> systemConfigurationEntries = new ArrayList<>();
         for (SystemConfiguration configuration : systemConfigurationRepository.findAll()) {
             systemConfigurationEntries.add(new SystemConfigurationExportPayload.Entry(
-                    configuration.getName(), configuration.getDescription(), configuration.getValue(), configuration.isValueHidden()));
+                    configuration.getName(), configuration.getValue(), configuration.isValueHidden()));
         }
 
         Instant exportedAt = Instant.now();
@@ -177,7 +177,7 @@ class SecretExportImportService {
                 continue;
             }
 
-            systemConfigurationRepository.save(new SystemConfiguration(entry.name(), entry.description(), entry.value(), entry.valueHidden()));
+            systemConfigurationRepository.save(new SystemConfiguration(entry.name(), entry.value(), entry.valueHidden()));
             created.add(entry.name());
         }
         return new SystemConfigurationImportResult(List.copyOf(created), List.copyOf(skipped));

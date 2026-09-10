@@ -37,7 +37,7 @@ class SystemConfigurationServiceTest {
 
     @Test
     void regenerateReplacesTheValueWhenHidden() {
-        SystemConfiguration configuration = new SystemConfiguration("KEY_PART", null, StringNode.valueOf("initial"), true);
+        SystemConfiguration configuration = new SystemConfiguration("KEY_PART", StringNode.valueOf("initial"), true);
         when(repository.findById(1L)).thenReturn(Optional.of(configuration));
 
         service.regenerate(1L, new SystemConfigurationRegenerateRequest(0L));
@@ -49,7 +49,7 @@ class SystemConfigurationServiceTest {
     @Test
     void regenerateRejectsEntriesWithAVisibleValue() {
         SystemConfiguration configuration = new SystemConfiguration(
-                "CRON_QUIET_HOURS", null, StringNode.valueOf("untouched"), false
+                "CRON_QUIET_HOURS", StringNode.valueOf("untouched"), false
         );
         when(repository.findById(2L)).thenReturn(Optional.of(configuration));
 
@@ -64,7 +64,7 @@ class SystemConfigurationServiceTest {
     @Test
     void regenerateChecksVersionBeforeCheckingVisibility() {
         SystemConfiguration configuration = new SystemConfiguration(
-                "CRON_QUIET_HOURS", null, StringNode.valueOf("untouched"), false
+                "CRON_QUIET_HOURS", StringNode.valueOf("untouched"), false
         );
         when(repository.findById(3L)).thenReturn(Optional.of(configuration));
 

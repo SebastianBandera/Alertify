@@ -304,6 +304,7 @@ export const EN_TRANSLATIONS = {
   'systemConfigs.empty': 'No system configurations were found.',
   'systemConfigs.newValue': 'New value',
   'systemConfigs.newValuePlaceholder': 'Enter a new value',
+  'systemConfigs.keyPart.title': 'Key part',
   'systemConfigs.keyPart.warningTitle': 'Sensitive system configuration',
   'systemConfigs.keyPart.hiddenText':
     'The current value is never shown or returned by the API. Generating a new value never sends anything to the server either - only typing one manually does.',
@@ -560,6 +561,7 @@ export const EN_TRANSLATIONS = {
   'procedures.form.name': 'Name',
   'procedures.form.description': 'Description',
   'procedures.form.enabled': 'Enabled for nested invocation',
+  'procedures.form.enabledHelp': 'Allows invocation from alerts, hooks, and other procedures. Manual execution remains available while disabled.',
   'procedures.form.allowConcurrentExecutions': 'Allow concurrent executions',
   'procedures.form.allowConcurrentExecutionsHelp': 'Allow a new execution to start while this procedure is already running.',
   'procedures.form.tags': 'Tags',

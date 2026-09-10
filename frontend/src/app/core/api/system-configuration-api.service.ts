@@ -8,7 +8,6 @@ export interface SystemConfiguration {
   readonly id: number;
   readonly version: number;
   readonly name: string;
-  readonly description: string | null;
   readonly value: unknown | null;
   readonly valueHidden: boolean;
   readonly createdAt: string;
@@ -17,7 +16,6 @@ export interface SystemConfiguration {
 
 export interface SystemConfigurationUpdateRequest {
   readonly version: number;
-  readonly description: string | null;
   readonly value: unknown;
 }
 

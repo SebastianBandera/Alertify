@@ -5,7 +5,6 @@ import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 
 import org.springframework.data.domain.Page;
@@ -26,8 +25,8 @@ import app.alertify.systemconfiguration.api.SystemConfigurationUpdateRequest;
 
 /**
  * Administrative lifecycle for system configurations: entries are seeded by
- * migration, never created or deleted through the API. Only their
- * description and value can be changed.
+ * migration, never created or deleted through the API. Only their value can
+ * be changed.
  */
 @Service
 public class SystemConfigurationService {
@@ -80,13 +79,8 @@ public class SystemConfigurationService {
         SystemConfiguration configuration = find(id);
         verifyVersion(configuration.getVersion(), request.version());
 
-        String description = normalizeOptional(request.description());
         Set<String> changedFields = new LinkedHashSet<>();
 
-        if (!Objects.equals(configuration.getDescription(), description)) {
-            configuration.changeDescription(description);
-            changedFields.add("description");
-        }
         if (!configuration.getValue().equals(request.value())) {
             configuration.changeValue(request.value());
             changedFields.add("value");
@@ -128,14 +122,6 @@ public class SystemConfigurationService {
 
     private SystemConfiguration find(Long id) {
         return repository.findById(id).orElseThrow(() -> new ResourceNotFoundException("System configuration " + id + " was not found"));
-    }
-
-    private static String normalizeOptional(String value) {
-        if (value == null)
-            return null;
-
-        String normalized = value.trim();
-        return normalized.isEmpty() ? null : normalized;
     }
 
     private static void verifyVersion(long currentVersion, long requestedVersion) {

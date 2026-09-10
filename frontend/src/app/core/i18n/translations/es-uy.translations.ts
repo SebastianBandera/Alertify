@@ -304,6 +304,7 @@ export const ES_UY_TRANSLATIONS = {
   'systemConfigs.empty': 'No se encontraron configuraciones de sistema.',
   'systemConfigs.newValue': 'Nuevo valor',
   'systemConfigs.newValuePlaceholder': 'Ingresar un nuevo valor',
+  'systemConfigs.keyPart.title': 'Fragmento de clave',
   'systemConfigs.keyPart.warningTitle': 'Configuración sensible del sistema',
   'systemConfigs.keyPart.hiddenText':
     'El valor actual nunca se muestra ni se devuelve por la API. Generar un valor nuevo tampoco envía nada al servidor — solo ingresarlo manualmente lo hace.',
@@ -542,6 +543,7 @@ export const ES_UY_TRANSLATIONS = {
   'procedures.form.name': 'Nombre',
   'procedures.form.description': 'Descripción',
   'procedures.form.enabled': 'Habilitado para invocación anidada',
+  'procedures.form.enabledHelp': 'Permite invocarlo desde Alertas, Ganchos y otros procedimientos. La ejecución manual sigue disponible aunque esté deshabilitado.',
   'procedures.form.allowConcurrentExecutions': 'Permitir ejecuciones concurrentes',
   'procedures.form.allowConcurrentExecutionsHelp': 'Permite iniciar una nueva ejecución mientras este procedimiento todavía está en curso.',
   'procedures.form.tags': 'Tags',

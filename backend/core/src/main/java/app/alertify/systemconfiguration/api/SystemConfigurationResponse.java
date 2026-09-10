@@ -15,7 +15,6 @@ public record SystemConfigurationResponse(
     Long id,
     long version,
     String name,
-    String description,
     JsonNode value,
     boolean valueHidden,
     Instant createdAt,

@@ -56,9 +56,6 @@ public class SystemConfiguration {
     @Column(nullable = false, columnDefinition = "text")
     private String name;
 
-    @Column(columnDefinition = "text")
-    private String description;
-
     @NotAudited
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(nullable = false, columnDefinition = "jsonb")
@@ -80,9 +77,8 @@ public class SystemConfiguration {
     protected SystemConfiguration() {
     }
 
-    public SystemConfiguration(String name, String description, JsonNode value, boolean valueHidden) {
+    public SystemConfiguration(String name, JsonNode value, boolean valueHidden) {
         this.name = Objects.requireNonNull(name, "name must not be null");
-        this.description = description;
         this.value = Objects.requireNonNull(value, "value must not be null");
         this.valueHidden = valueHidden;
     }
@@ -99,10 +95,6 @@ public class SystemConfiguration {
         return name;
     }
 
-    public String getDescription() {
-        return description;
-    }
-
     public JsonNode getValue() {
         return value;
     }
@@ -117,10 +109,6 @@ public class SystemConfiguration {
 
     public Instant getUpdatedAt() {
         return updatedAt;
-    }
-
-    public void changeDescription(String description) {
-        this.description = description;
     }
 
     public void changeValue(JsonNode value) {

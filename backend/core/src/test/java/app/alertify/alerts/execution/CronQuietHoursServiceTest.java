@@ -157,7 +157,7 @@ class CronQuietHoursServiceTest {
     private void withConfiguration(String json) {
         JsonNode value = JSON.readTree(json);
         when(repository.findByNameIgnoreCase("CRON_QUIET_HOURS"))
-                .thenReturn(Optional.of(new SystemConfiguration("CRON_QUIET_HOURS", null, value, false)));
+                .thenReturn(Optional.of(new SystemConfiguration("CRON_QUIET_HOURS", value, false)));
     }
 
     private static Clock clockAt(String time) {
