@@ -538,6 +538,8 @@ export const EN_TRANSLATIONS = {
   'procedures.wizards.totpQr.analyzing': 'Analyzing the QR code…',
   'procedures.column.name': 'Name',
   'procedures.column.template': 'Template',
+  'procedures.templates.column.key': 'Class',
+  'procedures.column.capability': 'Worker capability',
   'procedures.column.tags': 'Tags',
   'procedures.column.status': 'Status',
   'procedures.column.updatedAt': 'Updated',

@@ -520,6 +520,8 @@ export const ES_UY_TRANSLATIONS = {
   'procedures.wizards.totpQr.analyzing': 'Analizando el código QR…',
   'procedures.column.name': 'Nombre',
   'procedures.column.template': 'Template',
+  'procedures.templates.column.key': 'Clase',
+  'procedures.column.capability': 'Capacidad del worker',
   'procedures.column.tags': 'Tags',
   'procedures.column.status': 'Estado',
   'procedures.column.updatedAt': 'Actualización',

@@ -19,6 +19,7 @@ import {
 } from '../../core/api/procedure-api.service';
 import { LocalizationService } from '../../core/i18n/localization.service';
 import { TranslationKey } from '../../core/i18n/localization.types';
+import { templateClassName } from '../../core/utils/template-key';
 
 type ProcedureTab = 'procedures' | 'templates' | 'wizards' | 'history';
 type ParameterSource = AlertParameterSource | 'OPTION';
@@ -115,6 +116,8 @@ export class ProceduresComponent implements OnInit {
   protected dynamic(key: string): string {
     return this.localization.translateDynamic(key);
   }
+
+  protected readonly templateClassName = templateClassName;
 
   protected async changeTab(tab: ProcedureTab): Promise<void> {
     this.activeTab.set(tab);

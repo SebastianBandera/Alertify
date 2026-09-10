@@ -135,7 +135,8 @@
         <table>
           <thead><tr>
             <th>{{ localization.translate('procedures.column.name') }}</th>
-            <th>{{ localization.translate('procedures.column.template') }}</th>
+            <th>{{ localization.translate('procedures.templates.column.key') }}</th>
+            <th>{{ localization.translate('procedures.column.capability') }}</th>
             <th>{{ localization.translate('procedures.column.tags') }}</th>
             <th>{{ localization.translate('procedures.templates.parameters') }}</th>
             <th>{{ localization.translate('procedures.templates.instances') }}</th>
@@ -146,10 +147,8 @@
             @for (template of templates(); track template.id) {
               <tr>
                 <td><strong>{{ dynamic(template.nameKey) }}</strong><small>{{ dynamic(template.descriptionKey) }}</small></td>
-                <td>
-                  <code class="template-key" [attr.title]="template.templateKey">{{ template.templateKey }}</code>
-                  <small><span class="badge badge--capability">{{ template.requiredCapability }}</span></small>
-                </td>
+                <td><code class="template-key" [attr.title]="template.templateKey">{{ templateClassName(template.templateKey) }}</code></td>
+                <td><span class="badge badge--capability">{{ template.requiredCapability }}</span></td>
                 <td>
                   <div class="tag-list">
                     @for (tag of template.tags; track tag.nameKey) {
@@ -321,7 +320,7 @@
               <small>{{ localization.translate('procedures.form.enabledHelp') }}</small>
             </span>
           </label>
-          <label class="checkbox">
+          <label class="checkbox checkbox--with-help">
             <input name="allowConcurrentExecutions" type="checkbox" [ngModel]="form().allowConcurrentExecutions" (ngModelChange)="patchForm({ allowConcurrentExecutions: $event })">
             <span>
               {{ localization.translate('procedures.form.allowConcurrentExecutions') }}

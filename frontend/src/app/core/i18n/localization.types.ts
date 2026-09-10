@@ -203,6 +203,8 @@ export type TranslationKey =
   | 'procedures.wizards.totpQr.analyzing'
   | 'procedures.column.name'
   | 'procedures.column.template'
+  | 'procedures.templates.column.key'
+  | 'procedures.column.capability'
   | 'procedures.column.tags'
   | 'procedures.column.status'
   | 'procedures.column.updatedAt'

@@ -20,6 +20,7 @@ import {
 } from '../../core/api/alert-api.service';
 import { ApiRequestError, TagMatchMode } from '../../core/api/configuration-api.service';
 import { LocalizationService } from '../../core/i18n/localization.service';
+import { templateClassName } from '../../core/utils/template-key';
 
 type AlertTab = 'alerts' | 'templates' | 'history';
 type AlertFormField = 'template' | 'name' | 'cron';
@@ -801,10 +802,7 @@ export class AlertsComponent implements OnInit {
     return this.localization.translateDynamic(key);
   }
 
-  protected templateClassName(templateKey: string): string {
-    const separator = templateKey.lastIndexOf('.');
-    return separator < 0 ? templateKey : templateKey.substring(separator + 1);
-  }
+  protected readonly templateClassName = templateClassName;
 
   protected templateTagColor(tag: AlertTemplateTag): string {
     if (tag.color) return tag.color;
