@@ -153,10 +153,13 @@
           }
           <label>
             <span>{{ dynamic('hooks.form.token') }}</span>
-            <select name="token" [ngModel]="form().tokenSecretId" (ngModelChange)="patchForm('tokenSecretId', $event)">
-              <option [ngValue]="null">{{ dynamic('hooks.form.noToken') }}</option>
-              @for (secret of options().secrets; track secret.id) { <option [ngValue]="secret.id" [disabled]="!secret.recoverable">{{ secret.name }}{{ secret.recoverable ? '' : ' (' + dynamic('hooks.form.unrecoverable') + ')' }}</option> }
-            </select>
+            <div class="token-select">
+              <select name="token" [ngModel]="form().tokenSecretId" (ngModelChange)="patchForm('tokenSecretId', $event)">
+                <option [ngValue]="null">{{ dynamic('hooks.form.noToken') }}</option>
+                @for (secret of options().secrets; track secret.id) { <option [ngValue]="secret.id" [disabled]="!secret.recoverable">{{ secret.name }}{{ secret.recoverable ? '' : ' (' + dynamic('hooks.form.unrecoverable') + ')' }}</option> }
+              </select>
+              <button class="button button--secondary" type="button" (click)="openTokenSecretCreate()">{{ dynamic('hooks.tokenSecretCreate.open') }}</button>
+            </div>
             <small class="field-help">{{ dynamic('hooks.form.tokenHelp') }}</small>
           </label>
           <label>
@@ -207,6 +210,33 @@
         </section>
         @if (formError()) { <p class="form-error" role="alert">{{ formError() }}</p> }
         <footer><button class="button button--secondary" type="button" (click)="closeEditor()">{{ dynamic('hooks.cancel') }}</button><button class="button button--primary" type="submit" [disabled]="saving()">{{ dynamic('hooks.save') }}</button></footer>
+      </form>
+    </section>
+  </div>
+}
+
+@if (tokenSecretDialogOpen()) {
+  <div class="modal-backdrop modal-backdrop--nested" (mousedown)="closeTokenSecretCreate()">
+    <section class="modal modal--token-secret" role="dialog" aria-modal="true" (mousedown)="$event.stopPropagation()">
+      <header>
+        <h2>{{ dynamic('hooks.tokenSecretCreate.title') }}</h2>
+        <button class="close" type="button" (click)="closeTokenSecretCreate()">×</button>
+      </header>
+      <form (ngSubmit)="createTokenSecret()">
+        <label>
+          <span>{{ dynamic('hooks.tokenSecretCreate.name') }}</span>
+          <input name="tokenSecretName" required maxlength="200" [ngModel]="tokenSecretForm().name" (ngModelChange)="patchTokenSecretForm('name', $event)">
+        </label>
+        <label>
+          <span>{{ dynamic('hooks.tokenSecretCreate.value') }}</span>
+          <textarea name="tokenSecretValue" required maxlength="1048576" rows="3" autocomplete="new-password" [ngModel]="tokenSecretForm().value" (ngModelChange)="patchTokenSecretForm('value', $event)"></textarea>
+          <button class="button button--secondary token-generate" type="button" (click)="generateTokenSecretValue()">{{ dynamic('hooks.tokenSecretCreate.generate') }}</button>
+        </label>
+        @if (tokenSecretError()) { <p class="form-error" role="alert">{{ tokenSecretError() }}</p> }
+        <footer>
+          <button class="button button--secondary" type="button" (click)="closeTokenSecretCreate()">{{ dynamic('hooks.cancel') }}</button>
+          <button class="button button--primary" type="submit" [disabled]="tokenSecretSaving()">{{ dynamic('hooks.tokenSecretCreate.save') }}</button>
+        </footer>
       </form>
     </section>
   </div>

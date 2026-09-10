@@ -15,6 +15,7 @@ import {
   HookTargetType,
   HookTargetWriteRequest,
 } from '../../core/api/hook-api.service';
+import { SecretApiService } from '../../core/api/secret-api.service';
 import { LocalizationService } from '../../core/i18n/localization.service';
 
 type HookTab = 'hooks' | 'history';
@@ -40,6 +41,11 @@ interface HookForm {
   targets: HookTargetForm[];
 }
 
+interface TokenSecretForm {
+  name: string;
+  value: string;
+}
+
 const EMPTY_OPTIONS: HookOptions = { targets: [], secrets: [] };
 const ALL_OUTCOMES: readonly HookOutcome[] = ['SUCCESS', 'WARN', 'ERROR'];
 
@@ -53,6 +59,7 @@ const ALL_OUTCOMES: readonly HookOutcome[] = ['SUCCESS', 'WARN', 'ERROR'];
 export class HooksComponent implements OnInit, OnDestroy {
   protected readonly localization = inject(LocalizationService);
   private readonly api = inject(HookApiService);
+  private readonly secretApi = inject(SecretApiService);
 
   protected readonly activeTab = signal<HookTab>('hooks');
   protected readonly hooks = signal<readonly Hook[]>([]);
@@ -74,6 +81,10 @@ export class HooksComponent implements OnInit, OnDestroy {
   protected readonly editing = signal<Hook | null>(null);
   protected readonly form = signal<HookForm>(this.emptyForm());
   protected readonly formError = signal<string | null>(null);
+  protected readonly tokenSecretDialogOpen = signal(false);
+  protected readonly tokenSecretSaving = signal(false);
+  protected readonly tokenSecretForm = signal<TokenSecretForm>(this.emptyTokenSecretForm());
+  protected readonly tokenSecretError = signal<string | null>(null);
   protected readonly newTargetType = signal<HookTargetType>('ALERT');
   protected readonly newTargetId = signal<number | null>(null);
   protected readonly outcomes = ALL_OUTCOMES;
@@ -164,6 +175,69 @@ export class HooksComponent implements OnInit, OnDestroy {
 
   protected patchForm<K extends keyof Omit<HookForm, 'targets'>>(key: K, value: HookForm[K]): void {
     this.form.update((form) => ({ ...form, [key]: value }));
+  }
+
+  protected openTokenSecretCreate(): void {
+    this.tokenSecretForm.set(this.emptyTokenSecretForm());
+    this.tokenSecretError.set(null);
+    this.tokenSecretDialogOpen.set(true);
+  }
+
+  protected closeTokenSecretCreate(): void {
+    if (!this.tokenSecretSaving()) {
+      this.tokenSecretForm.set(this.emptyTokenSecretForm());
+      this.tokenSecretError.set(null);
+      this.tokenSecretDialogOpen.set(false);
+    }
+  }
+
+  protected patchTokenSecretForm<K extends keyof TokenSecretForm>(key: K, value: TokenSecretForm[K]): void {
+    this.tokenSecretForm.update((form) => ({ ...form, [key]: value }));
+  }
+
+  protected generateTokenSecretValue(): void {
+    const bytes = crypto.getRandomValues(new Uint8Array(32));
+    let binary = '';
+    for (const byte of bytes)
+      binary += String.fromCharCode(byte);
+
+    this.patchTokenSecretForm('value', btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', ''));
+  }
+
+  protected async createTokenSecret(): Promise<void> {
+    const form = this.tokenSecretForm();
+    if (!form.name.trim() || !form.value) {
+      this.tokenSecretError.set(this.dynamic('hooks.tokenSecretCreate.required'));
+      return;
+    }
+
+    this.tokenSecretSaving.set(true);
+    this.tokenSecretError.set(null);
+    try {
+      const secret = await this.secretApi.createSecret({
+        name: form.name.trim(), description: null, value: form.value, tagIds: [], writable: false,
+      });
+      this.tokenSecretForm.set(this.emptyTokenSecretForm());
+      this.patchForm('tokenSecretId', secret.id);
+      try {
+        this.options.set(await this.api.options());
+      } catch {
+        this.options.update((options) => ({
+          ...options,
+          secrets: [...options.secrets, {
+            id: secret.id,
+            name: secret.name,
+            recoverable: secret.recoveryStatus === 'RECOVERABLE',
+          }],
+        }));
+      }
+      this.tokenSecretDialogOpen.set(false);
+      this.notice.set(this.dynamic('hooks.tokenSecretCreate.created'));
+    } catch (error) {
+      this.tokenSecretError.set(this.errorMessage(error));
+    } finally {
+      this.tokenSecretSaving.set(false);
+    }
   }
 
   protected targetOptions(type = this.newTargetType()): readonly HookOption[] {
@@ -372,6 +446,10 @@ export class HooksComponent implements OnInit, OnDestroy {
       name: '', description: '', enabled: false, mode: 'PARALLEL', tokenSecretId: null,
       maxConcurrentInvocations: null, rateLimitCount: null, rateLimitWindowSeconds: null, targets: [],
     };
+  }
+
+  private emptyTokenSecretForm(): TokenSecretForm {
+    return { name: '', value: '' };
   }
 
   private durationSeconds(value: string | null): number | null {
