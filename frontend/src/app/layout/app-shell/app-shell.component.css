@@ -196,8 +196,8 @@
 }
 
 .navigation__icon--system-configs {
-  mask-image: url('../../../../public/icons/configs.svg');
-  -webkit-mask-image: url('../../../../public/icons/configs.svg');
+  mask-image: url('../../../../public/icons/system-configs.svg');
+  -webkit-mask-image: url('../../../../public/icons/system-configs.svg');
 }
 
 .navigation__icon--secrets {
