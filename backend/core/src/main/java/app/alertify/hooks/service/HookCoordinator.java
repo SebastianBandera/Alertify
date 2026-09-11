@@ -139,6 +139,10 @@ public class HookCoordinator implements AutoCloseable {
                 persistence.completeTarget(target.getId(), HookTargetStatus.ALERT_BUSY_TIMEOUT, HookOutcome.ERROR, null, "ALERT_BUSY_TIMEOUT");
                 return new TargetResult(HookOutcome.ERROR, false);
             }
+            if (execution.maintenance()) {
+                persistence.completeTarget(target.getId(), HookTargetStatus.SKIPPED_MAINTENANCE, null, null, null);
+                return new TargetResult(null, true);
+            }
             if (execution.disabled()) {
                 persistence.completeTarget(target.getId(), HookTargetStatus.SKIPPED_DISABLED, null, null, null);
                 return new TargetResult(null, true);
@@ -169,6 +173,10 @@ public class HookCoordinator implements AutoCloseable {
         if (execution.busyTimeout()) {
             persistence.completeTarget(target.getId(), HookTargetStatus.PROCEDURE_BUSY_TIMEOUT, HookOutcome.ERROR, null, "PROCEDURE_BUSY_TIMEOUT");
             return new TargetResult(HookOutcome.ERROR, false);
+        }
+        if (execution.maintenance()) {
+            persistence.completeTarget(target.getId(), HookTargetStatus.SKIPPED_MAINTENANCE, null, null, null);
+            return new TargetResult(null, true);
         }
         if (execution.disabled()) {
             persistence.completeTarget(target.getId(), HookTargetStatus.SKIPPED_DISABLED, null, null, null);

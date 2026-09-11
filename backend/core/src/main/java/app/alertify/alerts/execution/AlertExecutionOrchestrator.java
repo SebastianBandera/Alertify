@@ -57,10 +57,11 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
     private final ProcedureInvocationRegistry procedureInvocationRegistry;
     private final ProcedureExecutionOrchestrator procedureExecutionOrchestrator;
     private final CronQuietHoursService quietHoursService;
+    private final MaintenanceModeService maintenanceModeService;
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
     private final ConcurrentMap<Long, AlertGate> alertGates = new ConcurrentHashMap<>();
 
-    public AlertExecutionOrchestrator(AlertExecutionPreparationService preparationService, AlertExecutionPersistenceService persistenceService, WorkerStatusService workerStatusService, AlertWorkerClient workerClient, WorkerGrpcProperties properties, ApplicationEventLogger eventLogger, ProcedureInvocationTokenService procedureTokenService, ProcedureInvocationRegistry procedureInvocationRegistry, ProcedureExecutionOrchestrator procedureExecutionOrchestrator, CronQuietHoursService quietHoursService) {
+    public AlertExecutionOrchestrator(AlertExecutionPreparationService preparationService, AlertExecutionPersistenceService persistenceService, WorkerStatusService workerStatusService, AlertWorkerClient workerClient, WorkerGrpcProperties properties, ApplicationEventLogger eventLogger, ProcedureInvocationTokenService procedureTokenService, ProcedureInvocationRegistry procedureInvocationRegistry, ProcedureExecutionOrchestrator procedureExecutionOrchestrator, CronQuietHoursService quietHoursService, MaintenanceModeService maintenanceModeService) {
         this.preparationService = preparationService;
         this.persistenceService = persistenceService;
         this.workerStatusService = workerStatusService;
@@ -71,6 +72,7 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
         this.procedureInvocationRegistry = procedureInvocationRegistry;
         this.procedureExecutionOrchestrator = procedureExecutionOrchestrator;
         this.quietHoursService = quietHoursService;
+        this.maintenanceModeService = maintenanceModeService;
     }
 
     /**
@@ -81,7 +83,7 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
      * since they never call this overload.
      */
     public void trigger(long alertId, String alertName, boolean allowConcurrentExecutions) {
-        if (quietHoursService.isQuietNow())
+        if (quietHoursService.isQuietNow() || maintenanceModeService.isActive())
             return;
 
         trigger(alertId, alertName, allowConcurrentExecutions, AlertExecutionTrigger.CRON, null);
@@ -97,6 +99,7 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
      *         concurrent executions.
      */
     public boolean trigger(long alertId, String alertName, boolean allowConcurrentExecutions, AlertExecutionTrigger source, String triggeredBy) {
+        maintenanceModeService.assertNotActive();
         if (!enter(alertId, allowConcurrentExecutions)) {
             eventLogger.failure("ALERT_EXECUTION_SKIPPED", data(alertId, alertName, source, triggeredBy, "reason", "ALREADY_RUNNING"));
             return false;
@@ -108,24 +111,27 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
     }
 
     public AlertHookExecution executeHook(long alertId, String alertName, boolean allowConcurrentExecutions, Duration busyWaitTimeout, String triggeredBy, Runnable waitingCallback, Runnable acquiredCallback) {
+        if (maintenanceModeService.isActive())
+            return new AlertHookExecution(null, null, false, false, true);
+
         AlertGate gate = alertGates.computeIfAbsent(alertId, _ -> new AlertGate());
         boolean acquired;
         try {
             acquired = gate.awaitTurn(allowConcurrentExecutions, busyWaitTimeout, waitingCallback);
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
-            return new AlertHookExecution(null, AlertExecutionStatus.ERROR, false, false);
+            return new AlertHookExecution(null, AlertExecutionStatus.ERROR, false, false, false);
         }
         if (!acquired) {
             cleanup(alertId, gate);
-            return new AlertHookExecution(null, AlertExecutionStatus.ERROR, false, true);
+            return new AlertHookExecution(null, AlertExecutionStatus.ERROR, false, true, false);
         }
 
         runCallback(acquiredCallback);
         UUID executionId = UUID.randomUUID();
         eventLogger.success("ALERT_EXECUTION_TRIGGERED", data(alertId, alertName, AlertExecutionTrigger.HOOK, triggeredBy));
         AlertExecutionStatus status = execute(alertId, AlertExecutionTrigger.HOOK, triggeredBy, executionId);
-        return new AlertHookExecution(status == null ? null : executionId, status, status == null, false);
+        return new AlertHookExecution(status == null ? null : executionId, status, status == null, false, false);
     }
 
     private static Map<String, Object> data(long alertId, String alertName, AlertExecutionTrigger source, String triggeredBy, String... extra) {
@@ -311,7 +317,7 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
         }
     }
 
-    public record AlertHookExecution(UUID executionId, AlertExecutionStatus status, boolean disabled, boolean busyTimeout) { }
+    public record AlertHookExecution(UUID executionId, AlertExecutionStatus status, boolean disabled, boolean busyTimeout, boolean maintenance) { }
 
     static final class AlertGate {
         private int active;

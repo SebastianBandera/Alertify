@@ -64,6 +64,7 @@ class AlertExecutionOrchestratorTest {
     @Mock private ProcedureInvocationRegistry procedureInvocationRegistry;
     @Mock private ProcedureExecutionOrchestrator procedureExecutionOrchestrator;
     @Mock private CronQuietHoursService quietHoursService;
+    @Mock private MaintenanceModeService maintenanceModeService;
 
     private AlertExecutionOrchestrator orchestrator;
 
@@ -82,7 +83,7 @@ class AlertExecutionOrchestratorTest {
         orchestrator = new AlertExecutionOrchestrator(
                 preparationService, persistenceService, workerStatusService, workerClient,
                 properties(), eventLogger, procedureTokenService, procedureInvocationRegistry, procedureExecutionOrchestrator,
-                quietHoursService
+                quietHoursService, maintenanceModeService
         );
     }
 

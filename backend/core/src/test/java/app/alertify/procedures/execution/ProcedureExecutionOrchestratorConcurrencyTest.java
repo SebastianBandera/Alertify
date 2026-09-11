@@ -19,6 +19,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import app.alertify.alerts.execution.MaintenanceModeService;
 import app.alertify.grpc.AlertWorkerClient;
 import app.alertify.grpc.WorkerGrpcProperties;
 import app.alertify.grpc.discovery.WorkerStatusService;
@@ -31,6 +32,7 @@ class ProcedureExecutionOrchestratorConcurrencyTest {
     private final ProcedureExecutionPreparationService preparation = mock(ProcedureExecutionPreparationService.class);
     private final ProcedureExecutionPersistenceService persistence = mock(ProcedureExecutionPersistenceService.class);
     private final ApplicationEventLogger eventLogger = mock(ApplicationEventLogger.class);
+    private final MaintenanceModeService maintenanceModeService = mock(MaintenanceModeService.class);
     private ProcedureExecutionOrchestrator orchestrator;
     private ProcedureGate gate;
 
@@ -39,7 +41,7 @@ class ProcedureExecutionOrchestratorConcurrencyTest {
         orchestrator = new ProcedureExecutionOrchestrator(preparation, persistence,
                 mock(ProcedureInvocationTokenService.class), mock(ProcedureInvocationRegistry.class),
                 mock(WorkerStatusService.class), mock(AlertWorkerClient.class), mock(WorkerGrpcProperties.class),
-                eventLogger, JsonMapper.builder().build());
+                eventLogger, JsonMapper.builder().build(), maintenanceModeService);
         gate = new ProcedureGate();
         assertThat(gate.tryEnter(false)).isTrue();
         gates().put(7L, gate);

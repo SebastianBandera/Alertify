@@ -326,7 +326,11 @@ export class ProceduresComponent implements OnInit {
       this.notice.set(this.localization.translate('procedures.runStarted'));
       await this.loadHistory();
     } catch (error) {
-      this.error.set(this.errorMessage(error));
+      this.error.set(
+        error instanceof ApiRequestError && error.code === 'MAINTENANCE_MODE_ACTIVE'
+          ? this.localization.translate('procedures.runMaintenanceMode')
+          : this.errorMessage(error),
+      );
     } finally {
       this.runningId.set(null);
     }

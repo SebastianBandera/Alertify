@@ -79,6 +79,11 @@ public class ApiExceptionHandler {
         return response(HttpStatus.BAD_REQUEST, "INVALID_TOTP_QR", exception.getMessage(), Map.of(), exception, request);
     }
 
+    @ExceptionHandler(MaintenanceModeActiveException.class)
+    ResponseEntity<ApiError> handleMaintenanceModeActive(MaintenanceModeActiveException exception, HttpServletRequest request) {
+        return response(HttpStatus.CONFLICT, "MAINTENANCE_MODE_ACTIVE", exception.getMessage(), Map.of(), exception, request);
+    }
+
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     ResponseEntity<ApiError> handleUploadTooLarge(MaxUploadSizeExceededException exception, HttpServletRequest request) {
         return response(HttpStatus.BAD_REQUEST, "PAYLOAD_TOO_LARGE", "The uploaded file is too large", Map.of(), exception, request);

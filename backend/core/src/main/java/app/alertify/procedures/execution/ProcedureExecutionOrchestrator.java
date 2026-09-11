@@ -12,7 +12,9 @@ import java.util.concurrent.Executors;
 
 import org.springframework.stereotype.Service;
 
+import app.alertify.alerts.execution.MaintenanceModeService;
 import app.alertify.alerts.template.annotation.AlertParameterSource;
+import app.alertify.api.error.MaintenanceModeActiveException;
 import app.alertify.grpc.AlertWorkerClient;
 import app.alertify.grpc.WorkerGrpcProperties;
 import app.alertify.grpc.WorkerTemplateSynchronizationException;
@@ -64,10 +66,11 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
     private final WorkerGrpcProperties properties;
     private final ApplicationEventLogger eventLogger;
     private final JsonMapper jsonMapper;
+    private final MaintenanceModeService maintenanceModeService;
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
     private final ConcurrentMap<Long, ProcedureGate> procedureGates = new ConcurrentHashMap<>();
 
-    public ProcedureExecutionOrchestrator(ProcedureExecutionPreparationService preparationService, ProcedureExecutionPersistenceService persistenceService, ProcedureInvocationTokenService tokenService, ProcedureInvocationRegistry invocationRegistry, WorkerStatusService workerStatusService, AlertWorkerClient workerClient, WorkerGrpcProperties properties, ApplicationEventLogger eventLogger, JsonMapper jsonMapper) {
+    public ProcedureExecutionOrchestrator(ProcedureExecutionPreparationService preparationService, ProcedureExecutionPersistenceService persistenceService, ProcedureInvocationTokenService tokenService, ProcedureInvocationRegistry invocationRegistry, WorkerStatusService workerStatusService, AlertWorkerClient workerClient, WorkerGrpcProperties properties, ApplicationEventLogger eventLogger, JsonMapper jsonMapper, MaintenanceModeService maintenanceModeService) {
         this.preparationService = preparationService;
         this.persistenceService = persistenceService;
         this.tokenService = tokenService;
@@ -77,9 +80,11 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
         this.properties = properties;
         this.eventLogger = eventLogger;
         this.jsonMapper = jsonMapper;
+        this.maintenanceModeService = maintenanceModeService;
     }
 
     public boolean triggerManual(long procedureId, String procedureName, boolean allowConcurrentExecutions, String triggeredBy) {
+        maintenanceModeService.assertNotActive();
         if (!enter(procedureId, allowConcurrentExecutions)) {
             eventLogger.failure("PROCEDURE_EXECUTION_REJECTED", rejectionData(procedureId, procedureName, ProcedureExecutionTrigger.MANUAL, triggeredBy));
             return false;
@@ -105,6 +110,9 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
     }
 
     public ProcedureHookExecution executeHook(long procedureId, String procedureName, boolean allowConcurrentExecutions, Duration busyWaitTimeout, String triggeredBy, Runnable waitingCallback, Runnable acquiredCallback) {
+        if (maintenanceModeService.isActive())
+            return new ProcedureHookExecution(null, false, false, false, true);
+
         ProcedureGate gate = procedureGates.computeIfAbsent(procedureId, _ -> new ProcedureGate());
         boolean acquired;
         try {
@@ -112,11 +120,11 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             cleanup(procedureId, gate);
-            return new ProcedureHookExecution(null, false, false, false);
+            return new ProcedureHookExecution(null, false, false, false, false);
         }
         if (!acquired) {
             cleanup(procedureId, gate);
-            return new ProcedureHookExecution(null, false, false, true);
+            return new ProcedureHookExecution(null, false, false, true, false);
         }
 
         boolean executionStarted = false;
@@ -129,22 +137,26 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
             executionStarted = true;
             execute(procedureId, executionId, executionId, null, null, 1,
                     ProcedureExecutionTrigger.HOOK, triggeredBy, deadline, false, null);
-            return new ProcedureHookExecution(executionId, true, false, false);
+            return new ProcedureHookExecution(executionId, true, false, false, false);
         } catch (ProcedureDisabledException exception) {
-            return new ProcedureHookExecution(null, false, true, false);
+            return new ProcedureHookExecution(null, false, true, false, false);
         } catch (RuntimeException exception) {
             UUID persistedId = exception instanceof ProcedureExecutionException executionException
                     ? executionException.getExecutionId() : executionId;
-            return new ProcedureHookExecution(persistedId, false, false, false);
+            return new ProcedureHookExecution(persistedId, false, false, false, false);
         } finally {
             if (!executionStarted)
                 leave(procedureId);
         }
     }
 
-    public record ProcedureHookExecution(UUID executionId, boolean successful, boolean disabled, boolean busyTimeout) { }
+    public record ProcedureHookExecution(UUID executionId, boolean successful, boolean disabled, boolean busyTimeout, boolean maintenance) { }
 
     public InvokeProcedureResponse invoke(ProcedureInvocationTokenService.Claims claims) {
+        if (maintenanceModeService.isActive())
+            return failure(ProcedureInvocationFailureKind.PROCEDURE_INVOCATION_FAILURE_KIND_DISABLED, null,
+                    new MaintenanceModeActiveException("The system is in maintenance mode and is not accepting new executions"), null);
+
         UUID executionId = UUID.randomUUID();
         ProcedureExecutionTrigger trigger = claims.parentKind() == ProcedureParentKind.PROCEDURE_PARENT_KIND_ALERT
                 ? ProcedureExecutionTrigger.ALERT : ProcedureExecutionTrigger.PROCEDURE;

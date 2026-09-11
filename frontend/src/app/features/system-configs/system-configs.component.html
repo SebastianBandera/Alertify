@@ -20,6 +20,113 @@
   } @else {
     <div class="settings-sections">
 
+      <!-- MAINTENANCE_MODE -->
+      @if (maintenanceModeConfiguration(); as configuration) {
+        <section class="settings-section">
+          <header class="settings-section__header">
+            <div>
+              <h2>{{ localization.translate('systemConfigs.maintenanceMode.title') }}</h2>
+              <span class="system-badge">{{ localization.translate('configs.system') }}</span>
+            </div>
+            <small>{{ localization.translate('configs.column.updatedAt') }}: {{ formatDate(configuration.updatedAt) }}</small>
+          </header>
+
+          <p class="settings-section__help">{{ localization.translate('systemConfigs.maintenanceMode.help') }}</p>
+
+          @if (activeExecutionsTotal(); as activeExecutions) {
+            <p class="settings-section__help">
+              {{ localization.translate('systemConfigs.maintenanceMode.activeExecutions').replace('{count}', activeExecutions.toString()) }}
+            </p>
+          } @else if (activeExecutionsTotal() === 0) {
+            <p class="settings-section__help">{{ localization.translate('systemConfigs.maintenanceMode.noActiveExecutions') }}</p>
+          }
+
+          <form class="settings-section__form" (ngSubmit)="saveMaintenanceMode()">
+            <label class="confirmation">
+              <input
+                type="checkbox"
+                [checked]="maintenanceModeForm().enabled"
+                (change)="patchMaintenanceModeForm({ enabled: $any($event.target).checked })"
+              />
+              <span>{{ localization.translate('systemConfigs.maintenanceMode.enabled') }}</span>
+            </label>
+
+            @if (maintenanceModeError()) {
+              <div class="alert alert--error" role="alert">{{ maintenanceModeError() }}</div>
+            }
+
+            <div class="settings-section__actions">
+              <button class="button button--primary" type="submit" [disabled]="saving()">
+                {{ localization.translate(saving() ? 'configs.saving' : 'configs.save') }}
+              </button>
+            </div>
+          </form>
+        </section>
+      }
+
+      <!-- CRON_QUIET_HOURS -->
+      @if (quietHoursConfiguration(); as configuration) {
+        <section class="settings-section">
+          <header class="settings-section__header">
+            <div>
+              <h2>{{ localization.translate('systemConfigs.quietHours.title') }}</h2>
+              <span class="system-badge">{{ localization.translate('configs.system') }}</span>
+            </div>
+            <small>{{ localization.translate('configs.column.updatedAt') }}: {{ formatDate(configuration.updatedAt) }}</small>
+          </header>
+
+          <p class="settings-section__help">{{ localization.translate('systemConfigs.quietHours.help') }}</p>
+
+          <form class="settings-section__form" (ngSubmit)="saveQuietHours()">
+            <label class="confirmation">
+              <input
+                type="checkbox"
+                [checked]="quietHoursForm().enabled"
+                (change)="patchQuietHoursForm({ enabled: $any($event.target).checked })"
+              />
+              <span>{{ localization.translate('systemConfigs.quietHours.enabled') }}</span>
+            </label>
+
+            <div class="form-grid">
+              <label class="field">
+                <span>{{ localization.translate('systemConfigs.quietHours.start') }}</span>
+                <input
+                  required
+                  type="time"
+                  step="60"
+                  [disabled]="!quietHoursForm().enabled"
+                  [ngModel]="quietHoursForm().start"
+                  (ngModelChange)="patchQuietHoursForm({ start: $event })"
+                  name="quietHoursStart"
+                />
+              </label>
+              <label class="field">
+                <span>{{ localization.translate('systemConfigs.quietHours.end') }}</span>
+                <input
+                  required
+                  type="time"
+                  step="60"
+                  [disabled]="!quietHoursForm().enabled"
+                  [ngModel]="quietHoursForm().end"
+                  (ngModelChange)="patchQuietHoursForm({ end: $event })"
+                  name="quietHoursEnd"
+                />
+              </label>
+            </div>
+
+            @if (quietHoursError()) {
+              <div class="alert alert--error" role="alert">{{ quietHoursError() }}</div>
+            }
+
+            <div class="settings-section__actions">
+              <button class="button button--primary" type="submit" [disabled]="saving()">
+                {{ localization.translate(saving() ? 'configs.saving' : 'configs.save') }}
+              </button>
+            </div>
+          </form>
+        </section>
+      }
+
       <!-- KEY_PART -->
       @if (keyPartConfiguration(); as configuration) {
         <section class="settings-section">
@@ -89,69 +196,6 @@
           @if (keyPartError()) {
             <div class="alert alert--error" role="alert">{{ keyPartError() }}</div>
           }
-        </section>
-      }
-
-      <!-- CRON_QUIET_HOURS -->
-      @if (quietHoursConfiguration(); as configuration) {
-        <section class="settings-section">
-          <header class="settings-section__header">
-            <div>
-              <h2>{{ localization.translate('systemConfigs.quietHours.title') }}</h2>
-              <span class="system-badge">{{ localization.translate('configs.system') }}</span>
-            </div>
-            <small>{{ localization.translate('configs.column.updatedAt') }}: {{ formatDate(configuration.updatedAt) }}</small>
-          </header>
-
-          <p class="settings-section__help">{{ localization.translate('systemConfigs.quietHours.help') }}</p>
-
-          <form class="settings-section__form" (ngSubmit)="saveQuietHours()">
-            <label class="confirmation">
-              <input
-                type="checkbox"
-                [checked]="quietHoursForm().enabled"
-                (change)="patchQuietHoursForm({ enabled: $any($event.target).checked })"
-              />
-              <span>{{ localization.translate('systemConfigs.quietHours.enabled') }}</span>
-            </label>
-
-            <div class="form-grid">
-              <label class="field">
-                <span>{{ localization.translate('systemConfigs.quietHours.start') }}</span>
-                <input
-                  required
-                  type="time"
-                  step="60"
-                  [disabled]="!quietHoursForm().enabled"
-                  [ngModel]="quietHoursForm().start"
-                  (ngModelChange)="patchQuietHoursForm({ start: $event })"
-                  name="quietHoursStart"
-                />
-              </label>
-              <label class="field">
-                <span>{{ localization.translate('systemConfigs.quietHours.end') }}</span>
-                <input
-                  required
-                  type="time"
-                  step="60"
-                  [disabled]="!quietHoursForm().enabled"
-                  [ngModel]="quietHoursForm().end"
-                  (ngModelChange)="patchQuietHoursForm({ end: $event })"
-                  name="quietHoursEnd"
-                />
-              </label>
-            </div>
-
-            @if (quietHoursError()) {
-              <div class="alert alert--error" role="alert">{{ quietHoursError() }}</div>
-            }
-
-            <div class="settings-section__actions">
-              <button class="button button--primary" type="submit" [disabled]="saving()">
-                {{ localization.translate(saving() ? 'configs.saving' : 'configs.save') }}
-              </button>
-            </div>
-          </form>
         </section>
       }
 

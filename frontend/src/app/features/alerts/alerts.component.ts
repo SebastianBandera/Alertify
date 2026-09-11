@@ -686,7 +686,9 @@ export class AlertsComponent implements OnInit {
       this.error.set(
         error instanceof ApiRequestError && error.code === 'ALERT_ALREADY_RUNNING'
           ? this.localization.translate('alerts.runAlreadyRunning').replace('{name}', alert.name)
-          : this.errorMessage(error),
+          : error instanceof ApiRequestError && error.code === 'MAINTENANCE_MODE_ACTIVE'
+            ? this.localization.translate('alerts.runMaintenanceMode')
+            : this.errorMessage(error),
       );
     } finally {
       this.runningAlertId.set(null);

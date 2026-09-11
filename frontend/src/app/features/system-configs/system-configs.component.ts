@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { JsonPipe } from '@angular/common';
 
@@ -7,10 +7,12 @@ import {
   SystemConfigurationApiService,
 } from '../../core/api/system-configuration-api.service';
 import { ApiRequestError } from '../../core/api/configuration-api.service';
+import { SystemStatusApiService, SystemStatusSummary } from '../../core/api/system-status-api.service';
 import { LocalizationService } from '../../core/i18n/localization.service';
 
 const KEY_PART_NAME = 'KEY_PART';
 const QUIET_HOURS_NAME = 'CRON_QUIET_HOURS';
+const MAINTENANCE_MODE_NAME = 'MAINTENANCE_MODE';
 
 interface KeyPartForm {
   manualEntryOpen: boolean;
@@ -30,6 +32,14 @@ interface QuietHoursForm {
   end: string;
 }
 
+interface MaintenanceModeValue {
+  enabled: boolean;
+}
+
+interface MaintenanceModeForm {
+  enabled: boolean;
+}
+
 function emptyKeyPartForm(): KeyPartForm {
   return { manualEntryOpen: false, newValue: '', confirmed: false };
 }
@@ -47,6 +57,15 @@ function parseQuietHoursValue(value: unknown): QuietHoursValue {
   };
 }
 
+function emptyMaintenanceModeForm(): MaintenanceModeForm {
+  return { enabled: false };
+}
+
+function parseMaintenanceModeValue(value: unknown): MaintenanceModeValue {
+  const raw = (value ?? {}) as Partial<MaintenanceModeValue>;
+  return { enabled: raw.enabled === true };
+}
+
 @Component({
   selector: 'app-system-configs',
   imports: [FormsModule, JsonPipe],
@@ -59,6 +78,7 @@ export class SystemConfigsComponent implements OnInit {
   protected readonly quietHoursName = QUIET_HOURS_NAME;
 
   private readonly api = inject(SystemConfigurationApiService);
+  private readonly statusApi = inject(SystemStatusApiService);
 
   protected readonly configurations = signal<readonly SystemConfiguration[]>([]);
   protected readonly loading = signal(true);
@@ -73,6 +93,15 @@ export class SystemConfigsComponent implements OnInit {
   protected readonly quietHoursConfiguration = signal<SystemConfiguration | null>(null);
   protected readonly quietHoursForm = signal<QuietHoursForm>(emptyQuietHoursForm());
   protected readonly quietHoursError = signal<string | null>(null);
+
+  protected readonly maintenanceModeConfiguration = signal<SystemConfiguration | null>(null);
+  protected readonly maintenanceModeForm = signal<MaintenanceModeForm>(emptyMaintenanceModeForm());
+  protected readonly maintenanceModeError = signal<string | null>(null);
+  protected readonly systemStatusSummary = signal<SystemStatusSummary | null>(null);
+  protected readonly activeExecutionsTotal = computed(() => {
+    const summary = this.systemStatusSummary();
+    return summary === null ? null : summary.activeAlertExecutions + summary.activeProcedureExecutions;
+  });
 
   protected readonly otherConfigurations = signal<readonly SystemConfiguration[]>([]);
 
@@ -95,15 +124,26 @@ export class SystemConfigsComponent implements OnInit {
       this.quietHoursConfiguration.set(quietHours);
       this.quietHoursForm.set(parseQuietHoursValue(quietHours?.value));
 
+      const maintenanceMode = result.content.find((configuration) => configuration.name === MAINTENANCE_MODE_NAME) ?? null;
+      this.maintenanceModeConfiguration.set(maintenanceMode);
+      this.maintenanceModeForm.set(parseMaintenanceModeValue(maintenanceMode?.value));
+
       this.otherConfigurations.set(
         result.content.filter(
-          (configuration) => configuration.name !== KEY_PART_NAME && configuration.name !== QUIET_HOURS_NAME,
+          (configuration) => configuration.name !== KEY_PART_NAME && configuration.name !== QUIET_HOURS_NAME
+            && configuration.name !== MAINTENANCE_MODE_NAME,
         ),
       );
     } catch (error) {
       this.error.set(this.errorMessage(error));
     } finally {
       this.loading.set(false);
+    }
+
+    try {
+      this.systemStatusSummary.set(await this.statusApi.summary());
+    } catch {
+      this.systemStatusSummary.set(null);
     }
   }
 
@@ -190,6 +230,35 @@ export class SystemConfigsComponent implements OnInit {
       await this.loadConfigurations();
     } catch (error) {
       this.quietHoursError.set(this.errorMessage(error));
+    } finally {
+      this.saving.set(false);
+    }
+  }
+
+  // -- MAINTENANCE_MODE section --
+
+  protected patchMaintenanceModeForm(patch: Partial<MaintenanceModeForm>): void {
+    this.maintenanceModeForm.update((form) => ({ ...form, ...patch }));
+    this.maintenanceModeError.set(null);
+  }
+
+  protected async saveMaintenanceMode(): Promise<void> {
+    const configuration = this.maintenanceModeConfiguration();
+    const form = this.maintenanceModeForm();
+    if (!configuration || this.saving()) return;
+
+    this.saving.set(true);
+    this.maintenanceModeError.set(null);
+    this.notice.set(null);
+    try {
+      await this.api.updateSystemConfiguration(configuration.id, {
+        version: configuration.version,
+        value: { enabled: form.enabled },
+      });
+      this.notice.set(this.localization.translate('systemConfigs.maintenanceMode.saved'));
+      await this.loadConfigurations();
+    } catch (error) {
+      this.maintenanceModeError.set(this.errorMessage(error));
     } finally {
       this.saving.set(false);
     }

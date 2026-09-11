@@ -133,6 +133,10 @@ INSERT INTO core.system_configurations (
     'CRON_QUIET_HOURS',
     '{"enabled": false, "start": "23:00", "end": "07:00"}'::jsonb,
     false
+), (
+    'MAINTENANCE_MODE',
+    '{"enabled": false}'::jsonb,
+    false
 );
 
 CREATE TABLE audit.configurations_aud (
