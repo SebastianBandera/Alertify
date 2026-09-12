@@ -8,3 +8,7 @@
 !start-worker-standard.sh
 !Dockerfile
 !worker-standard/Dockerfile
+
+# Never include local Maven build outputs in Docker build contexts.
+**/target
+**/target/**
