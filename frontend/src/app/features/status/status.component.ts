@@ -270,6 +270,7 @@ export class StatusComponent implements OnInit {
     if (history === null) return {};
 
     const from = new Date(history.from);
+    const maximumActiveTasks = Math.max(1, ...history.series.flatMap((series) => series.values));
     const minuteLabel = (minute: number): string => new Intl.DateTimeFormat(locale, {
       hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit',
     }).format(new Date(from.getTime() + minute * 60_000));
@@ -277,7 +278,7 @@ export class StatusComponent implements OnInit {
     return {
       animation: false,
       color: HISTORY_COLORS,
-      grid: { left: 68, right: 24, top: 66, bottom: 54, width: HISTORY_PLOT_WIDTH_PIXELS - 1 },
+      grid: { left: 68, right: 56, top: 66, bottom: 54, width: HISTORY_PLOT_WIDTH_PIXELS - 1 },
       legend: { data: names, type: 'scroll', top: 10, left: 12, right: 12 },
       tooltip: {
         trigger: 'axis',
@@ -293,11 +294,17 @@ export class StatusComponent implements OnInit {
         name: this.localization.translate('status.history.timeAxis'),
         nameLocation: 'middle', nameGap: 34,
       },
-      yAxis: {
-        type: 'value', minInterval: 1,
-        name: this.localization.translate('status.history.activeAxis'),
-        nameLocation: 'middle', nameGap: 48,
-      },
+      yAxis: [
+        {
+          type: 'value', min: 0, max: maximumActiveTasks, minInterval: 1, splitNumber: 5,
+          name: this.localization.translate('status.history.activeAxis'),
+          nameLocation: 'middle', nameGap: 48,
+        },
+        {
+          type: 'value', min: 0, max: maximumActiveTasks, minInterval: 1, splitNumber: 5,
+          position: 'right', splitLine: { show: false },
+        },
+      ],
       series: history.series.map((series, index) => ({
         name: names[index], type: 'line', smooth: 0.25, smoothMonotone: 'x', showSymbol: false,
         lineStyle: { type: series.kind === 'PROCEDURE' ? 'dashed' : 'solid', width: 2 },
