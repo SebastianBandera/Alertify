@@ -9,6 +9,8 @@ export const ES_UY_TRANSLATIONS = {
   'navigation.primary': 'Navegación principal',
   'navigation.filter': 'Filtrar navegación',
   'navigation.filterPlaceholder': 'Filtrar opciones',
+  'navigation.collapse': 'Colapsar navegación',
+  'navigation.expand': 'Expandir navegación',
   'navigation.sections': 'Secciones del espacio de trabajo',
   'navigation.noMatches': 'Ninguna opción coincide con la búsqueda.',
   'navigation.dashboard': 'Tablero',

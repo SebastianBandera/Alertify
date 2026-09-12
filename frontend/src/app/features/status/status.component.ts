@@ -307,7 +307,7 @@ export class StatusComponent implements OnInit {
       ],
       series: history.series.map((series, index) => ({
         name: names[index], type: 'line', smooth: 0.25, smoothMonotone: 'x', showSymbol: false,
-        lineStyle: { type: series.kind === 'PROCEDURE' ? 'dashed' : 'solid', width: 2 },
+        lineStyle: { width: 2 },
         data: series.values.map((value, minute) => [minute, value]),
       })),
     };

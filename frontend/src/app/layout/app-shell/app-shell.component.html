@@ -1,28 +1,40 @@
-<div class="app-shell">
+<div class="app-shell" [class.app-shell--sidebar-collapsed]="sidebarCollapsed()">
   <aside class="sidebar" [attr.aria-label]="localization.translate('navigation.primary')">
-    <a
-      class="brand"
-      routerLink="/dashboard"
-      [attr.aria-label]="localization.translate('brand.home')"
-    >
-      <img
-        class="brand__mark"
-        src="icons/alertify.svg"
-        width="42"
-        height="42"
-        alt=""
-        aria-hidden="true"
+    <div class="sidebar__brand-row">
+      <a
+        class="brand"
+        routerLink="/dashboard"
+        [attr.aria-label]="localization.translate('brand.home')"
       >
-      <span>
-        <strong>Alertify</strong>
-        <small>{{ localization.translate('brand.subtitle') }}</small>
-      </span>
-    </a>
+        <img
+          class="brand__mark"
+          src="icons/alertify.svg"
+          width="42"
+          height="42"
+          alt=""
+          aria-hidden="true"
+        >
+        <span class="brand__details">
+          <strong>Alertify</strong>
+          <small>{{ localization.translate('brand.subtitle') }}</small>
+        </span>
+      </a>
+      <button
+        class="sidebar-toggle"
+        type="button"
+        (click)="toggleSidebar()"
+        [attr.aria-label]="localization.translate(sidebarCollapsed() ? 'navigation.expand' : 'navigation.collapse')"
+        [attr.title]="localization.translate(sidebarCollapsed() ? 'navigation.expand' : 'navigation.collapse')"
+      >
+        <span class="sidebar-toggle__icon" [class.sidebar-toggle__icon--expand]="sidebarCollapsed()" aria-hidden="true"></span>
+      </button>
+    </div>
 
     <label class="navigation-search">
       <span class="navigation-search__icon" aria-hidden="true"></span>
       <span class="visually-hidden">{{ localization.translate('navigation.filter') }}</span>
       <input
+        #navigationSearchInput
         type="search"
         [placeholder]="localization.translate('navigation.filterPlaceholder')"
         autocomplete="off"
@@ -30,6 +42,15 @@
         (input)="updateSearch($event)"
       >
     </label>
+    <button
+      class="navigation-search-toggle"
+      type="button"
+      (click)="expandSidebarAndFocusSearch()"
+      [attr.aria-label]="localization.translate('navigation.filter')"
+      [attr.title]="localization.translate('navigation.filter')"
+    >
+      <span class="navigation-search__icon" aria-hidden="true"></span>
+    </button>
 
     <nav class="navigation" [attr.aria-label]="localization.translate('navigation.sections')">
       @for (item of filteredNavigationItems(); track item.path) {
@@ -37,6 +58,8 @@
           class="navigation__item"
           [routerLink]="item.path"
           routerLinkActive="navigation__item--active"
+          [attr.aria-label]="localization.translate(item.labelKey)"
+          [attr.title]="localization.translate(item.labelKey)"
         >
           <span class="navigation__marker" aria-hidden="true">
             <span
@@ -52,7 +75,7 @@
               [class.navigation__icon--logs]="item.icon === 'logs'"
             ></span>
           </span>
-          <span>{{ localization.translate(item.labelKey) }}</span>
+          <span class="navigation__label">{{ localization.translate(item.labelKey) }}</span>
         </a>
       } @empty {
         <p class="navigation__empty">{{ localization.translate('navigation.noMatches') }}</p>

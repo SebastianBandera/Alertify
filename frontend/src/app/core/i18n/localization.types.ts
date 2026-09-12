@@ -6,6 +6,8 @@ export type TranslationKey =
   | 'navigation.primary'
   | 'navigation.filter'
   | 'navigation.filterPlaceholder'
+  | 'navigation.collapse'
+  | 'navigation.expand'
   | 'navigation.sections'
   | 'navigation.noMatches'
   | 'navigation.dashboard'

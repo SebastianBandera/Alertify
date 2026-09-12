@@ -9,6 +9,8 @@ export const EN_TRANSLATIONS = {
   'navigation.primary': 'Primary navigation',
   'navigation.filter': 'Filter navigation',
   'navigation.filterPlaceholder': 'Filter options',
+  'navigation.collapse': 'Collapse navigation',
+  'navigation.expand': 'Expand navigation',
   'navigation.sections': 'Workspace sections',
   'navigation.noMatches': 'No options match your search.',
   'navigation.dashboard': 'Dashboard',

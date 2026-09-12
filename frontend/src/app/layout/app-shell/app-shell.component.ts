@@ -3,8 +3,10 @@ import {
   Component,
   computed,
   effect,
+  ElementRef,
   inject,
   signal,
+  viewChild,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Title } from '@angular/platform-browser';
@@ -32,6 +34,8 @@ interface NavigationItem {
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AppShellComponent {
+  private static readonly SIDEBAR_COLLAPSED_STORAGE_KEY = 'alertify.sidebarCollapsed';
+
   protected readonly authService = inject(AuthService);
   protected readonly localization = inject(LocalizationService);
   private readonly logApi = inject(LogApiService);
@@ -65,6 +69,8 @@ export class AppShellComponent {
       : []),
   ];
   protected readonly searchTerm = signal('');
+  protected readonly sidebarCollapsed = signal(this.restoreSidebarCollapsed());
+  private readonly searchInput = viewChild<ElementRef<HTMLInputElement>>('navigationSearchInput');
   private readonly activeTitleKey = signal<TranslationKey>(this.titleKeyForUrl(this.router.url));
   protected readonly filteredNavigationItems = computed(() => {
     const query = this.searchTerm().trim().toLowerCase();
@@ -90,6 +96,25 @@ export class AppShellComponent {
 
   protected updateSearch(event: Event): void {
     this.searchTerm.set((event.target as HTMLInputElement).value);
+  }
+
+  protected toggleSidebar(): void {
+    const collapsed = !this.sidebarCollapsed();
+    this.sidebarCollapsed.set(collapsed);
+
+    try {
+      localStorage.setItem(AppShellComponent.SIDEBAR_COLLAPSED_STORAGE_KEY, String(collapsed));
+    } catch {
+      // The navigation remains usable when browser storage is unavailable.
+    }
+  }
+
+  protected expandSidebarAndFocusSearch(): void {
+    if (this.sidebarCollapsed()) {
+      this.toggleSidebar();
+    }
+
+    setTimeout(() => this.searchInput()?.nativeElement.focus());
   }
 
   protected updateLocale(locale: string): void {
@@ -131,5 +156,13 @@ export class AppShellComponent {
       return 'navigation.logs';
     }
     return 'navigation.dashboard';
+  }
+
+  private restoreSidebarCollapsed(): boolean {
+    try {
+      return localStorage.getItem(AppShellComponent.SIDEBAR_COLLAPSED_STORAGE_KEY) === 'true';
+    } catch {
+      return false;
+    }
   }
 }
