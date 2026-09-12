@@ -8,12 +8,14 @@ import java.util.Optional;
 
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.context.ApplicationEventPublisher;
 
 import tools.jackson.databind.JsonNode;
 
 import app.alertify.jpa.entity.SystemConfiguration;
 import app.alertify.jpa.repository.SystemConfigurationRepository;
 import app.alertify.logging.ApplicationEventLogger;
+import app.alertify.system.CronQuietHoursTransitionEvent;
 
 /**
  * Reads the {@code CRON_QUIET_HOURS} system configuration to decide whether
@@ -39,13 +41,15 @@ public class CronQuietHoursService {
 
     private final SystemConfigurationRepository repository;
     private final ApplicationEventLogger eventLogger;
+    private final ApplicationEventPublisher applicationEventPublisher;
     private volatile Clock clock = Clock.systemDefaultZone();
     private volatile boolean quiet;
     private volatile boolean initialized;
 
-    public CronQuietHoursService(SystemConfigurationRepository repository, ApplicationEventLogger eventLogger) {
+    public CronQuietHoursService(SystemConfigurationRepository repository, ApplicationEventLogger eventLogger, ApplicationEventPublisher applicationEventPublisher) {
         this.repository = repository;
         this.eventLogger = eventLogger;
+        this.applicationEventPublisher = applicationEventPublisher;
     }
 
     void setClockForTesting(Clock clock) {
@@ -69,6 +73,7 @@ public class CronQuietHoursService {
 
         quiet = currentlyQuiet;
         eventLogger.success(currentlyQuiet ? "CRON_QUIET_PERIOD_STARTED" : "CRON_QUIET_PERIOD_ENDED", Map.of());
+        applicationEventPublisher.publishEvent(new CronQuietHoursTransitionEvent(currentlyQuiet));
     }
 
     private boolean computeQuiet() {

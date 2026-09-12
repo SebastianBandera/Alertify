@@ -90,6 +90,17 @@ public class WorkerStatusService implements AutoCloseable {
                 .toList();
     }
 
+    /**
+     * Returns the same live worker data without creating a user-facing status
+     * view audit event. This is used by the administrative status ticker.
+     */
+    public List<WorkerNodeStatusResponse> tickerStatus() {
+        return statusFor(availabilityService.availableWorkers()).stream()
+                .map(WorkerStatusService::toResponse)
+                .sorted(Comparator.comparing(WorkerNodeStatusResponse::address))
+                .toList();
+    }
+
     private List<WorkerStatusResult> statusFor(Set<AvailableWorker> workers) {
         List<Future<WorkerStatusResult>> futures = new ArrayList<>();
         for (AvailableWorker worker : workers)

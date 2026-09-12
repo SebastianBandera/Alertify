@@ -26,6 +26,7 @@ import app.alertify.logging.ApplicationEventLogger;
 import app.alertify.procedures.execution.ProcedureInvocationRegistry;
 import app.alertify.procedures.execution.ProcedureInvocationTokenService;
 import app.alertify.procedures.execution.ProcedureExecutionOrchestrator;
+import app.alertify.system.SystemStatusTickerPublisher;
 import app.alertify.worker.grpc.AlertExecutionResult;
 import app.alertify.worker.grpc.AlertParameter;
 import app.alertify.worker.grpc.AlertParameterValueSource;
@@ -58,10 +59,11 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
     private final ProcedureExecutionOrchestrator procedureExecutionOrchestrator;
     private final CronQuietHoursService quietHoursService;
     private final MaintenanceModeService maintenanceModeService;
+    private final SystemStatusTickerPublisher statusTickerPublisher;
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
     private final ConcurrentMap<Long, AlertGate> alertGates = new ConcurrentHashMap<>();
 
-    public AlertExecutionOrchestrator(AlertExecutionPreparationService preparationService, AlertExecutionPersistenceService persistenceService, WorkerStatusService workerStatusService, AlertWorkerClient workerClient, WorkerGrpcProperties properties, ApplicationEventLogger eventLogger, ProcedureInvocationTokenService procedureTokenService, ProcedureInvocationRegistry procedureInvocationRegistry, ProcedureExecutionOrchestrator procedureExecutionOrchestrator, CronQuietHoursService quietHoursService, MaintenanceModeService maintenanceModeService) {
+    public AlertExecutionOrchestrator(AlertExecutionPreparationService preparationService, AlertExecutionPersistenceService persistenceService, WorkerStatusService workerStatusService, AlertWorkerClient workerClient, WorkerGrpcProperties properties, ApplicationEventLogger eventLogger, ProcedureInvocationTokenService procedureTokenService, ProcedureInvocationRegistry procedureInvocationRegistry, ProcedureExecutionOrchestrator procedureExecutionOrchestrator, CronQuietHoursService quietHoursService, MaintenanceModeService maintenanceModeService, SystemStatusTickerPublisher statusTickerPublisher) {
         this.preparationService = preparationService;
         this.persistenceService = persistenceService;
         this.workerStatusService = workerStatusService;
@@ -73,6 +75,7 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
         this.procedureExecutionOrchestrator = procedureExecutionOrchestrator;
         this.quietHoursService = quietHoursService;
         this.maintenanceModeService = maintenanceModeService;
+        this.statusTickerPublisher = statusTickerPublisher;
     }
 
     /**
@@ -178,6 +181,7 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
                 started.put("workerInstanceId", workerInstanceId);
                 started.put("workerLoad", worker.currentLoad());
                 eventLogger.success("ALERT_EXECUTION_STARTED", started);
+                statusTickerPublisher.publish();
 
                 procedureInvocationRegistry.register(executionId, deadline);
                 ExecuteAlertRequest request = request(executionId.toString(), execution, deadline);
@@ -224,6 +228,7 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
             procedureInvocationRegistry.unregister(executionId);
             persistenceService.clearTrigger(executionId);
             leave(alertId);
+            statusTickerPublisher.publish();
         }
     }
 

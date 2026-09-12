@@ -23,6 +23,7 @@ import app.alertify.grpc.discovery.WorkerEndpoint;
 import app.alertify.grpc.discovery.WorkerReservation;
 import app.alertify.grpc.discovery.WorkerStatusService;
 import app.alertify.logging.ApplicationEventLogger;
+import app.alertify.system.SystemStatusTickerPublisher;
 import app.alertify.procedures.ProcedureBusyException;
 import app.alertify.procedures.ProcedureDisabledException;
 import app.alertify.procedures.ProcedureExecutionException;
@@ -67,10 +68,11 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
     private final ApplicationEventLogger eventLogger;
     private final JsonMapper jsonMapper;
     private final MaintenanceModeService maintenanceModeService;
+    private final SystemStatusTickerPublisher statusTickerPublisher;
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
     private final ConcurrentMap<Long, ProcedureGate> procedureGates = new ConcurrentHashMap<>();
 
-    public ProcedureExecutionOrchestrator(ProcedureExecutionPreparationService preparationService, ProcedureExecutionPersistenceService persistenceService, ProcedureInvocationTokenService tokenService, ProcedureInvocationRegistry invocationRegistry, WorkerStatusService workerStatusService, AlertWorkerClient workerClient, WorkerGrpcProperties properties, ApplicationEventLogger eventLogger, JsonMapper jsonMapper, MaintenanceModeService maintenanceModeService) {
+    public ProcedureExecutionOrchestrator(ProcedureExecutionPreparationService preparationService, ProcedureExecutionPersistenceService persistenceService, ProcedureInvocationTokenService tokenService, ProcedureInvocationRegistry invocationRegistry, WorkerStatusService workerStatusService, AlertWorkerClient workerClient, WorkerGrpcProperties properties, ApplicationEventLogger eventLogger, JsonMapper jsonMapper, MaintenanceModeService maintenanceModeService, SystemStatusTickerPublisher statusTickerPublisher) {
         this.preparationService = preparationService;
         this.persistenceService = persistenceService;
         this.tokenService = tokenService;
@@ -81,6 +83,7 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
         this.eventLogger = eventLogger;
         this.jsonMapper = jsonMapper;
         this.maintenanceModeService = maintenanceModeService;
+        this.statusTickerPublisher = statusTickerPublisher;
     }
 
     public boolean triggerManual(long procedureId, String procedureName, boolean allowConcurrentExecutions, String triggeredBy) {
@@ -230,6 +233,7 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
                 startedData.put("worker", endpoint.toString());
                 startedData.put("depth", depth);
                 eventLogger.success("PROCEDURE_EXECUTION_STARTED", startedData);
+                statusTickerPublisher.publish();
                 ExecuteProcedureRequest request = request(executionId, rootExecutionId, parentAlertExecutionId, parentProcedureExecutionId, depth, deadline, prepared);
                 SynchronizeTemplateRequest source = SynchronizeTemplateRequest.newBuilder().setTemplateClassName(prepared.templateClassName()).setSourceChecksum(prepared.sourceChecksum()).setSource(prepared.source()).setTemplateKind(TemplateKind.TEMPLATE_KIND_PROCEDURE).build();
                 ProcedureExecutionResult result;
@@ -272,6 +276,7 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
         } finally {
             invocationRegistry.unregister(executionId);
             leave(procedureId);
+            statusTickerPublisher.publish();
         }
     }
 

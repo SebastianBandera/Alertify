@@ -1,0 +1,44 @@
+:host {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.status-ticker {
+  overflow: hidden;
+  color: #93370d;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.status-ticker__track {
+  display: inline-flex;
+  align-items: center;
+  min-width: 100%;
+}
+
+.status-ticker__track--scrolling {
+  width: max-content;
+  min-width: max-content;
+  animation: status-ticker-scroll 18s linear infinite;
+}
+
+.status-ticker__message {
+  display: inline-block;
+  margin-right: 48px;
+  padding: 5px 10px;
+  border: 1px solid #fedf89;
+  border-radius: 7px;
+  background: #fffaeb;
+}
+
+@keyframes status-ticker-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+@media (max-width: 520px) {
+  :host { display: none; }
+}

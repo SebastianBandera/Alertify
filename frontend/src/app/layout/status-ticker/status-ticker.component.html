@@ -1,0 +1,10 @@
+@if (message(); as message) {
+  <div #ticker class="status-ticker" aria-live="polite" aria-atomic="true">
+    <div class="status-ticker__track" [class.status-ticker__track--scrolling]="scrolling()">
+      <span class="status-ticker__message">{{ message }}</span>
+      @if (scrolling()) {
+        <span class="status-ticker__message" aria-hidden="true">{{ message }}</span>
+      }
+    </div>
+  </div>
+}

@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 import tools.jackson.databind.node.StringNode;
 
@@ -27,12 +28,13 @@ class SystemConfigurationServiceTest {
 
     @Mock private SystemConfigurationRepository repository;
     @Mock private ApplicationEventLogger eventLogger;
+    @Mock private ApplicationEventPublisher applicationEventPublisher;
 
     private SystemConfigurationService service;
 
     @BeforeEach
     void setUp() {
-        service = new SystemConfigurationService(repository, eventLogger);
+        service = new SystemConfigurationService(repository, eventLogger, applicationEventPublisher);
     }
 
     @Test

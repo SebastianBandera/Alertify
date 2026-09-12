@@ -39,6 +39,7 @@ import app.alertify.procedures.Procedure;
 import app.alertify.procedures.execution.ProcedureExecutionOrchestrator;
 import app.alertify.procedures.execution.ProcedureInvocationRegistry;
 import app.alertify.procedures.execution.ProcedureInvocationTokenService;
+import app.alertify.system.SystemStatusTickerPublisher;
 import app.alertify.worker.contract.WorkerCapability;
 import app.alertify.worker.grpc.AlertExecutionResult;
 import app.alertify.worker.grpc.AlertParameterValueSource;
@@ -65,6 +66,7 @@ class AlertExecutionOrchestratorTest {
     @Mock private ProcedureExecutionOrchestrator procedureExecutionOrchestrator;
     @Mock private CronQuietHoursService quietHoursService;
     @Mock private MaintenanceModeService maintenanceModeService;
+    @Mock private SystemStatusTickerPublisher statusTickerPublisher;
 
     private AlertExecutionOrchestrator orchestrator;
 
@@ -83,7 +85,7 @@ class AlertExecutionOrchestratorTest {
         orchestrator = new AlertExecutionOrchestrator(
                 preparationService, persistenceService, workerStatusService, workerClient,
                 properties(), eventLogger, procedureTokenService, procedureInvocationRegistry, procedureExecutionOrchestrator,
-                quietHoursService, maintenanceModeService
+                quietHoursService, maintenanceModeService, statusTickerPublisher
         );
     }
 

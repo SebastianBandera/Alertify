@@ -11,6 +11,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.context.ApplicationEventPublisher;
 
 import tools.jackson.databind.node.StringNode;
 
@@ -22,6 +23,7 @@ import app.alertify.logging.ApplicationEventLogger;
 import app.alertify.systemconfiguration.api.SystemConfigurationRegenerateRequest;
 import app.alertify.systemconfiguration.api.SystemConfigurationResponse;
 import app.alertify.systemconfiguration.api.SystemConfigurationUpdateRequest;
+import app.alertify.system.SystemConfigurationChangedEvent;
 
 /**
  * Administrative lifecycle for system configurations: entries are seeded by
@@ -46,11 +48,13 @@ public class SystemConfigurationService {
 
     private final SystemConfigurationRepository repository;
     private final ApplicationEventLogger eventLogger;
+    private final ApplicationEventPublisher applicationEventPublisher;
     private final SecureRandom secureRandom = new SecureRandom();
 
-    public SystemConfigurationService(SystemConfigurationRepository repository, ApplicationEventLogger eventLogger) {
+    public SystemConfigurationService(SystemConfigurationRepository repository, ApplicationEventLogger eventLogger, ApplicationEventPublisher applicationEventPublisher) {
         this.repository = repository;
         this.eventLogger = eventLogger;
+        this.applicationEventPublisher = applicationEventPublisher;
     }
 
     @Transactional(readOnly = true)
@@ -95,6 +99,11 @@ public class SystemConfigurationService {
         logData.put("changed", !changedFields.isEmpty());
         logData.put("changedFields", changedFields);
         eventLogger.successAfterCommit("SYSTEM_CONFIGURATION_UPDATED", logData);
+        boolean changed = !changedFields.isEmpty();
+        applicationEventPublisher.publishEvent(new SystemConfigurationChangedEvent(
+                "MAINTENANCE_MODE".equals(configuration.getName()) && changed,
+                "CRON_QUIET_HOURS".equals(configuration.getName()) && changed
+        ));
         return SystemConfigurationMapper.toResponse(configuration);
     }
 

@@ -5,10 +5,17 @@ import { RUNTIME_CONFIG } from '../config/runtime-config';
 
 export interface SystemStatusSummary {
   readonly maintenanceModeEnabled: boolean;
+  readonly cronQuietHoursActive: boolean;
   readonly activeAlertExecutions: number;
   readonly waitingAlertExecutions: number;
   readonly activeProcedureExecutions: number;
   readonly waitingProcedureExecutions: number;
+  readonly saturatedWorkers: readonly WorkerQueueStatus[];
+}
+
+export interface WorkerQueueStatus {
+  readonly workerName: string;
+  readonly waitingCount: number;
 }
 
 @Injectable({ providedIn: 'root' })

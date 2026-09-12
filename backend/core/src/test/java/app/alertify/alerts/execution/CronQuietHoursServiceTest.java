@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -25,6 +26,7 @@ import tools.jackson.databind.json.JsonMapper;
 import app.alertify.jpa.entity.SystemConfiguration;
 import app.alertify.jpa.repository.SystemConfigurationRepository;
 import app.alertify.logging.ApplicationEventLogger;
+import app.alertify.system.CronQuietHoursTransitionEvent;
 
 @ExtendWith(MockitoExtension.class)
 class CronQuietHoursServiceTest {
@@ -34,12 +36,13 @@ class CronQuietHoursServiceTest {
 
     @Mock private SystemConfigurationRepository repository;
     @Mock private ApplicationEventLogger eventLogger;
+    @Mock private ApplicationEventPublisher applicationEventPublisher;
 
     private CronQuietHoursService service;
 
     @BeforeEach
     void setUp() {
-        service = new CronQuietHoursService(repository, eventLogger);
+        service = new CronQuietHoursService(repository, eventLogger, applicationEventPublisher);
     }
 
     // -- isWithin (pure range logic, no clock/repository involved) --
@@ -138,6 +141,7 @@ class CronQuietHoursServiceTest {
 
         verify(eventLogger).success(eq("CRON_QUIET_PERIOD_STARTED"), any());
         verify(eventLogger, never()).success(eq("CRON_QUIET_PERIOD_ENDED"), any());
+        verify(applicationEventPublisher).publishEvent(new CronQuietHoursTransitionEvent(true));
     }
 
     @Test
@@ -152,6 +156,7 @@ class CronQuietHoursServiceTest {
 
         verify(eventLogger).success(eq("CRON_QUIET_PERIOD_ENDED"), any());
         verify(eventLogger, never()).success(eq("CRON_QUIET_PERIOD_STARTED"), any());
+        verify(applicationEventPublisher).publishEvent(new CronQuietHoursTransitionEvent(false));
     }
 
     private void withConfiguration(String json) {

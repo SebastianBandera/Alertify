@@ -16,6 +16,7 @@ import { AuthService } from '../../core/auth/auth.service';
 import { LogApiService } from '../../core/api/log-api.service';
 import { LocalizationService } from '../../core/i18n/localization.service';
 import { TranslationKey } from '../../core/i18n/localization.types';
+import { StatusTickerComponent } from '../status-ticker/status-ticker.component';
 
 interface NavigationItem {
   readonly labelKey: TranslationKey;
@@ -25,7 +26,7 @@ interface NavigationItem {
 
 @Component({
   selector: 'app-shell',
-  imports: [FormsModule, RouterLink, RouterLinkActive, RouterOutlet],
+  imports: [FormsModule, RouterLink, RouterLinkActive, RouterOutlet, StatusTickerComponent],
   templateUrl: './app-shell.component.html',
   styleUrl: './app-shell.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,

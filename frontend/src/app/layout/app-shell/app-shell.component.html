@@ -88,6 +88,9 @@
 
   <main class="workspace">
     <header class="workspace__header">
+      @if (authService.isAdmin) {
+        <app-status-ticker />
+      }
       <div class="workspace__actions">
         <label class="language-selector">
           <span>{{ localization.translate('language.label') }}</span>

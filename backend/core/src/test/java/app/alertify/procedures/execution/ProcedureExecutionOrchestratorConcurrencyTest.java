@@ -24,6 +24,7 @@ import app.alertify.grpc.AlertWorkerClient;
 import app.alertify.grpc.WorkerGrpcProperties;
 import app.alertify.grpc.discovery.WorkerStatusService;
 import app.alertify.logging.ApplicationEventLogger;
+import app.alertify.system.SystemStatusTickerPublisher;
 import app.alertify.worker.grpc.ProcedureInvocationFailureKind;
 import app.alertify.worker.grpc.ProcedureParentKind;
 import tools.jackson.databind.json.JsonMapper;
@@ -41,7 +42,7 @@ class ProcedureExecutionOrchestratorConcurrencyTest {
         orchestrator = new ProcedureExecutionOrchestrator(preparation, persistence,
                 mock(ProcedureInvocationTokenService.class), mock(ProcedureInvocationRegistry.class),
                 mock(WorkerStatusService.class), mock(AlertWorkerClient.class), mock(WorkerGrpcProperties.class),
-                eventLogger, JsonMapper.builder().build(), maintenanceModeService);
+                eventLogger, JsonMapper.builder().build(), maintenanceModeService, mock(SystemStatusTickerPublisher.class));
         gate = new ProcedureGate();
         assertThat(gate.tryEnter(false)).isTrue();
         gates().put(7L, gate);
