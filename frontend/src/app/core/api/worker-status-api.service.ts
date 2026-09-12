@@ -35,6 +35,20 @@ export interface WorkerNodeStatus {
   readonly error: string | null;
 }
 
+export interface WorkerActivitySeries {
+  readonly workerInstanceId: string;
+  readonly workerName: string | null;
+  readonly address: string | null;
+  readonly kind: 'ALERT' | 'PROCEDURE';
+  readonly values: readonly number[];
+}
+
+export interface WorkerActivityHistory {
+  readonly from: string;
+  readonly to: string;
+  readonly series: readonly WorkerActivitySeries[];
+}
+
 @Injectable({ providedIn: 'root' })
 export class WorkerStatusApiService {
   private readonly authService = inject(AuthService);
@@ -49,5 +63,16 @@ export class WorkerStatusApiService {
       throw new Error(`Request failed with status ${response.status}.`);
     }
     return (await response.json()) as readonly WorkerNodeStatus[];
+  }
+
+  async history(): Promise<WorkerActivityHistory> {
+    const token = await this.authService.getAccessToken();
+    const response = await fetch(`${this.apiBaseUrl}/api/workers/status/history`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) {
+      throw new Error(`Request failed with status ${response.status}.`);
+    }
+    return (await response.json()) as WorkerActivityHistory;
   }
 }

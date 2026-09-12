@@ -5,7 +5,7 @@
       <p>{{ localization.translate('status.description') }}</p>
     </div>
     <div class="status-page__refresh">
-      @if (lastUpdatedAt()) {
+      @if (selectedTab() === 'live' && lastUpdatedAt()) {
         <small>
           {{ localization.translate('status.lastUpdated') }}
           {{ lastUpdatedAt() | date:'mediumTime' }}
@@ -14,14 +14,30 @@
       <button
         type="button"
         (click)="refresh()"
-        [disabled]="loading() || refreshing()"
-        [attr.aria-busy]="refreshing()"
+        [disabled]="selectedTab() === 'live' ? loading() || refreshing() : historyLoading() || historyRefreshing()"
+        [attr.aria-busy]="selectedTab() === 'live' ? refreshing() : historyRefreshing()"
       >
         {{ localization.translate('status.refresh') }}
       </button>
     </div>
   </header>
 
+  <nav class="status-tabs" [attr.aria-label]="localization.translate('status.tabs.label')">
+    <button
+      type="button"
+      [class.status-tabs__tab--active]="selectedTab() === 'live'"
+      [attr.aria-selected]="selectedTab() === 'live'"
+      (click)="selectTab('live')"
+    >{{ localization.translate('status.tabs.live') }}</button>
+    <button
+      type="button"
+      [class.status-tabs__tab--active]="selectedTab() === 'history'"
+      [attr.aria-selected]="selectedTab() === 'history'"
+      (click)="selectTab('history')"
+    >{{ localization.translate('status.tabs.history') }}</button>
+  </nav>
+
+  @if (selectedTab() === 'live') {
   @if (error()) {
     <p class="status-page__error" role="alert">{{ error() }}</p>
   }
@@ -209,5 +225,38 @@
         </article>
       }
     </div>
+  }
+  } @else {
+    <section class="status-history" [attr.aria-label]="localization.translate('status.history.title')">
+      <header class="status-history__header">
+        <div>
+          <h2>{{ localization.translate('status.history.title') }}</h2>
+          <p>{{ localization.translate('status.history.description') }}</p>
+        </div>
+        @if (historyLastUpdatedAt()) {
+          <small>{{ localization.translate('status.lastUpdated') }} {{ historyLastUpdatedAt() | date:'mediumTime' }}</small>
+        }
+      </header>
+
+      @if (historyError()) {
+        <p class="status-page__error" role="alert">{{ historyError() }}</p>
+      } @else if (historyLoading()) {
+        <p class="status-page__state">{{ localization.translate('status.history.loading') }}</p>
+      } @else if (!history()?.series?.length) {
+        <p class="status-page__state">{{ localization.translate('status.history.empty') }}</p>
+      } @else {
+        <div class="status-history__scroll" tabindex="0">
+          <div
+            class="status-history__chart"
+            echarts
+            [options]="historyOptions()"
+            [autoResize]="true"
+            (chartInit)="scrollHistoryToLatest()"
+            [attr.aria-label]="localization.translate('status.history.chartLabel')"
+          ></div>
+        </div>
+        <p class="status-history__hint">{{ localization.translate('status.history.hint') }}</p>
+      }
+    </section>
   }
 </section>
