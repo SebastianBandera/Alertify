@@ -5,6 +5,8 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledFuture;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.support.CronTrigger;
 import org.springframework.stereotype.Service;
@@ -17,6 +19,8 @@ import app.alertify.logging.ApplicationEventLogger;
 
 @Service
 public class AlertScheduleService implements AutoCloseable {
+
+    private static final Logger log = LoggerFactory.getLogger(AlertScheduleService.class);
 
     private final AlertRepository alertRepository;
     private final AlertExecutionOrchestrator orchestrator;
@@ -34,8 +38,18 @@ public class AlertScheduleService implements AutoCloseable {
     public synchronized void scheduleAll() {
         schedules.values().forEach(schedule -> schedule.cancel(false));
         schedules.clear();
-        for (Alert alert : alertRepository.findAllByEnabledTrue())
-            schedule(alert);
+        for (Alert alert : alertRepository.findAllByEnabledTrue()) {
+            try {
+                schedule(alert);
+            } catch (RuntimeException exception) {
+                // Keep the application starting: a single unschedulable alert is reported, not fatal.
+                log.error("Alert {} ({}) could not be scheduled and stays inactive: {}", alert.getId(), alert.getName(), exception.getMessage());
+                eventLogger.failure("ALERT_SCHEDULE_FAILED", Map.of(
+                        "alertId", alert.getId(), "alertName", alert.getName(),
+                        "cronExpression", alert.getCronExpression(), "reason", String.valueOf(exception.getMessage())
+                ));
+            }
+        }
     }
 
     public void rescheduleAfterCommit(Long alertId) {

@@ -5,8 +5,8 @@ import java.math.BigInteger;
 import java.net.URI;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -386,13 +386,19 @@ public class AlertManagementService {
             throw new ConflictException("An alert named '" + name + "' already exists");
     }
 
-    private static String validateCron(String value) {
+    static String validateCron(String value) {
         String cron = normalizeRequired(value, "cronExpression");
+        CronExpression expression;
         try {
-            CronExpression.parse(cron);
+            expression = CronExpression.parse(cron);
         } catch (IllegalArgumentException exception) {
             throw invalid("Invalid cron expression: " + exception.getMessage(), exception);
         }
+        // A syntactically valid expression such as "0 0 5 31 2 ?" may never fire; the scheduler
+        // cannot register it, so reject it here instead of failing after commit or at startup.
+        if (expression.next(LocalDateTime.now()) == null)
+            throw invalid("Cron expression '" + cron + "' never matches a future date");
+
         return cron;
     }
 

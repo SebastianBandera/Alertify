@@ -5,6 +5,8 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledFuture;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.scheduling.support.CronTrigger;
@@ -18,6 +20,8 @@ import app.alertify.procedures.model.Procedure;
 
 @Service
 public class ProcedureScheduleService implements AutoCloseable {
+
+    private static final Logger log = LoggerFactory.getLogger(ProcedureScheduleService.class);
 
     private final ProcedureRepository procedureRepository;
     private final ProcedureExecutionOrchestrator orchestrator;
@@ -35,8 +39,18 @@ public class ProcedureScheduleService implements AutoCloseable {
     public synchronized void scheduleAll() {
         schedules.values().forEach(schedule -> schedule.cancel(false));
         schedules.clear();
-        for (Procedure procedure : procedureRepository.findAllByEnabledTrue())
-            schedule(procedure);
+        for (Procedure procedure : procedureRepository.findAllByEnabledTrue()) {
+            try {
+                schedule(procedure);
+            } catch (RuntimeException exception) {
+                // Keep the application starting: a single unschedulable procedure is reported, not fatal.
+                log.error("Procedure {} ({}) could not be scheduled and stays inactive: {}", procedure.getId(), procedure.getName(), exception.getMessage());
+                eventLogger.failure("PROCEDURE_SCHEDULE_FAILED", Map.of(
+                        "procedureId", procedure.getId(), "procedureName", procedure.getName(),
+                        "cronExpression", procedure.getCronExpression(), "reason", String.valueOf(exception.getMessage())
+                ));
+            }
+        }
     }
 
     public void rescheduleAfterCommit(Long procedureId) {

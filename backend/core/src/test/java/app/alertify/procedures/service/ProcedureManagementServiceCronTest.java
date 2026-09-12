@@ -24,4 +24,11 @@ class ProcedureManagementServiceCronTest {
                 .isInstanceOf(InvalidProcedureRequestException.class)
                 .hasMessageStartingWith("Invalid cron expression:");
     }
+
+    @Test
+    void rejectsCronExpressionsThatNeverFire() {
+        assertThatThrownBy(() -> ProcedureManagementService.validateCron("0 0 5 31 2 ?"))
+                .isInstanceOf(InvalidProcedureRequestException.class)
+                .hasMessageContaining("never matches a future date");
+    }
 }
