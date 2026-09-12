@@ -60,6 +60,13 @@
           routerLinkActive="navigation__item--active"
           [attr.aria-label]="localization.translate(item.labelKey)"
           [attr.title]="localization.translate(item.labelKey)"
+          [attr.draggable]="!searchTerm()"
+          [class.navigation__item--dragging]="draggedNavigationPath() === item.path"
+          [class.navigation__item--drop-target]="draggedNavigationPath() !== null && draggedNavigationPath() !== item.path"
+          (dragstart)="startNavigationDrag($event, item)"
+          (dragover)="allowNavigationDrop($event, item)"
+          (drop)="reorderNavigation($event, item)"
+          (dragend)="finishNavigationDrag()"
         >
           <span class="navigation__marker" aria-hidden="true">
             <span

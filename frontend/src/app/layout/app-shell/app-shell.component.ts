@@ -35,6 +35,7 @@ interface NavigationItem {
 })
 export class AppShellComponent {
   private static readonly SIDEBAR_COLLAPSED_STORAGE_KEY = 'alertify.sidebarCollapsed';
+  private static readonly NAVIGATION_ORDER_STORAGE_KEY = 'alertify.navigationOrder';
 
   protected readonly authService = inject(AuthService);
   protected readonly localization = inject(LocalizationService);
@@ -70,15 +71,17 @@ export class AppShellComponent {
   ];
   protected readonly searchTerm = signal('');
   protected readonly sidebarCollapsed = signal(this.restoreSidebarCollapsed());
+  protected readonly orderedNavigationItems = signal(this.restoreNavigationOrder());
+  protected readonly draggedNavigationPath = signal<string | null>(null);
   private readonly searchInput = viewChild<ElementRef<HTMLInputElement>>('navigationSearchInput');
   private readonly activeTitleKey = signal<TranslationKey>(this.titleKeyForUrl(this.router.url));
   protected readonly filteredNavigationItems = computed(() => {
     const query = this.searchTerm().trim().toLowerCase();
     return query
-      ? this.navigationItems.filter((item) =>
+      ? this.orderedNavigationItems().filter((item) =>
           this.localization.translate(item.labelKey).toLowerCase().includes(query),
         )
-      : this.navigationItems;
+      : this.orderedNavigationItems();
   });
 
   constructor() {
@@ -115,6 +118,55 @@ export class AppShellComponent {
     }
 
     setTimeout(() => this.searchInput()?.nativeElement.focus());
+  }
+
+  protected startNavigationDrag(event: DragEvent, item: NavigationItem): void {
+    if (this.searchTerm() || !window.matchMedia('(min-width: 801px)').matches) {
+      event.preventDefault();
+      return;
+    }
+
+    this.draggedNavigationPath.set(item.path);
+    event.dataTransfer?.setData('text/plain', item.path);
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move';
+    }
+  }
+
+  protected allowNavigationDrop(event: DragEvent, item: NavigationItem): void {
+    if (this.draggedNavigationPath() && this.draggedNavigationPath() !== item.path) {
+      event.preventDefault();
+      if (event.dataTransfer) {
+        event.dataTransfer.dropEffect = 'move';
+      }
+    }
+  }
+
+  protected reorderNavigation(event: DragEvent, target: NavigationItem): void {
+    event.preventDefault();
+    const draggedPath = this.draggedNavigationPath();
+    this.draggedNavigationPath.set(null);
+    if (!draggedPath || draggedPath === target.path) {
+      return;
+    }
+
+    const items = this.orderedNavigationItems();
+    const draggedIndex = items.findIndex((item) => item.path === draggedPath);
+    const targetIndex = items.findIndex((item) => item.path === target.path);
+    if (draggedIndex < 0 || targetIndex < 0) {
+      return;
+    }
+
+    const reorderedItems = [...items];
+    const [draggedItem] = reorderedItems.splice(draggedIndex, 1);
+    const insertionIndex = draggedIndex < targetIndex ? targetIndex - 1 : targetIndex;
+    reorderedItems.splice(insertionIndex, 0, draggedItem);
+    this.orderedNavigationItems.set(reorderedItems);
+    this.persistNavigationOrder(reorderedItems);
+  }
+
+  protected finishNavigationDrag(): void {
+    this.draggedNavigationPath.set(null);
   }
 
   protected updateLocale(locale: string): void {
@@ -163,6 +215,37 @@ export class AppShellComponent {
       return localStorage.getItem(AppShellComponent.SIDEBAR_COLLAPSED_STORAGE_KEY) === 'true';
     } catch {
       return false;
+    }
+  }
+
+  private restoreNavigationOrder(): readonly NavigationItem[] {
+    try {
+      const storedOrder = JSON.parse(localStorage.getItem(AppShellComponent.NAVIGATION_ORDER_STORAGE_KEY) ?? 'null');
+      if (!Array.isArray(storedOrder) || storedOrder.some((path) => typeof path !== 'string')) {
+        return this.navigationItems;
+      }
+
+      const itemsByPath = new Map(this.navigationItems.map((item) => [item.path, item]));
+      const restoredPaths = new Set<string>();
+      const restoredItems = storedOrder.reduce<NavigationItem[]>((items, path) => {
+        const item = itemsByPath.get(path);
+        if (item && !restoredPaths.has(item.path)) {
+          restoredPaths.add(item.path);
+          items.push(item);
+        }
+        return items;
+      }, []);
+      return [...restoredItems, ...this.navigationItems.filter((item) => !restoredPaths.has(item.path))];
+    } catch {
+      return this.navigationItems;
+    }
+  }
+
+  private persistNavigationOrder(items: readonly NavigationItem[]): void {
+    try {
+      localStorage.setItem(AppShellComponent.NAVIGATION_ORDER_STORAGE_KEY, JSON.stringify(items.map((item) => item.path)));
+    } catch {
+      // The navigation remains usable when browser storage is unavailable.
     }
   }
 }
