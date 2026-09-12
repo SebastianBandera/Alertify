@@ -40,6 +40,7 @@ import app.alertify.jpa.repository.SystemConfigurationRepository;
 import app.alertify.jpa.repository.TagRepository;
 import app.alertify.services.secret.EncryptedSecretValue;
 import app.alertify.services.secret.SecretEncryptionService;
+import app.alertify.services.secret.SecretExpressionService;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -59,22 +60,22 @@ class SecretExportImportService {
 
     private static final String SECRETS_ENTRY_NAME = "secrets.json";
     private static final String SYSTEM_CONFIGURATIONS_ENTRY_NAME = "system-configurations.json";
-    private static final DateTimeFormatter FILE_TIMESTAMP =
-            DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss").withZone(ZoneOffset.UTC);
+    private static final DateTimeFormatter FILE_TIMESTAMP = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss").withZone(ZoneOffset.UTC);
 
     private final ApplicationSecretRepository secretRepository;
     private final SystemConfigurationRepository systemConfigurationRepository;
     private final TagRepository tagRepository;
     private final SecretEncryptionService encryptionService;
+    private final SecretExpressionService expressionService;
     private final JsonMapper jsonMapper;
     private final SecureRandom secureRandom = new SecureRandom();
 
-    SecretExportImportService(ApplicationSecretRepository secretRepository, SystemConfigurationRepository systemConfigurationRepository,
-            TagRepository tagRepository, SecretEncryptionService encryptionService, JsonMapper jsonMapper) {
+    SecretExportImportService(ApplicationSecretRepository secretRepository, SystemConfigurationRepository systemConfigurationRepository, TagRepository tagRepository, SecretEncryptionService encryptionService, SecretExpressionService expressionService, JsonMapper jsonMapper) {
         this.secretRepository = secretRepository;
         this.systemConfigurationRepository = systemConfigurationRepository;
         this.tagRepository = tagRepository;
         this.encryptionService = encryptionService;
+        this.expressionService = expressionService;
         this.jsonMapper = jsonMapper;
     }
 
@@ -146,6 +147,7 @@ class SecretExportImportService {
 
         List<String> created = new ArrayList<>();
         List<String> skipped = new ArrayList<>();
+        Map<ApplicationSecret, String> importedPlaintexts = new LinkedHashMap<>();
         for (SecretExportPayload.Entry entry : payload.secrets()) {
             if (secretRepository.findByNameIgnoreCase(entry.name()).isPresent()) {
                 skipped.add(entry.name());
@@ -160,11 +162,15 @@ class SecretExportImportService {
             }
 
             EncryptedSecretValue encrypted = encryptionService.encrypt(entry.value());
-            secretRepository.save(new ApplicationSecret(entry.name(), entry.description(), entry.valueTypeOrDefault(),
+            ApplicationSecret saved = secretRepository.save(new ApplicationSecret(entry.name(), entry.description(), entry.valueTypeOrDefault(),
                     encrypted.encryptedValue(), encrypted.encryptionIv(), encrypted.valueHash(), encrypted.hashSalt(),
                     encrypted.encryptionVersion(), resolvedTags, entry.writable()));
+            importedPlaintexts.put(saved, entry.value());
             created.add(entry.name());
         }
+        // Expression dependencies are resolved after every secret exists, so cross references inside the archive work.
+        secretRepository.flush();
+        importedPlaintexts.forEach(expressionService::synchronizeDependencies);
         return new SecretImportResult(List.copyOf(created), List.copyOf(skipped));
     }
 

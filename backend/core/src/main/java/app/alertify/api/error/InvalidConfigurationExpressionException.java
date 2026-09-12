@@ -6,4 +6,8 @@ public class InvalidConfigurationExpressionException extends RuntimeException {
     public InvalidConfigurationExpressionException(String message) {
         super(message);
     }
+
+    public InvalidConfigurationExpressionException(String message, Throwable cause) {
+        super(message, cause);
+    }
 }

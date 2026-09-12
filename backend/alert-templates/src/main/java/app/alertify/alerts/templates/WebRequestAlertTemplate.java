@@ -88,16 +88,31 @@ public final class WebRequestAlertTemplate implements AlertEvaluator {
         descriptionKey = "alerts.template.webRequest.headersJsonDescription",
         defaultValue = "[]",
         multiline = true,
+        required = false,
         order = 5
     )
     private final String headersJson;
+
+    /**
+     * Headers layered on top of {@link #headersJson}: a header here replaces every
+     * base header with the same name (case-insensitive). Meant to be bound to a
+     * secret so credentials never sit next to the public headers.
+     */
+    @AlertParameter(
+        labelKey = "alerts.template.webRequest.headersOverrideJson",
+        descriptionKey = "alerts.template.webRequest.headersOverrideJsonDescription",
+        multiline = true,
+        required = false,
+        order = 6
+    )
+    private final String headersOverrideJson;
 
     @AlertParameter(
         labelKey = "alerts.template.webRequest.responseBodyRegexes",
         descriptionKey = "alerts.template.webRequest.responseBodyRegexesDescription",
         multiline = true,
         required = false,
-        order = 6
+        order = 7
     )
     private final String responseBodyRegexes;
 
@@ -106,7 +121,7 @@ public final class WebRequestAlertTemplate implements AlertEvaluator {
         descriptionKey = "alerts.template.webRequest.timeoutDescription",
         options = { "1", "3", "5", "10", "30" },
         defaultValue = "10",
-        order = 7
+        order = 8
     )
     private final int timeoutSeconds;
 
@@ -116,6 +131,7 @@ public final class WebRequestAlertTemplate implements AlertEvaluator {
         String expectedStatusCodes,
         String body,
         String headersJson,
+        String headersOverrideJson,
         String responseBodyRegexes,
         int timeoutSeconds
     ) {
@@ -124,6 +140,7 @@ public final class WebRequestAlertTemplate implements AlertEvaluator {
         this.expectedStatusCodes = expectedStatusCodes;
         this.body = body;
         this.headersJson = headersJson;
+        this.headersOverrideJson = headersOverrideJson;
         this.responseBodyRegexes = responseBodyRegexes;
         this.timeoutSeconds = timeoutSeconds;
     }
@@ -133,7 +150,7 @@ public final class WebRequestAlertTemplate implements AlertEvaluator {
         URI uri = parseUri(url);
         String requestMethod = parseMethod(method);
         List<Integer> expectedCodes = parseExpectedStatusCodes(expectedStatusCodes);
-        List<Header> headers = parseHeaders(headersJson);
+        List<Header> headers = mergeHeaders(parseHeaders(headersJson), parseHeaders(headersOverrideJson));
         List<Pattern> bodyPatterns = parsePatterns(responseBodyRegexes);
         Duration timeout = timeout(timeoutSeconds);
         byte[] requestBody = requestBody(body, requestMethod);
@@ -166,6 +183,7 @@ public final class WebRequestAlertTemplate implements AlertEvaluator {
             Map<String, Object> statusMessage = statusMessage(
                 endpoint, requestMethod, expectedCodes, timeout, latencyMs
             );
+            statusMessage.put("headerCount", headers.size());
             statusMessage.put("statusCode", response.statusCode());
             statusMessage.put("responseBodyBytes", responseBody.bytes().length);
             statusMessage.put("regexCount", bodyPatterns.size());
@@ -377,6 +395,24 @@ public final class WebRequestAlertTemplate implements AlertEvaluator {
 
     private static long elapsedMillis(long startedNanos) {
         return Math.max(0, (System.nanoTime() - startedNanos) / 1_000_000);
+    }
+
+    /** Base headers minus the names present in override, followed by every override header. */
+    private static List<Header> mergeHeaders(List<Header> base, List<Header> override) {
+        if (override.isEmpty())
+            return base;
+
+        Set<String> overridden = new LinkedHashSet<>();
+        for (Header header : override)
+            overridden.add(header.name().toLowerCase(Locale.ROOT));
+
+        List<Header> merged = new ArrayList<>();
+        for (Header header : base) {
+            if (!overridden.contains(header.name().toLowerCase(Locale.ROOT)))
+                merged.add(header);
+        }
+        merged.addAll(override);
+        return List.copyOf(merged);
     }
 
     private record Header(String name, String value) {

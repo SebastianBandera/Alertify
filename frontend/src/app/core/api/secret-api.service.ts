@@ -14,11 +14,11 @@ export interface SecretTag {
   readonly updatedAt: string;
 }
 
-export type SecretValueType = 'STRING' | 'DB_SECRET';
+export type SecretValueType = 'STRING' | 'DB_SECRET' | 'EXPRESSION';
 
 export type DatabaseEngine = 'POSTGRESQL' | 'MARIADB' | 'SQL_SERVER' | 'ORACLE' | 'OTHER';
 
-export const SECRET_VALUE_TYPES: readonly SecretValueType[] = ['STRING', 'DB_SECRET'];
+export const SECRET_VALUE_TYPES: readonly SecretValueType[] = ['STRING', 'DB_SECRET', 'EXPRESSION'];
 
 export const DATABASE_ENGINES: readonly DatabaseEngine[] = ['POSTGRESQL', 'MARIADB', 'SQL_SERVER', 'ORACLE', 'OTHER'];
 
@@ -34,6 +34,20 @@ export interface DatabaseSecretValue {
 }
 
 export type SecretValue = string | DatabaseSecretValue;
+
+export interface SecretExpressionSuggestions {
+  readonly configurations: readonly string[];
+  readonly secrets: readonly string[];
+  readonly environmentVariables: readonly string[];
+  readonly utilities: readonly string[];
+  readonly utilityFunctions: readonly string[];
+}
+
+export interface SecretExpressionValidationRequest {
+  readonly secretId?: number;
+  readonly name?: string;
+  readonly expression: string;
+}
 
 export interface ApplicationSecret {
   readonly id: number;
@@ -98,6 +112,15 @@ export class SecretApiService {
 
   async deleteSecret(id: number, version: number): Promise<void> {
     await this.request<void>(`/api/secrets/${id}?version=${version}`, { method: 'DELETE' });
+  }
+
+  async getExpressionSuggestions(): Promise<SecretExpressionSuggestions> {
+    return this.request('/api/secrets/expression-suggestions');
+  }
+
+  /** Resolves when the draft is valid; the evaluated value is never returned. */
+  async validateExpression(request: SecretExpressionValidationRequest): Promise<void> {
+    await this.request<void>('/api/secrets/validate-expression', { method: 'POST', body: JSON.stringify(request) });
   }
 
   async listTags(): Promise<readonly SecretTag[]> {

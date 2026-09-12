@@ -14,19 +14,20 @@ import app.alertify.logging.ApplicationEventLogger;
 
 /**
  * Internal read boundary for consumers that need secret metadata or a
- * decrypted value by name. Every catalog or value access is recorded in the
- * application log, while public controllers never expose the value.
+ * resolved value by name. Expression secrets are evaluated on every access.
+ * Every catalog or value access is recorded in the application log, while
+ * public controllers never expose the value.
  */
 @Service
 public class SecretAccessService {
 
     private final ApplicationSecretRepository secretRepository;
-    private final SecretEncryptionService encryptionService;
+    private final SecretExpressionService expressionService;
     private final ApplicationEventLogger eventLogger;
 
-    public SecretAccessService(ApplicationSecretRepository secretRepository, SecretEncryptionService encryptionService, ApplicationEventLogger eventLogger) {
+    public SecretAccessService(ApplicationSecretRepository secretRepository, SecretExpressionService expressionService, ApplicationEventLogger eventLogger) {
         this.secretRepository = secretRepository;
-        this.encryptionService = encryptionService;
+        this.expressionService = expressionService;
         this.eventLogger = eventLogger;
     }
 
@@ -50,11 +51,14 @@ public class SecretAccessService {
         }
 
         try {
-            String value = encryptionService.decrypt(secret);
-            eventLogger.success("SECRET_VALUE_ACCESSED", Map.of("secretId", secret.getId(), "name", secret.getName()));
+            String value = expressionService.resolve(secret);
+            eventLogger.success("SECRET_VALUE_ACCESSED", Map.of("secretId", secret.getId(), "name", secret.getName(), "valueType", secret.getValueType()));
             return value;
         } catch (SecretNotRecoverableException exception) {
             eventLogger.failure("SECRET_VALUE_ACCESSED", Map.of("secretId", secret.getId(), "name", secret.getName(), "reason", "UNRECOVERABLE"));
+            throw exception;
+        } catch (RuntimeException exception) {
+            eventLogger.failure("SECRET_VALUE_ACCESSED", Map.of("secretId", secret.getId(), "name", secret.getName(), "reason", "EXPRESSION_FAILED", "message", String.valueOf(exception.getMessage())));
             throw exception;
         }
     }

@@ -46,6 +46,37 @@ class ConfigurationExpressionUtilityResolverTest {
     }
 
     @Test
+    void appliesEveryBase64Variant() {
+        String text = "user:p\u00e4ss>>?";
+
+        assertThat(resolver.apply("BASE64", text)).isEqualTo("dXNlcjpww6Rzcz4+Pw==");
+        assertThat(resolver.apply("BASE64_NOPAD", text)).isEqualTo("dXNlcjpww6Rzcz4+Pw");
+        assertThat(resolver.apply("BASE64_URL", text)).isEqualTo("dXNlcjpww6Rzcz4-Pw==");
+        assertThat(resolver.apply("BASE64_URL_NOPAD", text)).isEqualTo("dXNlcjpww6Rzcz4-Pw");
+        assertThat(resolver.apply("BASE64_MIME", "x".repeat(60))).contains("\r\n");
+        assertThat(resolver.apply("BASE64_DECODE", "dXNlcjpww6Rzcz4+Pw==")).isEqualTo(text);
+        assertThat(resolver.apply("BASE64_URL_DECODE", "dXNlcjpww6Rzcz4-Pw")).isEqualTo(text);
+        assertThat(resolver.apply("BASE64_MIME_DECODE", resolver.apply("BASE64_MIME", text))).isEqualTo(text);
+        assertThat(resolver.functionNames()).contains("BASE64", "BASE64_URL_DECODE");
+    }
+
+    @Test
+    void rejectsInvalidBase64InputAndNonUtf8Output() {
+        assertThatThrownBy(() -> resolver.apply("BASE64_DECODE", "not base64!"))
+                .isInstanceOf(InvalidConfigurationExpressionException.class)
+                .hasMessageContaining("not valid base64");
+        assertThatThrownBy(() -> resolver.apply("BASE64_DECODE", "/w=="))
+                .isInstanceOf(InvalidConfigurationExpressionException.class)
+                .hasMessageContaining("UTF-8");
+        assertThatThrownBy(() -> resolver.apply("YEAR", "x"))
+                .isInstanceOf(InvalidConfigurationExpressionException.class)
+                .hasMessageContaining("function");
+        assertThatThrownBy(() -> resolver.ensureSupported("BASE64", false))
+                .isInstanceOf(InvalidConfigurationExpressionException.class)
+                .hasMessageContaining("requires an argument");
+    }
+
+    @Test
     void rejectsUnknownUtility() {
         assertThatThrownBy(() -> resolver.resolve("UNKNOWN", ZonedDateTime.now()))
                 .isInstanceOf(InvalidConfigurationExpressionException.class)

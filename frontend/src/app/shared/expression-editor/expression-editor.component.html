@@ -1,0 +1,35 @@
+<div class="expression-editor">
+  <textarea
+    #expressionValue
+    [required]="required()"
+    [rows]="rows()"
+    class="expression-editor__input"
+    autocomplete="off"
+    spellcheck="false"
+    [placeholder]="placeholder()"
+    [value]="value()"
+    [name]="name()"
+    (input)="updateValue($event)"
+    (click)="refreshCompletions(expressionValue)"
+    (keydown)="handleKeydown($event, expressionValue)"
+    (blur)="closeCompletions()"
+    role="combobox"
+    aria-autocomplete="list"
+    [attr.aria-expanded]="completions().length > 0"
+    [attr.aria-controls]="listId"
+  ></textarea>
+  @if (completions().length > 0) {
+    <div [id]="listId" class="expression-completions" role="listbox">
+      @for (completion of completions(); track completion.label; let index = $index) {
+        <button
+          class="expression-completion"
+          [class.expression-completion--selected]="selectedCompletion() === index"
+          type="button"
+          role="option"
+          [attr.aria-selected]="selectedCompletion() === index"
+          (mousedown)="chooseCompletion(expressionValue, index, $event)"
+        >{{ completion.label }}</button>
+      }
+    </div>
+  }
+</div>

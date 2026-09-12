@@ -16,13 +16,13 @@ import app.alertify.api.error.InvalidConfigurationExpressionException;
  * configurations and permanently blocks variables containing key material.
  */
 @Component
-class EnvironmentVariableResolver {
+public class EnvironmentVariableResolver {
 
     private static final Set<String> ALWAYS_DENIED = Set.of("KEY_ENV_PART");
 
     private final Set<String> allowedNames;
 
-    EnvironmentVariableResolver(@Value("${configuration-expressions.allowed-environment-variables:}") String allowedNames) {
+    public EnvironmentVariableResolver(@Value("${configuration-expressions.allowed-environment-variables:}") String allowedNames) {
         Set<String> parsedNames = new LinkedHashSet<>();
         Arrays.stream(allowedNames.split(","))
                 .map(String::trim)
@@ -32,7 +32,7 @@ class EnvironmentVariableResolver {
         this.allowedNames = Set.copyOf(parsedNames);
     }
 
-    String resolve(String name) {
+    public String resolve(String name) {
         ensureAllowed(name);
         String value = System.getenv(name);
         if (value == null) {
@@ -43,7 +43,7 @@ class EnvironmentVariableResolver {
         return value;
     }
 
-    void ensureAllowed(String name) {
+    public void ensureAllowed(String name) {
         if (!allowedNames.contains(name)) {
             throw new InvalidConfigurationExpressionException(
                     "Environment variable '" + name + "' is not allowed in configuration expressions"
@@ -51,7 +51,7 @@ class EnvironmentVariableResolver {
         }
     }
 
-    List<String> allowedNames() {
+    public List<String> allowedNames() {
         return allowedNames.stream().sorted(Comparator.naturalOrder()).toList();
     }
 

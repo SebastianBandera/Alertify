@@ -11,6 +11,7 @@ import {
   TagMatchMode,
 } from '../../core/api/configuration-api.service';
 import { LocalizationService } from '../../core/i18n/localization.service';
+import { ExpressionEditorComponent } from '../../shared/expression-editor/expression-editor.component';
 
 interface ConfigurationForm {
   name: string;
@@ -24,13 +25,6 @@ interface ConfigurationForm {
 interface TagForm {
   name: string;
   color: string;
-}
-
-interface ExpressionCompletion {
-  readonly label: string;
-  readonly replacement: string;
-  readonly replacementStart: number;
-  readonly replacementEnd: number;
 }
 
 const VALUE_TYPES: readonly ConfigurationValueType[] = [
@@ -59,7 +53,7 @@ function readStoredPageSize(): number {
 
 @Component({
   selector: 'app-configs',
-  imports: [FormsModule],
+  imports: [FormsModule, ExpressionEditorComponent],
   templateUrl: './configs.component.html',
   styleUrl: './configs.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -107,11 +101,9 @@ export class ConfigsComponent implements OnInit {
   protected readonly formError = signal<string | null>(null);
   protected readonly evaluatingExpression = signal(false);
   protected readonly evaluatedExpression = signal<string | null>(null);
-  protected readonly expressionConfigurationNames = signal<readonly string[]>([]);
-  protected readonly expressionEnvironmentNames = signal<readonly string[]>([]);
-  protected readonly expressionUtilityNames = signal<readonly string[]>([]);
-  protected readonly expressionCompletions = signal<readonly ExpressionCompletion[]>([]);
-  protected readonly selectedExpressionCompletion = signal(0);
+  protected readonly expressionScopes: readonly string[] = ['configs', 'env', 'utils'];
+  protected readonly expressionNames = signal<Readonly<Record<string, readonly string[]>>>({ configs: [], env: [], utils: [] });
+  protected readonly expressionUtilityFunctions = signal<readonly string[]>([]);
 
   protected readonly tagDialogOpen = signal(false);
   protected readonly editingTag = signal<ConfigurationTag | null>(null);
@@ -156,9 +148,8 @@ export class ConfigsComponent implements OnInit {
   protected async loadExpressionSuggestions(): Promise<void> {
     try {
       const suggestions = await this.api.getExpressionSuggestions();
-      this.expressionConfigurationNames.set(suggestions.configurations);
-      this.expressionEnvironmentNames.set(suggestions.environmentVariables);
-      this.expressionUtilityNames.set(suggestions.utilities);
+      this.expressionNames.set({ configs: suggestions.configurations, env: suggestions.environmentVariables, utils: suggestions.utilities });
+      this.expressionUtilityFunctions.set(suggestions.utilityFunctions);
     } catch (error) {
       this.error.set(this.errorMessage(error));
     }
@@ -332,70 +323,6 @@ export class ConfigsComponent implements OnInit {
     }
   }
 
-  protected updateExpressionValue(event: Event): void {
-    const textarea = event.target as HTMLTextAreaElement;
-    this.patchConfigurationForm({ rawValue: textarea.value });
-    this.refreshExpressionCompletions(textarea);
-  }
-
-  protected refreshExpressionCompletions(textarea: HTMLTextAreaElement): void {
-    if (this.configurationForm().valueType !== 'EXPRESSION') {
-      this.closeExpressionCompletions();
-      return;
-    }
-
-    const value = textarea.value;
-    const cursor = textarea.selectionStart ?? value.length;
-    const opening = value.lastIndexOf('{{', cursor - 1);
-    const lastClosing = value.lastIndexOf('}}', cursor - 1);
-    if (opening < 0 || opening < lastClosing) {
-      this.closeExpressionCompletions();
-      return;
-    }
-
-    const fragment = value.slice(opening + 2, cursor);
-    const separator = fragment.indexOf('.');
-    const scope = separator < 0 ? '' : fragment.slice(0, separator).toLowerCase();
-    const allowsSpaces = scope === 'configs';
-    if (/[{}]/.test(fragment) || (!allowsSpaces && /\s/.test(fragment))) {
-      this.closeExpressionCompletions();
-      return;
-    }
-
-    const completions = this.buildExpressionCompletions(fragment, opening + 2, cursor, value.slice(cursor));
-    this.expressionCompletions.set(completions);
-    this.selectedExpressionCompletion.set(0);
-  }
-
-  protected handleExpressionKeydown(event: KeyboardEvent, textarea: HTMLTextAreaElement): void {
-    const completions = this.expressionCompletions();
-    if (completions.length === 0) return;
-
-    if (event.key === 'ArrowDown') {
-      event.preventDefault();
-      this.selectedExpressionCompletion.update((index) => (index + 1) % completions.length);
-    } else if (event.key === 'ArrowUp') {
-      event.preventDefault();
-      this.selectedExpressionCompletion.update((index) => (index - 1 + completions.length) % completions.length);
-    } else if (event.key === 'Tab' || event.key === 'Enter') {
-      event.preventDefault();
-      this.applyExpressionCompletion(textarea, this.selectedExpressionCompletion());
-    } else if (event.key === 'Escape') {
-      event.preventDefault();
-      this.closeExpressionCompletions();
-    }
-  }
-
-  protected chooseExpressionCompletion(textarea: HTMLTextAreaElement, index: number, event: MouseEvent): void {
-    event.preventDefault();
-    this.applyExpressionCompletion(textarea, index);
-  }
-
-  protected closeExpressionCompletions(): void {
-    this.expressionCompletions.set([]);
-    this.selectedExpressionCompletion.set(0);
-  }
-
   protected async evaluateExpression(): Promise<void> {
     const form = this.configurationForm();
     if (this.evaluatingExpression() || form.valueType !== 'EXPRESSION') return;
@@ -403,7 +330,6 @@ export class ConfigsComponent implements OnInit {
     this.evaluatingExpression.set(true);
     this.evaluatedExpression.set(null);
     this.formError.set(null);
-    this.closeExpressionCompletions();
     try {
       const response = await this.api.evaluateExpression({
         ...(this.editingConfiguration() ? { configurationId: this.editingConfiguration()!.id } : {}),
@@ -622,69 +548,9 @@ export class ConfigsComponent implements OnInit {
     }
   }
 
-  private buildExpressionCompletions(
-    fragment: string,
-    replacementStart: number,
-    replacementEnd: number,
-    remainingValue: string,
-  ): readonly ExpressionCompletion[] {
-    const normalizedFragment = fragment.toLowerCase();
-    if (!fragment.includes('.')) {
-      return ['configs', 'env', 'utils']
-        .filter((scope) => scope.startsWith(normalizedFragment))
-        .map((scope) => ({
-          label: scope,
-          replacement: `${scope}.`,
-          replacementStart,
-          replacementEnd,
-        }));
-    }
-
-    const separator = fragment.indexOf('.');
-    const scope = fragment.slice(0, separator).toLowerCase();
-    const prefix = fragment.slice(separator + 1);
-    const names = scope === 'configs'
-      ? this.expressionConfigurationNames()
-      : scope === 'env'
-        ? this.expressionEnvironmentNames()
-        : scope === 'utils'
-          ? this.expressionUtilityNames()
-          : [];
-    const closing = remainingValue.startsWith('}}') ? '' : '}}';
-    return names
-      .filter((name) => name.toLowerCase().startsWith(prefix.toLowerCase()))
-      .slice(0, 50)
-      .map((name) => ({
-        label: `${scope}.${name}`,
-        replacement: `${scope}.${name}${closing}`,
-        replacementStart,
-        replacementEnd,
-      }));
-  }
-
-  private applyExpressionCompletion(textarea: HTMLTextAreaElement, index: number): void {
-    const completion = this.expressionCompletions()[index];
-    if (!completion) return;
-
-    const currentValue = textarea.value;
-    const value = currentValue.slice(0, completion.replacementStart)
-      + completion.replacement
-      + currentValue.slice(completion.replacementEnd);
-    const cursor = completion.replacementStart + completion.replacement.length;
-    textarea.value = value;
-    this.patchConfigurationForm({ rawValue: value });
-    this.closeExpressionCompletions();
-    queueMicrotask(() => {
-      textarea.focus();
-      textarea.setSelectionRange(cursor, cursor);
-      if (completion.replacement.endsWith('.')) this.refreshExpressionCompletions(textarea);
-    });
-  }
-
   private resetExpressionEditorState(): void {
     this.evaluatingExpression.set(false);
     this.evaluatedExpression.set(null);
-    this.closeExpressionCompletions();
   }
 
   private toEditorValue(type: ConfigurationValueType, value: unknown): string {
@@ -719,11 +585,22 @@ export class ConfigsComponent implements OnInit {
   private errorMessage(error: unknown, referencedOperation?: 'delete' | 'rename'): string {
     if (error instanceof ApiRequestError && error.code === 'CONFIGURATION_REFERENCED_BY_EXPRESSION') {
       const name = error.parameters['configurationName'] ?? '';
-      const dependents = this.referencedConfigurationNames(error)
+      const dependents = this.referencedConfigurationNames(error, 'because it is referenced by:')
         ?? this.localization.translate('configs.expression.referencedUnknown');
       const key = referencedOperation === 'rename'
         ? 'configs.expression.referencedRename'
         : 'configs.expression.referencedDelete';
+      return this.localization.translate(key)
+        .replace('{name}', name)
+        .replace('{dependents}', dependents);
+    }
+    if (error instanceof ApiRequestError && error.code === 'CONFIGURATION_REFERENCED_BY_SECRET_EXPRESSION') {
+      const name = error.parameters['configurationName'] ?? '';
+      const dependents = this.referencedConfigurationNames(error, 'because it is referenced by secrets:')
+        ?? this.localization.translate('configs.expression.referencedUnknown');
+      const key = referencedOperation === 'rename'
+        ? 'configs.expression.referencedBySecretsRename'
+        : 'configs.expression.referencedBySecretsDelete';
       return this.localization.translate(key)
         .replace('{name}', name)
         .replace('{dependents}', dependents);
@@ -736,8 +613,7 @@ export class ConfigsComponent implements OnInit {
     return error instanceof Error ? error.message : String(error);
   }
 
-  private referencedConfigurationNames(error: ApiRequestError): string | null {
-    const marker = 'because it is referenced by:';
+  private referencedConfigurationNames(error: ApiRequestError, marker: string): string | null {
     const markerIndex = error.message.lastIndexOf(marker);
     if (markerIndex < 0) return null;
 

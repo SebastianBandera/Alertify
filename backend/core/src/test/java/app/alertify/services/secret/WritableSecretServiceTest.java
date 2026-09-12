@@ -18,6 +18,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import app.alertify.configuration.service.ConfigurationExpressionParser;
 import app.alertify.jpa.entity.ApplicationSecret;
 import app.alertify.jpa.entity.SecretValueType;
 import app.alertify.jpa.repository.ApplicationSecretRepository;
@@ -121,7 +122,7 @@ class WritableSecretServiceTest {
     }
 
     private WritableSecretService service() {
-        return new WritableSecretService(secretRepository, encryptionService, new SecretValueValidator(), eventLogger);
+        return new WritableSecretService(secretRepository, encryptionService, new SecretValueValidator(new ConfigurationExpressionParser()), eventLogger);
     }
 
     private static ApplicationSecret secret(boolean writable) {

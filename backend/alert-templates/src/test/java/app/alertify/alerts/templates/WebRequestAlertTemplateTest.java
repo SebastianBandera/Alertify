@@ -1,12 +1,14 @@
 package app.alertify.alerts.templates;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.Test;
@@ -28,9 +30,69 @@ class WebRequestAlertTemplateTest {
         assertEquals("alerts.template.webRequest.name", template.nameKey());
         assertTrue(parameter("body").multiline());
         assertTrue(parameter("headersJson").multiline());
+        assertTrue(parameter("headersOverrideJson").multiline());
         assertTrue(parameter("responseBodyRegexes").multiline());
         assertEquals("GET", parameter("method").defaultValue());
         assertEquals("200", parameter("expectedStatusCodes").defaultValue());
+        assertFalse(parameter("headersJson").required());
+        assertEquals("[]", parameter("headersJson").defaultValue());
+        assertFalse(parameter("headersOverrideJson").required());
+        assertEquals("", parameter("headersOverrideJson").defaultValue());
+        assertTrue(parameter("headersOverrideJson").bindingAllowed());
+        assertEquals(5, parameter("headersJson").order());
+        assertEquals(6, parameter("headersOverrideJson").order());
+        assertEquals(7, parameter("responseBodyRegexes").order());
+        assertEquals(8, parameter("timeoutSeconds").order());
+    }
+
+    @Test
+    void overrideHeadersReplaceBaseHeadersByNameAndNeverLeakIntoTheResult() throws Exception {
+        AtomicReference<List<String>> authorization = new AtomicReference<>();
+        AtomicReference<List<String>> accept = new AtomicReference<>();
+        AtomicReference<List<String>> custom = new AtomicReference<>();
+        HttpServer server = server(exchange -> {
+            authorization.set(exchange.getRequestHeaders().get("Authorization"));
+            accept.set(exchange.getRequestHeaders().get("Accept"));
+            custom.set(exchange.getRequestHeaders().get("X-Multi"));
+            respond(exchange, 200, "ok");
+        });
+        try {
+            AlertResult result = new WebRequestAlertTemplate(
+                "http://127.0.0.1:" + server.getAddress().getPort() + "/", "GET", "200", null,
+                "[\"Accept: application/json\", \"authorization: Basic invalid\", \"X-Multi: a\", \"X-Multi: b\"]",
+                "[\"Authorization: Basic dXNlcjpwYXNz\"]",
+                null, 3
+            ).evaluate(new AlertExecutionContext());
+
+            assertEquals(AlertExecutionStatus.SUCCESS, result.status());
+            assertEquals(List.of("Basic dXNlcjpwYXNz"), authorization.get());
+            assertEquals(List.of("application/json"), accept.get());
+            assertEquals(List.of("a", "b"), custom.get());
+            assertEquals(4, result.statusMessage().get("headerCount"));
+            assertFalse(result.statusMessage().toString().contains("dXNlcjpwYXNz"));
+            assertFalse(result.statusMessage().toString().contains("Authorization"));
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void acceptsMissingHeadersAndOverrides() throws Exception {
+        HttpServer server = server(exchange -> respond(exchange, 200, "ok"));
+        try {
+            AlertResult blank = new WebRequestAlertTemplate(
+                "http://127.0.0.1:" + server.getAddress().getPort() + "/", "GET", "200", null, "", null, null, 3
+            ).evaluate(new AlertExecutionContext());
+            AlertResult nulls = new WebRequestAlertTemplate(
+                "http://127.0.0.1:" + server.getAddress().getPort() + "/", "GET", "200", null, null, "  ", null, 3
+            ).evaluate(new AlertExecutionContext());
+
+            assertEquals(AlertExecutionStatus.SUCCESS, blank.status());
+            assertEquals(AlertExecutionStatus.SUCCESS, nulls.status());
+            assertEquals(0, blank.statusMessage().get("headerCount"));
+        } finally {
+            server.stop(0);
+        }
     }
 
     @Test
@@ -124,10 +186,10 @@ class WebRequestAlertTemplateTest {
     @Test
     void rejectsInvalidConfigurationBeforeSendingTheRequest() {
         WebRequestAlertTemplate invalidHeaders = new WebRequestAlertTemplate(
-            "https://example.test", "GET", "200", null, "[1]", null, 3
+            "https://example.test", "GET", "200", null, "[1]", null, null, 3
         );
         WebRequestAlertTemplate invalidRegex = new WebRequestAlertTemplate(
-            "https://example.test", "GET", "200", null, "[]", "[", 3
+            "https://example.test", "GET", "200", null, "[]", null, "[", 3
         );
 
         assertThrows(IllegalArgumentException.class, () -> invalidHeaders.evaluate(new AlertExecutionContext()));
@@ -160,6 +222,7 @@ class WebRequestAlertTemplateTest {
             expectedStatusCodes,
             body,
             headersJson,
+            null,
             responseBodyRegexes,
             timeoutSeconds
         );

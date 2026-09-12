@@ -1,6 +1,5 @@
 package app.alertify.configuration.service;
 
-import java.nio.charset.StandardCharsets;
 import java.time.ZonedDateTime;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -22,6 +21,7 @@ import app.alertify.jpa.entity.ApplicationConfiguration;
 import app.alertify.jpa.entity.ConfigurationValueType;
 import app.alertify.jpa.repository.ApplicationConfigurationRepository;
 import app.alertify.logging.ApplicationEventLogger;
+import app.alertify.services.secret.SecretExpressionDependencyRepository;
 import tools.jackson.databind.JsonNode;
 
 /**
@@ -32,19 +32,20 @@ import tools.jackson.databind.JsonNode;
 @Service
 public class ConfigurationExpressionService {
 
-    private static final int MAX_DEPTH = 32;
-    private static final int MAX_RESULT_BYTES = 1024 * 1024;
+    private static final int MAX_DEPTH = ExpressionEvaluator.MAX_DEPTH;
 
     private final ApplicationConfigurationRepository configurationRepository;
     private final ConfigurationExpressionDependencyRepository dependencyRepository;
+    private final SecretExpressionDependencyRepository secretDependencyRepository;
     private final ConfigurationExpressionParser parser;
     private final EnvironmentVariableResolver environmentVariables;
     private final ConfigurationExpressionUtilityResolver utilities;
     private final ApplicationEventLogger eventLogger;
 
-    public ConfigurationExpressionService(ApplicationConfigurationRepository configurationRepository, ConfigurationExpressionDependencyRepository dependencyRepository, ConfigurationExpressionParser parser, EnvironmentVariableResolver environmentVariables, ConfigurationExpressionUtilityResolver utilities, ApplicationEventLogger eventLogger) {
+    public ConfigurationExpressionService(ApplicationConfigurationRepository configurationRepository, ConfigurationExpressionDependencyRepository dependencyRepository, SecretExpressionDependencyRepository secretDependencyRepository, ConfigurationExpressionParser parser, EnvironmentVariableResolver environmentVariables, ConfigurationExpressionUtilityResolver utilities, ApplicationEventLogger eventLogger) {
         this.configurationRepository = configurationRepository;
         this.dependencyRepository = dependencyRepository;
+        this.secretDependencyRepository = secretDependencyRepository;
         this.parser = parser;
         this.environmentVariables = environmentVariables;
         this.utilities = utilities;
@@ -74,7 +75,7 @@ public class ConfigurationExpressionService {
 
         data.put("configurationReferenceCount", parsed.configurationNames().size());
         data.put("environmentReferenceCount", parsed.environmentNames().size());
-        data.put("utilityReferenceCount", parsed.utilityNames().size());
+        data.put("utilityReferenceCount", parsed.utilityNames().size() + parsed.utilityFunctionNames().size());
         eventLogger.success("CONFIGURATION_EXPRESSION_EVALUATED", data);
         return new ConfigurationExpressionEvaluationResponse(value);
     }
@@ -83,7 +84,7 @@ public class ConfigurationExpressionService {
     public ConfigurationExpressionSuggestionsResponse suggestions() {
         List<String> configurations = configurationRepository.findAllNames();
         return new ConfigurationExpressionSuggestionsResponse(
-                configurations, environmentVariables.allowedNames(), utilities.names()
+                configurations, environmentVariables.allowedNames(), utilities.names(), utilities.functionNames()
         );
     }
 
@@ -102,7 +103,8 @@ public class ConfigurationExpressionService {
             referencedIds.add(referenced.getId());
         }
         parsed.environmentNames().forEach(environmentVariables::ensureAllowed);
-        parsed.utilityNames().forEach(utilities::ensureSupported);
+        parsed.utilityNames().forEach(name -> utilities.ensureSupported(name, false));
+        parsed.utilityFunctionNames().forEach(name -> utilities.ensureSupported(name, true));
 
         dependencyRepository.replace(configuration.getId(), referencedIds);
         ensureAcyclic(configuration.getId(), new LinkedHashSet<>(), 0);
@@ -110,18 +112,27 @@ public class ConfigurationExpressionService {
 
     void ensureNotReferenced(ApplicationConfiguration configuration, String operation) {
         List<String> dependents = dependencyRepository.findDependentNames(configuration.getId());
-        if (dependents.isEmpty())
-            return;
+        if (!dependents.isEmpty()) {
+            throw new ConflictException(
+                    "CONFIGURATION_REFERENCED_BY_EXPRESSION",
+                    "Configuration '" + configuration.getName() + "' cannot be " + operation + " because it is referenced by: " + summarize(dependents),
+                    Map.of("configurationName", configuration.getName(), "dependentCount", String.valueOf(dependents.size()))
+            );
+        }
 
-        String names = String.join(", ", dependents.subList(0, Math.min(dependents.size(), 5)));
-        if (dependents.size() > 5)
-            names += ", ...";
+        List<String> secretDependents = secretDependencyRepository.findDependentSecretNamesForConfiguration(configuration.getId());
+        if (!secretDependents.isEmpty()) {
+            throw new ConflictException(
+                    "CONFIGURATION_REFERENCED_BY_SECRET_EXPRESSION",
+                    "Configuration '" + configuration.getName() + "' cannot be " + operation + " because it is referenced by secrets: " + summarize(secretDependents),
+                    Map.of("configurationName", configuration.getName(), "dependentCount", String.valueOf(secretDependents.size()))
+            );
+        }
+    }
 
-        throw new ConflictException(
-                "CONFIGURATION_REFERENCED_BY_EXPRESSION",
-                "Configuration '" + configuration.getName() + "' cannot be " + operation + " because it is referenced by: " + names,
-                Map.of("configurationName", configuration.getName(), "dependentCount", String.valueOf(dependents.size()))
-        );
+    public static String summarize(List<String> names) {
+        String summary = String.join(", ", names.subList(0, Math.min(names.size(), 5)));
+        return names.size() > 5 ? summary + ", ..." : summary;
     }
 
     private String resolveConfiguration(ApplicationConfiguration configuration, DraftExpression draft, Set<String> path, int depth, ZonedDateTime now) {
@@ -131,30 +142,21 @@ public class ConfigurationExpressionService {
             if (configuration.getValueType() == ConfigurationValueType.EXPRESSION) {
                 return resolveExpression(parser.parse(configuration.getValue().stringValue()), draft, path, depth + 1, now);
             }
-            return checkedValue(configurationValueAsString(configuration.getValue()), configuration.getName());
+            return ExpressionEvaluator.checkedValue(configurationValueAsString(configuration.getValue()), configuration.getName());
         } finally {
             path.remove(key);
         }
     }
 
     private String resolveExpression(ConfigurationExpressionParser.ParsedExpression parsed, DraftExpression draft, Set<String> path, int depth, ZonedDateTime now) {
-        if (depth > MAX_DEPTH)
-            throw new InvalidConfigurationExpressionException("Configuration expression exceeds the maximum resolution depth of " + MAX_DEPTH);
-
-        StringBuilder result = new StringBuilder();
-        int cursor = 0;
-        for (ConfigurationExpressionParser.ExpressionReference reference : parsed.references()) {
-            appendChecked(result, parsed.source().substring(cursor, reference.start()));
-            String value = switch (reference.type()) {
-                case CONFIGURATION -> resolveConfigurationReference(reference.name(), draft, path, depth, now);
-                case ENVIRONMENT -> environmentVariables.resolve(reference.name());
-                case UTILITY -> utilities.resolve(reference.name(), now);
-            };
-            appendChecked(result, value);
-            cursor = reference.end();
-        }
-        appendChecked(result, parsed.source().substring(cursor));
-        return checkedValue(result.toString(), "expression");
+        return ExpressionEvaluator.evaluate(parsed, (reference, argument, currentDepth) -> switch (reference.type()) {
+            case CONFIGURATION -> resolveConfigurationReference(reference.name(), draft, path, currentDepth, now);
+            case SECRET -> throw new InvalidConfigurationExpressionException("Secrets cannot be referenced from configuration expressions");
+            case ENVIRONMENT -> environmentVariables.resolve(reference.name());
+            case UTILITY -> reference.isFunction()
+                    ? utilities.apply(reference.name(), argument)
+                    : utilities.resolve(reference.name(), now);
+        }, depth);
     }
 
     private String resolveConfigurationReference(String name, DraftExpression draft, Set<String> path, int depth, ZonedDateTime now) {
@@ -201,22 +203,6 @@ public class ConfigurationExpressionService {
 
     private static String configurationValueAsString(JsonNode value) {
         return value.isString() ? value.stringValue() : value.toString();
-    }
-
-    private static void appendChecked(StringBuilder result, String value) {
-        if (result.length() + value.length() > MAX_RESULT_BYTES) {
-            throw new InvalidConfigurationExpressionException("Evaluated configuration exceeds the 1 MiB result limit");
-        }
-        result.append(value);
-    }
-
-    private static String checkedValue(String value, String source) {
-        if (value.getBytes(StandardCharsets.UTF_8).length > MAX_RESULT_BYTES) {
-            throw new InvalidConfigurationExpressionException(
-                    "Evaluated configuration from '" + source + "' exceeds the 1 MiB result limit"
-            );
-        }
-        return value;
     }
 
     private static String normalizedKey(String name) {

@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import org.junit.jupiter.api.Test;
 
 import app.alertify.api.error.InvalidSecretValueException;
+import app.alertify.configuration.service.ConfigurationExpressionParser;
 import app.alertify.jpa.entity.SecretValueType;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -14,7 +15,7 @@ import tools.jackson.databind.node.StringNode;
 
 class SecretValueValidatorTest {
 
-    private final SecretValueValidator validator = new SecretValueValidator();
+    private final SecretValueValidator validator = new SecretValueValidator(new ConfigurationExpressionParser());
     private final JsonMapper jsonMapper = JsonMapper.builder().build();
 
     @Test
@@ -74,6 +75,23 @@ class SecretValueValidatorTest {
                 .hasMessageContaining("jdbc:");
         assertThatThrownBy(() -> validator.validateAndNormalizeRaw(SecretValueType.DB_SECRET, "not json"))
                 .isInstanceOf(InvalidSecretValueException.class);
+    }
+
+    @Test
+    void validatesExpressionSyntaxWithSecretScope() {
+        String expression = "Basic {{utils.BASE64({{secrets.USER}}:{{secrets.PASS}})}} {{configs.REALM}}";
+
+        assertThat(validator.validateAndNormalize(SecretValueType.EXPRESSION, StringNode.valueOf(expression))).isEqualTo(expression);
+        assertThat(validator.validateAndNormalizeRaw(SecretValueType.EXPRESSION, expression)).isEqualTo(expression);
+        assertThatThrownBy(() -> validator.validateAndNormalize(SecretValueType.EXPRESSION, StringNode.valueOf("  ")))
+                .isInstanceOf(InvalidSecretValueException.class)
+                .hasMessageContaining("blank");
+        assertThatThrownBy(() -> validator.validateAndNormalize(SecretValueType.EXPRESSION, StringNode.valueOf("{{secrets.USER")))
+                .isInstanceOf(InvalidSecretValueException.class)
+                .hasMessageContaining("not closed");
+        assertThatThrownBy(() -> validator.validateAndNormalize(SecretValueType.EXPRESSION, IntNode.valueOf(1)))
+                .isInstanceOf(InvalidSecretValueException.class)
+                .hasMessageContaining("EXPRESSION requires a JSON string");
     }
 
     private JsonNode json(String content) {

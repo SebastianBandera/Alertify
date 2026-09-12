@@ -13,6 +13,7 @@ import {
   SecretValueType,
 } from '../../core/api/secret-api.service';
 import { LocalizationService } from '../../core/i18n/localization.service';
+import { ExpressionEditorComponent } from '../../shared/expression-editor/expression-editor.component';
 
 /** Editor state for a DB_SECRET; every field is kept as text and parsed on save, like configs' rawValue. */
 interface DatabaseSecretForm {
@@ -62,7 +63,7 @@ function readStoredPageSize(): number {
 
 @Component({
   selector: 'app-secrets',
-  imports: [FormsModule],
+  imports: [FormsModule, ExpressionEditorComponent],
   templateUrl: './secrets.component.html',
   styleUrl: '../configs/configs.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -72,6 +73,11 @@ export class SecretsComponent implements OnInit {
   protected readonly pageSizeOptions = PAGE_SIZE_OPTIONS;
   protected readonly valueTypes = SECRET_VALUE_TYPES;
   protected readonly databaseEngines = DATABASE_ENGINES;
+  protected readonly expressionScopes: readonly string[] = ['secrets', 'configs', 'env', 'utils'];
+  protected readonly expressionNames = signal<Readonly<Record<string, readonly string[]>>>({ secrets: [], configs: [], env: [], utils: [] });
+  protected readonly expressionUtilityFunctions = signal<readonly string[]>([]);
+  protected readonly validatingExpression = signal(false);
+  protected readonly expressionValid = signal(false);
   private readonly api = inject(SecretApiService);
 
   protected readonly secrets = signal<readonly ApplicationSecret[]>([]);
@@ -110,7 +116,17 @@ export class SecretsComponent implements OnInit {
   protected readonly tagError = signal<string | null>(null);
 
   async ngOnInit(): Promise<void> {
-    await Promise.all([this.loadSecrets(), this.loadTags()]);
+    await Promise.all([this.loadSecrets(), this.loadTags(), this.loadExpressionSuggestions()]);
+  }
+
+  protected async loadExpressionSuggestions(): Promise<void> {
+    try {
+      const suggestions = await this.api.getExpressionSuggestions();
+      this.expressionNames.set({ secrets: suggestions.secrets, configs: suggestions.configurations, env: suggestions.environmentVariables, utils: suggestions.utilities });
+      this.expressionUtilityFunctions.set(suggestions.utilityFunctions);
+    } catch (error) {
+      this.error.set(this.errorMessage(error));
+    }
   }
 
   protected async loadSecrets(): Promise<void> {
@@ -208,6 +224,25 @@ export class SecretsComponent implements OnInit {
   protected patchSecretForm(patch: Partial<SecretForm>): void {
     this.secretForm.update((form) => ({ ...form, ...patch }));
     this.formError.set(null);
+    this.expressionValid.set(false);
+  }
+
+  protected async validateExpression(): Promise<void> {
+    const form = this.secretForm();
+    if (this.validatingExpression() || form.valueType !== 'EXPRESSION' || !form.newValue.trim()) return;
+
+    this.validatingExpression.set(true);
+    this.expressionValid.set(false);
+    this.formError.set(null);
+    try {
+      const editing = this.editingSecret();
+      await this.api.validateExpression({ ...(editing ? { secretId: editing.id } : {}), name: form.name.trim() || undefined, expression: form.newValue });
+      this.expressionValid.set(true);
+    } catch (error) {
+      this.formError.set(this.errorMessage(error));
+    } finally {
+      this.validatingExpression.set(false);
+    }
   }
 
   protected changeValueType(valueType: SecretValueType): void {
@@ -252,9 +287,9 @@ export class SecretsComponent implements OnInit {
       }
       this.editorOpen.set(false);
       this.notice.set(this.localization.translate('secrets.saved'));
-      await this.loadSecrets();
+      await Promise.all([this.loadSecrets(), this.loadExpressionSuggestions()]);
     } catch (error) {
-      this.formError.set(this.errorMessage(error));
+      this.formError.set(this.errorMessage(error, this.editingSecret() ? 'rename' : undefined));
     } finally {
       this.saving.set(false);
     }
@@ -265,9 +300,9 @@ export class SecretsComponent implements OnInit {
     try {
       await this.api.deleteSecret(secret.id, secret.version);
       this.notice.set(this.localization.translate('secrets.deleted'));
-      await this.loadSecrets();
+      await Promise.all([this.loadSecrets(), this.loadExpressionSuggestions()]);
     } catch (error) {
-      this.error.set(this.errorMessage(error));
+      this.error.set(this.errorMessage(error, 'delete'));
     }
   }
 
@@ -338,6 +373,9 @@ export class SecretsComponent implements OnInit {
         if (db.engine === 'OTHER' && !options.startsWith('jdbc:')) throw new Error(this.localization.translate('secrets.value.jdbcUrlRequired'));
         return { engine: db.engine, host, port: Number(db.port), database, username, password: db.password, options: options || null };
       }
+      case 'EXPRESSION':
+        if (!form.newValue.trim()) throw new Error(this.localization.translate('secrets.value.expressionRequired'));
+        return form.newValue;
       default:
         if (!form.newValue) throw new Error(this.localization.translate('secrets.valueRequired'));
         return form.newValue;
@@ -352,7 +390,17 @@ export class SecretsComponent implements OnInit {
     return { engine: 'POSTGRESQL', host: '', port: DEFAULT_PORTS.POSTGRESQL, database: '', username: '', password: '', options: '' };
   }
 
-  private errorMessage(error: unknown): string {
+  private errorMessage(error: unknown, referencedOperation?: 'delete' | 'rename'): string {
+    if (error instanceof ApiRequestError && error.code === 'SECRET_REFERENCED_BY_EXPRESSION') {
+      const name = error.parameters['secretName'] ?? '';
+      const marker = 'because it is referenced by:';
+      const markerIndex = error.message.lastIndexOf(marker);
+      const dependents = markerIndex < 0
+        ? this.localization.translate('secrets.expression.referencedUnknown')
+        : error.message.slice(markerIndex + marker.length).trim().replace(/\.$/, '');
+      const key = referencedOperation === 'rename' ? 'secrets.expression.referencedRename' : 'secrets.expression.referencedDelete';
+      return this.localization.translate(key).replace('{name}', name).replace('{dependents}', dependents);
+    }
     return error instanceof Error ? error.message : String(error);
   }
 }

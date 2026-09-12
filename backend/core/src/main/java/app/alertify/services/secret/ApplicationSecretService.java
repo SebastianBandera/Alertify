@@ -19,6 +19,7 @@ import org.springframework.util.MultiValueMap;
 import app.alertify.api.error.ConflictException;
 import app.alertify.api.error.ResourceNotFoundException;
 import app.alertify.jpa.entity.ApplicationSecret;
+import app.alertify.jpa.entity.SecretValueType;
 import app.alertify.jpa.entity.Tag;
 import app.alertify.jpa.entity.TagScope;
 import app.alertify.jpa.repository.ApplicationSecretRepository;
@@ -28,6 +29,8 @@ import app.alertify.jpa.specification.DynamicSpecification;
 import app.alertify.jpa.specification.InvalidFilterException;
 import app.alertify.logging.ApplicationEventLogger;
 import app.alertify.secret.api.SecretCreateRequest;
+import app.alertify.secret.api.SecretExpressionSuggestionsResponse;
+import app.alertify.secret.api.SecretExpressionValidationRequest;
 import app.alertify.secret.api.SecretResponse;
 import app.alertify.secret.api.SecretUpdateRequest;
 
@@ -53,14 +56,16 @@ public class ApplicationSecretService {
     private final TagRepository tagRepository;
     private final SecretEncryptionService encryptionService;
     private final SecretValueValidator valueValidator;
+    private final SecretExpressionService expressionService;
     private final SecretMapper mapper;
     private final ApplicationEventLogger eventLogger;
 
-    public ApplicationSecretService(ApplicationSecretRepository secretRepository, TagRepository tagRepository, SecretEncryptionService encryptionService, SecretValueValidator valueValidator, SecretMapper mapper, ApplicationEventLogger eventLogger) {
+    public ApplicationSecretService(ApplicationSecretRepository secretRepository, TagRepository tagRepository, SecretEncryptionService encryptionService, SecretValueValidator valueValidator, SecretExpressionService expressionService, SecretMapper mapper, ApplicationEventLogger eventLogger) {
         this.secretRepository = secretRepository;
         this.tagRepository = tagRepository;
         this.encryptionService = encryptionService;
         this.valueValidator = valueValidator;
+        this.expressionService = expressionService;
         this.mapper = mapper;
         this.eventLogger = eventLogger;
     }
@@ -113,6 +118,7 @@ public class ApplicationSecretService {
                 tags, request.writable()
         );
         ApplicationSecret saved = secretRepository.saveAndFlush(secret);
+        expressionService.synchronizeDependencies(saved, plaintext);
         eventLogger.successAfterCommit(
                 "SECRET_CREATED",
                 Map.of(
@@ -137,6 +143,7 @@ public class ApplicationSecretService {
 
         if (!secret.getName().equals(name)) {
             ensureNameAvailable(name, id);
+            expressionService.ensureNotReferenced(secret, "renamed");
             secret.rename(name);
             changedFields.add("name");
         }
@@ -161,6 +168,7 @@ public class ApplicationSecretService {
         secret.replaceEncryptedValue(encrypted.encryptedValue(), encrypted.encryptionIv(), encrypted.valueHash(), encrypted.hashSalt(), encrypted.encryptionVersion());
         changedFields.add("value");
         secretRepository.flush();
+        expressionService.synchronizeDependencies(secret, plaintext);
 
         Map<String, Object> logData = new LinkedHashMap<>();
         logData.put("secretId", id);
@@ -179,10 +187,23 @@ public class ApplicationSecretService {
     public void delete(Long id, long version) {
         ApplicationSecret secret = find(id);
         verifyVersion(secret.getVersion(), version, "Secret");
+        expressionService.ensureNotReferenced(secret, "deleted");
         String name = secret.getName();
         secretRepository.delete(secret);
         secretRepository.flush();
         eventLogger.successAfterCommit("SECRET_DELETED", Map.of("secretId", id, "name", name, "version", version));
+    }
+
+    @Transactional(readOnly = true)
+    public SecretExpressionSuggestionsResponse expressionSuggestions() {
+        return expressionService.suggestions();
+    }
+
+    /** Validates a draft expression without evaluating or returning its value. */
+    @Transactional(readOnly = true)
+    public void validateExpression(SecretExpressionValidationRequest request) {
+        String expression = valueValidator.validateAndNormalizeRaw(SecretValueType.EXPRESSION, request.expression());
+        expressionService.validateDraft(request.secretId(), request.name(), expression);
     }
 
     private ApplicationSecret find(Long id) {

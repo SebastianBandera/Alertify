@@ -61,6 +61,7 @@ export interface ConfigurationExpressionSuggestions {
   readonly configurations: readonly string[];
   readonly environmentVariables: readonly string[];
   readonly utilities: readonly string[];
+  readonly utilityFunctions: readonly string[];
 }
 
 export interface ConfigurationExpressionEvaluationRequest {

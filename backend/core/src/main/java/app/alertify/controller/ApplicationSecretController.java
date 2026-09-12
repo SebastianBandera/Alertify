@@ -21,6 +21,8 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import app.alertify.secret.api.SecretCreateRequest;
+import app.alertify.secret.api.SecretExpressionSuggestionsResponse;
+import app.alertify.secret.api.SecretExpressionValidationRequest;
 import app.alertify.secret.api.SecretResponse;
 import app.alertify.secret.api.SecretUpdateRequest;
 import app.alertify.services.secret.ApplicationSecretService;
@@ -46,6 +48,17 @@ public class ApplicationSecretController {
     @GetMapping
     public Page<SecretResponse> search(@RequestParam MultiValueMap<String, String> params, @PageableDefault(size = 20, sort = "name") Pageable pageable) {
         return service.search(params, pageable);
+    }
+
+    @GetMapping("/expression-suggestions")
+    public SecretExpressionSuggestionsResponse expressionSuggestions() {
+        return service.expressionSuggestions();
+    }
+
+    @PostMapping("/validate-expression")
+    public ResponseEntity<Void> validateExpression(@Valid @RequestBody SecretExpressionValidationRequest request) {
+        service.validateExpression(request);
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/{id}")
