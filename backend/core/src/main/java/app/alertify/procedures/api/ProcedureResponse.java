@@ -14,6 +14,7 @@ public record ProcedureResponse(
     String templateNameKey,
     String name,
     String description,
+    String cronExpression,
     boolean enabled,
     boolean allowConcurrentExecutions,
     Set<TagResponse> tags,

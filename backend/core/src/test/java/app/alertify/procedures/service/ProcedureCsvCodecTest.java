@@ -27,7 +27,7 @@ class ProcedureCsvCodecTest {
     @Test
     void exportsOnlyASecretReferenceName() {
         ProcedureTemplateDefinition template = template();
-        Procedure procedure = new Procedure(template, "totp", null, true, true, Set.of());
+        Procedure procedure = new Procedure(template, "totp", null, "-", true, true, Set.of());
         ReflectionTestUtils.setField(procedure, "id", 7L);
         ProcedureTemplateParameterDefinition parameter = new ProcedureTemplateParameterDefinition(
                 template, "secret", "label", "description", String.class.getName(), List.of(),
@@ -40,16 +40,18 @@ class ProcedureCsvCodecTest {
         String csv = new String(codec.write(List.of(procedure), Map.of(7L,
                 List.of(ProcedureParameterValue.secret(procedure, parameter, secret)))), StandardCharsets.UTF_8);
 
-        assertThat(csv).contains("TOTP_SECRET").doesNotContain("cipher-text");
+        assertThat(csv).contains("name,description,templateKey,cronExpression,enabled,allowConcurrentExecutions,parameters,tags")
+                .contains("TOTP_SECRET").doesNotContain("cipher-text");
     }
 
     @Test
     void readsProcedureReferencesForRecursiveImports() {
-        String csv = "\uFEFFname,description,templateKey,enabled,allowConcurrentExecutions,parameters,tags\r\n"
-                + "A,,template.A,true,false,\"[{\"\"key\"\":\"\"next\"\",\"\"source\"\":\"\"PROCEDURE\"\",\"\"value\"\":\"\"B\"\"}]\",[]\r\n";
+        String csv = "\uFEFFname,description,templateKey,cronExpression,enabled,allowConcurrentExecutions,parameters,tags\r\n"
+                + "A,,template.A,0 0 2 * * *,true,false,\"[{\"\"key\"\":\"\"next\"\",\"\"source\"\":\"\"PROCEDURE\"\",\"\"value\"\":\"\"B\"\"}]\",[]\r\n";
 
         ProcedureCsvCodec.ImportRow row = codec.read(csv.getBytes(StandardCharsets.UTF_8)).getFirst();
 
+        assertThat(row.cronExpression()).isEqualTo("0 0 2 * * *");
         assertThat(row.allowConcurrentExecutions()).isFalse();
         assertThat(row.parameters()).singleElement().satisfies(parameter -> {
             assertThat(parameter.source()).isEqualTo(AlertParameterSource.PROCEDURE);
@@ -62,6 +64,16 @@ class ProcedureCsvCodecTest {
         assertThatThrownBy(() -> codec.read("name\r\nvalue\r\n".getBytes(StandardCharsets.UTF_8)))
                 .isInstanceOf(InvalidProcedureImportException.class)
                 .hasMessageContaining("header");
+    }
+
+    @Test
+    void rejectsThePreviousHeaderWithoutCronExpression() {
+        String csv = "name,description,templateKey,enabled,allowConcurrentExecutions,parameters,tags\r\n"
+                + "A,,template.A,true,false,[],[]\r\n";
+
+        assertThatThrownBy(() -> codec.read(csv.getBytes(StandardCharsets.UTF_8)))
+                .isInstanceOf(InvalidProcedureImportException.class)
+                .hasMessage("CSV header must be exactly: name,description,templateKey,cronExpression,enabled,allowConcurrentExecutions,parameters,tags");
     }
 
     private static ProcedureTemplateDefinition template() {

@@ -38,7 +38,7 @@ final class ProcedureMapper {
         ProcedureTemplateDefinition template = procedure.getTemplate();
         return new ProcedureResponse(
                 procedure.getId(), procedure.getVersion(), template.getId(), template.getTemplateKey(),
-                template.getNameKey(), procedure.getName(), procedure.getDescription(), procedure.isEnabled(),
+                template.getNameKey(), procedure.getName(), procedure.getDescription(), procedure.getCronExpression(), procedure.isEnabled(),
                 procedure.isConcurrentExecutionAllowed(),
                 procedure.getTags().stream()
                         .sorted(Comparator.comparing(tag -> tag.getName().toLowerCase(java.util.Locale.ROOT)))

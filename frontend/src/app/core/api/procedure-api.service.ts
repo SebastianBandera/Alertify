@@ -68,6 +68,7 @@ export interface Procedure {
   readonly templateNameKey: string;
   readonly name: string;
   readonly description: string | null;
+  readonly cronExpression: string;
   readonly enabled: boolean;
   readonly allowConcurrentExecutions: boolean;
   readonly tags: readonly ProcedureTag[];
@@ -90,6 +91,7 @@ export interface ProcedureWriteRequest {
   readonly version?: number;
   readonly name: string;
   readonly description: string | null;
+  readonly cronExpression: string;
   readonly enabled: boolean;
   readonly allowConcurrentExecutions: boolean;
   readonly tagIds: readonly number[];
@@ -116,7 +118,7 @@ export interface ProcedureExecution {
   readonly procedureName: string;
   readonly procedureVersion: number;
   readonly status: ProcedureExecutionStatus;
-  readonly trigger: 'MANUAL' | 'ALERT' | 'PROCEDURE' | 'HOOK';
+  readonly trigger: 'CRON' | 'MANUAL' | 'ALERT' | 'PROCEDURE' | 'HOOK';
   readonly rootExecutionId: string;
   readonly parentAlertExecutionId: string | null;
   readonly parentProcedureExecutionId: string | null;

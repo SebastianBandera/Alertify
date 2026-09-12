@@ -12,6 +12,7 @@ import app.alertify.procedures.model.Procedure;
 public interface ProcedureRepository extends JpaRepository<Procedure, Long>, JpaSpecificationExecutor<Procedure> {
     Optional<Procedure> findByNameIgnoreCase(String name);
     boolean existsByNameIgnoreCaseAndIdNot(String name, Long id);
+    List<Procedure> findAllByEnabledTrue();
     long countByTemplate_Id(Long templateId);
     boolean existsByTagsId(Long tagId);
 

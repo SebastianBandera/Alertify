@@ -349,6 +349,8 @@ INSERT INTO audit.log_events (code) VALUES
     ('PROCEDURE_EXPORT'),
     ('PROCEDURE_IMPORT'),
     ('PROCEDURE_PAGE_VIEWED'),
+    ('PROCEDURE_SCHEDULE_REGISTERED'),
+    ('PROCEDURE_SCHEDULE_REMOVED'),
     ('PROCEDURE_TAG_CREATED'),
     ('PROCEDURE_TAG_DELETED'),
     ('PROCEDURE_TAG_UPDATED'),
@@ -590,6 +592,7 @@ CREATE TABLE core.procedures (
     procedure_template_id bigint NOT NULL,
     name text NOT NULL,
     description text,
+    cron_expression text NOT NULL DEFAULT '-',
     enabled boolean NOT NULL DEFAULT true,
     allow_concurrent_executions boolean NOT NULL DEFAULT true,
     created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
@@ -597,6 +600,9 @@ CREATE TABLE core.procedures (
     CONSTRAINT pk_procedures PRIMARY KEY (id),
     CONSTRAINT uq_procedures_name UNIQUE (name),
     CONSTRAINT ck_procedures_name_trimmed CHECK (name = btrim(name) AND name <> ''),
+    CONSTRAINT ck_procedures_cron_expression_trimmed CHECK (
+        cron_expression = btrim(cron_expression) AND cron_expression <> ''
+    ),
     CONSTRAINT fk_procedures_template FOREIGN KEY (procedure_template_id)
         REFERENCES core.procedure_templates (id) ON DELETE RESTRICT
 );
@@ -862,11 +868,11 @@ CREATE TABLE core.procedure_executions (
         status IN ('RUNNING', 'COMPLETED', 'ERROR')
     ),
     CONSTRAINT ck_procedure_executions_trigger CHECK (
-        trigger IN ('MANUAL', 'ALERT', 'PROCEDURE', 'HOOK')
+        trigger IN ('MANUAL', 'CRON', 'ALERT', 'PROCEDURE', 'HOOK')
     ),
     CONSTRAINT ck_procedure_executions_depth CHECK (depth BETWEEN 1 AND 16),
     CONSTRAINT ck_procedure_executions_parent CHECK (
-        (trigger IN ('MANUAL', 'HOOK') AND parent_alert_execution_id IS NULL
+        (trigger IN ('MANUAL', 'CRON', 'HOOK') AND parent_alert_execution_id IS NULL
             AND parent_procedure_execution_id IS NULL AND depth = 1)
         OR (trigger = 'ALERT' AND parent_alert_execution_id IS NOT NULL
             AND parent_procedure_execution_id IS NULL)
@@ -1187,6 +1193,7 @@ CREATE TABLE audit.procedures_aud (
     procedure_template_id bigint,
     name text,
     description text,
+    cron_expression text,
     enabled boolean,
     allow_concurrent_executions boolean,
     CONSTRAINT pk_procedures_aud PRIMARY KEY (id, rev),

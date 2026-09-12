@@ -42,6 +42,9 @@ th { background: #fcfcfd; color: #667085; font-size: 10px; font-weight: 750; let
 tbody tr:hover { background: #fcfcfd; }
 td small { display: block; max-width: 330px; margin-top: 4px; overflow: hidden; color: var(--text-muted); text-overflow: ellipsis; white-space: nowrap; }
 code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+input.field-invalid { border-color: #f04438; }
+input.field-invalid:focus { box-shadow: 0 0 0 3px rgb(240 68 56 / 12%); }
+.field-error { display: block; margin-top: 0; color: #b42318; font-size: 12px; font-weight: 500; line-height: 1.4; }
 .template-key { max-width: 340px; display: block; overflow-wrap: anywhere; color: #344054; }
 .execution-parent, .execution-result { max-width: 360px; display: block; overflow-wrap: anywhere; white-space: normal; }
 .badge { display: inline-flex; padding: 4px 8px; border-radius: 999px; background: #ecfdf3; color: #027a48; font-size: 10px; font-weight: 750; }

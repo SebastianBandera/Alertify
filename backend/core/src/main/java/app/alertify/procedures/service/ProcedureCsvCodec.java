@@ -26,7 +26,7 @@ import tools.jackson.databind.json.JsonMapper;
 @Component
 class ProcedureCsvCodec {
     private static final List<String> HEADER = List.of(
-            "name", "description", "templateKey", "enabled", "allowConcurrentExecutions", "parameters", "tags"
+            "name", "description", "templateKey", "cronExpression", "enabled", "allowConcurrentExecutions", "parameters", "tags"
     );
     private static final int MAX_ROWS = 10_000;
     private static final Pattern TAG_COLOR = Pattern.compile("^#[0-9A-Fa-f]{6}$");
@@ -44,7 +44,7 @@ class ProcedureCsvCodec {
                     .sorted(Comparator.comparing(Tag::getName, String.CASE_INSENSITIVE_ORDER))
                     .map(tag -> new ExportTag(tag.getName(), tag.getColor())).toList();
             CsvSupport.appendRow(csv, List.of(procedure.getName(), nullable(procedure.getDescription()),
-                    procedure.getTemplate().getTemplateKey(), Boolean.toString(procedure.isEnabled()),
+                    procedure.getTemplate().getTemplateKey(), procedure.getCronExpression(), Boolean.toString(procedure.isEnabled()),
                     Boolean.toString(procedure.isConcurrentExecutionAllowed()), json(parameters), json(tags)));
         }
         return csv.toString().getBytes(StandardCharsets.UTF_8);
@@ -102,11 +102,17 @@ class ProcedureCsvCodec {
 
             if (templateKey.isEmpty()) throw error(row, "templateKey is required");
 
-            boolean enabled = parseBoolean(fields.get(3), row);
-            boolean allowConcurrentExecutions = parseBoolean(fields.get(4), row, "allowConcurrentExecutions");
+            String cronExpression = fields.get(3).trim();
 
-            result.add(new ImportRow(row, name, description, templateKey, enabled, allowConcurrentExecutions,
-                    parameters(fields.get(5), row), tags(fields.get(6), row)));
+            if (cronExpression.isEmpty()) throw error(row, "cronExpression is required");
+
+            if (cronExpression.length() > 255) throw error(row, "cronExpression exceeds 255 characters");
+
+            boolean enabled = parseBoolean(fields.get(4), row);
+            boolean allowConcurrentExecutions = parseBoolean(fields.get(5), row, "allowConcurrentExecutions");
+
+            result.add(new ImportRow(row, name, description, templateKey, cronExpression, enabled, allowConcurrentExecutions,
+                    parameters(fields.get(6), row), tags(fields.get(7), row)));
         }
         return List.copyOf(result);
     }
@@ -205,7 +211,7 @@ class ProcedureCsvCodec {
         return new InvalidProcedureImportException("CSV row " + row + ": " + message, cause);
     }
 
-    record ImportRow(int rowNumber, String name, String description, String templateKey, boolean enabled, boolean allowConcurrentExecutions, List<ImportParameter> parameters, List<ImportTag> tags) { }
+    record ImportRow(int rowNumber, String name, String description, String templateKey, String cronExpression, boolean enabled, boolean allowConcurrentExecutions, List<ImportParameter> parameters, List<ImportTag> tags) { }
     record ImportParameter(String key, AlertParameterSource source, String value) { }
     record ImportTag(String name, String color) { }
     private record ExportParameter(String key, AlertParameterSource source, String value) { }

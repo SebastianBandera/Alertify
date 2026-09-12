@@ -25,6 +25,7 @@ type ProcedureTab = 'procedures' | 'templates' | 'wizards' | 'history';
 type ParameterSource = AlertParameterSource | 'OPTION';
 type WizardKind = 'totp-qr';
 type WizardStatus = 'idle' | 'analyzing' | 'error';
+type ProcedureFormErrors = Partial<Record<'cron', string>>;
 
 interface ProcedureWizardDefinition {
   readonly key: WizardKind;
@@ -51,6 +52,7 @@ interface ProcedureForm {
   templateId: number | null;
   name: string;
   description: string;
+  cronExpression: string;
   enabled: boolean;
   allowConcurrentExecutions: boolean;
   tagIds: number[];
@@ -100,6 +102,7 @@ export class ProceduresComponent implements OnInit {
     this.templates().find((template) => template.id === this.form().templateId) ?? null,
   );
   protected readonly formError = signal<string | null>(null);
+  protected readonly formFieldErrors = signal<ProcedureFormErrors>({});
   protected readonly tagDialogOpen = signal(false);
   protected readonly editingTag = signal<ProcedureTag | null>(null);
   protected readonly tagName = signal('');
@@ -200,6 +203,7 @@ export class ProceduresComponent implements OnInit {
     this.editing.set(null);
     this.form.set(this.formForTemplate(template));
     this.formError.set(null);
+    this.formFieldErrors.set({});
     this.editorOpen.set(true);
   }
 
@@ -224,12 +228,14 @@ export class ProceduresComponent implements OnInit {
       ...form,
       name: procedure.name,
       description: procedure.description ?? '',
+      cronExpression: procedure.cronExpression,
       enabled: procedure.enabled,
       allowConcurrentExecutions: procedure.allowConcurrentExecutions,
       tagIds: procedure.tags.map((tag) => tag.id),
       parameters,
     });
     this.formError.set(null);
+    this.formFieldErrors.set({});
     this.editorOpen.set(true);
   }
 
@@ -244,6 +250,7 @@ export class ProceduresComponent implements OnInit {
       ...this.formForTemplate(template),
       name: current.name,
       description: current.description,
+      cronExpression: current.cronExpression,
       enabled: current.enabled,
       allowConcurrentExecutions: current.allowConcurrentExecutions,
       tagIds: current.tagIds,
@@ -252,6 +259,8 @@ export class ProceduresComponent implements OnInit {
 
   protected patchForm(patch: Partial<Omit<ProcedureForm, 'parameters'>>): void {
     this.form.update((form) => ({ ...form, ...patch }));
+    if (patch.cronExpression !== undefined)
+      this.formFieldErrors.set({});
   }
 
   protected patchParameter(key: string, patch: Partial<ParameterForm>): void {
@@ -279,6 +288,10 @@ export class ProceduresComponent implements OnInit {
       this.formError.set(this.localization.translate('procedures.form.required'));
       return;
     }
+    if (!form.cronExpression.trim()) {
+      this.showCronError(this.localization.translate('procedures.form.cronRequired'));
+      return;
+    }
     const parameters: ProcedureParameterWriteRequest[] = [];
     for (const definition of template.parameters) {
       const value = form.parameters[definition.key];
@@ -295,12 +308,14 @@ export class ProceduresComponent implements OnInit {
     }
     this.saving.set(true);
     this.formError.set(null);
+    this.formFieldErrors.set({});
     try {
       const editing = this.editing();
       const request = {
         ...(editing ? { version: editing.version } : { templateId: template.id }),
         name: form.name.trim(),
         description: form.description.trim() || null,
+        cronExpression: form.cronExpression.trim(),
         enabled: form.enabled,
         allowConcurrentExecutions: form.allowConcurrentExecutions,
         tagIds: form.tagIds,
@@ -311,7 +326,9 @@ export class ProceduresComponent implements OnInit {
       this.editorOpen.set(false);
       await this.loadAll(false);
     } catch (error) {
-      this.formError.set(this.errorMessage(error));
+      const cronError = this.cronError(error);
+      if (cronError) this.showCronError(cronError);
+      else this.formError.set(this.errorMessage(error));
     } finally {
       this.saving.set(false);
     }
@@ -471,7 +488,7 @@ export class ProceduresComponent implements OnInit {
   }
 
   private emptyForm(): ProcedureForm {
-    return { templateId: null, name: '', description: '', enabled: true, allowConcurrentExecutions: true, tagIds: [], parameters: {} };
+    return { templateId: null, name: '', description: '', cronExpression: '-', enabled: true, allowConcurrentExecutions: true, tagIds: [], parameters: {} };
   }
 
   private formForTemplate(template: ProcedureTemplate | null): ProcedureForm {
@@ -497,5 +514,23 @@ export class ProceduresComponent implements OnInit {
 
   private errorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
+  }
+
+  private cronError(error: unknown): string | null {
+    if (error instanceof ApiRequestError && error.fieldErrors['cronExpression'])
+      return error.fieldErrors['cronExpression'];
+
+    const message = this.errorMessage(error);
+    return message.toLocaleLowerCase().startsWith('invalid cron expression:') ? message : null;
+  }
+
+  private showCronError(message: string): void {
+    this.formError.set(null);
+    this.formFieldErrors.set({ cron: message });
+    requestAnimationFrame(() => {
+      const field = this.elementRef.nativeElement.querySelector<HTMLInputElement>('#procedure-cron');
+      field?.focus({ preventScroll: true });
+      field?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
   }
 }

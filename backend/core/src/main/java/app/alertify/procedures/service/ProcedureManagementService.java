@@ -17,6 +17,8 @@ import java.util.stream.Collectors;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.scheduling.support.CronExpression;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -47,6 +49,7 @@ import app.alertify.procedures.api.ProcedureResponse;
 import app.alertify.procedures.api.ProcedureUpdateRequest;
 import app.alertify.procedures.execution.ProcedureExecutionOrchestrator;
 import app.alertify.procedures.execution.ProcedureExecutionStatus;
+import app.alertify.procedures.execution.ProcedureScheduleService;
 import app.alertify.procedures.model.Procedure;
 import app.alertify.procedures.model.ProcedureParameterValue;
 import app.alertify.procedures.model.ProcedureTemplateDefinition;
@@ -65,7 +68,7 @@ import app.alertify.procedures.model.ProcedureTemplateParameterDefinition;
 @Service
 public class ProcedureManagementService {
 
-    private static final Set<String> SORT_FIELDS = Set.of("id", "version", "name", "enabled", "allowConcurrentExecutions", "createdAt", "updatedAt");
+    private static final Set<String> SORT_FIELDS = Set.of("id", "version", "name", "cronExpression", "enabled", "allowConcurrentExecutions", "createdAt", "updatedAt");
 
     private final ProcedureRepository procedureRepository;
     private final ProcedureTemplateDefinitionRepository templateRepository;
@@ -78,6 +81,7 @@ public class ProcedureManagementService {
     private final TagRepository tagRepository;
     private final ApplicationEventLogger eventLogger;
     private final ProcedureExecutionOrchestrator orchestrator;
+    private final ProcedureScheduleService scheduleService;
 
     public ProcedureManagementService(ProcedureRepository procedureRepository,
             ProcedureTemplateDefinitionRepository templateRepository,
@@ -87,7 +91,8 @@ public class ProcedureManagementService {
             AlertParameterValueRepository alertParameterValueRepository,
             ApplicationConfigurationRepository configurationRepository,
             ApplicationSecretRepository secretRepository, TagRepository tagRepository,
-            ApplicationEventLogger eventLogger, ProcedureExecutionOrchestrator orchestrator) {
+            ApplicationEventLogger eventLogger, ProcedureExecutionOrchestrator orchestrator,
+            ProcedureScheduleService scheduleService) {
         this.procedureRepository = procedureRepository;
         this.templateRepository = templateRepository;
         this.templateParameterRepository = templateParameterRepository;
@@ -99,6 +104,7 @@ public class ProcedureManagementService {
         this.tagRepository = tagRepository;
         this.eventLogger = eventLogger;
         this.orchestrator = orchestrator;
+        this.scheduleService = scheduleService;
     }
 
     @Transactional(readOnly = true)
@@ -130,10 +136,11 @@ public class ProcedureManagementService {
         ProcedureTemplateDefinition template = templateRepository.findById(request.templateId())
                 .orElseThrow(() -> notFound("Procedure template", request.templateId()));
         Procedure procedure = procedureRepository.saveAndFlush(new Procedure(template, name,
-                optional(request.description()), request.enabled(), request.allowConcurrentExecutions() == null || request.allowConcurrentExecutions(),
+                optional(request.description()), validateCron(request.cronExpression()), request.enabled(), request.allowConcurrentExecutions() == null || request.allowConcurrentExecutions(),
                 resolveTags(request.tagIds())));
         List<ProcedureParameterValue> values = synchronizeParameters(procedure, request.parameters(), List.of());
         eventLogger.successAfterCommit("PROCEDURE_CREATED", Map.of("procedureId", procedure.getId(), "name", procedure.getName(), "templateId", template.getId(), "allowConcurrentExecutions", procedure.isConcurrentExecutionAllowed()));
+        scheduleService.rescheduleAfterCommit(procedure.getId());
         return ProcedureMapper.toProcedure(procedure, values);
     }
 
@@ -147,6 +154,7 @@ public class ProcedureManagementService {
         ensureNameAvailable(name, id);
         procedure.rename(name);
         procedure.changeDescription(optional(request.description()));
+        procedure.reschedule(validateCron(request.cronExpression()));
         if (request.enabled())
             procedure.enable();
         else
@@ -158,6 +166,7 @@ public class ProcedureManagementService {
                 parameterValueRepository.findAllByOwnerIdOrdered(id));
         procedureRepository.flush();
         eventLogger.successAfterCommit("PROCEDURE_UPDATED", Map.of("procedureId", id, "name", procedure.getName(), "version", procedure.getVersion(), "allowConcurrentExecutions", procedure.isConcurrentExecutionAllowed()));
+        scheduleService.rescheduleAfterCommit(procedure.getId());
         return ProcedureMapper.toProcedure(procedure, values);
     }
 
@@ -200,6 +209,7 @@ public class ProcedureManagementService {
         parameterValueRepository.flush();
         procedureRepository.delete(procedure);
         eventLogger.successAfterCommit("PROCEDURE_DELETED", Map.of("procedureId", id, "name", procedure.getName(), "executionsDeleted", executions));
+        scheduleService.removeAfterCommit(id);
     }
 
     private List<ProcedureParameterValue> synchronizeParameters(Procedure procedure, List<ProcedureParameterValueRequest> requested, List<ProcedureParameterValue> existing) {
@@ -350,6 +360,19 @@ public class ProcedureManagementService {
                 : procedureRepository.existsByNameIgnoreCaseAndIdNot(name, id);
         if (exists)
             throw new ConflictException("A procedure named '" + name + "' already exists");
+    }
+
+    static String validateCron(String value) {
+        String cron = required(value, "cronExpression");
+        if (Scheduled.CRON_DISABLED.equals(cron))
+            return cron;
+
+        try {
+            CronExpression.parse(cron);
+        } catch (IllegalArgumentException exception) {
+            throw invalid("Invalid cron expression: " + exception.getMessage(), exception);
+        }
+        return cron;
     }
 
     private static String required(String value, String name) {

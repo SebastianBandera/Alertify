@@ -47,10 +47,10 @@ import tools.jackson.databind.json.JsonMapper;
  * supplies the template source when the worker does not have it, and finalizes the row
  * with the outcome.
  *
- * <p>There are two entry points. A manual run is submitted asynchronously and
- * starts a new execution tree, while an invocation coming from a worker handle
- * runs synchronously on a stream callback virtual thread and inherits the root execution,
- * the parent, the depth and the deadline of its caller.
+ * <p>Manual and cron runs are submitted asynchronously and start a new
+ * execution tree, while an invocation coming from a worker handle runs
+ * synchronously on a stream callback virtual thread and inherits the root
+ * execution, the parent, the depth and the deadline of its caller.
  *
  * <p>Secret values resolved for the procedure are stripped from any worker
  * error message and stack trace before they are persisted or returned.
@@ -85,19 +85,29 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
 
     public boolean triggerManual(long procedureId, String procedureName, boolean allowConcurrentExecutions, String triggeredBy) {
         maintenanceModeService.assertNotActive();
+        return triggerAsync(procedureId, procedureName, allowConcurrentExecutions, ProcedureExecutionTrigger.MANUAL, triggeredBy, true);
+    }
+
+    public void triggerCron(long procedureId, String procedureName, boolean allowConcurrentExecutions) {
+        if (maintenanceModeService.isActive())
+            return;
+
+        triggerAsync(procedureId, procedureName, allowConcurrentExecutions, ProcedureExecutionTrigger.CRON, null, false);
+    }
+
+    private boolean triggerAsync(long procedureId, String procedureName, boolean allowConcurrentExecutions, ProcedureExecutionTrigger trigger, String triggeredBy, boolean includeDisabled) {
         if (!enter(procedureId, allowConcurrentExecutions)) {
-            eventLogger.failure("PROCEDURE_EXECUTION_REJECTED", rejectionData(procedureId, procedureName, ProcedureExecutionTrigger.MANUAL, triggeredBy));
+            eventLogger.failure("PROCEDURE_EXECUTION_REJECTED", rejectionData(procedureId, procedureName, trigger, triggeredBy));
             return false;
         }
 
         try {
             UUID executionId = UUID.randomUUID();
             Instant deadline = Instant.now().plus(properties.execution().timeout());
-            eventLogger.success("PROCEDURE_EXECUTION_TRIGGERED", data(procedureId, procedureName, executionId, ProcedureExecutionTrigger.MANUAL, triggeredBy));
+            eventLogger.success("PROCEDURE_EXECUTION_TRIGGERED", data(procedureId, procedureName, executionId, trigger, triggeredBy));
             executor.submit(() -> {
                 try {
-                    execute(procedureId, executionId, executionId, null, null, 1,
-                            ProcedureExecutionTrigger.MANUAL, triggeredBy, deadline, true, null);
+                    execute(procedureId, executionId, executionId, null, null, 1, trigger, triggeredBy, deadline, includeDisabled, null);
                 } catch (RuntimeException ignored) {
                     // Failure is persisted and audited by execute.
                 }

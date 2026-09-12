@@ -80,6 +80,7 @@
           <thead><tr>
             <th>{{ localization.translate('procedures.column.name') }}</th>
             <th>{{ localization.translate('procedures.column.template') }}</th>
+            <th>{{ localization.translate('procedures.column.cron') }}</th>
             <th>{{ localization.translate('procedures.column.tags') }}</th>
             <th>{{ localization.translate('procedures.column.status') }}</th>
             <th>{{ localization.translate('procedures.column.updatedAt') }}</th>
@@ -90,6 +91,7 @@
               <tr>
                 <td><strong>{{ procedure.name }}</strong><small>{{ procedure.description || '—' }}</small></td>
                 <td><strong>{{ dynamic(procedure.templateNameKey) }}</strong><small class="mono">{{ procedure.templateKey }}</small></td>
+                <td><code>{{ procedure.cronExpression }}</code></td>
                 <td>
                   <div class="tag-list">
                     @for (tag of procedure.tags; track tag.id) {
@@ -314,6 +316,25 @@
           <label>
             <span>{{ localization.translate('procedures.form.name') }}</span>
             <input name="name" maxlength="200" required [ngModel]="form().name" (ngModelChange)="patchForm({ name: $event })">
+          </label>
+          <label>
+            <span>{{ localization.translate('procedures.form.cron') }}</span>
+            <input
+              id="procedure-cron"
+              class="mono"
+              name="cron"
+              maxlength="255"
+              required
+              [ngModel]="form().cronExpression"
+              (ngModelChange)="patchForm({ cronExpression: $event })"
+              [class.field-invalid]="formFieldErrors().cron"
+              [attr.aria-invalid]="formFieldErrors().cron ? true : null"
+              [attr.aria-describedby]="formFieldErrors().cron ? 'procedure-cron-help procedure-cron-error' : 'procedure-cron-help'"
+            >
+            <small id="procedure-cron-help">{{ localization.translate('procedures.form.cronHelp') }}</small>
+            @if (formFieldErrors().cron; as cronError) {
+              <small class="field-error" id="procedure-cron-error" role="alert">{{ cronError }}</small>
+            }
           </label>
           <label class="checkbox checkbox--with-help">
             <input name="enabled" type="checkbox" [ngModel]="form().enabled" (ngModelChange)="patchForm({ enabled: $event })">

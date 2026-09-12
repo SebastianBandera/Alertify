@@ -59,6 +59,9 @@ public class Procedure {
     @Column(columnDefinition = "text")
     private String description;
 
+    @Column(name = "cron_expression", nullable = false, columnDefinition = "text")
+    private String cronExpression;
+
     @Column(nullable = false)
     private boolean enabled;
 
@@ -85,10 +88,11 @@ public class Procedure {
     protected Procedure() {
     }
 
-    public Procedure(ProcedureTemplateDefinition template, String name, String description, boolean enabled, boolean allowConcurrentExecutions, Set<Tag> tags) {
+    public Procedure(ProcedureTemplateDefinition template, String name, String description, String cronExpression, boolean enabled, boolean allowConcurrentExecutions, Set<Tag> tags) {
         this.template = Objects.requireNonNull(template, "template must not be null");
         this.name = Objects.requireNonNull(name, "name must not be null");
         this.description = description;
+        this.cronExpression = Objects.requireNonNull(cronExpression, "cronExpression must not be null");
         this.enabled = enabled;
         this.allowConcurrentExecutions = allowConcurrentExecutions;
         replaceTags(tags);
@@ -99,6 +103,7 @@ public class Procedure {
     public ProcedureTemplateDefinition getTemplate() { return template; }
     public String getName() { return name; }
     public String getDescription() { return description; }
+    public String getCronExpression() { return cronExpression; }
     public boolean isEnabled() { return enabled; }
     public boolean isConcurrentExecutionAllowed() { return allowConcurrentExecutions; }
     public Set<Tag> getTags() { return Collections.unmodifiableSet(tags); }
@@ -106,6 +111,7 @@ public class Procedure {
     public Instant getUpdatedAt() { return updatedAt; }
     public void rename(String value) { name = Objects.requireNonNull(value, "name must not be null"); }
     public void changeDescription(String value) { description = value; }
+    public void reschedule(String value) { cronExpression = Objects.requireNonNull(value, "cronExpression must not be null"); }
     public void enable() { enabled = true; }
     public void disable() { enabled = false; }
     public void changeConcurrentExecution(boolean value) { allowConcurrentExecutions = value; }

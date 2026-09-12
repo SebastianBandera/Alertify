@@ -13,6 +13,7 @@ public record ProcedureCreateRequest(
     @NotNull @Positive Long templateId,
     @NotBlank @Size(max = 200) String name,
     @Size(max = 2000) String description,
+    @NotBlank @Size(max = 255) String cronExpression,
     boolean enabled,
     Boolean allowConcurrentExecutions,
     @NotNull @Size(max = 100) List<@Valid ProcedureParameterValueRequest> parameters,

@@ -127,7 +127,7 @@ public class ProcedureCsvService {
 
                 continue;
             }
-            procedure = procedureRepository.saveAndFlush(new Procedure(template, row.name(), row.description(), row.enabled(), row.allowConcurrentExecutions(), resolvedTags));
+            procedure = procedureRepository.saveAndFlush(new Procedure(template, row.name(), row.description(), ProcedureManagementService.validateCron(row.cronExpression()), row.enabled(), row.allowConcurrentExecutions(), resolvedTags));
             procedures.put(key(row.name()), procedure);
             createdIds.add(procedure.getId());
         }
@@ -146,7 +146,7 @@ public class ProcedureCsvService {
                 continue;
             }
             managementService.update(procedure.getId(), new ProcedureUpdateRequest(procedure.getVersion(),
-                    row.name(), row.description(), row.enabled(), row.allowConcurrentExecutions(), parameters, tagIds));
+                    row.name(), row.description(), row.cronExpression(), row.enabled(), row.allowConcurrentExecutions(), parameters, tagIds));
             if (!createdIds.contains(procedure.getId())) updated++;
         }
         eventLogger.successAfterCommit("PROCEDURE_IMPORT", Map.of("total", rows.size(), "created", createdIds.size(), "updated", updated, "unchanged", unchanged, "tagsCreated", tagsCreated));
@@ -187,6 +187,7 @@ public class ProcedureCsvService {
 
     private boolean unchanged(Procedure procedure, ProcedureCsvCodec.ImportRow row, Set<Long> tagIds, List<ProcedureParameterValueRequest> parameters) {
         if (!procedure.getName().equals(row.name()) || !Objects.equals(procedure.getDescription(), row.description())
+                || !procedure.getCronExpression().equals(row.cronExpression())
                 || procedure.isEnabled() != row.enabled()
                 || procedure.isConcurrentExecutionAllowed() != row.allowConcurrentExecutions()) return false;
 
