@@ -6,6 +6,7 @@ import java.net.URI;
 import java.time.Duration;
 import java.time.Instant;
 
+import app.alertify.worker.contract.DatabaseCredentials;
 import app.alertify.worker.grpc.AlertParameter;
 
 final class AlertParameterConverter {
@@ -67,6 +68,9 @@ final class AlertParameterConverter {
         if (targetType == Instant.class)
             return Instant.parse(value);
 
+        if (targetType == DatabaseCredentials.class)
+            return DatabaseCredentials.fromJson(value);
+
         if (targetType.isEnum())
             return enumValue(targetType, value);
 
@@ -79,6 +83,9 @@ final class AlertParameterConverter {
 
         if (declaredType.isEnum())
             return ((Enum<?>) value).name();
+
+        if (declaredType == DatabaseCredentials.class)
+            return ((DatabaseCredentials) value).toJson();
 
         if (declaredType == String.class || declaredType == Character.class || declaredType == char.class
                 || declaredType == URI.class || declaredType == Duration.class || declaredType == Instant.class

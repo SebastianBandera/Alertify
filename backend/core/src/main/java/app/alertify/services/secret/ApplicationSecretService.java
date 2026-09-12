@@ -40,25 +40,27 @@ import app.alertify.secret.api.SecretUpdateRequest;
 public class ApplicationSecretService {
 
     private static final Map<String, String> FILTER_ALIASES = Map.of(
-            "created", "createdAt", "modified", "updatedAt"
+            "created", "createdAt", "modified", "updatedAt", "type", "valueType"
     );
     private static final Set<String> FILTER_FIELDS = Set.of(
-            "id", "version", "name", "description", "encryptionVersion", "valueRevision", "createdAt", "updatedAt"
+            "id", "version", "name", "description", "valueType", "encryptionVersion", "valueRevision", "createdAt", "updatedAt"
     );
     private static final Set<String> SORT_FIELDS = Set.of(
-            "id", "version", "name", "encryptionVersion", "valueRevision", "createdAt", "updatedAt"
+            "id", "version", "name", "valueType", "encryptionVersion", "valueRevision", "createdAt", "updatedAt"
     );
 
     private final ApplicationSecretRepository secretRepository;
     private final TagRepository tagRepository;
     private final SecretEncryptionService encryptionService;
+    private final SecretValueValidator valueValidator;
     private final SecretMapper mapper;
     private final ApplicationEventLogger eventLogger;
 
-    public ApplicationSecretService(ApplicationSecretRepository secretRepository, TagRepository tagRepository, SecretEncryptionService encryptionService, SecretMapper mapper, ApplicationEventLogger eventLogger) {
+    public ApplicationSecretService(ApplicationSecretRepository secretRepository, TagRepository tagRepository, SecretEncryptionService encryptionService, SecretValueValidator valueValidator, SecretMapper mapper, ApplicationEventLogger eventLogger) {
         this.secretRepository = secretRepository;
         this.tagRepository = tagRepository;
         this.encryptionService = encryptionService;
+        this.valueValidator = valueValidator;
         this.mapper = mapper;
         this.eventLogger = eventLogger;
     }
@@ -103,16 +105,18 @@ public class ApplicationSecretService {
         String name = normalizeRequired(request.name());
         ensureNameAvailable(name, null);
         Set<Tag> tags = resolveSecretTags(request.tagIds());
-        EncryptedSecretValue encrypted = encryptionService.encrypt(request.value());
+        String plaintext = valueValidator.validateAndNormalize(request.valueType(), request.value());
+        EncryptedSecretValue encrypted = encryptionService.encrypt(plaintext);
         ApplicationSecret secret = new ApplicationSecret(
-                name, normalizeOptional(request.description()), encrypted.encryptedValue(), encrypted.encryptionIv(),
-                encrypted.valueHash(), encrypted.hashSalt(), encrypted.encryptionVersion(), tags, request.writable()
+                name, normalizeOptional(request.description()), request.valueType(), encrypted.encryptedValue(),
+                encrypted.encryptionIv(), encrypted.valueHash(), encrypted.hashSalt(), encrypted.encryptionVersion(),
+                tags, request.writable()
         );
         ApplicationSecret saved = secretRepository.saveAndFlush(secret);
         eventLogger.successAfterCommit(
                 "SECRET_CREATED",
                 Map.of(
-                        "secretId", saved.getId(), "name", saved.getName(),
+                        "secretId", saved.getId(), "name", saved.getName(), "valueType", saved.getValueType(),
                         "tagIds", tagIds(saved.getTags()), "valueRevision", saved.getValueRevision(),
                         "writable", saved.isWritable()
                 )
@@ -128,6 +132,7 @@ public class ApplicationSecretService {
         String name = normalizeRequired(request.name());
         String description = normalizeOptional(request.description());
         Set<Tag> tags = resolveSecretTags(request.tagIds());
+        String plaintext = valueValidator.validateAndNormalize(request.valueType(), request.newValue());
         Set<String> changedFields = new LinkedHashSet<>();
 
         if (!secret.getName().equals(name)) {
@@ -147,8 +152,12 @@ public class ApplicationSecretService {
             secret.changeWritable(request.writable());
             changedFields.add("writable");
         }
+        if (secret.getValueType() != request.valueType()) {
+            secret.changeValueType(request.valueType());
+            changedFields.add("valueType");
+        }
 
-        EncryptedSecretValue encrypted = encryptionService.encrypt(request.newValue());
+        EncryptedSecretValue encrypted = encryptionService.encrypt(plaintext);
         secret.replaceEncryptedValue(encrypted.encryptedValue(), encrypted.encryptionIv(), encrypted.valueHash(), encrypted.hashSalt(), encrypted.encryptionVersion());
         changedFields.add("value");
         secretRepository.flush();
@@ -157,6 +166,7 @@ public class ApplicationSecretService {
         logData.put("secretId", id);
         logData.put("name", secret.getName());
         logData.put("previousName", previousName);
+        logData.put("valueType", secret.getValueType());
         logData.put("tagIds", tagIds(secret.getTags()));
         logData.put("changedFields", changedFields);
         logData.put("valueRevision", secret.getValueRevision());

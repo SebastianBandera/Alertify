@@ -2,16 +2,46 @@ import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } 
 import { FormsModule } from '@angular/forms';
 
 import { ApiRequestError, TagMatchMode } from '../../core/api/configuration-api.service';
-import { ApplicationSecret, SecretApiService, SecretTag } from '../../core/api/secret-api.service';
+import {
+  ApplicationSecret,
+  DATABASE_ENGINES,
+  DatabaseEngine,
+  SECRET_VALUE_TYPES,
+  SecretApiService,
+  SecretTag,
+  SecretValue,
+  SecretValueType,
+} from '../../core/api/secret-api.service';
 import { LocalizationService } from '../../core/i18n/localization.service';
+
+/** Editor state for a DB_SECRET; every field is kept as text and parsed on save, like configs' rawValue. */
+interface DatabaseSecretForm {
+  engine: DatabaseEngine;
+  host: string;
+  port: string;
+  database: string;
+  username: string;
+  password: string;
+  options: string;
+}
 
 interface SecretForm {
   name: string;
   description: string;
+  valueType: SecretValueType;
   newValue: string;
+  dbValue: DatabaseSecretForm;
   tagIds: number[];
   writable: boolean;
 }
+
+const DEFAULT_PORTS: Readonly<Record<DatabaseEngine, string>> = {
+  POSTGRESQL: '5432',
+  MARIADB: '3306',
+  SQL_SERVER: '1433',
+  ORACLE: '1521',
+  OTHER: '',
+};
 
 interface TagForm {
   name: string;
@@ -40,6 +70,8 @@ function readStoredPageSize(): number {
 export class SecretsComponent implements OnInit {
   protected readonly localization = inject(LocalizationService);
   protected readonly pageSizeOptions = PAGE_SIZE_OPTIONS;
+  protected readonly valueTypes = SECRET_VALUE_TYPES;
+  protected readonly databaseEngines = DATABASE_ENGINES;
   private readonly api = inject(SecretApiService);
 
   protected readonly secrets = signal<readonly ApplicationSecret[]>([]);
@@ -159,7 +191,9 @@ export class SecretsComponent implements OnInit {
     this.secretForm.set({
       name: secret.name,
       description: secret.description ?? '',
+      valueType: secret.valueType,
       newValue: '',
+      dbValue: this.emptyDatabaseForm(),
       tagIds: secret.tags.map((tag) => tag.id),
       writable: secret.writable,
     });
@@ -171,8 +205,26 @@ export class SecretsComponent implements OnInit {
     if (!this.saving()) this.editorOpen.set(false);
   }
 
-  protected updateSecretForm<Field extends 'name' | 'description' | 'newValue' | 'writable'>(field: Field, value: SecretForm[Field]): void {
-    this.secretForm.update((form) => ({ ...form, [field]: value }));
+  protected patchSecretForm(patch: Partial<SecretForm>): void {
+    this.secretForm.update((form) => ({ ...form, ...patch }));
+    this.formError.set(null);
+  }
+
+  protected changeValueType(valueType: SecretValueType): void {
+    this.patchSecretForm({ valueType, newValue: '', dbValue: this.emptyDatabaseForm() });
+  }
+
+  protected patchDatabaseForm(patch: Partial<DatabaseSecretForm>): void {
+    this.secretForm.update((form) => ({ ...form, dbValue: { ...form.dbValue, ...patch } }));
+    this.formError.set(null);
+  }
+
+  protected changeDatabaseEngine(engine: DatabaseEngine): void {
+    this.secretForm.update((form) => {
+      const keepPort = form.dbValue.port !== '' && form.dbValue.port !== DEFAULT_PORTS[form.dbValue.engine];
+      return { ...form, dbValue: { ...form.dbValue, engine, port: keepPort ? form.dbValue.port : DEFAULT_PORTS[engine] } };
+    });
+    this.formError.set(null);
   }
 
   protected toggleFormTag(tagId: number, checked: boolean): void {
@@ -181,8 +233,12 @@ export class SecretsComponent implements OnInit {
 
   protected async saveSecret(): Promise<void> {
     const form = this.secretForm();
-    if (!form.name.trim() || !form.newValue) {
-      this.formError.set(this.localization.translate('secrets.valueRequired'));
+    let value: SecretValue;
+    try {
+      if (!form.name.trim()) throw new Error(this.localization.translate('secrets.valueRequired'));
+      value = this.parseValue(form);
+    } catch (error) {
+      this.formError.set(this.errorMessage(error));
       return;
     }
     this.saving.set(true);
@@ -190,9 +246,9 @@ export class SecretsComponent implements OnInit {
     try {
       const editing = this.editingSecret();
       if (editing) {
-        await this.api.updateSecret(editing.id, { version: editing.version, name: form.name.trim(), description: form.description.trim() || null, newValue: form.newValue, tagIds: form.tagIds, writable: form.writable });
+        await this.api.updateSecret(editing.id, { version: editing.version, name: form.name.trim(), description: form.description.trim() || null, valueType: form.valueType, newValue: value, tagIds: form.tagIds, writable: form.writable });
       } else {
-        await this.api.createSecret({ name: form.name.trim(), description: form.description.trim() || null, value: form.newValue, tagIds: form.tagIds, writable: form.writable });
+        await this.api.createSecret({ name: form.name.trim(), description: form.description.trim() || null, valueType: form.valueType, value, tagIds: form.tagIds, writable: form.writable });
       }
       this.editorOpen.set(false);
       this.notice.set(this.localization.translate('secrets.saved'));
@@ -269,8 +325,31 @@ export class SecretsComponent implements OnInit {
     return new Intl.DateTimeFormat(this.localization.locale(), { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
   }
 
+  private parseValue(form: SecretForm): SecretValue {
+    switch (form.valueType) {
+      case 'DB_SECRET': {
+        const db = form.dbValue;
+        const host = db.host.trim();
+        const database = db.database.trim();
+        const username = db.username.trim();
+        const options = db.options.trim();
+        if (!host || !database || !username || !db.password) throw new Error(this.localization.translate('secrets.value.dbRequired'));
+        if (!/^\d+$/.test(db.port.trim()) || Number(db.port) < 1 || Number(db.port) > 65535) throw new Error(this.localization.translate('secrets.value.invalidPort'));
+        if (db.engine === 'OTHER' && !options.startsWith('jdbc:')) throw new Error(this.localization.translate('secrets.value.jdbcUrlRequired'));
+        return { engine: db.engine, host, port: Number(db.port), database, username, password: db.password, options: options || null };
+      }
+      default:
+        if (!form.newValue) throw new Error(this.localization.translate('secrets.valueRequired'));
+        return form.newValue;
+    }
+  }
+
   private emptySecretForm(): SecretForm {
-    return { name: '', description: '', newValue: '', tagIds: [], writable: false };
+    return { name: '', description: '', valueType: 'STRING', newValue: '', dbValue: this.emptyDatabaseForm(), tagIds: [], writable: false };
+  }
+
+  private emptyDatabaseForm(): DatabaseSecretForm {
+    return { engine: 'POSTGRESQL', host: '', port: DEFAULT_PORTS.POSTGRESQL, database: '', username: '', password: '', options: '' };
   }
 
   private errorMessage(error: unknown): string {

@@ -20,11 +20,13 @@ public class WritableSecretService {
 
     private final ApplicationSecretRepository secretRepository;
     private final SecretEncryptionService encryptionService;
+    private final SecretValueValidator valueValidator;
     private final ApplicationEventLogger eventLogger;
 
-    public WritableSecretService(ApplicationSecretRepository secretRepository, SecretEncryptionService encryptionService, ApplicationEventLogger eventLogger) {
+    public WritableSecretService(ApplicationSecretRepository secretRepository, SecretEncryptionService encryptionService, SecretValueValidator valueValidator, ApplicationEventLogger eventLogger) {
         this.secretRepository = secretRepository;
         this.encryptionService = encryptionService;
+        this.valueValidator = valueValidator;
         this.eventLogger = eventLogger;
     }
 
@@ -48,7 +50,8 @@ public class WritableSecretService {
             if (result.getNullValue())
                 throw new IllegalArgumentException("Writable secret value must not be null");
 
-            EncryptedSecretValue encrypted = encryptionService.encrypt(result.getValue());
+            String plaintext = valueValidator.validateAndNormalizeRaw(secret.getValueType(), result.getValue());
+            EncryptedSecretValue encrypted = encryptionService.encrypt(plaintext);
             secret.replaceEncryptedValue(
                     encrypted.encryptedValue(), encrypted.encryptionIv(), encrypted.valueHash(),
                     encrypted.hashSalt(), encrypted.encryptionVersion()

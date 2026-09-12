@@ -32,6 +32,7 @@ import app.alertify.hooks.model.Hook;
 import app.alertify.hooks.model.HookTarget;
 import app.alertify.hooks.model.HookTargetType;
 import app.alertify.jpa.entity.ApplicationSecret;
+import app.alertify.jpa.entity.SecretValueType;
 import app.alertify.jpa.repository.AlertRepository;
 import app.alertify.jpa.repository.ApplicationSecretRepository;
 import app.alertify.jpa.repository.HookInvocationRepository;
@@ -84,6 +85,7 @@ public class HookManagementService {
         alertRepository.findAll(Sort.by("name")).forEach(value -> targets.add(new HookOptionResponse(value.getId(), value.getName(), value.isEnabled(), HookTargetType.ALERT)));
         procedureRepository.findAll(Sort.by("name")).forEach(value -> targets.add(new HookOptionResponse(value.getId(), value.getName(), value.isEnabled(), HookTargetType.PROCEDURE)));
         List<HookSecretOptionResponse> secrets = secretRepository.findAll(Sort.by("name")).stream()
+                .filter(value -> value.getValueType() == SecretValueType.STRING)
                 .map(value -> new HookSecretOptionResponse(value.getId(), value.getName(), encryptionService.isRecoverable(value))).toList();
         eventLogger.success("HOOK_OPTIONS_VIEWED", Map.of("targetCount", targets.size(), "secretCount", secrets.size()));
         return new HookOptionsResponse(targets, secrets);
@@ -198,7 +200,14 @@ public class HookManagementService {
     }
 
     private ApplicationSecret secret(Long id) {
-        return id == null ? null : secretRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Secret " + id + " was not found"));
+        if (id == null)
+            return null;
+
+        ApplicationSecret secret = secretRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Secret " + id + " was not found"));
+        if (secret.getValueType() != SecretValueType.STRING)
+            throw invalid("Hook token secret must be a STRING secret");
+
+        return secret;
     }
 
     private Hook find(Long id) { return hookRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Hook " + id + " was not found")); }

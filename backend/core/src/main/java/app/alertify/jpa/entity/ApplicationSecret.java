@@ -15,6 +15,8 @@ import org.hibernate.envers.NotAudited;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -58,6 +60,10 @@ public class ApplicationSecret {
 
     @Column(columnDefinition = "text")
     private String description;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "value_type", nullable = false, length = 32)
+    private SecretValueType valueType;
 
     @NotAudited
     @Column(name = "encrypted_value", nullable = false, columnDefinition = "bytea")
@@ -112,8 +118,13 @@ public class ApplicationSecret {
     }
 
     public ApplicationSecret(String name, String description, byte[] encryptedValue, byte[] encryptionIv, byte[] valueHash, byte[] hashSalt, short encryptionVersion, Set<Tag> tags, boolean writable) {
+        this(name, description, SecretValueType.STRING, encryptedValue, encryptionIv, valueHash, hashSalt, encryptionVersion, tags, writable);
+    }
+
+    public ApplicationSecret(String name, String description, SecretValueType valueType, byte[] encryptedValue, byte[] encryptionIv, byte[] valueHash, byte[] hashSalt, short encryptionVersion, Set<Tag> tags, boolean writable) {
         this.name = Objects.requireNonNull(name, "name must not be null");
         this.description = description;
+        this.valueType = Objects.requireNonNull(valueType, "valueType must not be null");
         setEncryptedValue(encryptedValue, encryptionIv, valueHash, hashSalt, encryptionVersion);
         valueRevision = 1;
         this.writable = writable;
@@ -134,6 +145,10 @@ public class ApplicationSecret {
 
     public String getDescription() {
         return description;
+    }
+
+    public SecretValueType getValueType() {
+        return valueType;
     }
 
     public byte[] getEncryptedValue() {
@@ -182,6 +197,10 @@ public class ApplicationSecret {
 
     public void changeDescription(String description) {
         this.description = description;
+    }
+
+    public void changeValueType(SecretValueType valueType) {
+        this.valueType = Objects.requireNonNull(valueType, "valueType must not be null");
     }
 
     public void replaceEncryptedValue(byte[] encryptedValue, byte[] encryptionIv, byte[] valueHash, byte[] hashSalt, short encryptionVersion) {

@@ -14,11 +14,33 @@ export interface SecretTag {
   readonly updatedAt: string;
 }
 
+export type SecretValueType = 'STRING' | 'DB_SECRET';
+
+export type DatabaseEngine = 'POSTGRESQL' | 'MARIADB' | 'SQL_SERVER' | 'ORACLE' | 'OTHER';
+
+export const SECRET_VALUE_TYPES: readonly SecretValueType[] = ['STRING', 'DB_SECRET'];
+
+export const DATABASE_ENGINES: readonly DatabaseEngine[] = ['POSTGRESQL', 'MARIADB', 'SQL_SERVER', 'ORACLE', 'OTHER'];
+
+/** Value shape sent for DB_SECRET secrets; the backend stores it as canonical JSON. */
+export interface DatabaseSecretValue {
+  readonly engine: DatabaseEngine;
+  readonly host: string;
+  readonly port: number;
+  readonly database: string;
+  readonly username: string;
+  readonly password: string;
+  readonly options: string | null;
+}
+
+export type SecretValue = string | DatabaseSecretValue;
+
 export interface ApplicationSecret {
   readonly id: number;
   readonly version: number;
   readonly name: string;
   readonly description: string | null;
+  readonly valueType: SecretValueType;
   readonly tags: readonly SecretTag[];
   readonly writable: boolean;
   readonly recoveryStatus: 'RECOVERABLE' | 'UNRECOVERABLE';
@@ -30,7 +52,8 @@ export interface ApplicationSecret {
 export interface SecretCreateRequest {
   readonly name: string;
   readonly description: string | null;
-  readonly value: string;
+  readonly valueType: SecretValueType;
+  readonly value: SecretValue;
   readonly tagIds: readonly number[];
   readonly writable: boolean;
 }
@@ -39,7 +62,8 @@ export interface SecretUpdateRequest {
   readonly version: number;
   readonly name: string;
   readonly description: string | null;
-  readonly newValue: string;
+  readonly valueType: SecretValueType;
+  readonly newValue: SecretValue;
   readonly tagIds: readonly number[];
   readonly writable: boolean;
 }

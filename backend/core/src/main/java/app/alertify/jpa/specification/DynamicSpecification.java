@@ -76,7 +76,8 @@ public final class DynamicSpecification {
         if (type == String.class)
             return createStringPredicate(cb, path, value);
 
-        if (isRange(value))
+        // Enum constants such as DB_SECRET or DATE_TIME contain underscores but are never ranges.
+        if (isRange(value) && !type.isEnum())
             return createRangePredicate(cb, path, type, value);
 
         if (value.startsWith("!="))

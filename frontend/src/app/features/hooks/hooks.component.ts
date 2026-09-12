@@ -215,7 +215,7 @@ export class HooksComponent implements OnInit, OnDestroy {
     this.tokenSecretError.set(null);
     try {
       const secret = await this.secretApi.createSecret({
-        name: form.name.trim(), description: null, value: form.value, tagIds: [], writable: false,
+        name: form.name.trim(), description: null, valueType: 'STRING', value: form.value, tagIds: [], writable: false,
       });
       this.tokenSecretForm.set(this.emptyTokenSecretForm());
       this.patchForm('tokenSecretId', secret.id);

@@ -11,6 +11,7 @@ class SecretResponseTest {
     @Test
     void publicResponseHasNoValueOrCryptographicMaterial() {
         assertThat(Arrays.stream(SecretResponse.class.getRecordComponents()).map(component -> component.getName()))
+                .contains("valueType")
                 .doesNotContain("value", "newValue", "encryptedValue", "encryptionIv", "valueHash", "hashSalt", "encryptionVersion");
     }
 }

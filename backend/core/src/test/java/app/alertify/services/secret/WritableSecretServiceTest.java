@@ -19,6 +19,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import app.alertify.jpa.entity.ApplicationSecret;
+import app.alertify.jpa.entity.SecretValueType;
 import app.alertify.jpa.repository.ApplicationSecretRepository;
 import app.alertify.logging.ApplicationEventLogger;
 import app.alertify.worker.grpc.WritableSecretValue;
@@ -86,13 +87,50 @@ class WritableSecretServiceTest {
         verify(eventLogger).errorAfterCommit(eq("SECRET_OVERWRITE_REJECTED"), anyMap());
     }
 
+    @Test
+    void normalizesDatabaseSecretsBeforeEncryptingThem() {
+        ApplicationSecret secret = secret(SecretValueType.DB_SECRET, true);
+        String canonical = "{\"engine\":\"POSTGRESQL\",\"host\":\"db\",\"port\":5432,\"database\":\"app\","
+                + "\"username\":\"u\",\"password\":\"p\",\"options\":null}";
+        EncryptedSecretValue encrypted = encrypted("db-cipher");
+        when(secretRepository.findById(10L)).thenReturn(Optional.of(secret));
+        when(encryptionService.encrypt(canonical)).thenReturn(encrypted);
+
+        service().apply(20L, "Rotation", UUID.randomUUID(), Set.of(result(
+                "{\"password\":\"p\",\"username\":\"u\",\"database\":\"app\",\"port\":5432,\"host\":\" db \",\"engine\":\"POSTGRESQL\"}")));
+
+        assertThat(secret.getEncryptedValue()).isEqualTo(encrypted.encryptedValue());
+        assertThat(secret.getValueRevision()).isEqualTo(2);
+        verify(eventLogger).successAfterCommit(eq("SECRET_OVERWRITTEN_BY_ALERT"), anyMap());
+    }
+
+    @Test
+    void rejectsWorkerValuesThatDoNotMatchTheDatabaseSecretShape() {
+        ApplicationSecret secret = secret(SecretValueType.DB_SECRET, true);
+        when(secretRepository.findById(10L)).thenReturn(Optional.of(secret));
+
+        service().apply(20L, "Rotation", UUID.randomUUID(), Set.of(result("just-a-string")));
+
+        assertThat(secret.getValueRevision()).isEqualTo(1);
+        verify(encryptionService, never()).encrypt(org.mockito.ArgumentMatchers.any());
+        verify(secretRepository, never()).flush();
+        verify(eventLogger).errorAfterCommit(
+                eq("SECRET_OVERWRITE_REJECTED"),
+                org.mockito.ArgumentMatchers.argThat(data -> data.get("reason").toString().contains("DB_SECRET"))
+        );
+    }
+
     private WritableSecretService service() {
-        return new WritableSecretService(secretRepository, encryptionService, eventLogger);
+        return new WritableSecretService(secretRepository, encryptionService, new SecretValueValidator(), eventLogger);
     }
 
     private static ApplicationSecret secret(boolean writable) {
+        return secret(SecretValueType.STRING, writable);
+    }
+
+    private static ApplicationSecret secret(SecretValueType valueType, boolean writable) {
         ApplicationSecret secret = new ApplicationSecret(
-                "api.token", null, "old-cipher-value".getBytes(StandardCharsets.UTF_8),
+                "api.token", null, valueType, "old-cipher-value".getBytes(StandardCharsets.UTF_8),
                 new byte[12], new byte[32], new byte[16], (short) 1, Set.of(), writable
         );
         ReflectionTestUtils.setField(secret, "id", 10L);

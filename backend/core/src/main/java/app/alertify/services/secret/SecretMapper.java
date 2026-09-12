@@ -34,7 +34,7 @@ class SecretMapper {
                 : SecretRecoveryStatus.UNRECOVERABLE;
 
         return new SecretResponse(
-                secret.getId(), secret.getVersion(), secret.getName(), secret.getDescription(), tags,
+                secret.getId(), secret.getVersion(), secret.getName(), secret.getDescription(), secret.getValueType(), tags,
                 secret.isWritable(), recoveryStatus, secret.getValueRevision(), secret.getCreatedAt(), secret.getUpdatedAt()
         );
     }

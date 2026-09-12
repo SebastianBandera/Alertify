@@ -30,8 +30,11 @@ import com.google.zxing.client.j2se.BufferedImageLuminanceSource;
 import com.google.zxing.common.HybridBinarizer;
 import com.google.zxing.qrcode.QRCodeReader;
 
+import tools.jackson.databind.node.StringNode;
+
 import app.alertify.api.error.ConflictException;
 import app.alertify.api.error.InvalidTotpQrException;
+import app.alertify.jpa.entity.SecretValueType;
 import app.alertify.jpa.repository.ProcedureTemplateParameterDefinitionRepository;
 import app.alertify.procedures.api.TotpQrAnalysisResult;
 import app.alertify.procedures.model.ProcedureTemplateParameterDefinition;
@@ -195,7 +198,7 @@ public class TotpQrAnalysisService {
     private SecretResponse createSecret(String issuer, String account, String rawSecret) {
         String name = buildSecretName(issuer, account);
         SecretCreateRequest request = new SecretCreateRequest(
-                name, "Created by the TOTP QR wizard", rawSecret, Set.of(), false);
+                name, "Created by the TOTP QR wizard", SecretValueType.STRING, StringNode.valueOf(rawSecret), Set.of(), false);
         return secretService.create(request);
     }
 

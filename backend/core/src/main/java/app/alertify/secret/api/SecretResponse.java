@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.Set;
 
 import app.alertify.configuration.api.TagResponse;
+import app.alertify.jpa.entity.SecretValueType;
 
 /**
  * Metadata-only secret response. It intentionally contains neither encrypted
@@ -14,6 +15,7 @@ public record SecretResponse(
     long version,
     String name,
     String description,
+    SecretValueType valueType,
     Set<TagResponse> tags,
     boolean writable,
     SecretRecoveryStatus recoveryStatus,

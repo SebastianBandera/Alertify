@@ -56,6 +56,7 @@ import app.alertify.jpa.repository.ProcedureRepository;
 import app.alertify.jpa.repository.TagRepository;
 import app.alertify.jpa.specification.AlertSpecifications;
 import app.alertify.logging.ApplicationEventLogger;
+import app.alertify.worker.contract.DatabaseCredentials;
 
 /**
  * CRUD, manual runs and stored state for user-configured alerts. Updates and
@@ -372,6 +373,7 @@ public class AlertManagementService {
             case "java.net.URI" -> URI.create(value);
             case "java.time.Duration" -> Duration.parse(value);
             case "java.time.Instant" -> Instant.parse(value);
+            case "app.alertify.worker.contract.DatabaseCredentials" -> DatabaseCredentials.fromJson(value);
             default -> { }
         }
     }

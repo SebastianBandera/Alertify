@@ -616,6 +616,10 @@ td small {
   gap: 14px;
 }
 
+.form-grid--even {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .warning {
   padding: 14px 16px;
   border: 1px solid #fedf89;

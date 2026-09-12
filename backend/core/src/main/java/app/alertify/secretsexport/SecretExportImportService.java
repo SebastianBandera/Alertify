@@ -87,7 +87,7 @@ class SecretExportImportService {
                     .sorted(Comparator.comparing(Tag::getName, String.CASE_INSENSITIVE_ORDER))
                     .map(tag -> new SecretExportPayload.TagExport(tag.getName(), tag.getColor()))
                     .toList();
-            secretEntries.add(new SecretExportPayload.Entry(secret.getName(), secret.getDescription(), value, secret.isWritable(), tags));
+            secretEntries.add(new SecretExportPayload.Entry(secret.getName(), secret.getDescription(), secret.getValueType(), value, secret.isWritable(), tags));
         }
 
         List<SystemConfigurationExportPayload.Entry> systemConfigurationEntries = new ArrayList<>();
@@ -160,9 +160,9 @@ class SecretExportImportService {
             }
 
             EncryptedSecretValue encrypted = encryptionService.encrypt(entry.value());
-            secretRepository.save(new ApplicationSecret(entry.name(), entry.description(), encrypted.encryptedValue(),
-                    encrypted.encryptionIv(), encrypted.valueHash(), encrypted.hashSalt(), encrypted.encryptionVersion(),
-                    resolvedTags, entry.writable()));
+            secretRepository.save(new ApplicationSecret(entry.name(), entry.description(), entry.valueTypeOrDefault(),
+                    encrypted.encryptedValue(), encrypted.encryptionIv(), encrypted.valueHash(), encrypted.hashSalt(),
+                    encrypted.encryptionVersion(), resolvedTags, entry.writable()));
             created.add(entry.name());
         }
         return new SecretImportResult(List.copyOf(created), List.copyOf(skipped));
