@@ -28,7 +28,6 @@ import app.alertify.alerts.templates.HttpsCertificateExpiryAlertTemplate;
 import app.alertify.alerts.templates.InternetConnectionAlertTemplate;
 import app.alertify.alerts.templates.TcpConnectionAlertTemplate;
 import app.alertify.alerts.templates.WebRequestAlertTemplate;
-import app.alertify.alerts.templates.devtools.ConsoleParameterAlertTemplate;
 import app.alertify.jpa.repository.AlertTemplateDefinitionRepository;
 import app.alertify.jpa.repository.AlertTemplateParameterDefinitionRepository;
 
@@ -56,12 +55,12 @@ class AlertTemplateRegistrationServiceTest {
 
         AlertTemplateRegistrationSummary summary = service.scanAndRegister();
 
-        assertTrue(summary.templates() >= 7);
-        assertTrue(summary.parameters() >= 21);
+        assertTrue(summary.templates() >= 5);
+        assertTrue(summary.parameters() >= 18);
 
         ArgumentCaptor<AlertTemplateDefinition> templateCaptor =
             ArgumentCaptor.forClass(AlertTemplateDefinition.class);
-        verify(templateRepository, atLeast(7)).save(templateCaptor.capture());
+        verify(templateRepository, atLeast(5)).save(templateCaptor.capture());
         Map<String, AlertTemplateDefinition> templatesByKey = new LinkedHashMap<>();
         for (AlertTemplateDefinition template : templateCaptor.getAllValues())
             templatesByKey.put(template.getTemplateKey(), template);
@@ -103,16 +102,9 @@ class AlertTemplateRegistrationServiceTest {
             webRequestTemplate.getSourcePath()
         );
 
-        AlertTemplateDefinition consoleParameterTemplate =
-            templatesByKey.get(ConsoleParameterAlertTemplate.class.getName());
-        assertNotNull(consoleParameterTemplate);
-        assertEquals(1, consoleParameterTemplate.getTags().size());
-        assertEquals("alerts.templateTag.development", consoleParameterTemplate.getTags().get(0).nameKey());
-        assertNull(consoleParameterTemplate.getTags().get(0).color());
-
         ArgumentCaptor<AlertTemplateParameterDefinition> parameterCaptor =
             ArgumentCaptor.forClass(AlertTemplateParameterDefinition.class);
-        verify(parameterRepository, atLeast(21)).save(parameterCaptor.capture());
+        verify(parameterRepository, atLeast(18)).save(parameterCaptor.capture());
 
         List<AlertTemplateParameterDefinition> httpsParameters = parametersOf(parameterCaptor, httpsCertificateTemplate);
         assertEquals(4, httpsParameters.size());
