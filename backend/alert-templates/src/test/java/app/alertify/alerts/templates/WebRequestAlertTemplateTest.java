@@ -2,6 +2,7 @@ package app.alertify.alerts.templates;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -22,6 +23,21 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 
 class WebRequestAlertTemplateTest {
+
+    @Test
+    void responseBodyUsesContentValueSemanticsWithoutExposingBytes() throws ReflectiveOperationException {
+        Class<?> responseBodyClass = Class.forName(WebRequestAlertTemplate.class.getName() + "$ResponseBody");
+        var constructor = responseBodyClass.getDeclaredConstructor(byte[].class);
+        constructor.setAccessible(true);
+        Object first = constructor.newInstance((Object) new byte[] { 91, 42, -7 });
+        Object same = constructor.newInstance((Object) new byte[] { 91, 42, -7 });
+        Object different = constructor.newInstance((Object) new byte[] { 91, 42, -6 });
+
+        assertEquals(first, same);
+        assertEquals(first.hashCode(), same.hashCode());
+        assertNotEquals(first, different);
+        assertEquals("ResponseBody[bytesLength=3]", first.toString());
+    }
 
     @Test
     void declaresMultilineFieldsForTheBodyHeadersAndRegexes() throws ReflectiveOperationException {

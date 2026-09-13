@@ -2,7 +2,9 @@ package app.alertify.binary;
 
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.Arrays;
 import java.util.Locale;
+import java.util.Objects;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -51,5 +53,41 @@ public class BinaryPayloadService {
         return normalized.matches("[a-z0-9!#$&^_.+-]+/[a-z0-9!#$&^_.+-]+") ? normalized : "application/octet-stream";
     }
 
-    public record PreparedBinary(String fileName, String contentType, long size, long zipSize, byte[] sha256, byte[] zip) { }
+    public record PreparedBinary(String fileName, String contentType, long size, long zipSize, byte[] sha256, byte[] zip) {
+
+        @Override
+        public boolean equals(Object object) {
+            if (this == object)
+                return true;
+
+            if (!(object instanceof PreparedBinary other))
+                return false;
+
+            return size == other.size
+                    && zipSize == other.zipSize
+                    && Objects.equals(fileName, other.fileName)
+                    && Objects.equals(contentType, other.contentType)
+                    && Arrays.equals(sha256, other.sha256)
+                    && Arrays.equals(zip, other.zip);
+        }
+
+        @Override
+        public int hashCode() {
+            int result = Objects.hash(fileName, contentType, size, zipSize);
+            result = 31 * result + Arrays.hashCode(sha256);
+            return 31 * result + Arrays.hashCode(zip);
+        }
+
+        @Override
+        public String toString() {
+            return "PreparedBinary["
+                    + "fileName=" + fileName
+                    + ", contentType=" + contentType
+                    + ", size=" + size
+                    + ", zipSize=" + zipSize
+                    + ", sha256Length=" + (sha256 == null ? "null" : sha256.length)
+                    + ", zipLength=" + (zip == null ? "null" : zip.length)
+                    + "]";
+        }
+    }
 }

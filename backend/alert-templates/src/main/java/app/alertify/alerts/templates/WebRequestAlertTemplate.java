@@ -13,6 +13,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -419,6 +420,24 @@ public final class WebRequestAlertTemplate implements AlertEvaluator {
     }
 
     private record ResponseBody(byte[] bytes) {
+
+        @Override
+        public boolean equals(Object object) {
+            if (this == object)
+                return true;
+
+            return object instanceof ResponseBody other && Arrays.equals(bytes, other.bytes);
+        }
+
+        @Override
+        public int hashCode() {
+            return Arrays.hashCode(bytes);
+        }
+
+        @Override
+        public String toString() {
+            return "ResponseBody[bytesLength=" + (bytes == null ? "null" : bytes.length) + "]";
+        }
     }
 
     private static final class ResponseBodyTooLargeException extends IOException {

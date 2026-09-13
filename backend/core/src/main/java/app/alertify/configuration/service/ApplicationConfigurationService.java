@@ -1,6 +1,7 @@
 package app.alertify.configuration.service;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -150,7 +151,36 @@ public class ApplicationConfigurationService {
     }
 
     private static byte[] sha256(byte[] value) { try { return MessageDigest.getInstance("SHA-256").digest(value); } catch (java.security.NoSuchAlgorithmException e) { throw new IllegalStateException(e); } }
-    public record BinaryDownload(String fileName, String contentType, byte[] content) { }
+    public record BinaryDownload(String fileName, String contentType, byte[] content) {
+
+        @Override
+        public boolean equals(Object object) {
+            if (this == object)
+                return true;
+
+            if (!(object instanceof BinaryDownload other))
+                return false;
+
+            return Objects.equals(fileName, other.fileName)
+                    && Objects.equals(contentType, other.contentType)
+                    && Arrays.equals(content, other.content);
+        }
+
+        @Override
+        public int hashCode() {
+            int result = Objects.hash(fileName, contentType);
+            return 31 * result + Arrays.hashCode(content);
+        }
+
+        @Override
+        public String toString() {
+            return "BinaryDownload["
+                    + "fileName=" + fileName
+                    + ", contentType=" + contentType
+                    + ", contentLength=" + (content == null ? "null" : content.length)
+                    + "]";
+        }
+    }
 
     @Transactional(readOnly = true)
     public Page<ConfigurationResponse> search(MultiValueMap<String, String> params, Pageable pageable) {
