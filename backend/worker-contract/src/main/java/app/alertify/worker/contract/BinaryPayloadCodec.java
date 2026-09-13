@@ -9,7 +9,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
 
-/** Encodes the single-entry ZIP envelope used for binary bindings. */
+/** Encodes the single-entry ZIP envelope used for binary bindings. The payload may be empty; the envelope never is. */
 public final class BinaryPayloadCodec {
 
     public static final int DEFAULT_MAX_VALUE_BYTES = 100 * 1024 * 1024;
@@ -77,8 +77,8 @@ public final class BinaryPayloadCodec {
     }
 
     private static void requireSize(byte[] value, int maximumBytes) {
-        if (value == null || value.length == 0)
-            throw new IllegalArgumentException("Binary value must contain at least one byte");
+        if (value == null)
+            throw new IllegalArgumentException("Binary value must not be null");
         if (maximumBytes <= 0 || value.length > maximumBytes)
             throw new IllegalArgumentException("Binary value exceeds the " + maximumBytes + " byte limit");
     }

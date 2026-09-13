@@ -106,7 +106,7 @@ public class ApplicationConfigurationController {
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<ConfigurationResponse> createBinary(@Valid @RequestPart("metadata") BinaryConfigurationCreateRequest request, @RequestPart("file") MultipartFile file) {
+    public ResponseEntity<ConfigurationResponse> createBinary(@Valid @RequestPart("metadata") BinaryConfigurationCreateRequest request, @RequestPart(value = "file", required = false) MultipartFile file) {
         ConfigurationResponse response = service.createBinary(request, file);
         URI location = ServletUriComponentsBuilder.fromCurrentRequest().path("/{id}").buildAndExpand(response.id()).toUri();
         return ResponseEntity.created(location).body(response);
@@ -118,7 +118,7 @@ public class ApplicationConfigurationController {
     }
 
     @PutMapping(value = "/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ConfigurationResponse updateBinary(@PathVariable Long id, @Valid @RequestPart("metadata") BinaryConfigurationUpdateRequest request, @RequestPart("file") MultipartFile file) {
+    public ConfigurationResponse updateBinary(@PathVariable Long id, @Valid @RequestPart("metadata") BinaryConfigurationUpdateRequest request, @RequestPart(value = "file", required = false) MultipartFile file) {
         return service.updateBinary(id, request, file);
     }
 

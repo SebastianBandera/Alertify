@@ -98,6 +98,30 @@ class WritableConfigurationServiceTest {
         verify(configurationRepository).flush();
     }
 
+    @Test
+    void persistsEmptyWritableBinaryBytes() {
+        ApplicationConfiguration configuration = new ApplicationConfiguration(
+                "database", null, ConfigurationValueType.BINARY,
+                tools.jackson.databind.node.JsonNodeFactory.instance.objectNode(), Set.of(), true);
+        configuration.changeBinaryMetadata("data.sqlite", "application/vnd.sqlite3", 6, 1, new byte[32]);
+        ReflectionTestUtils.setField(configuration, "id", 10L);
+        when(configurationRepository.findById(10L)).thenReturn(Optional.of(configuration));
+
+        WritableConfigurationValue value = WritableConfigurationValue.newBuilder()
+                .setConfigurationId(10L).setParameterName("database")
+                .setBinaryValue(com.google.protobuf.ByteString.copyFrom(BinaryPayloadCodec.compress(new byte[0], 104857600)))
+                .build();
+        service().apply(20L, "SQLite updater", UUID.randomUUID(), Set.of(value));
+
+        ArgumentCaptor<ConfigurationBinaryValue> persisted = ArgumentCaptor.forClass(ConfigurationBinaryValue.class);
+        verify(binaryRepository).save(persisted.capture());
+        assertThat(BinaryPayloadCodec.decompress(persisted.getValue().getZipValue(), 104857600)).isEmpty();
+        assertThat(configuration.getBinarySize()).isZero();
+        assertThat(configuration.getBinaryZipSize()).isPositive();
+        verify(configurationRepository).flush();
+        verify(eventLogger, never()).errorAfterCommit(eq("CONFIGURATION_OVERWRITE_REJECTED"), anyMap());
+    }
+
     private WritableConfigurationService service() {
         return new WritableConfigurationService(
                 configurationRepository, new ConfigurationValueValidator(), expressionService,

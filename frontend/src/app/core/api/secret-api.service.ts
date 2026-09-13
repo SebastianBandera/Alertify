@@ -118,19 +118,19 @@ export class SecretApiService {
     return this.request(`/api/secrets/${id}`, { method: 'PUT', body: JSON.stringify(request) });
   }
 
-  async createBinarySecret(metadata: Omit<SecretCreateRequest, 'valueType' | 'value'>, file: File): Promise<ApplicationSecret> {
+  async createBinarySecret(metadata: Omit<SecretCreateRequest, 'valueType' | 'value'>, file: File | null): Promise<ApplicationSecret> {
     return this.binaryRequest('/api/secrets', 'POST', metadata, file);
   }
 
-  async updateBinarySecret(id: number, metadata: Omit<SecretUpdateRequest, 'valueType' | 'newValue'>, file: File): Promise<ApplicationSecret> {
+  async updateBinarySecret(id: number, metadata: Omit<SecretUpdateRequest, 'valueType' | 'newValue'>, file: File | null): Promise<ApplicationSecret> {
     return this.binaryRequest(`/api/secrets/${id}`, 'PUT', metadata, file);
   }
 
-  private async binaryRequest(path: string, method: string, metadata: object, file: File): Promise<ApplicationSecret> {
+  private async binaryRequest(path: string, method: string, metadata: object, file: File | null): Promise<ApplicationSecret> {
     const token = await this.authService.getAccessToken();
     const body = new FormData();
     body.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-    body.append('file', file);
+    if (file) body.append('file', file);
     const response = await fetch(`${this.apiBaseUrl}${path}`, { method, headers: { Authorization: `Bearer ${token}` }, body });
     if (!response.ok) throw await this.responseError(response);
     return (await response.json()) as ApplicationSecret;

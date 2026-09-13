@@ -23,4 +23,25 @@ class BinaryPayloadCodecTest {
         assertThatThrownBy(() -> BinaryPayloadCodec.decompress(archive, 10))
                 .isInstanceOf(IllegalArgumentException.class);
     }
+
+    @Test
+    void roundTripsEmptyBinaryContent() {
+        byte[] archive = BinaryPayloadCodec.compress(new byte[0], 10);
+        assertThat(archive).isNotEmpty();
+        assertThat(BinaryPayloadCodec.decompress(archive, 10)).isNotNull().isEmpty();
+    }
+
+    @Test
+    void rejectsNullValue() {
+        assertThatThrownBy(() -> BinaryPayloadCodec.compress(null, 10))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void rejectsEmptyArchive() {
+        assertThatThrownBy(() -> BinaryPayloadCodec.decompress(new byte[0], 10))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> BinaryPayloadCodec.decompress(null, 10))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
 }

@@ -260,7 +260,7 @@
             <span>{{ localization.translate('configs.field.type') }}</span>
             <select
               [ngModel]="configurationForm().valueType"
-              (ngModelChange)="patchConfigurationForm({ valueType: $event, rawValue: '' })"
+              (ngModelChange)="patchConfigurationForm({ valueType: $event, rawValue: '', binaryFile: null })"
               name="configurationType"
             >
               @for (type of valueTypes; track type) {
@@ -286,8 +286,9 @@
           @switch (configurationForm().valueType) {
             @case ('BINARY') {
               <span>{{ localization.translate('binary.fileLabel').replace('{maximum}', formatBytes(maximumBinaryBytes())) }}</span>
-              <input type="file" required (change)="selectBinaryFile($event)" name="configurationBinary" />
+              <input type="file" (change)="selectBinaryFile($event)" name="configurationBinary" />
               @if (editingConfiguration()?.binaryFileName && !configurationForm().binaryFile) { <small>{{ editingConfiguration()!.binaryFileName }} — {{ localization.translate('binary.selectReplacement') }}</small> }
+              @else if (!configurationForm().binaryFile) { <small>{{ localization.translate('binary.emptyWhenMissing') }}</small> }
             }
             @case ('EXPRESSION') {
               <app-expression-editor

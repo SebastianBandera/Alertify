@@ -385,7 +385,6 @@ export class ConfigsComponent implements OnInit {
     if (!form.name.trim()) return;
 
     if (form.valueType === 'BINARY') {
-      if (!form.binaryFile) { this.formError.set(this.localization.translate('binary.selectFile')); return; }
       this.saving.set(true);
       try {
         const metadata = { name: form.name.trim(), description: form.description.trim() || null, tagIds: form.tagIds, writable: form.writable };

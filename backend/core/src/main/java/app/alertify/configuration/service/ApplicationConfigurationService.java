@@ -142,8 +142,10 @@ public class ApplicationConfigurationService {
     }
 
     private BinaryPayloadService.PreparedBinary prepare(MultipartFile file) {
-        if (file == null || file.isEmpty()) throw new InvalidConfigurationValueException("A non-empty binary file is required");
-        try { return binaryPayloadService.prepare(file.getBytes(), file.getOriginalFilename(), file.getContentType()); }
+        try {
+            if (file == null) return binaryPayloadService.prepare(new byte[0], null, null);
+            return binaryPayloadService.prepare(file.getBytes(), file.getOriginalFilename(), file.getContentType());
+        }
         catch (IOException | IllegalArgumentException exception) { throw new InvalidConfigurationValueException(exception.getMessage(), exception); }
     }
 

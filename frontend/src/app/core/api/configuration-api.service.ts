@@ -177,11 +177,11 @@ export class ConfigurationApiService {
     return this.request('/api/binary-values/limits');
   }
 
-  async createBinaryConfiguration(metadata: Omit<ConfigurationWriteRequest, 'valueType' | 'value' | 'version'>, file: File): Promise<ApplicationConfiguration> {
+  async createBinaryConfiguration(metadata: Omit<ConfigurationWriteRequest, 'valueType' | 'value' | 'version'>, file: File | null): Promise<ApplicationConfiguration> {
     return this.binaryRequest('/api/configurations', 'POST', metadata, file);
   }
 
-  async updateBinaryConfiguration(id: number, metadata: Omit<ConfigurationWriteRequest, 'valueType' | 'value'>, file: File): Promise<ApplicationConfiguration> {
+  async updateBinaryConfiguration(id: number, metadata: Omit<ConfigurationWriteRequest, 'valueType' | 'value'>, file: File | null): Promise<ApplicationConfiguration> {
     return this.binaryRequest(`/api/configurations/${id}`, 'PUT', metadata, file);
   }
 
@@ -192,11 +192,11 @@ export class ConfigurationApiService {
     return response.blob();
   }
 
-  private async binaryRequest(path: string, method: string, metadata: object, file: File): Promise<ApplicationConfiguration> {
+  private async binaryRequest(path: string, method: string, metadata: object, file: File | null): Promise<ApplicationConfiguration> {
     const token = await this.authService.getAccessToken();
     const body = new FormData();
     body.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-    body.append('file', file);
+    if (file) body.append('file', file);
     const response = await fetch(`${this.apiBaseUrl}${path}`, { method, headers: { Authorization: `Bearer ${token}` }, body });
     if (!response.ok) throw await this.responseError(response);
     return (await response.json()) as ApplicationConfiguration;

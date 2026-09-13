@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -21,9 +22,13 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.util.LinkedMultiValueMap;
 
+import app.alertify.configuration.api.BinaryConfigurationCreateRequest;
 import app.alertify.configuration.api.ConfigurationUpdateRequest;
+import app.alertify.jpa.entity.ConfigurationBinaryValue;
 import app.alertify.jpa.entity.ApplicationConfiguration;
 import app.alertify.jpa.entity.ConfigurationValueType;
 import app.alertify.jpa.repository.ApplicationConfigurationRepository;
@@ -132,6 +137,48 @@ class ApplicationConfigurationServiceTest {
         assertThatThrownBy(() -> service.search(params, PageRequest.of(0, 20)))
             .isInstanceOf(InvalidFilterException.class)
             .hasMessageContaining("tagOperator");
+    }
+
+    @Test
+    void createsEmptyBinaryWhenNoFileIsUploaded() {
+        byte[] zip = new byte[] { 80, 75, 5, 6 };
+        when(binaryPayloadService.prepare(eq(new byte[0]), isNull(), isNull()))
+            .thenReturn(new BinaryPayloadService.PreparedBinary("binary.bin", "application/octet-stream", 0, zip.length, new byte[32], zip));
+        when(configurationRepository.saveAndFlush(any(ApplicationConfiguration.class))).thenAnswer(invocation -> {
+            ApplicationConfiguration saved = invocation.getArgument(0);
+            ReflectionTestUtils.setField(saved, "id", 7L);
+            return saved;
+        });
+        ApplicationConfigurationService service = service();
+
+        var response = service.createBinary(new BinaryConfigurationCreateRequest("blob", null, Set.of(), false), null);
+
+        assertThat(response.valueType()).isEqualTo(ConfigurationValueType.BINARY);
+        assertThat(response.binaryFileName()).isEqualTo("binary.bin");
+        assertThat(response.binarySize()).isZero();
+        verify(binaryRepository).saveAndFlush(argThat((ConfigurationBinaryValue value) -> value.getConfigurationId() == 7L && java.util.Arrays.equals(value.getZipValue(), zip)));
+    }
+
+    @Test
+    void keepsTheNameAndTypeOfAnEmptyUploadedFile() {
+        byte[] zip = new byte[] { 80, 75, 5, 6 };
+        when(binaryPayloadService.prepare(eq(new byte[0]), eq("empty.dat"), eq("text/plain")))
+            .thenReturn(new BinaryPayloadService.PreparedBinary("empty.dat", "text/plain", 0, zip.length, new byte[32], zip));
+        when(configurationRepository.saveAndFlush(any(ApplicationConfiguration.class))).thenAnswer(invocation -> {
+            ApplicationConfiguration saved = invocation.getArgument(0);
+            ReflectionTestUtils.setField(saved, "id", 8L);
+            return saved;
+        });
+        ApplicationConfigurationService service = service();
+
+        var response = service.createBinary(
+            new BinaryConfigurationCreateRequest("blob", null, Set.of(), false),
+            new MockMultipartFile("file", "empty.dat", "text/plain", new byte[0])
+        );
+
+        assertThat(response.binaryFileName()).isEqualTo("empty.dat");
+        assertThat(response.binaryContentType()).isEqualTo("text/plain");
+        assertThat(response.binarySize()).isZero();
     }
 
     private ApplicationConfigurationService service() {

@@ -288,7 +288,7 @@ export class SecretsComponent implements OnInit {
   protected async saveSecret(): Promise<void> {
     const form = this.secretForm();
     if (form.valueType === 'BINARY') {
-      if (!form.name.trim() || !form.binaryFile) { this.formError.set(this.localization.translate('binary.selectFile')); return; }
+      if (!form.name.trim()) { this.formError.set(this.localization.translate('secrets.nameRequired')); return; }
       this.saving.set(true); this.formError.set(null);
       try {
         const editing = this.editingSecret();

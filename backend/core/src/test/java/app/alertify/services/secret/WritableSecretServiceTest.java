@@ -154,6 +154,31 @@ class WritableSecretServiceTest {
         verify(secretRepository).flush();
     }
 
+    @Test
+    void encryptsAndRevisesEmptyWritableBinaryBytes() {
+        ApplicationSecret secret = secret(SecretValueType.BINARY, true);
+        secret.changeBinaryMetadata("private.sqlite", "application/vnd.sqlite3", 4, 1);
+        EncryptedSecretValue encrypted = encrypted("binary-cipher");
+        EncryptedSecretValue placeholder = encrypted("binary-marker");
+        when(secretRepository.findById(10L)).thenReturn(Optional.of(secret));
+        when(encryptionService.encryptBinary(org.mockito.ArgumentMatchers.any(byte[].class))).thenReturn(encrypted);
+        when(encryptionService.encrypt("BINARY")).thenReturn(placeholder);
+        WritableSecretValue value = WritableSecretValue.newBuilder()
+                .setSecretId(10L).setParameterName("database")
+                .setBinaryValue(com.google.protobuf.ByteString.copyFrom(BinaryPayloadCodec.compress(new byte[0], 104857600)))
+                .build();
+
+        service().apply(20L, "SQLite updater", UUID.randomUUID(), Set.of(value));
+
+        ArgumentCaptor<byte[]> zipped = ArgumentCaptor.forClass(byte[].class);
+        verify(encryptionService).encryptBinary(zipped.capture());
+        assertThat(BinaryPayloadCodec.decompress(zipped.getValue(), 104857600)).isEmpty();
+        verify(binaryRepository).save(org.mockito.ArgumentMatchers.any(SecretBinaryValue.class));
+        assertThat(secret.getBinarySize()).isZero();
+        assertThat(secret.getValueRevision()).isEqualTo(2);
+        verify(secretRepository).flush();
+    }
+
     private WritableSecretService service() {
         return new WritableSecretService(secretRepository, encryptionService, new SecretValueValidator(new ConfigurationExpressionParser()), eventLogger,
                 binaryRepository,

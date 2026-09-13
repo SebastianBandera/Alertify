@@ -79,7 +79,7 @@ public class ApplicationSecretController {
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<SecretResponse> createBinary(@Valid @RequestPart("metadata") BinarySecretCreateRequest request, @RequestPart("file") MultipartFile file) {
+    public ResponseEntity<SecretResponse> createBinary(@Valid @RequestPart("metadata") BinarySecretCreateRequest request, @RequestPart(value = "file", required = false) MultipartFile file) {
         SecretResponse response = service.createBinary(request, file);
         URI location = ServletUriComponentsBuilder.fromCurrentRequest().path("/{id}").buildAndExpand(response.id()).toUri();
         return ResponseEntity.created(location).body(response);
@@ -91,7 +91,7 @@ public class ApplicationSecretController {
     }
 
     @PutMapping(value = "/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public SecretResponse updateBinary(@PathVariable Long id, @Valid @RequestPart("metadata") BinarySecretUpdateRequest request, @RequestPart("file") MultipartFile file) { 
+    public SecretResponse updateBinary(@PathVariable Long id, @Valid @RequestPart("metadata") BinarySecretUpdateRequest request, @RequestPart(value = "file", required = false) MultipartFile file) { 
         return service.updateBinary(id, request, file);
     }
 
