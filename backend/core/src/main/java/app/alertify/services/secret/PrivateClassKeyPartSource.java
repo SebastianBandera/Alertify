@@ -3,6 +3,7 @@ package app.alertify.services.secret;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /**
@@ -19,6 +20,7 @@ class PrivateClassKeyPartSource {
     private final String className;
     private final String fieldName;
 
+    @Autowired
     PrivateClassKeyPartSource() {
         this(DEFAULT_CLASS_NAME, DEFAULT_FIELD_NAME);
     }
