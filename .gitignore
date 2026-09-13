@@ -129,3 +129,4 @@ nogit/
 /*.bat
 !/run.bat
 /*.zip
+sonar.env
