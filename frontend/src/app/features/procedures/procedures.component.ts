@@ -271,6 +271,19 @@ export class ProceduresComponent implements OnInit {
     }));
   }
 
+  // Angular disables native HTML validation on forms that use ngModel, so a
+  // required <select> left on its placeholder does not block submission by
+  // itself; this check has to run before the request is sent to the backend.
+  private isParameterIncomplete(value: ParameterForm): boolean {
+    switch (value.source) {
+      case '': return true;
+      case 'CONFIGURATION': return value.configurationId == null;
+      case 'SECRET': return value.secretId == null;
+      case 'PROCEDURE': return value.procedureId == null;
+      default: return false;
+    }
+  }
+
   protected parameterForm(key: string): ParameterForm {
     return this.form().parameters[key];
   }
@@ -305,6 +318,16 @@ export class ProceduresComponent implements OnInit {
       this.showCronError(this.localization.translate('procedures.form.cronRequired'));
       return;
     }
+    for (const definition of template.parameters) {
+      const value = form.parameters[definition.key];
+      if (value?.configured && this.isParameterIncomplete(value)) {
+        this.formError.set(
+          `${this.localization.translate('procedures.form.parameterIncomplete')} ${this.dynamic(definition.labelKey)}`
+        );
+        return;
+      }
+    }
+
     const parameters: ProcedureParameterWriteRequest[] = [];
     for (const definition of template.parameters) {
       const value = form.parameters[definition.key];
