@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -70,6 +71,9 @@ public class HookCoordinator implements AutoCloseable {
 
             persistence.finish(invocationId);
         } catch (Throwable exception) {
+            if (exception instanceof InterruptedException)
+                Thread.currentThread().interrupt();
+
             eventLogger.error("HOOK_INVOCATION_COMPLETED", Map.of("invocationId", invocationId, "status", "INTERRUPTED", "exceptionType", exception.getClass().getName()));
             try {
                 persistence.reconcileInterrupted(invocationId);
@@ -85,16 +89,20 @@ public class HookCoordinator implements AutoCloseable {
         }
     }
 
-    private void parallel(HookInvocation invocation) throws Exception {
+    private void parallel(HookInvocation invocation) throws InterruptedException, ExecutionException {
         List<Future<TargetResult>> results = new ArrayList<>();
         for (HookInvocationTarget target : invocation.getTargets())
             results.add(executor.submit(() -> executeSafely(target, invocation.getInvocationId())));
 
-        Exception failure = null;
+        ExecutionException failure = null;
         for (Future<TargetResult> result : results) {
             try {
                 result.get();
-            } catch (Exception exception) {
+            } catch (InterruptedException exception) {
+                results.forEach(future -> future.cancel(true));
+                Thread.currentThread().interrupt();
+                throw exception;
+            } catch (ExecutionException exception) {
                 if (failure == null)
                     failure = exception;
             }
