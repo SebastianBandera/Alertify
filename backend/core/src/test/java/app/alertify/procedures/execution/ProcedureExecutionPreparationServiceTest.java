@@ -51,7 +51,7 @@ class ProcedureExecutionPreparationServiceTest {
         ReflectionTestUtils.setField(template, "id", 2L);
         ProcedureTemplateParameterDefinition definition = new ProcedureTemplateParameterDefinition(
                 template, "nested", "nested", "nested", Procedure.class.getName(),
-                List.of(), true, null, false, 1, false, List.of(AlertParameterSource.PROCEDURE));
+                List.of(), true, null, false, 1, false, List.of(AlertParameterSource.PROCEDURE), List.of(), List.of());
         ReflectionTestUtils.setField(definition, "id", 3L);
         app.alertify.procedures.model.Procedure owner = new app.alertify.procedures.model.Procedure(
                 template, "Parent", null, "-", true, true, Set.of());

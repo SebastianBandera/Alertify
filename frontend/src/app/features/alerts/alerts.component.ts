@@ -20,6 +20,7 @@ import {
 } from '../../core/api/alert-api.service';
 import { ApiRequestError, TagMatchMode } from '../../core/api/configuration-api.service';
 import { LocalizationService } from '../../core/i18n/localization.service';
+import { isCompatibleConfigurationValueType, isCompatibleSecretValueType } from '../../core/utils/parameter-binding-compatibility';
 import { templateClassName } from '../../core/utils/template-key';
 
 type AlertTab = 'alerts' | 'templates' | 'history';
@@ -801,15 +802,15 @@ export class AlertsComponent implements OnInit {
   }
 
   protected compatibleConfigurationBindings(parameter: AlertTemplateParameter) {
-    return this.bindings().configurations.filter((option) => this.isCompatibleBinaryBinding(parameter.javaType, option.valueType));
+    return this.bindings().configurations.filter((option) =>
+      isCompatibleConfigurationValueType(parameter.javaType, parameter.allowedConfigurationValueTypes, option.valueType)
+    );
   }
 
   protected compatibleSecretBindings(parameter: AlertTemplateParameter) {
-    return this.bindings().secrets.filter((option) => this.isCompatibleBinaryBinding(parameter.javaType, option.valueType));
-  }
-
-  private isCompatibleBinaryBinding(javaType: string, valueType: string | null): boolean {
-    return (javaType === '[B') === (valueType === 'BINARY');
+    return this.bindings().secrets.filter((option) =>
+      isCompatibleSecretValueType(parameter.javaType, parameter.allowedSecretValueTypes, option.valueType)
+    );
   }
 
   protected dynamic(key: string): string {

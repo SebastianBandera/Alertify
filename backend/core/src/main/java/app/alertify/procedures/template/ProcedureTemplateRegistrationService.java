@@ -23,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.ClassUtils;
 import org.springframework.util.StringUtils;
 
+import app.alertify.alerts.template.ParameterValueTypeCompatibility;
 import app.alertify.alerts.template.annotation.AlertParameterSource;
 import app.alertify.jpa.repository.ProcedureTemplateDefinitionRepository;
 import app.alertify.jpa.repository.ProcedureTemplateParameterDefinitionRepository;
@@ -107,17 +108,25 @@ public class ProcedureTemplateRegistrationService {
             ProcedureParameter parameter = field.getAnnotation(ProcedureParameter.class);
             ProcedureTemplateParameterDefinition definition = existing.get(field.getName());
             String defaultValue = parameter.defaultValue().isEmpty() ? null : parameter.defaultValue();
+            String javaType = field.getType().getName();
+            String description = templateKey + "." + field.getName();
             List<AlertParameterSource> allowedSources = List.of(parameter.allowedSources());
+            List<String> allowedConfigurationValueTypes = ParameterValueTypeCompatibility
+                    .effectiveAllowedConfigurationValueTypes(javaType, List.of(parameter.allowedConfigurationValueTypes()), description);
+            List<String> allowedSecretValueTypes = ParameterValueTypeCompatibility
+                    .effectiveAllowedSecretValueTypes(javaType, List.of(parameter.allowedSecretValueTypes()), description);
             if (definition == null) {
                 definition = new ProcedureTemplateParameterDefinition(
                         template, field.getName(), parameter.labelKey(), parameter.descriptionKey(),
-                        field.getType().getName(), List.of(parameter.options()), parameter.bindingAllowed(),
-                        defaultValue, parameter.multiline(), parameter.order(), parameter.required(), allowedSources
+                        javaType, List.of(parameter.options()), parameter.bindingAllowed(),
+                        defaultValue, parameter.multiline(), parameter.order(), parameter.required(), allowedSources,
+                        allowedConfigurationValueTypes, allowedSecretValueTypes
                 );
             } else {
-                definition.synchronize(parameter.labelKey(), parameter.descriptionKey(), field.getType().getName(),
+                definition.synchronize(parameter.labelKey(), parameter.descriptionKey(), javaType,
                         List.of(parameter.options()), parameter.bindingAllowed(), defaultValue,
-                        parameter.multiline(), parameter.order(), parameter.required(), allowedSources);
+                        parameter.multiline(), parameter.order(), parameter.required(), allowedSources,
+                        allowedConfigurationValueTypes, allowedSecretValueTypes);
             }
             parameterRepository.save(definition);
         }
@@ -186,6 +195,9 @@ public class ProcedureTemplateRegistrationService {
 
         if (!procedureField && sources.contains(AlertParameterSource.PROCEDURE))
             throw new IllegalStateException("Only Procedure fields may allow PROCEDURE source: " + field.getName());
+
+        ParameterValueTypeCompatibility.validateAllowedSourcesForRequiredTypes(
+                field.getType().getName(), sources, templateClass.getName() + "." + field.getName());
     }
 
     private static List<Field> parameterFields(Class<?> templateClass) {

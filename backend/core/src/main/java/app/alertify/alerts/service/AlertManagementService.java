@@ -35,6 +35,7 @@ import app.alertify.alerts.model.Alert;
 import app.alertify.alerts.model.AlertParameterValue;
 import app.alertify.alerts.model.AlertTemplateDefinition;
 import app.alertify.alerts.model.AlertTemplateParameterDefinition;
+import app.alertify.alerts.template.ParameterValueTypeCompatibility;
 import app.alertify.alerts.template.annotation.AlertParameterSource;
 import app.alertify.api.error.ConflictException;
 import app.alertify.api.error.InvalidAlertRequestException;
@@ -262,6 +263,8 @@ public class AlertManagementService {
 
                 continue;
             }
+            if (!definition.getAllowedSources().contains(value.source()))
+                throw invalid("Source " + value.source() + " is not allowed for parameter '" + definition.getParameterKey() + "'");
 
             AlertParameterValue parameterValue = existingByKey.get(definition.getParameterKey());
             if (parameterValue == null)
@@ -312,19 +315,32 @@ public class AlertManagementService {
 
     private ApplicationConfiguration configuration(AlertTemplateParameterDefinition definition, Long id) {
         ApplicationConfiguration configuration = configurationRepository.findById(id).orElseThrow(() -> notFound("Configuration", id));
-        validateBinaryBinding(definition.getJavaType(), configuration.getValueType() == app.alertify.jpa.entity.ConfigurationValueType.BINARY, definition.getParameterKey());
+        validateConfigurationBinding(definition, configuration);
         return configuration;
     }
 
     private ApplicationSecret secret(AlertTemplateParameterDefinition definition, Long id) {
         ApplicationSecret secret = secretRepository.findById(id).orElseThrow(() -> notFound("Secret", id));
-        validateBinaryBinding(definition.getJavaType(), secret.getValueType() == app.alertify.jpa.entity.SecretValueType.BINARY, definition.getParameterKey());
+        validateSecretBinding(definition, secret);
         return secret;
     }
 
-    private void validateBinaryBinding(String javaType, boolean binaryValue, String parameterKey) {
-        if ((byte[].class.getName().equals(javaType)) != binaryValue)
-            throw invalid("Parameter '" + parameterKey + "' and its binding must both be binary or both be non-binary");
+    private void validateConfigurationBinding(AlertTemplateParameterDefinition definition, ApplicationConfiguration configuration) {
+        if (!ParameterValueTypeCompatibility.isConfigurationValueTypeCompatible(definition.getJavaType(), configuration.getValueType()))
+            throw invalid("Parameter '" + definition.getParameterKey() + "' and its binding must both be binary or both be non-binary");
+
+        List<String> allowed = definition.getAllowedConfigurationValueTypes();
+        if (!allowed.isEmpty() && !allowed.contains(configuration.getValueType().name()))
+            throw invalid("Parameter '" + definition.getParameterKey() + "' only accepts configurations of type " + allowed);
+    }
+
+    private void validateSecretBinding(AlertTemplateParameterDefinition definition, ApplicationSecret secret) {
+        if (!ParameterValueTypeCompatibility.isSecretValueTypeCompatible(definition.getJavaType(), secret.getValueType()))
+            throw invalid("Parameter '" + definition.getParameterKey() + "' and its binding must match the parameter's required secret type");
+
+        List<String> allowed = definition.getAllowedSecretValueTypes();
+        if (!allowed.isEmpty() && !allowed.contains(secret.getValueType().name()))
+            throw invalid("Parameter '" + definition.getParameterKey() + "' only accepts secrets of type " + allowed);
     }
 
     private app.alertify.procedures.model.Procedure procedure(Long id) {

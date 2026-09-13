@@ -90,6 +90,14 @@ public class ProcedureTemplateParameterDefinition {
     @Column(name = "allowed_sources", nullable = false, columnDefinition = "jsonb")
     private List<AlertParameterSource> allowedSources = new ArrayList<>();
 
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "allowed_configuration_value_types", nullable = false, columnDefinition = "jsonb")
+    private List<String> allowedConfigurationValueTypes = new ArrayList<>();
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "allowed_secret_value_types", nullable = false, columnDefinition = "jsonb")
+    private List<String> allowedSecretValueTypes = new ArrayList<>();
+
     @CreationTimestamp
     @NotAudited
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -106,14 +114,16 @@ public class ProcedureTemplateParameterDefinition {
     public ProcedureTemplateParameterDefinition(ProcedureTemplateDefinition template, String parameterKey,
             String labelKey, String descriptionKey, String javaType, List<String> options,
             boolean bindingAllowed, String defaultValue, boolean multiline, int parameterOrder,
-            boolean required, List<AlertParameterSource> allowedSources) {
+            boolean required, List<AlertParameterSource> allowedSources,
+            List<String> allowedConfigurationValueTypes, List<String> allowedSecretValueTypes) {
         this.template = Objects.requireNonNull(template, "template must not be null");
         this.parameterKey = Objects.requireNonNull(parameterKey, "parameterKey must not be null");
         synchronize(labelKey, descriptionKey, javaType, options, bindingAllowed, defaultValue,
-                multiline, parameterOrder, required, allowedSources);
+                multiline, parameterOrder, required, allowedSources,
+                allowedConfigurationValueTypes, allowedSecretValueTypes);
     }
 
-    public void synchronize(String labelKey, String descriptionKey, String javaType, List<String> options, boolean bindingAllowed, String defaultValue, boolean multiline, int parameterOrder, boolean required, List<AlertParameterSource> allowedSources) {
+    public void synchronize(String labelKey, String descriptionKey, String javaType, List<String> options, boolean bindingAllowed, String defaultValue, boolean multiline, int parameterOrder, boolean required, List<AlertParameterSource> allowedSources, List<String> allowedConfigurationValueTypes, List<String> allowedSecretValueTypes) {
         this.labelKey = Objects.requireNonNull(labelKey, "labelKey must not be null");
         this.descriptionKey = Objects.requireNonNull(descriptionKey, "descriptionKey must not be null");
         this.javaType = Objects.requireNonNull(javaType, "javaType must not be null");
@@ -131,6 +141,11 @@ public class ProcedureTemplateParameterDefinition {
         this.allowedSources.addAll(Objects.requireNonNull(allowedSources, "allowedSources must not be null"));
         if (this.allowedSources.isEmpty())
             throw new IllegalArgumentException("allowedSources must not be empty");
+
+        this.allowedConfigurationValueTypes.clear();
+        this.allowedConfigurationValueTypes.addAll(Objects.requireNonNull(allowedConfigurationValueTypes, "allowedConfigurationValueTypes must not be null"));
+        this.allowedSecretValueTypes.clear();
+        this.allowedSecretValueTypes.addAll(Objects.requireNonNull(allowedSecretValueTypes, "allowedSecretValueTypes must not be null"));
 
         if (!bindingAllowed && this.options.isEmpty())
             throw new IllegalArgumentException("options must not be empty when binding is disabled");
@@ -153,6 +168,8 @@ public class ProcedureTemplateParameterDefinition {
     public int getParameterOrder() { return parameterOrder; }
     public boolean isRequired() { return required; }
     public List<AlertParameterSource> getAllowedSources() { return Collections.unmodifiableList(allowedSources); }
+    public List<String> getAllowedConfigurationValueTypes() { return Collections.unmodifiableList(allowedConfigurationValueTypes); }
+    public List<String> getAllowedSecretValueTypes() { return Collections.unmodifiableList(allowedSecretValueTypes); }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
 }

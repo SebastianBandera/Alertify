@@ -31,6 +31,9 @@ export interface AlertTemplateParameter {
   readonly multiline: boolean;
   readonly order: number;
   readonly required: boolean;
+  readonly allowedSources: readonly AlertParameterSource[];
+  readonly allowedConfigurationValueTypes: readonly string[];
+  readonly allowedSecretValueTypes: readonly string[];
   readonly createdAt: string;
   readonly updatedAt: string;
 }

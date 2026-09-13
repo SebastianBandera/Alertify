@@ -26,6 +26,8 @@ import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import jakarta.persistence.Version;
 
+import app.alertify.alerts.template.annotation.AlertParameterSource;
+
 /**
  * Persistent metadata for one field annotated with {@code @AlertParameter}.
  */
@@ -86,6 +88,18 @@ public class AlertTemplateParameterDefinition {
     @Column(nullable = false)
     private boolean required;
 
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "allowed_sources", nullable = false, columnDefinition = "jsonb")
+    private List<AlertParameterSource> allowedSources = new ArrayList<>();
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "allowed_configuration_value_types", nullable = false, columnDefinition = "jsonb")
+    private List<String> allowedConfigurationValueTypes = new ArrayList<>();
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "allowed_secret_value_types", nullable = false, columnDefinition = "jsonb")
+    private List<String> allowedSecretValueTypes = new ArrayList<>();
+
     @CreationTimestamp
     @NotAudited
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -99,12 +113,13 @@ public class AlertTemplateParameterDefinition {
     protected AlertTemplateParameterDefinition() {
     }
 
-    public AlertTemplateParameterDefinition(AlertTemplateDefinition template, String parameterKey, String labelKey, String descriptionKey, String javaType, List<String> options, boolean bindingAllowed, String defaultValue, boolean multiline, int parameterOrder, boolean required) {
+    public AlertTemplateParameterDefinition(AlertTemplateDefinition template, String parameterKey, String labelKey, String descriptionKey, String javaType, List<String> options, boolean bindingAllowed, String defaultValue, boolean multiline, int parameterOrder, boolean required, List<AlertParameterSource> allowedSources, List<String> allowedConfigurationValueTypes, List<String> allowedSecretValueTypes) {
         this.template = Objects.requireNonNull(template, "template must not be null");
         this.parameterKey = Objects.requireNonNull(parameterKey, "parameterKey must not be null");
         synchronize(
             labelKey, descriptionKey, javaType, options, bindingAllowed,
-            defaultValue, multiline, parameterOrder, required
+            defaultValue, multiline, parameterOrder, required,
+            allowedSources, allowedConfigurationValueTypes, allowedSecretValueTypes
         );
     }
 
@@ -160,6 +175,18 @@ public class AlertTemplateParameterDefinition {
         return required;
     }
 
+    public List<AlertParameterSource> getAllowedSources() {
+        return Collections.unmodifiableList(allowedSources);
+    }
+
+    public List<String> getAllowedConfigurationValueTypes() {
+        return Collections.unmodifiableList(allowedConfigurationValueTypes);
+    }
+
+    public List<String> getAllowedSecretValueTypes() {
+        return Collections.unmodifiableList(allowedSecretValueTypes);
+    }
+
     public Instant getCreatedAt() {
         return createdAt;
     }
@@ -168,7 +195,7 @@ public class AlertTemplateParameterDefinition {
         return updatedAt;
     }
 
-    public void synchronize(String labelKey, String descriptionKey, String javaType, List<String> options, boolean bindingAllowed, String defaultValue, boolean multiline, int parameterOrder, boolean required) {
+    public void synchronize(String labelKey, String descriptionKey, String javaType, List<String> options, boolean bindingAllowed, String defaultValue, boolean multiline, int parameterOrder, boolean required, List<AlertParameterSource> allowedSources, List<String> allowedConfigurationValueTypes, List<String> allowedSecretValueTypes) {
         this.labelKey = Objects.requireNonNull(labelKey, "labelKey must not be null");
         this.descriptionKey = Objects.requireNonNull(descriptionKey, "descriptionKey must not be null");
         this.javaType = Objects.requireNonNull(javaType, "javaType must not be null");
@@ -182,12 +209,26 @@ public class AlertTemplateParameterDefinition {
 
         this.parameterOrder = parameterOrder;
         this.required = required;
+        replaceAllowedSources(allowedSources);
+        this.allowedConfigurationValueTypes.clear();
+        this.allowedConfigurationValueTypes.addAll(Objects.requireNonNull(allowedConfigurationValueTypes, "allowedConfigurationValueTypes must not be null"));
+        this.allowedSecretValueTypes.clear();
+        this.allowedSecretValueTypes.addAll(Objects.requireNonNull(allowedSecretValueTypes, "allowedSecretValueTypes must not be null"));
     }
 
     private void replaceOptions(List<String> options) {
         this.options.clear();
         if (options != null)
             this.options.addAll(options);
+    }
+
+    private void replaceAllowedSources(List<AlertParameterSource> allowedSources) {
+        Objects.requireNonNull(allowedSources, "allowedSources must not be null");
+        if (allowedSources.isEmpty())
+            throw new IllegalArgumentException("allowedSources must not be empty");
+
+        this.allowedSources.clear();
+        this.allowedSources.addAll(allowedSources);
     }
 
     private void validateBindingMetadata() {

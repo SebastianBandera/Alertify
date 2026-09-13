@@ -274,7 +274,11 @@ class AlertCsvServiceTest {
     private AlertTemplateParameterDefinition parameter(String key, int order) {
         AlertTemplateParameterDefinition definition = new AlertTemplateParameterDefinition(
                 template, key, key + ".label", key + ".description", "java.lang.String",
-                List.of(), true, null, false, order, true
+                List.of(), true, null, false, order, true,
+                List.of(app.alertify.alerts.template.annotation.AlertParameterSource.TEXT,
+                        app.alertify.alerts.template.annotation.AlertParameterSource.CONFIGURATION,
+                        app.alertify.alerts.template.annotation.AlertParameterSource.SECRET),
+                List.of(), List.of()
         );
         ReflectionTestUtils.setField(definition, "id", (long) order);
         return definition;

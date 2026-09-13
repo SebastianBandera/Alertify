@@ -31,7 +31,7 @@ class ProcedureCsvCodecTest {
         ReflectionTestUtils.setField(procedure, "id", 7L);
         ProcedureTemplateParameterDefinition parameter = new ProcedureTemplateParameterDefinition(
                 template, "secret", "label", "description", String.class.getName(), List.of(),
-                true, null, false, 1, true, List.of(AlertParameterSource.SECRET)
+                true, null, false, 1, true, List.of(AlertParameterSource.SECRET), List.of(), List.of()
         );
         ApplicationSecret secret = new ApplicationSecret("TOTP_SECRET", null,
                 "cipher-text".getBytes(StandardCharsets.UTF_8), new byte[12], new byte[32],

@@ -16,6 +16,7 @@ import app.alertify.alerts.AlertEvaluator;
 import app.alertify.alerts.AlertExecutionContext;
 import app.alertify.alerts.AlertResult;
 import app.alertify.alerts.template.annotation.AlertParameter;
+import app.alertify.alerts.template.annotation.AlertParameterSource;
 import app.alertify.alerts.template.annotation.AlertTemplate;
 import app.alertify.alerts.template.annotation.AlertTemplateTag;
 import app.alertify.worker.contract.DatabaseConnections;
@@ -40,7 +41,9 @@ public final class DatabaseConnectionAlertTemplate implements AlertEvaluator {
         labelKey = "alerts.template.databaseConnection.credentials",
         descriptionKey = "alerts.template.databaseConnection.credentialsDescription",
         bindingAllowed = true,
-        order = 1
+        order = 1,
+        allowedSources = { AlertParameterSource.SECRET },
+        allowedSecretValueTypes = "DB_SECRET"
     )
     private final DatabaseCredentials credentials;
 

@@ -13,19 +13,23 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 
+import app.alertify.alerts.template.annotation.AlertParameterSource;
 import app.alertify.alerts.template.annotation.AlertTemplate;
 import app.alertify.worker.contract.WorkerCapability;
 
 class AlertModelTest {
 
     private static final String TEMPLATE_KEY = SampleAlertTemplate.class.getName();
+    private static final List<AlertParameterSource> DEFAULT_ALLOWED_SOURCES =
+        List.of(AlertParameterSource.TEXT, AlertParameterSource.CONFIGURATION, AlertParameterSource.SECRET);
 
     @Test
     void createsAConfiguredTextParameterWithoutPopulatingReferenceFields() {
         AlertTemplateDefinition template = template();
         AlertTemplateParameterDefinition parameter = new AlertTemplateParameterDefinition(
                 template, "endpoint", "endpoint.label", "endpoint.description", String.class.getName(),
-                List.of("google", "cloudflare"), true, "google", false, 1, true
+                List.of("google", "cloudflare"), true, "google", false, 1, true,
+                DEFAULT_ALLOWED_SOURCES, List.of(), List.of()
         );
         Alert alert = new Alert(template, "Internet", null, "0 */5 * * * *", true);
 
@@ -55,7 +59,8 @@ class AlertModelTest {
         AlertTemplateDefinition template = template();
         AlertTemplateParameterDefinition parameter = new AlertTemplateParameterDefinition(
                 template, "endpoint", "endpoint.label", "endpoint.description", String.class.getName(),
-                List.of("google", "cloudflare"), false, "google", false, 1, true
+                List.of("google", "cloudflare"), false, "google", false, 1, true,
+                DEFAULT_ALLOWED_SOURCES, List.of(), List.of()
         );
         Alert alert = new Alert(template, "Internet", null, "0 */5 * * * *", true);
 
@@ -68,7 +73,8 @@ class AlertModelTest {
         AlertTemplateDefinition template = template();
         AlertTemplateParameterDefinition parameter = new AlertTemplateParameterDefinition(
                 template, "endpoint", "endpoint.label", "endpoint.description", String.class.getName(),
-                List.of("google", "cloudflare"), false, "google", false, 1, true
+                List.of("google", "cloudflare"), false, "google", false, 1, true,
+                DEFAULT_ALLOWED_SOURCES, List.of(), List.of()
         );
         Alert alert = new Alert(template, "Internet", null, "0 */5 * * * *", true);
 
@@ -84,7 +90,8 @@ class AlertModelTest {
             () -> new AlertTemplateParameterDefinition(
                 template, "endpoint", "endpoint.label", "endpoint.description",
                 String.class.getName(), List.of("google", "cloudflare"),
-                false, "other", false, 1, true
+                false, "other", false, 1, true,
+                DEFAULT_ALLOWED_SOURCES, List.of(), List.of()
             )
         );
     }

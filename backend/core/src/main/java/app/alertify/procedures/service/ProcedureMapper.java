@@ -74,7 +74,8 @@ final class ProcedureMapper {
                 value.getId(), value.getVersion(), value.getParameterKey(), value.getLabelKey(),
                 value.getDescriptionKey(), value.getJavaType(), value.getOptions(), value.isBindingAllowed(),
                 value.getDefaultValue(), value.isMultiline(), value.getParameterOrder(), value.isRequired(),
-                value.getAllowedSources(), value.getCreatedAt(), value.getUpdatedAt()
+                value.getAllowedSources(), value.getAllowedConfigurationValueTypes(),
+                value.getAllowedSecretValueTypes(), value.getCreatedAt(), value.getUpdatedAt()
         );
     }
 

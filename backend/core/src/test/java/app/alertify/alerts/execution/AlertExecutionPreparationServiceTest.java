@@ -55,7 +55,9 @@ class AlertExecutionPreparationServiceTest {
         ReflectionTestUtils.setField(template, "id", 2L);
         AlertTemplateParameterDefinition definition = new AlertTemplateParameterDefinition(
                 template, "token", "token", "token", String.class.getName(),
-                List.of(), true, null, false, 0, true
+                List.of(), true, null, false, 0, true,
+                List.of(AlertParameterSource.TEXT, AlertParameterSource.CONFIGURATION, AlertParameterSource.SECRET),
+                List.of(), List.of()
         );
         ReflectionTestUtils.setField(definition, "id", 3L);
         Alert alert = new Alert(template, "Secret alert", null, "0 0 * * * *", true);

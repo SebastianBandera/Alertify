@@ -31,6 +31,8 @@ export interface ProcedureTemplateParameter {
   readonly order: number;
   readonly required: boolean;
   readonly allowedSources: readonly AlertParameterSource[];
+  readonly allowedConfigurationValueTypes: readonly string[];
+  readonly allowedSecretValueTypes: readonly string[];
 }
 
 export interface ProcedureTemplate {

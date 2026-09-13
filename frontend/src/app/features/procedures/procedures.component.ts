@@ -19,6 +19,7 @@ import {
 } from '../../core/api/procedure-api.service';
 import { LocalizationService } from '../../core/i18n/localization.service';
 import { TranslationKey } from '../../core/i18n/localization.types';
+import { isCompatibleConfigurationValueType, isCompatibleSecretValueType } from '../../core/utils/parameter-binding-compatibility';
 import { templateClassName } from '../../core/utils/template-key';
 
 type ProcedureTab = 'procedures' | 'templates' | 'wizards' | 'history';
@@ -275,15 +276,15 @@ export class ProceduresComponent implements OnInit {
   }
 
   protected compatibleConfigurationBindings(parameter: ProcedureTemplateParameter) {
-    return this.bindings().configurations.filter((option) => this.isCompatibleBinaryBinding(parameter.javaType, option.valueType));
+    return this.bindings().configurations.filter((option) =>
+      isCompatibleConfigurationValueType(parameter.javaType, parameter.allowedConfigurationValueTypes, option.valueType)
+    );
   }
 
   protected compatibleSecretBindings(parameter: ProcedureTemplateParameter) {
-    return this.bindings().secrets.filter((option) => this.isCompatibleBinaryBinding(parameter.javaType, option.valueType));
-  }
-
-  private isCompatibleBinaryBinding(javaType: string, valueType: string | null): boolean {
-    return (javaType === '[B') === (valueType === 'BINARY');
+    return this.bindings().secrets.filter((option) =>
+      isCompatibleSecretValueType(parameter.javaType, parameter.allowedSecretValueTypes, option.valueType)
+    );
   }
 
   protected toggleTag(tagId: number, checked: boolean): void {

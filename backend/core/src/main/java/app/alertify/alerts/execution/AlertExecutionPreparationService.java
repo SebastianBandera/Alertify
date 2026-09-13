@@ -19,6 +19,7 @@ import app.alertify.alerts.model.Alert;
 import app.alertify.alerts.model.AlertParameterValue;
 import app.alertify.alerts.model.AlertTemplateDefinition;
 import app.alertify.alerts.model.AlertTemplateParameterDefinition;
+import app.alertify.alerts.template.ParameterValueTypeCompatibility;
 import app.alertify.alerts.template.annotation.AlertParameterSource;
 import app.alertify.configuration.service.ConfigurationExpressionService;
 import app.alertify.grpc.WorkerGrpcProperties;
@@ -115,8 +116,7 @@ public class AlertExecutionPreparationService {
             case SECRET -> binaryBindingService.secretZip(configured.getSecret().getId());
             default -> null;
         } : null;
-        if (binary != "[B".equals(definition.getJavaType()))
-            throw new IllegalArgumentException("Parameter '" + definition.getParameterKey() + "' and its binding have incompatible binary types");
+        validateResolvedBinding(definition, configured);
         return new ResolvedAlertParameter(
                 definition.getParameterKey(), definition.getJavaType(), value, binaryZip,
                 value == null && binaryZip == null && configured.getSource() != AlertParameterSource.PROCEDURE,
@@ -136,6 +136,18 @@ public class AlertExecutionPreparationService {
                     case TEXT, PROCEDURE -> false;
                 }
         );
+    }
+
+    private static void validateResolvedBinding(AlertTemplateParameterDefinition definition, AlertParameterValue configured) {
+        boolean compatible = switch (configured.getSource()) {
+            case CONFIGURATION -> ParameterValueTypeCompatibility.isConfigurationValueTypeCompatible(
+                    definition.getJavaType(), configured.getConfiguration().getValueType());
+            case SECRET -> ParameterValueTypeCompatibility.isSecretValueTypeCompatible(
+                    definition.getJavaType(), configured.getSecret().getValueType());
+            case TEXT, PROCEDURE -> true;
+        };
+        if (!compatible)
+            throw new IllegalArgumentException("Parameter '" + definition.getParameterKey() + "' and its binding have incompatible value types");
     }
 
     private Source source(String relativePath) {

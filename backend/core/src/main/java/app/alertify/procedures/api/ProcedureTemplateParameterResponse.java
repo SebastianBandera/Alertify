@@ -19,6 +19,8 @@ public record ProcedureTemplateParameterResponse(
     int order,
     boolean required,
     List<AlertParameterSource> allowedSources,
+    List<String> allowedConfigurationValueTypes,
+    List<String> allowedSecretValueTypes,
     Instant createdAt,
     Instant updatedAt
 ) {

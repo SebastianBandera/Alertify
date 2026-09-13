@@ -531,9 +531,9 @@
                           @if (parameter.javaType === 'app.alertify.procedures.Procedure') {
                             <option value="PROCEDURE">{{ localization.translate('alerts.source.procedure') }}</option>
                           } @else if (parameter.bindingAllowed) {
-                            <option value="TEXT">{{ localization.translate('alerts.source.text') }}</option>
-                            <option value="CONFIGURATION">{{ localization.translate('alerts.source.configuration') }}</option>
-                            <option value="SECRET">{{ localization.translate('alerts.source.secret') }}</option>
+                            @for (source of parameter.allowedSources; track source) {
+                              <option [value]="source">{{ dynamic('alerts.source.' + source.toLowerCase()) }}</option>
+                            }
                           }
                         </select>
                       </label>

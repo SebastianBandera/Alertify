@@ -35,4 +35,21 @@ public @interface ProcedureParameter {
         AlertParameterSource.CONFIGURATION,
         AlertParameterSource.SECRET
     };
+
+    /**
+     * Names of {@code ConfigurationValueType} constants this parameter may bind
+     * to when the source is {@code CONFIGURATION}. An empty array means no
+     * additional restriction beyond the physical java type/value type coherence
+     * already enforced for special value types such as {@code BINARY}.
+     */
+    String[] allowedConfigurationValueTypes() default {};
+
+    /**
+     * Names of {@code SecretValueType} constants this parameter may bind to
+     * when the source is {@code SECRET}. An empty array means no additional
+     * restriction beyond the physical java type/value type coherence already
+     * enforced for special value types such as {@code BINARY} or
+     * {@code DB_SECRET}.
+     */
+    String[] allowedSecretValueTypes() default {};
 }

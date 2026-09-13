@@ -28,6 +28,7 @@ import app.alertify.alerts.model.AlertTemplateDefinition;
 import app.alertify.alerts.model.AlertTemplateParameterDefinition;
 import app.alertify.alerts.model.AlertTemplateTagDefinition;
 import app.alertify.alerts.template.annotation.AlertParameter;
+import app.alertify.alerts.template.annotation.AlertParameterSource;
 import app.alertify.alerts.template.annotation.AlertTemplate;
 import app.alertify.alerts.template.annotation.AlertTemplateKey;
 import app.alertify.jpa.repository.AlertTemplateDefinitionRepository;
@@ -136,6 +137,13 @@ public class AlertTemplateRegistrationService {
         String defaultValue = metadata.defaultValue().isEmpty()
             ? null
             : metadata.defaultValue();
+        String javaType = field.getType().getName();
+        String description = template.getTemplateKey() + "." + field.getName();
+        List<AlertParameterSource> allowedSources = List.of(metadata.allowedSources());
+        List<String> allowedConfigurationValueTypes = ParameterValueTypeCompatibility
+            .effectiveAllowedConfigurationValueTypes(javaType, List.of(metadata.allowedConfigurationValueTypes()), description);
+        List<String> allowedSecretValueTypes = ParameterValueTypeCompatibility
+            .effectiveAllowedSecretValueTypes(javaType, List.of(metadata.allowedSecretValueTypes()), description);
 
         AlertTemplateParameterDefinition parameter = existing;
         if (parameter == null) {
@@ -144,25 +152,31 @@ public class AlertTemplateRegistrationService {
                 field.getName(),
                 metadata.labelKey(),
                 metadata.descriptionKey(),
-                field.getType().getName(),
+                javaType,
                 options,
                 metadata.bindingAllowed(),
                 defaultValue,
                 metadata.multiline(),
                 metadata.order(),
-                metadata.required()
+                metadata.required(),
+                allowedSources,
+                allowedConfigurationValueTypes,
+                allowedSecretValueTypes
             );
         } else {
             parameter.synchronize(
                 metadata.labelKey(),
                 metadata.descriptionKey(),
-                field.getType().getName(),
+                javaType,
                 options,
                 metadata.bindingAllowed(),
                 defaultValue,
                 metadata.multiline(),
                 metadata.order(),
-                metadata.required()
+                metadata.required(),
+                allowedSources,
+                allowedConfigurationValueTypes,
+                allowedSecretValueTypes
             );
         }
         parameterRepository.save(parameter);
@@ -235,7 +249,23 @@ public class AlertTemplateRegistrationService {
                         + templateClass.getName() + "." + field.getName()
                 );
             }
+            validateAllowedSources(parameter, field, templateClass);
         }
+    }
+
+    private static void validateAllowedSources(AlertParameter parameter, Field field, Class<?> templateClass) {
+        String description = templateClass.getName() + "." + field.getName();
+        String javaType = field.getType().getName();
+        Set<AlertParameterSource> sources = Set.of(parameter.allowedSources());
+        boolean procedureField = field.getType() == Procedure.class;
+        if (procedureField && (!sources.equals(Set.of(AlertParameterSource.PROCEDURE))
+                || !parameter.defaultValue().isEmpty() || !parameter.bindingAllowed())) {
+            throw new IllegalStateException("Procedure handle parameters must allow only PROCEDURE binding: " + description);
+        }
+        if (!procedureField && sources.contains(AlertParameterSource.PROCEDURE))
+            throw new IllegalStateException("Only Procedure fields may allow PROCEDURE source: " + description);
+
+        ParameterValueTypeCompatibility.validateAllowedSourcesForRequiredTypes(javaType, sources, description);
     }
 
     private static void validateTags(AlertTemplate metadata, Class<?> templateClass) {

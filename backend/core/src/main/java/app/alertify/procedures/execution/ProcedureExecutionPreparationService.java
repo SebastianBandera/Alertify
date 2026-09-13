@@ -14,6 +14,7 @@ import java.util.Map;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import app.alertify.alerts.template.ParameterValueTypeCompatibility;
 import app.alertify.alerts.template.annotation.AlertParameterSource;
 import app.alertify.configuration.service.ConfigurationExpressionService;
 import app.alertify.grpc.WorkerGrpcProperties;
@@ -24,6 +25,7 @@ import app.alertify.procedures.ProcedureDisabledException;
 import app.alertify.procedures.model.Procedure;
 import app.alertify.procedures.model.ProcedureParameterValue;
 import app.alertify.procedures.model.ProcedureTemplateDefinition;
+import app.alertify.procedures.model.ProcedureTemplateParameterDefinition;
 import app.alertify.services.secret.SecretAccessService;
 import app.alertify.binary.BinaryBindingService;
 import app.alertify.jpa.entity.ConfigurationValueType;
@@ -101,8 +103,7 @@ public class ProcedureExecutionPreparationService {
                         case SECRET -> binaryBindingService.secretZip(value.getSecret().getId());
                         default -> null;
                     } : null;
-                    if (binary != "[B".equals(definition.getJavaType()))
-                        throw new IllegalArgumentException("Parameter '" + definition.getParameterKey() + "' and its binding have incompatible binary types");
+                    validateResolvedBinding(definition, value);
                     return new ResolvedProcedureParameter(definition.getParameterKey(), definition.getJavaType(),
                             resolved, binaryZip, resolved == null && binaryZip == null && value.getSource() != AlertParameterSource.PROCEDURE,
                             value.getSource(),
@@ -119,6 +120,18 @@ public class ProcedureExecutionPreparationService {
                 procedure.isConcurrentExecutionAllowed(),
                 template.getTemplateKey(), template.getRequiredCapability(), template.isSensitiveResult(),
                 source.checksum(), source.content(), parameters);
+    }
+
+    private static void validateResolvedBinding(ProcedureTemplateParameterDefinition definition, ProcedureParameterValue value) {
+        boolean compatible = switch (value.getSource()) {
+            case CONFIGURATION -> ParameterValueTypeCompatibility.isConfigurationValueTypeCompatible(
+                    definition.getJavaType(), value.getConfiguration().getValueType());
+            case SECRET -> ParameterValueTypeCompatibility.isSecretValueTypeCompatible(
+                    definition.getJavaType(), value.getSecret().getValueType());
+            case TEXT, PROCEDURE -> true;
+        };
+        if (!compatible)
+            throw new IllegalArgumentException("Parameter '" + definition.getParameterKey() + "' and its binding have incompatible value types");
     }
 
     private Source source(String relativePath) {
