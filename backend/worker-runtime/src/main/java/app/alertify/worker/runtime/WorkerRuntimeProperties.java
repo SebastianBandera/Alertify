@@ -12,6 +12,7 @@ import app.alertify.worker.contract.WorkerCapability;
 public record WorkerRuntimeProperties(
     String name,
     int grpcPort,
+    int maxInboundMessageBytes,
     Duration shutdownGracePeriod,
     Set<WorkerCapability> capabilities,
     int maxConcurrentAlerts,

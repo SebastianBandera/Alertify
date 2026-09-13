@@ -13,6 +13,7 @@ public record ResolvedProcedureParameter(
     String name,
     String javaType,
     String value,
+    byte[] binaryZip,
     boolean nullValue,
     AlertParameterSource source,
     Long configurationId,

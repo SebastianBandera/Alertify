@@ -14,13 +14,17 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.ArgumentCaptor;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import app.alertify.jpa.entity.ApplicationConfiguration;
 import app.alertify.jpa.entity.ConfigurationValueType;
+import app.alertify.jpa.entity.ConfigurationBinaryValue;
 import app.alertify.jpa.repository.ApplicationConfigurationRepository;
+import app.alertify.jpa.repository.ConfigurationBinaryValueRepository;
 import app.alertify.logging.ApplicationEventLogger;
+import app.alertify.worker.contract.BinaryPayloadCodec;
 import app.alertify.worker.grpc.WritableConfigurationValue;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.IntNode;
@@ -32,6 +36,7 @@ class WritableConfigurationServiceTest {
     @Mock private ConfigurationExpressionService expressionService;
     @Mock private ConfigurationCacheInvalidator cacheInvalidator;
     @Mock private ApplicationEventLogger eventLogger;
+    @Mock private ConfigurationBinaryValueRepository binaryRepository;
 
     @Test
     void persistsChangedValueAndLogsTheAlertThatOverwroteIt() {
@@ -70,10 +75,35 @@ class WritableConfigurationServiceTest {
         verify(eventLogger, never()).successAfterCommit(eq("CONFIGURATION_OVERWRITTEN_BY_ALERT"), anyMap());
     }
 
+    @Test
+    void recompressesAndPersistsWritableBinaryBytes() {
+        byte[] changed = new byte[] { 0, 1, 2, 3, 4, (byte) 255 };
+        ApplicationConfiguration configuration = new ApplicationConfiguration(
+                "database", null, ConfigurationValueType.BINARY,
+                tools.jackson.databind.node.JsonNodeFactory.instance.objectNode(), Set.of(), true);
+        configuration.changeBinaryMetadata("data.sqlite", "application/vnd.sqlite3", 1, 1, new byte[32]);
+        ReflectionTestUtils.setField(configuration, "id", 10L);
+        when(configurationRepository.findById(10L)).thenReturn(Optional.of(configuration));
+
+        WritableConfigurationValue value = WritableConfigurationValue.newBuilder()
+                .setConfigurationId(10L).setParameterName("database")
+                .setBinaryValue(com.google.protobuf.ByteString.copyFrom(BinaryPayloadCodec.compress(changed, 104857600)))
+                .build();
+        service().apply(20L, "SQLite updater", UUID.randomUUID(), Set.of(value));
+
+        ArgumentCaptor<ConfigurationBinaryValue> persisted = ArgumentCaptor.forClass(ConfigurationBinaryValue.class);
+        verify(binaryRepository).save(persisted.capture());
+        assertThat(BinaryPayloadCodec.decompress(persisted.getValue().getZipValue(), 104857600)).isEqualTo(changed);
+        assertThat(configuration.getBinarySize()).isEqualTo(changed.length);
+        verify(configurationRepository).flush();
+    }
+
     private WritableConfigurationService service() {
         return new WritableConfigurationService(
                 configurationRepository, new ConfigurationValueValidator(), expressionService,
-                cacheInvalidator, eventLogger, JsonMapper.builder().build()
+                cacheInvalidator, eventLogger, JsonMapper.builder().build(),
+                binaryRepository,
+                new app.alertify.binary.BinaryPayloadService(104857600)
         );
     }
 

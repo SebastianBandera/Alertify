@@ -25,6 +25,9 @@ import app.alertify.procedures.model.Procedure;
 import app.alertify.procedures.model.ProcedureParameterValue;
 import app.alertify.procedures.model.ProcedureTemplateDefinition;
 import app.alertify.services.secret.SecretAccessService;
+import app.alertify.binary.BinaryBindingService;
+import app.alertify.jpa.entity.ConfigurationValueType;
+import app.alertify.jpa.entity.SecretValueType;
 
 /**
  * Builds the immutable snapshot a procedure execution needs before any worker
@@ -45,18 +48,20 @@ public class ProcedureExecutionPreparationService {
     private final ConfigurationExpressionService configurationExpressionService;
     private final SecretAccessService secretAccessService;
     private final WorkerGrpcProperties properties;
+    private final BinaryBindingService binaryBindingService;
 
     public ProcedureExecutionPreparationService(ProcedureRepository procedureRepository,
             ProcedureTemplateParameterDefinitionRepository definitionRepository,
             ProcedureParameterValueRepository parameterValueRepository,
             ConfigurationExpressionService configurationExpressionService,
-            SecretAccessService secretAccessService, WorkerGrpcProperties properties) {
+            SecretAccessService secretAccessService, WorkerGrpcProperties properties, BinaryBindingService binaryBindingService) {
         this.procedureRepository = procedureRepository;
         this.definitionRepository = definitionRepository;
         this.parameterValueRepository = parameterValueRepository;
         this.configurationExpressionService = configurationExpressionService;
         this.secretAccessService = secretAccessService;
         this.properties = properties;
+        this.binaryBindingService = binaryBindingService;
     }
 
     @Transactional(readOnly = true)
@@ -79,18 +84,27 @@ public class ProcedureExecutionPreparationService {
                     if (value == null) {
                         String defaultValue = definition.getDefaultValue();
                         return new ResolvedProcedureParameter(definition.getParameterKey(), definition.getJavaType(),
-                                defaultValue, defaultValue == null, AlertParameterSource.TEXT,
+                                defaultValue, null, defaultValue == null, AlertParameterSource.TEXT,
                                 null, null, null, false);
                     }
-                    String resolved = switch (value.getSource()) {
+                    boolean binary = value.getSource() == AlertParameterSource.CONFIGURATION && value.getConfiguration().getValueType() == ConfigurationValueType.BINARY
+                            || value.getSource() == AlertParameterSource.SECRET && value.getSecret().getValueType() == SecretValueType.BINARY;
+                    String resolved = binary ? null : switch (value.getSource()) {
                         case TEXT -> value.getTextValue();
                         case CONFIGURATION -> configurationExpressionService
                                 .getResolvedValueByName(value.getConfiguration().getName());
                         case SECRET -> secretAccessService.getValueByName(value.getSecret().getName());
                         case PROCEDURE -> null;
                     };
+                    byte[] binaryZip = binary ? switch (value.getSource()) {
+                        case CONFIGURATION -> binaryBindingService.configurationZip(value.getConfiguration().getId());
+                        case SECRET -> binaryBindingService.secretZip(value.getSecret().getId());
+                        default -> null;
+                    } : null;
+                    if (binary != "[B".equals(definition.getJavaType()))
+                        throw new IllegalArgumentException("Parameter '" + definition.getParameterKey() + "' and its binding have incompatible binary types");
                     return new ResolvedProcedureParameter(definition.getParameterKey(), definition.getJavaType(),
-                            resolved, resolved == null && value.getSource() != AlertParameterSource.PROCEDURE,
+                            resolved, binaryZip, resolved == null && binaryZip == null && value.getSource() != AlertParameterSource.PROCEDURE,
                             value.getSource(),
                             value.getConfiguration() == null ? null : value.getConfiguration().getId(),
                             value.getSecret() == null ? null : value.getSecret().getId(),

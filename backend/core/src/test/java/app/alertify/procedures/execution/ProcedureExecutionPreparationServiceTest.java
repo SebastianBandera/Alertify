@@ -28,6 +28,7 @@ import app.alertify.procedures.model.ProcedureParameterValue;
 import app.alertify.procedures.model.ProcedureTemplateDefinition;
 import app.alertify.procedures.model.ProcedureTemplateParameterDefinition;
 import app.alertify.services.secret.SecretAccessService;
+import app.alertify.binary.BinaryBindingService;
 import app.alertify.worker.contract.WorkerCapability;
 
 @ExtendWith(MockitoExtension.class)
@@ -40,6 +41,7 @@ class ProcedureExecutionPreparationServiceTest {
     @Mock private ProcedureParameterValueRepository parameterValueRepository;
     @Mock private ConfigurationExpressionService configurationExpressionService;
     @Mock private SecretAccessService secretAccessService;
+    @Mock private BinaryBindingService binaryBindingService;
 
     @Test
     void preparesAConfiguredProcedureAsANonNullHandle() throws Exception {
@@ -80,6 +82,6 @@ class ProcedureExecutionPreparationServiceTest {
                 procedureRepository, definitionRepository, parameterValueRepository,
                 configurationExpressionService, secretAccessService,
                 new WorkerGrpcProperties("worker", 9090, null, null,
-                        new WorkerGrpcProperties.Execution(null, sourceRoot)));
+                        new WorkerGrpcProperties.Execution(null, sourceRoot)), binaryBindingService);
     }
 }

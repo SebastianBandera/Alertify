@@ -64,10 +64,10 @@ public class ProcedureCatalogService {
     @Transactional(readOnly = true)
     public ProcedureBindingOptionsResponse bindingOptions() {
         var configurations = configurationRepository.findAll(Sort.by("name")).stream()
-                .map(value -> new ProcedureBindingOptionResponse(value.getId(), value.getName(), value.getDescription(), true))
+                .map(value -> new ProcedureBindingOptionResponse(value.getId(), value.getName(), value.getDescription(), true, value.getValueType().name()))
                 .toList();
         var secrets = secretRepository.findAll(Sort.by("name")).stream()
-                .map(value -> new ProcedureBindingOptionResponse(value.getId(), value.getName(), value.getDescription(), true))
+                .map(value -> new ProcedureBindingOptionResponse(value.getId(), value.getName(), value.getDescription(), true, value.getValueType().name()))
                 .toList();
         var procedures = procedureRepository.findAll(Sort.by("name")).stream()
                 .map(value -> new ProcedureBindingOptionResponse(value.getId(), value.getName(), value.getDescription(), value.isEnabled()))

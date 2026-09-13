@@ -25,7 +25,9 @@ final class ConfigurationMapper {
         return new ConfigurationResponse(
                 configuration.getId(), configuration.getVersion(), configuration.getName(),
                 configuration.getDescription(), configuration.getValueType(),
-                configuration.getValue().deepCopy(), configuration.isWritable(), tags,
+                configuration.getValueType() == app.alertify.jpa.entity.ConfigurationValueType.BINARY ? null : configuration.getValue().deepCopy(),
+                configuration.getBinaryFileName(), configuration.getBinaryContentType(), configuration.getBinarySize(), configuration.getBinaryZipSize(),
+                configuration.isWritable(), tags,
                 configuration.getCreatedAt(), configuration.getUpdatedAt()
         );
     }

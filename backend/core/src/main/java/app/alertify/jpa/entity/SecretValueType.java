@@ -10,5 +10,6 @@ package app.alertify.jpa.entity;
 public enum SecretValueType {
     STRING,
     DB_SECRET,
-    EXPRESSION
+    EXPRESSION,
+    BINARY
 }

@@ -90,6 +90,11 @@ public class ApplicationSecret {
     @Column(nullable = false)
     private boolean writable;
 
+    @Column(name = "binary_file_name", columnDefinition = "text") private String binaryFileName;
+    @Column(name = "binary_content_type", columnDefinition = "text") private String binaryContentType;
+    @Column(name = "binary_size") private Long binarySize;
+    @Column(name = "binary_zip_size") private Long binaryZipSize;
+
     @CreationTimestamp
     @NotAudited
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -178,6 +183,16 @@ public class ApplicationSecret {
     public boolean isWritable() {
         return writable;
     }
+
+    public String getBinaryFileName() { return binaryFileName; }
+    public String getBinaryContentType() { return binaryContentType; }
+    public Long getBinarySize() { return binarySize; }
+    public Long getBinaryZipSize() { return binaryZipSize; }
+    public void changeBinaryMetadata(String fileName, String contentType, long size, long zipSize) {
+        binaryFileName = Objects.requireNonNull(fileName); binaryContentType = Objects.requireNonNull(contentType);
+        binarySize = size; binaryZipSize = zipSize;
+    }
+    public void clearBinaryMetadata() { binaryFileName = null; binaryContentType = null; binarySize = null; binaryZipSize = null; }
 
     public Instant getCreatedAt() {
         return createdAt;

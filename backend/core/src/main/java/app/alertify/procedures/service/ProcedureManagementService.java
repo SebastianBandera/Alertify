@@ -268,8 +268,8 @@ public class ProcedureManagementService {
         try {
             return switch (request.source()) {
                 case TEXT -> ProcedureParameterValue.text(owner, definition, validateText(definition, request.textValue()));
-                case CONFIGURATION -> ProcedureParameterValue.configuration(owner, definition, configuration(request.configurationId()));
-                case SECRET -> ProcedureParameterValue.secret(owner, definition, secret(request.secretId()));
+                case CONFIGURATION -> ProcedureParameterValue.configuration(owner, definition, configuration(definition, request.configurationId()));
+                case SECRET -> ProcedureParameterValue.secret(owner, definition, secret(definition, request.secretId()));
                 case PROCEDURE -> ProcedureParameterValue.procedure(owner, definition, procedure(request.procedureId()));
             };
         } catch (IllegalArgumentException exception) {
@@ -281,8 +281,8 @@ public class ProcedureManagementService {
         try {
             switch (request.source()) {
                 case TEXT -> target.replaceWithText(validateText(definition, request.textValue()));
-                case CONFIGURATION -> target.replaceWithConfiguration(configuration(request.configurationId()));
-                case SECRET -> target.replaceWithSecret(secret(request.secretId()));
+                case CONFIGURATION -> target.replaceWithConfiguration(configuration(definition, request.configurationId()));
+                case SECRET -> target.replaceWithSecret(secret(definition, request.secretId()));
                 case PROCEDURE -> target.replaceWithProcedure(procedure(request.procedureId()));
             }
         } catch (IllegalArgumentException exception) {
@@ -290,12 +290,21 @@ public class ProcedureManagementService {
         }
     }
 
-    private ApplicationConfiguration configuration(Long id) {
-        return configurationRepository.findById(id).orElseThrow(() -> notFound("Configuration", id));
+    private ApplicationConfiguration configuration(ProcedureTemplateParameterDefinition definition, Long id) {
+        ApplicationConfiguration configuration = configurationRepository.findById(id).orElseThrow(() -> notFound("Configuration", id));
+        validateBinaryBinding(definition.getJavaType(), configuration.getValueType() == app.alertify.jpa.entity.ConfigurationValueType.BINARY, definition.getParameterKey());
+        return configuration;
     }
 
-    private ApplicationSecret secret(Long id) {
-        return secretRepository.findById(id).orElseThrow(() -> notFound("Secret", id));
+    private ApplicationSecret secret(ProcedureTemplateParameterDefinition definition, Long id) {
+        ApplicationSecret secret = secretRepository.findById(id).orElseThrow(() -> notFound("Secret", id));
+        validateBinaryBinding(definition.getJavaType(), secret.getValueType() == app.alertify.jpa.entity.SecretValueType.BINARY, definition.getParameterKey());
+        return secret;
+    }
+
+    private void validateBinaryBinding(String javaType, boolean binaryValue, String parameterKey) {
+        if ((byte[].class.getName().equals(javaType)) != binaryValue)
+            throw invalid("Parameter '" + parameterKey + "' and its binding must both be binary or both be non-binary");
     }
 
     private Procedure procedure(Long id) {

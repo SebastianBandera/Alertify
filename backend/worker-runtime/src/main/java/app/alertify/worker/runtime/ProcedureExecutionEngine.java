@@ -8,6 +8,7 @@ import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import app.alertify.alerts.template.annotation.AlertParameterSource;
 import app.alertify.procedures.ProcedureEvaluator;
@@ -35,14 +36,21 @@ class ProcedureExecutionEngine implements AutoCloseable {
     private final WorkerExecutionTracker tracker;
     private final WorkerRuntimeProperties properties;
     private final WorkerInstanceIdentity identity;
+    private final BinaryExecutionGuard binaryExecutionGuard;
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
     private final JsonMapper jsonMapper = JsonMapper.builder().build();
 
     ProcedureExecutionEngine(AlertTemplateCompiler compiler, WorkerExecutionTracker tracker, WorkerRuntimeProperties properties, WorkerInstanceIdentity identity) {
+        this(compiler, tracker, properties, identity, new BinaryExecutionGuard());
+    }
+
+    @Autowired
+    ProcedureExecutionEngine(AlertTemplateCompiler compiler, WorkerExecutionTracker tracker, WorkerRuntimeProperties properties, WorkerInstanceIdentity identity, BinaryExecutionGuard binaryExecutionGuard) {
         this.compiler = compiler;
         this.tracker = tracker;
         this.properties = properties;
         this.identity = identity;
+        this.binaryExecutionGuard = binaryExecutionGuard;
     }
 
     void execute(ExecuteProcedureRequest request, StreamObserver<ProcedureExecutionResult> observer, Deadline deadline, ProcedureHandleFactory handles) {
@@ -51,7 +59,8 @@ class ProcedureExecutionEngine implements AutoCloseable {
     }
 
     private void run(ExecuteProcedureRequest request, StreamObserver<ProcedureExecutionResult> observer, Instant startedAt, Deadline deadline, ProcedureHandleFactory handles) {
-        try (WorkerExecutionTracker.ProcedurePermit permit = tracker.startProcedure(request, Instant.now())) {
+        try (WorkerExecutionTracker.ProcedurePermit permit = tracker.startProcedure(request, Instant.now());
+                BinaryExecutionGuard.Lease ignored = binaryExecutionGuard.acquire(request)) {
             Map<String, AlertParameterSource> sources = request.getParametersList().stream()
                     .collect(Collectors.toUnmodifiableMap(parameter -> parameter.getName(),
                             parameter -> source(parameter.getSource())));

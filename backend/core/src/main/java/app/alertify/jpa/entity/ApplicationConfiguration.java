@@ -76,6 +76,12 @@ public class ApplicationConfiguration {
     @Column(nullable = false)
     private boolean writable;
 
+    @Column(name = "binary_file_name", columnDefinition = "text") private String binaryFileName;
+    @Column(name = "binary_content_type", columnDefinition = "text") private String binaryContentType;
+    @Column(name = "binary_size") private Long binarySize;
+    @Column(name = "binary_zip_size") private Long binaryZipSize;
+    @Column(name = "binary_sha256", columnDefinition = "bytea") private byte[] binarySha256;
+
     @CreationTimestamp
     @NotAudited
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -138,6 +144,24 @@ public class ApplicationConfiguration {
 
     public boolean isWritable() {
         return writable;
+    }
+
+    public String getBinaryFileName() { return binaryFileName; }
+    public String getBinaryContentType() { return binaryContentType; }
+    public Long getBinarySize() { return binarySize; }
+    public Long getBinaryZipSize() { return binaryZipSize; }
+    public byte[] getBinarySha256() { return binarySha256 == null ? null : binarySha256.clone(); }
+
+    public void changeBinaryMetadata(String fileName, String contentType, long size, long zipSize, byte[] sha256) {
+        binaryFileName = Objects.requireNonNull(fileName);
+        binaryContentType = Objects.requireNonNull(contentType);
+        binarySize = size;
+        binaryZipSize = zipSize;
+        binarySha256 = Objects.requireNonNull(sha256).clone();
+    }
+
+    public void clearBinaryMetadata() {
+        binaryFileName = null; binaryContentType = null; binarySize = null; binaryZipSize = null; binarySha256 = null;
     }
 
     public Instant getCreatedAt() {

@@ -7,6 +7,7 @@ import java.time.Duration;
 import java.time.Instant;
 
 import app.alertify.worker.contract.DatabaseCredentials;
+import app.alertify.worker.contract.BinaryPayloadCodec;
 import app.alertify.worker.grpc.AlertParameter;
 
 final class AlertParameterConverter {
@@ -23,6 +24,8 @@ final class AlertParameterConverter {
         }
 
         String value = parameter.getValue();
+        if (targetType == byte[].class)
+            return BinaryPayloadCodec.decompress(parameter.getBinaryValue().toByteArray(), maximumBinaryBytes());
         if (targetType == String.class)
             return value;
 
@@ -101,6 +104,19 @@ final class AlertParameterConverter {
         }
 
         throw new IllegalArgumentException("Unsupported writable alert parameter type " + declaredType.getName());
+    }
+
+    static byte[] serializeBinary(Object value, Class<?> declaredType) {
+        if (declaredType != byte[].class || !(value instanceof byte[] bytes))
+            throw new IllegalArgumentException("Binary writable parameter must be byte[]");
+        return BinaryPayloadCodec.compress(bytes, maximumBinaryBytes());
+    }
+
+    private static int maximumBinaryBytes() {
+        String configured = System.getenv("BINARY_VALUE_MAX_BYTES");
+        if (configured == null || configured.isBlank()) return BinaryPayloadCodec.DEFAULT_MAX_VALUE_BYTES;
+        try { int value = Integer.parseInt(configured); if (value <= 0) throw new NumberFormatException(); return value; }
+        catch (NumberFormatException exception) { throw new IllegalStateException("BINARY_VALUE_MAX_BYTES must be a positive integer", exception); }
     }
 
     @SuppressWarnings({ "rawtypes", "unchecked" })

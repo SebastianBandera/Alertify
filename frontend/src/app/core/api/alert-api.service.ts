@@ -119,6 +119,7 @@ export interface AlertBindingOption {
   readonly name: string;
   readonly description: string | null;
   readonly enabled: boolean;
+  readonly valueType: string | null;
 }
 
 export interface AlertBindingOptions {

@@ -13,5 +13,6 @@ public enum ConfigurationValueType {
     DATE,
     TIME,
     DATE_TIME,
-    JSON
+    JSON,
+    BINARY
 }

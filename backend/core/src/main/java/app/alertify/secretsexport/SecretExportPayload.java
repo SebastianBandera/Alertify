@@ -12,7 +12,8 @@ import app.alertify.jpa.entity.SecretValueType;
  */
 record SecretExportPayload(Instant exportedAt, List<Entry> secrets) {
 
-    record Entry(String name, String description, SecretValueType valueType, String value, boolean writable, List<TagExport> tags) {
+    record Entry(String name, String description, SecretValueType valueType, String value, boolean writable, List<TagExport> tags,
+            String binaryEntry, String binaryFileName, String binaryContentType, Long binarySize, Long binaryZipSize) {
 
         /** Archives written before secret types existed carry no {@code valueType}; they are plain strings. */
         SecretValueType valueTypeOrDefault() {

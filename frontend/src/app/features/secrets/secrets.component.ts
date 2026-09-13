@@ -32,6 +32,7 @@ interface SecretForm {
   valueType: SecretValueType;
   newValue: string;
   dbValue: DatabaseSecretForm;
+  binaryFile: File | null;
   tagIds: number[];
   writable: boolean;
 }
@@ -51,6 +52,7 @@ interface TagForm {
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100, 250, 500, 1000] as const;
 const PAGE_SIZE_STORAGE_KEY = 'alertify.secrets.page-size';
+const DEFAULT_MAXIMUM_BINARY_BYTES = 100 * 1024 * 1024;
 
 function readStoredPageSize(): number {
   try {
@@ -86,6 +88,7 @@ export class SecretsComponent implements OnInit {
   protected readonly saving = signal(false);
   protected readonly error = signal<string | null>(null);
   protected readonly notice = signal<string | null>(null);
+  protected readonly maximumBinaryBytes = signal(DEFAULT_MAXIMUM_BINARY_BYTES);
   protected readonly searchTerm = signal('');
   protected readonly appliedSearchTerm = signal('');
   protected readonly selectedTagIds = signal<readonly number[]>([]);
@@ -116,7 +119,12 @@ export class SecretsComponent implements OnInit {
   protected readonly tagError = signal<string | null>(null);
 
   async ngOnInit(): Promise<void> {
-    await Promise.all([this.loadSecrets(), this.loadTags(), this.loadExpressionSuggestions()]);
+    await Promise.all([this.loadSecrets(), this.loadTags(), this.loadExpressionSuggestions(), this.loadBinaryLimits()]);
+  }
+
+  private async loadBinaryLimits(): Promise<void> {
+    try { this.maximumBinaryBytes.set((await this.api.getBinaryLimits()).maximumBytes); }
+    catch (error) { this.error.set(this.errorMessage(error)); }
   }
 
   protected async loadExpressionSuggestions(): Promise<void> {
@@ -210,6 +218,7 @@ export class SecretsComponent implements OnInit {
       valueType: secret.valueType,
       newValue: '',
       dbValue: this.emptyDatabaseForm(),
+      binaryFile: null,
       tagIds: secret.tags.map((tag) => tag.id),
       writable: secret.writable,
     });
@@ -246,7 +255,17 @@ export class SecretsComponent implements OnInit {
   }
 
   protected changeValueType(valueType: SecretValueType): void {
-    this.patchSecretForm({ valueType, newValue: '', dbValue: this.emptyDatabaseForm() });
+    this.patchSecretForm({ valueType, newValue: '', dbValue: this.emptyDatabaseForm(), binaryFile: null });
+  }
+
+  protected selectBinaryFile(event: Event): void {
+    const file = (event.target as HTMLInputElement).files?.item(0) ?? null;
+    if (file && file.size > this.maximumBinaryBytes()) {
+      this.patchSecretForm({ binaryFile: null });
+      this.formError.set(this.localization.translate('binary.tooLarge').replace('{maximum}', this.formatBytes(this.maximumBinaryBytes())));
+      return;
+    }
+    this.patchSecretForm({ binaryFile: file });
   }
 
   protected patchDatabaseForm(patch: Partial<DatabaseSecretForm>): void {
@@ -268,6 +287,20 @@ export class SecretsComponent implements OnInit {
 
   protected async saveSecret(): Promise<void> {
     const form = this.secretForm();
+    if (form.valueType === 'BINARY') {
+      if (!form.name.trim() || !form.binaryFile) { this.formError.set(this.localization.translate('binary.selectFile')); return; }
+      this.saving.set(true); this.formError.set(null);
+      try {
+        const editing = this.editingSecret();
+        const metadata = { name: form.name.trim(), description: form.description.trim() || null, tagIds: form.tagIds, writable: form.writable };
+        if (editing) await this.api.updateBinarySecret(editing.id, { ...metadata, version: editing.version }, form.binaryFile);
+        else await this.api.createBinarySecret(metadata, form.binaryFile);
+        this.editorOpen.set(false); this.notice.set(this.localization.translate('secrets.saved'));
+        await Promise.all([this.loadSecrets(), this.loadExpressionSuggestions()]);
+      } catch (error) { this.formError.set(this.errorMessage(error, this.editingSecret() ? 'rename' : undefined)); }
+      finally { this.saving.set(false); }
+      return;
+    }
     let value: SecretValue;
     try {
       if (!form.name.trim()) throw new Error(this.localization.translate('secrets.valueRequired'));
@@ -360,6 +393,8 @@ export class SecretsComponent implements OnInit {
     return new Intl.DateTimeFormat(this.localization.locale(), { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
   }
 
+  protected formatBytes(value: number): string { return value < 1024 ? `${value} B` : `${(value / 1024 / 1024).toFixed(2)} MiB`; }
+
   private parseValue(form: SecretForm): SecretValue {
     switch (form.valueType) {
       case 'DB_SECRET': {
@@ -383,7 +418,7 @@ export class SecretsComponent implements OnInit {
   }
 
   private emptySecretForm(): SecretForm {
-    return { name: '', description: '', valueType: 'STRING', newValue: '', dbValue: this.emptyDatabaseForm(), tagIds: [], writable: false };
+    return { name: '', description: '', valueType: 'STRING', newValue: '', dbValue: this.emptyDatabaseForm(), binaryFile: null, tagIds: [], writable: false };
   }
 
   private emptyDatabaseForm(): DatabaseSecretForm {

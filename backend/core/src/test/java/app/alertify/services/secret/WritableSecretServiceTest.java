@@ -15,14 +15,18 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.ArgumentCaptor;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import app.alertify.configuration.service.ConfigurationExpressionParser;
 import app.alertify.jpa.entity.ApplicationSecret;
 import app.alertify.jpa.entity.SecretValueType;
+import app.alertify.jpa.entity.SecretBinaryValue;
 import app.alertify.jpa.repository.ApplicationSecretRepository;
+import app.alertify.jpa.repository.SecretBinaryValueRepository;
 import app.alertify.logging.ApplicationEventLogger;
+import app.alertify.worker.contract.BinaryPayloadCodec;
 import app.alertify.worker.grpc.WritableSecretValue;
 
 @ExtendWith(MockitoExtension.class)
@@ -31,6 +35,7 @@ class WritableSecretServiceTest {
     @Mock private ApplicationSecretRepository secretRepository;
     @Mock private SecretEncryptionService encryptionService;
     @Mock private ApplicationEventLogger eventLogger;
+    @Mock private SecretBinaryValueRepository binaryRepository;
 
     @Test
     void encryptsAndPersistsChangedValueWithoutLoggingIt() {
@@ -121,8 +126,38 @@ class WritableSecretServiceTest {
         );
     }
 
+    @Test
+    void recompressesEncryptsAndRevisesWritableBinaryBytes() {
+        byte[] changed = new byte[] { 9, 8, 7, 6 };
+        ApplicationSecret secret = secret(SecretValueType.BINARY, true);
+        secret.changeBinaryMetadata("private.sqlite", "application/vnd.sqlite3", 1, 1);
+        EncryptedSecretValue encrypted = encrypted("binary-cipher");
+        EncryptedSecretValue placeholder = encrypted("binary-marker");
+        when(secretRepository.findById(10L)).thenReturn(Optional.of(secret));
+        when(encryptionService.encryptBinary(org.mockito.ArgumentMatchers.any(byte[].class))).thenReturn(encrypted);
+        when(encryptionService.encrypt("BINARY")).thenReturn(placeholder);
+        WritableSecretValue value = WritableSecretValue.newBuilder()
+                .setSecretId(10L).setParameterName("database")
+                .setBinaryValue(com.google.protobuf.ByteString.copyFrom(BinaryPayloadCodec.compress(changed, 104857600)))
+                .build();
+
+        service().apply(20L, "SQLite updater", UUID.randomUUID(), Set.of(value));
+
+        ArgumentCaptor<byte[]> zipped = ArgumentCaptor.forClass(byte[].class);
+        verify(encryptionService).encryptBinary(zipped.capture());
+        assertThat(BinaryPayloadCodec.decompress(zipped.getValue(), 104857600)).isEqualTo(changed);
+        ArgumentCaptor<SecretBinaryValue> persisted = ArgumentCaptor.forClass(SecretBinaryValue.class);
+        verify(binaryRepository).save(persisted.capture());
+        assertThat(persisted.getValue().getEncryptedValue()).isEqualTo(encrypted.encryptedValue());
+        assertThat(secret.getEncryptedValue()).isEqualTo(placeholder.encryptedValue());
+        assertThat(secret.getValueRevision()).isEqualTo(2);
+        verify(secretRepository).flush();
+    }
+
     private WritableSecretService service() {
-        return new WritableSecretService(secretRepository, encryptionService, new SecretValueValidator(new ConfigurationExpressionParser()), eventLogger);
+        return new WritableSecretService(secretRepository, encryptionService, new SecretValueValidator(new ConfigurationExpressionParser()), eventLogger,
+                binaryRepository,
+                new app.alertify.binary.BinaryPayloadService(104857600));
     }
 
     private static ApplicationSecret secret(boolean writable) {

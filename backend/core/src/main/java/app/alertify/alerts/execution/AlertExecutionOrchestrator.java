@@ -253,8 +253,10 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
                         .setInvocationToken(procedureTokenService.issue(parameter.procedureId(),
                                 parentExecutionId, parentExecutionId,
                                 ProcedureParentKind.PROCEDURE_PARENT_KIND_ALERT, 1, deadline));
-            } else if (!parameter.nullValue())
-                value.setValue(parameter.value());
+            } else if (!parameter.nullValue()) {
+                if (parameter.binaryZip() != null) value.setBinaryValue(com.google.protobuf.ByteString.copyFrom(parameter.binaryZip()));
+                else value.setValue(parameter.value());
+            }
 
             if (parameter.writable()) {
                 boolean configurationTarget = parameter.configurationId() != null;

@@ -24,6 +24,13 @@ import app.alertify.jpa.entity.Tag;
 import app.alertify.jpa.entity.TagScope;
 import app.alertify.jpa.repository.ApplicationSecretRepository;
 import app.alertify.jpa.repository.TagRepository;
+import app.alertify.jpa.repository.SecretBinaryValueRepository;
+import app.alertify.jpa.entity.SecretBinaryValue;
+import app.alertify.binary.BinaryPayloadService;
+import app.alertify.secret.api.BinarySecretCreateRequest;
+import app.alertify.secret.api.BinarySecretUpdateRequest;
+import org.springframework.web.multipart.MultipartFile;
+import java.io.IOException;
 import app.alertify.jpa.specification.ApplicationSecretSpecifications;
 import app.alertify.jpa.specification.DynamicSpecification;
 import app.alertify.jpa.specification.InvalidFilterException;
@@ -59,8 +66,10 @@ public class ApplicationSecretService {
     private final SecretExpressionService expressionService;
     private final SecretMapper mapper;
     private final ApplicationEventLogger eventLogger;
+    private final SecretBinaryValueRepository binaryRepository;
+    private final BinaryPayloadService binaryPayloadService;
 
-    public ApplicationSecretService(ApplicationSecretRepository secretRepository, TagRepository tagRepository, SecretEncryptionService encryptionService, SecretValueValidator valueValidator, SecretExpressionService expressionService, SecretMapper mapper, ApplicationEventLogger eventLogger) {
+    public ApplicationSecretService(ApplicationSecretRepository secretRepository, TagRepository tagRepository, SecretEncryptionService encryptionService, SecretValueValidator valueValidator, SecretExpressionService expressionService, SecretMapper mapper, ApplicationEventLogger eventLogger, SecretBinaryValueRepository binaryRepository, BinaryPayloadService binaryPayloadService) {
         this.secretRepository = secretRepository;
         this.tagRepository = tagRepository;
         this.encryptionService = encryptionService;
@@ -68,6 +77,55 @@ public class ApplicationSecretService {
         this.expressionService = expressionService;
         this.mapper = mapper;
         this.eventLogger = eventLogger;
+        this.binaryRepository = binaryRepository;
+        this.binaryPayloadService = binaryPayloadService;
+    }
+
+    @Transactional
+    public SecretResponse createBinary(BinarySecretCreateRequest request, MultipartFile file) {
+        String name = normalizeRequired(request.name()); ensureNameAvailable(name, null);
+        BinaryPayloadService.PreparedBinary binary = prepare(file);
+        EncryptedSecretValue placeholder = encryptionService.encrypt("BINARY");
+        ApplicationSecret secret = new ApplicationSecret(name, normalizeOptional(request.description()), SecretValueType.BINARY,
+                placeholder.encryptedValue(), placeholder.encryptionIv(), placeholder.valueHash(), placeholder.hashSalt(),
+                placeholder.encryptionVersion(), resolveSecretTags(request.tagIds()), request.writable());
+        secret.changeBinaryMetadata(binary.fileName(), binary.contentType(), binary.size(), binary.zipSize());
+        ApplicationSecret saved = secretRepository.saveAndFlush(secret);
+        EncryptedSecretValue encrypted = encryptionService.encryptBinary(binary.zip());
+        binaryRepository.saveAndFlush(new SecretBinaryValue(saved.getId(), encrypted.encryptedValue(), encrypted.encryptionIv(),
+                encrypted.valueHash(), encrypted.hashSalt(), encrypted.encryptionVersion()));
+        eventLogger.successAfterCommit("SECRET_CREATED", Map.of("secretId", saved.getId(), "name", saved.getName(), "valueType", "BINARY"));
+        return mapper.toResponse(saved);
+    }
+
+    @Transactional
+    public SecretResponse updateBinary(Long id, BinarySecretUpdateRequest request, MultipartFile file) {
+        ApplicationSecret secret = find(id); verifyVersion(secret.getVersion(), request.version(), "Secret");
+        BinaryPayloadService.PreparedBinary binary = prepare(file);
+        String name = normalizeRequired(request.name());
+        if (!secret.getName().equals(name)) { expressionService.ensureNotReferenced(secret, "renamed"); ensureNameAvailable(name, id); secret.rename(name); }
+        if (secret.getValueType() != SecretValueType.BINARY) expressionService.ensureNotReferenced(secret, "changed to BINARY");
+        secret.changeDescription(normalizeOptional(request.description())); secret.replaceTags(resolveSecretTags(request.tagIds()));
+        secret.changeWritable(request.writable()); secret.changeValueType(SecretValueType.BINARY);
+        EncryptedSecretValue placeholder = encryptionService.encrypt("BINARY");
+        secret.replaceEncryptedValue(placeholder.encryptedValue(), placeholder.encryptionIv(), placeholder.valueHash(),
+                placeholder.hashSalt(), placeholder.encryptionVersion());
+        secret.changeBinaryMetadata(binary.fileName(), binary.contentType(), binary.size(), binary.zipSize());
+        secretRepository.flush();
+        EncryptedSecretValue encrypted = encryptionService.encryptBinary(binary.zip());
+        binaryRepository.saveAndFlush(new SecretBinaryValue(id, encrypted.encryptedValue(), encrypted.encryptionIv(), encrypted.valueHash(), encrypted.hashSalt(), encrypted.encryptionVersion()));
+        expressionService.synchronizeDependencies(secret, null);
+        eventLogger.successAfterCommit("SECRET_UPDATED", Map.of(
+                "secretId", id, "name", secret.getName(), "valueType", SecretValueType.BINARY,
+                "valueRevision", secret.getValueRevision(), "writable", secret.isWritable()
+        ));
+        return mapper.toResponse(secret);
+    }
+
+    private BinaryPayloadService.PreparedBinary prepare(MultipartFile file) {
+        if (file == null || file.isEmpty()) throw new app.alertify.api.error.InvalidSecretValueException("A non-empty binary file is required");
+        try { return binaryPayloadService.prepare(file.getBytes(), file.getOriginalFilename(), file.getContentType()); }
+        catch (IOException | IllegalArgumentException exception) { throw new app.alertify.api.error.InvalidSecretValueException(exception.getMessage()); }
     }
 
     @Transactional(readOnly = true)
@@ -107,6 +165,7 @@ public class ApplicationSecretService {
 
     @Transactional
     public SecretResponse create(SecretCreateRequest request) {
+        if (request.valueType() == SecretValueType.BINARY) throw new app.alertify.api.error.InvalidSecretValueException("BINARY values require multipart file upload");
         String name = normalizeRequired(request.name());
         ensureNameAvailable(name, null);
         Set<Tag> tags = resolveSecretTags(request.tagIds());
@@ -132,6 +191,7 @@ public class ApplicationSecretService {
 
     @Transactional
     public SecretResponse update(Long id, SecretUpdateRequest request) {
+        if (request.valueType() == SecretValueType.BINARY) throw new app.alertify.api.error.InvalidSecretValueException("BINARY values require multipart file upload");
         ApplicationSecret secret = find(id);
         verifyVersion(secret.getVersion(), request.version(), "Secret");
         String previousName = secret.getName();
@@ -160,6 +220,7 @@ public class ApplicationSecretService {
             changedFields.add("writable");
         }
         if (secret.getValueType() != request.valueType()) {
+            if (secret.getValueType() == SecretValueType.BINARY) { binaryRepository.deleteById(id); secret.clearBinaryMetadata(); }
             secret.changeValueType(request.valueType());
             changedFields.add("valueType");
         }

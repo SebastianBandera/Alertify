@@ -49,10 +49,15 @@ class SecretExpressionServiceTest {
 
     @BeforeEach
     void setUp() {
+        ConfigurationExpressionParser parser = new ConfigurationExpressionParser();
+        EnvironmentVariableResolver environmentVariables = new EnvironmentVariableResolver("");
+        ConfigurationExpressionUtilityResolver utilities = new ConfigurationExpressionUtilityResolver();
+        SecretExpressionDependencySynchronizer dependencySynchronizer = new SecretExpressionDependencySynchronizer(
+                secretRepository, configurationRepository, dependencyRepository, parser, environmentVariables, utilities
+        );
         service = new SecretExpressionService(
                 secretRepository, configurationRepository, dependencyRepository, encryptionService,
-                new ConfigurationExpressionParser(), configurationExpressionService,
-                new EnvironmentVariableResolver(""), new ConfigurationExpressionUtilityResolver(), eventLogger
+                parser, configurationExpressionService, environmentVariables, utilities, eventLogger, dependencySynchronizer
         );
     }
 

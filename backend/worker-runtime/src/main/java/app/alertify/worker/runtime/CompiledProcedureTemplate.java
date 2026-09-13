@@ -62,16 +62,20 @@ record CompiledProcedureTemplate(String checksum, Class<? extends ProcedureEvalu
                 field.setAccessible(true);
                 Object finalValue = field.get(evaluator);
                 Object initialValue = AlertParameterConverter.convert(parameter, field.getType());
-                if (Objects.equals(initialValue, finalValue))
+                if (initialValue instanceof byte[] initialBytes && finalValue instanceof byte[] finalBytes
+                        ? java.util.Arrays.equals(initialBytes, finalBytes) : Objects.equals(initialValue, finalValue))
                     continue;
 
-                String serialized = finalValue == null ? null : AlertParameterConverter.serialize(finalValue, field.getType());
+                byte[] binary = finalValue != null && field.getType() == byte[].class
+                        ? AlertParameterConverter.serializeBinary(finalValue, field.getType()) : null;
+                String serialized = finalValue == null || binary != null ? null : AlertParameterConverter.serialize(finalValue, field.getType());
                 if (configuration) {
                     WritableConfigurationValue.Builder value = WritableConfigurationValue.newBuilder()
                             .setConfigurationId(parameter.getConfigurationId()).setParameterName(parameter.getName())
                             .setNullValue(finalValue == null);
                     if (serialized != null)
                         value.setValue(serialized);
+                    if (binary != null) value.setBinaryValue(com.google.protobuf.ByteString.copyFrom(binary));
 
                     configurations.add(value.build());
                 } else {
@@ -80,6 +84,7 @@ record CompiledProcedureTemplate(String checksum, Class<? extends ProcedureEvalu
                             .setNullValue(finalValue == null);
                     if (serialized != null)
                         value.setValue(serialized);
+                    if (binary != null) value.setBinaryValue(com.google.protobuf.ByteString.copyFrom(binary));
 
                     secrets.add(value.build());
                 }

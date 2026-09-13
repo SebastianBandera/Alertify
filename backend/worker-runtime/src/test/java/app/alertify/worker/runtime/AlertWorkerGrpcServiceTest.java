@@ -86,7 +86,7 @@ class AlertWorkerGrpcServiceTest {
     }
 
     private WorkerRuntimeProperties properties() {
-        return new WorkerRuntimeProperties("test-worker", 0, Duration.ofSeconds(1), Set.of(WorkerCapability.STANDARD), 1, temporaryDirectory.resolve("compiled"), null, new WorkerRuntimeProperties.Tls(false, null, null, null));
+        return new WorkerRuntimeProperties("test-worker", 0, 134217728, Duration.ofSeconds(1), Set.of(WorkerCapability.STANDARD), 1, temporaryDirectory.resolve("compiled"), null, new WorkerRuntimeProperties.Tls(false, null, null, null));
     }
 
     private static StreamObserver<ExecutionWorkerMessage> observer(LinkedBlockingQueue<ExecutionWorkerMessage> output) {

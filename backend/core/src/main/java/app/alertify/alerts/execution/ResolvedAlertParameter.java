@@ -13,6 +13,7 @@ public record ResolvedAlertParameter(
     String name,
     String javaType,
     String value,
+    byte[] binaryZip,
     boolean nullValue,
     AlertParameterSource source,
     Long configurationId,
@@ -21,11 +22,14 @@ public record ResolvedAlertParameter(
     boolean writable
 ) {
     ResolvedAlertParameter(String name, String javaType, String value, boolean nullValue,
-            AlertParameterSource source, Long configurationId, Long secretId, boolean writable) {
-        this(name, javaType, value, nullValue, source, configurationId, secretId, null, writable);
+            AlertParameterSource source, Long configurationId, Long secretId, Long procedureId, boolean writable) {
+        this(name, javaType, value, null, nullValue, source, configurationId, secretId, procedureId, writable);
+    }
+    ResolvedAlertParameter(String name, String javaType, String value, boolean nullValue, AlertParameterSource source, Long configurationId, Long secretId, boolean writable) {
+        this(name, javaType, value, null, nullValue, source, configurationId, secretId, null, writable);
     }
 
     ResolvedAlertParameter(String name, String javaType, String value, boolean nullValue) {
-        this(name, javaType, value, nullValue, AlertParameterSource.TEXT, null, null, null, false);
+        this(name, javaType, value, null, nullValue, AlertParameterSource.TEXT, null, null, null, false);
     }
 }

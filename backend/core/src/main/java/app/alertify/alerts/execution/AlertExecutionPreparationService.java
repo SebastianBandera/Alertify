@@ -27,6 +27,9 @@ import app.alertify.jpa.repository.AlertRepository;
 import app.alertify.jpa.repository.AlertStateRepository;
 import app.alertify.jpa.repository.AlertTemplateParameterDefinitionRepository;
 import app.alertify.services.secret.SecretAccessService;
+import app.alertify.binary.BinaryBindingService;
+import app.alertify.jpa.entity.ConfigurationValueType;
+import app.alertify.jpa.entity.SecretValueType;
 
 /**
  * Builds the immutable snapshot an alert execution needs before any worker is
@@ -44,15 +47,17 @@ public class AlertExecutionPreparationService {
     private final AlertStateRepository stateRepository;
     private final ConfigurationExpressionService configurationExpressionService;
     private final SecretAccessService secretAccessService;
+    private final BinaryBindingService binaryBindingService;
     private final WorkerGrpcProperties properties;
 
-    public AlertExecutionPreparationService(AlertRepository alertRepository, AlertTemplateParameterDefinitionRepository definitionRepository, AlertParameterValueRepository parameterValueRepository, AlertStateRepository stateRepository, ConfigurationExpressionService configurationExpressionService, SecretAccessService secretAccessService, WorkerGrpcProperties properties) {
+    public AlertExecutionPreparationService(AlertRepository alertRepository, AlertTemplateParameterDefinitionRepository definitionRepository, AlertParameterValueRepository parameterValueRepository, AlertStateRepository stateRepository, ConfigurationExpressionService configurationExpressionService, SecretAccessService secretAccessService, WorkerGrpcProperties properties, BinaryBindingService binaryBindingService) {
         this.alertRepository = alertRepository;
         this.definitionRepository = definitionRepository;
         this.parameterValueRepository = parameterValueRepository;
         this.stateRepository = stateRepository;
         this.configurationExpressionService = configurationExpressionService;
         this.secretAccessService = secretAccessService;
+        this.binaryBindingService = binaryBindingService;
         this.properties = properties;
     }
 
@@ -93,19 +98,28 @@ public class AlertExecutionPreparationService {
         if (configured == null) {
             String defaultValue = definition.getDefaultValue();
             return new ResolvedAlertParameter(
-                    definition.getParameterKey(), definition.getJavaType(), defaultValue,
+                    definition.getParameterKey(), definition.getJavaType(), defaultValue, null,
                     defaultValue == null, AlertParameterSource.TEXT, null, null, null, false
             );
         }
-        String value = switch (configured.getSource()) {
+        boolean binary = configured.getSource() == AlertParameterSource.CONFIGURATION && configured.getConfiguration().getValueType() == ConfigurationValueType.BINARY
+                || configured.getSource() == AlertParameterSource.SECRET && configured.getSecret().getValueType() == SecretValueType.BINARY;
+        String value = binary ? null : switch (configured.getSource()) {
             case TEXT -> configured.getTextValue();
             case CONFIGURATION -> configurationExpressionService.getResolvedValueByName(configured.getConfiguration().getName());
             case SECRET -> secretAccessService.getValueByName(configured.getSecret().getName());
             case PROCEDURE -> null;
         };
+        byte[] binaryZip = binary ? switch (configured.getSource()) {
+            case CONFIGURATION -> binaryBindingService.configurationZip(configured.getConfiguration().getId());
+            case SECRET -> binaryBindingService.secretZip(configured.getSecret().getId());
+            default -> null;
+        } : null;
+        if (binary != "[B".equals(definition.getJavaType()))
+            throw new IllegalArgumentException("Parameter '" + definition.getParameterKey() + "' and its binding have incompatible binary types");
         return new ResolvedAlertParameter(
-                definition.getParameterKey(), definition.getJavaType(), value,
-                value == null && configured.getSource() != AlertParameterSource.PROCEDURE,
+                definition.getParameterKey(), definition.getJavaType(), value, binaryZip,
+                value == null && binaryZip == null && configured.getSource() != AlertParameterSource.PROCEDURE,
                 configured.getSource(),
                 configured.getSource() == AlertParameterSource.CONFIGURATION
                         ? configured.getConfiguration().getId()

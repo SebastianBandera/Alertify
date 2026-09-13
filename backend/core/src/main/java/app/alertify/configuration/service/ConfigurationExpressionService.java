@@ -136,6 +136,8 @@ public class ConfigurationExpressionService {
     }
 
     private String resolveConfiguration(ApplicationConfiguration configuration, DraftExpression draft, Set<String> path, int depth, ZonedDateTime now) {
+        if (configuration.getValueType() == ConfigurationValueType.BINARY)
+            throw new InvalidConfigurationExpressionException("BINARY configuration '" + configuration.getName() + "' cannot be used in an expression");
         String key = normalizedKey(configuration.getName());
         enter(path, key, configuration.getName(), depth);
         try {

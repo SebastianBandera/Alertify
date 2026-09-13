@@ -39,7 +39,7 @@ class WorkerExecutionTrackerProcedureTest {
 
     private static WorkerRuntimeProperties properties() {
         return new WorkerRuntimeProperties(
-                "test-worker", 0, Duration.ofSeconds(1), Set.of(WorkerCapability.STANDARD), 1,
+                "test-worker", 0, 134217728, Duration.ofSeconds(1), Set.of(WorkerCapability.STANDARD), 1,
                 Path.of("target", "compiled-test"), null,
                 new WorkerRuntimeProperties.Tls(false, null, null, null)
         );

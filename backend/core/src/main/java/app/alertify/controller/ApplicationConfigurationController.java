@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.multipart.MultipartFile;
@@ -33,6 +34,8 @@ import app.alertify.configuration.api.ConfigurationExpressionSuggestionsResponse
 import app.alertify.configuration.api.ConfigurationImportResult;
 import app.alertify.configuration.api.ConfigurationResponse;
 import app.alertify.configuration.api.ConfigurationUpdateRequest;
+import app.alertify.configuration.api.BinaryConfigurationCreateRequest;
+import app.alertify.configuration.api.BinaryConfigurationUpdateRequest;
 import app.alertify.configuration.service.ApplicationConfigurationService;
 import app.alertify.configuration.service.ConfigurationExpressionService;
 import jakarta.validation.Valid;
@@ -102,9 +105,30 @@ public class ApplicationConfigurationController {
         return ResponseEntity.created(location).body(response);
     }
 
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ConfigurationResponse> createBinary(@Valid @RequestPart("metadata") BinaryConfigurationCreateRequest request, @RequestPart("file") MultipartFile file) {
+        ConfigurationResponse response = service.createBinary(request, file);
+        URI location = ServletUriComponentsBuilder.fromCurrentRequest().path("/{id}").buildAndExpand(response.id()).toUri();
+        return ResponseEntity.created(location).body(response);
+    }
+
     @PutMapping("/{id}")
     public ConfigurationResponse update(@PathVariable Long id, @Valid @RequestBody ConfigurationUpdateRequest request) {
         return service.update(id, request);
+    }
+
+    @PutMapping(value = "/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ConfigurationResponse updateBinary(@PathVariable Long id, @Valid @RequestPart("metadata") BinaryConfigurationUpdateRequest request, @RequestPart("file") MultipartFile file) {
+        return service.updateBinary(id, request, file);
+    }
+
+    @GetMapping("/{id}/binary")
+    public ResponseEntity<byte[]> downloadBinary(@PathVariable Long id) {
+        var download = service.downloadBinary(id);
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .contentType(MediaType.parseMediaType(download.contentType()))
+                .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment().filename(download.fileName()).build().toString())
+                .body(download.content());
     }
 
     @DeleteMapping("/{id}")

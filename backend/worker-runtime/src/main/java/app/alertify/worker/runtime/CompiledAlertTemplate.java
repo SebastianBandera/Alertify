@@ -80,10 +80,13 @@ record CompiledAlertTemplate(
                 field.setAccessible(true);
                 Object finalValue = field.get(evaluator);
                 Object initialValue = AlertParameterConverter.convert(parameter, field.getType());
-                if (Objects.equals(initialValue, finalValue))
+                if (initialValue instanceof byte[] initialBytes && finalValue instanceof byte[] finalBytes
+                        ? java.util.Arrays.equals(initialBytes, finalBytes) : Objects.equals(initialValue, finalValue))
                     continue;
 
-                String serialized = finalValue == null
+                byte[] binary = finalValue != null && field.getType() == byte[].class
+                        ? AlertParameterConverter.serializeBinary(finalValue, field.getType()) : null;
+                String serialized = finalValue == null || binary != null
                         ? null
                         : AlertParameterConverter.serialize(finalValue, field.getType());
                 if (configurationTarget) {
@@ -93,6 +96,7 @@ record CompiledAlertTemplate(
                             .setNullValue(finalValue == null);
                     if (serialized != null)
                         value.setValue(serialized);
+                    if (binary != null) value.setBinaryValue(com.google.protobuf.ByteString.copyFrom(binary));
 
                     configurationValues.add(value.build());
                 } else {
@@ -102,6 +106,7 @@ record CompiledAlertTemplate(
                             .setNullValue(finalValue == null);
                     if (serialized != null)
                         value.setValue(serialized);
+                    if (binary != null) value.setBinaryValue(com.google.protobuf.ByteString.copyFrom(binary));
 
                     secretValues.add(value.build());
                 }

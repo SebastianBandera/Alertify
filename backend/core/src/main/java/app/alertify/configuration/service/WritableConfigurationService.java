@@ -9,6 +9,9 @@ import org.springframework.stereotype.Service;
 
 import app.alertify.jpa.entity.ApplicationConfiguration;
 import app.alertify.jpa.entity.ConfigurationValueType;
+import app.alertify.jpa.entity.ConfigurationBinaryValue;
+import app.alertify.jpa.repository.ConfigurationBinaryValueRepository;
+import app.alertify.binary.BinaryPayloadService;
 import app.alertify.jpa.repository.ApplicationConfigurationRepository;
 import app.alertify.logging.ApplicationEventLogger;
 import app.alertify.worker.grpc.WritableConfigurationValue;
@@ -29,14 +32,18 @@ public class WritableConfigurationService {
     private final ConfigurationCacheInvalidator cacheInvalidator;
     private final ApplicationEventLogger eventLogger;
     private final JsonMapper jsonMapper;
+    private final ConfigurationBinaryValueRepository binaryRepository;
+    private final BinaryPayloadService binaryPayloadService;
 
-    public WritableConfigurationService(ApplicationConfigurationRepository configurationRepository, ConfigurationValueValidator valueValidator, ConfigurationExpressionService expressionService, ConfigurationCacheInvalidator cacheInvalidator, ApplicationEventLogger eventLogger, JsonMapper jsonMapper) {
+    public WritableConfigurationService(ApplicationConfigurationRepository configurationRepository, ConfigurationValueValidator valueValidator, ConfigurationExpressionService expressionService, ConfigurationCacheInvalidator cacheInvalidator, ApplicationEventLogger eventLogger, JsonMapper jsonMapper, ConfigurationBinaryValueRepository binaryRepository, BinaryPayloadService binaryPayloadService) {
         this.configurationRepository = configurationRepository;
         this.valueValidator = valueValidator;
         this.expressionService = expressionService;
         this.cacheInvalidator = cacheInvalidator;
         this.eventLogger = eventLogger;
         this.jsonMapper = jsonMapper;
+        this.binaryRepository = binaryRepository;
+        this.binaryPayloadService = binaryPayloadService;
     }
 
     public void apply(long alertId, String alertName, UUID executionId, Iterable<WritableConfigurationValue> values) {
@@ -59,6 +66,17 @@ public class WritableConfigurationService {
         try {
             if (result.getNullValue())
                 throw new IllegalArgumentException("Writable configuration value must not be null");
+
+            if (configuration.getValueType() == ConfigurationValueType.BINARY) {
+                byte[] raw = binaryPayloadService.decompress(result.getBinaryValue().toByteArray());
+                var prepared = binaryPayloadService.prepare(raw, configuration.getBinaryFileName(), configuration.getBinaryContentType());
+                binaryRepository.save(new ConfigurationBinaryValue(configuration.getId(), prepared.zip()));
+                configuration.changeBinaryMetadata(prepared.fileName(), prepared.contentType(), prepared.size(), prepared.zipSize(), prepared.sha256());
+                configurationRepository.flush();
+                cacheInvalidator.evictAfterCommit(configuration.getId(), Set.of(configuration.getName()));
+                eventLogger.successAfterCommit(owner.successEvent(), context(owner, executionId, result, configuration));
+                return;
+            }
 
             JsonNode value = valueValidator.validateAndNormalize(configuration.getValueType(), parse(configuration.getValueType(), result.getValue()));
 
@@ -87,6 +105,7 @@ public class WritableConfigurationService {
     }
 
     private JsonNode parse(ConfigurationValueType type, String value) {
+        if (type == ConfigurationValueType.BINARY) throw new IllegalArgumentException("BINARY requires binary transport");
         if (type == ConfigurationValueType.STRING || type == ConfigurationValueType.EXPRESSION
                 || type == ConfigurationValueType.DATE || type == ConfigurationValueType.TIME
                 || type == ConfigurationValueType.DATE_TIME) {

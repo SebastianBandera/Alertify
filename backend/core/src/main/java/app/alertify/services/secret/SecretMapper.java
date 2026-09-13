@@ -19,9 +19,11 @@ import app.alertify.secret.api.SecretResponse;
 class SecretMapper {
 
     private final SecretEncryptionService encryptionService;
+    private final app.alertify.jpa.repository.SecretBinaryValueRepository binaryRepository;
 
-    SecretMapper(SecretEncryptionService encryptionService) {
+    SecretMapper(SecretEncryptionService encryptionService, app.alertify.jpa.repository.SecretBinaryValueRepository binaryRepository) {
         this.encryptionService = encryptionService;
+        this.binaryRepository = binaryRepository;
     }
 
     SecretResponse toResponse(ApplicationSecret secret) {
@@ -29,12 +31,16 @@ class SecretMapper {
                 .sorted(java.util.Comparator.comparing(Tag::getName, String.CASE_INSENSITIVE_ORDER))
                 .map(SecretMapper::toResponse)
                 .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
-        SecretRecoveryStatus recoveryStatus = encryptionService.isRecoverable(secret)
+        boolean recoverable = secret.getValueType() == app.alertify.jpa.entity.SecretValueType.BINARY
+                ? binaryRepository.existsById(secret.getId()) && encryptionService.isRecoverable(secret)
+                : encryptionService.isRecoverable(secret);
+        SecretRecoveryStatus recoveryStatus = recoverable
                 ? SecretRecoveryStatus.RECOVERABLE
                 : SecretRecoveryStatus.UNRECOVERABLE;
 
         return new SecretResponse(
-                secret.getId(), secret.getVersion(), secret.getName(), secret.getDescription(), secret.getValueType(), tags,
+                secret.getId(), secret.getVersion(), secret.getName(), secret.getDescription(), secret.getValueType(),
+                secret.getBinaryFileName(), secret.getBinaryContentType(), secret.getBinarySize(), secret.getBinaryZipSize(), tags,
                 secret.isWritable(), recoveryStatus, secret.getValueRevision(), secret.getCreatedAt(), secret.getUpdatedAt()
         );
     }

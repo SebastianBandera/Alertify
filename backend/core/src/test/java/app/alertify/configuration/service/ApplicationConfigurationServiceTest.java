@@ -30,6 +30,8 @@ import app.alertify.jpa.repository.ApplicationConfigurationRepository;
 import app.alertify.jpa.repository.TagRepository;
 import app.alertify.jpa.specification.InvalidFilterException;
 import app.alertify.logging.ApplicationEventLogger;
+import app.alertify.jpa.repository.ConfigurationBinaryValueRepository;
+import app.alertify.binary.BinaryPayloadService;
 import tools.jackson.databind.node.IntNode;
 
 @ExtendWith(MockitoExtension.class)
@@ -42,6 +44,8 @@ class ApplicationConfigurationServiceTest {
     @Mock private ConfigurationCsvCodec csvCodec;
     @Mock private ConfigurationExpressionService expressionService;
     @Mock private ApplicationEventLogger eventLogger;
+    @Mock private ConfigurationBinaryValueRepository binaryRepository;
+    @Mock private BinaryPayloadService binaryPayloadService;
 
     @Test
     void doesNotFlushOrChangeVersionWhenUpdateHasNoChanges() {
@@ -133,7 +137,7 @@ class ApplicationConfigurationServiceTest {
     private ApplicationConfigurationService service() {
         return new ApplicationConfigurationService(
             configurationRepository, tagRepository, new ConfigurationValueValidator(),
-            lookupService, cacheInvalidator, csvCodec, expressionService, eventLogger
+            lookupService, cacheInvalidator, csvCodec, expressionService, eventLogger, binaryRepository, binaryPayloadService
         );
     }
 }

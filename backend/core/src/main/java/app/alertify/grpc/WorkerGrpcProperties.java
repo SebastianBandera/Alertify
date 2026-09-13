@@ -4,6 +4,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.ConstructorBinding;
 
 /**
  * Connection and periodic-discovery settings for the single worker DNS pool.
@@ -12,10 +13,19 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record WorkerGrpcProperties(
     String host,
     int port,
+    int maxInboundMessageBytes,
     Tls tls,
     Discovery discovery,
     Execution execution
 ) {
+
+    @ConstructorBinding
+    public WorkerGrpcProperties {
+    }
+
+    public WorkerGrpcProperties(String host, int port, Tls tls, Discovery discovery, Execution execution) {
+        this(host, port, 134217728, tls, discovery, execution);
+    }
 
     public record Tls(
         boolean enabled,

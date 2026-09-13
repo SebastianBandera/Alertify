@@ -560,7 +560,7 @@
                         <span>{{ localization.translate('alerts.form.configuration') }}</span>
                         <select [ngModel]="parameterForm(parameter.key).configurationId" (ngModelChange)="patchParameter(parameter.key, { configurationId: $event })" [name]="'configuration-' + parameter.id" required>
                           <option [ngValue]="null" disabled>{{ localization.translate('alerts.form.selectConfiguration') }}</option>
-                          @for (option of bindings().configurations; track option.id) { <option [ngValue]="option.id">{{ option.name }}</option> }
+                          @for (option of compatibleConfigurationBindings(parameter); track option.id) { <option [ngValue]="option.id">{{ option.name }}</option> }
                         </select>
                       </label>
                     } @else if (parameterForm(parameter.key).source === 'SECRET') {
@@ -568,7 +568,7 @@
                         <span>{{ localization.translate('alerts.form.secret') }}</span>
                         <select [ngModel]="parameterForm(parameter.key).secretId" (ngModelChange)="patchParameter(parameter.key, { secretId: $event })" [name]="'secret-' + parameter.id" required>
                           <option [ngValue]="null" disabled>{{ localization.translate('alerts.form.selectSecret') }}</option>
-                          @for (option of bindings().secrets; track option.id) { <option [ngValue]="option.id">{{ option.name }}</option> }
+                          @for (option of compatibleSecretBindings(parameter); track option.id) { <option [ngValue]="option.id">{{ option.name }}</option> }
                         </select>
                       </label>
                     } @else if (parameterForm(parameter.key).source === 'PROCEDURE') {

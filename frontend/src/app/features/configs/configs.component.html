@@ -170,6 +170,7 @@
                   <button class="text-button" type="button" (click)="openEdit(configuration)">
                     {{ localization.translate('configs.edit') }}
                   </button>
+                  @if (configuration.valueType === 'BINARY') { <button class="text-button" type="button" (click)="downloadBinary(configuration)">{{ localization.translate('binary.download') }}</button> }
                   <button class="text-button text-button--danger" type="button" (click)="deleteConfiguration(configuration)">
                     {{ localization.translate('configs.delete') }}
                   </button>
@@ -283,6 +284,11 @@
         <div class="field">
           <span>{{ localization.translate('configs.field.value') }}</span>
           @switch (configurationForm().valueType) {
+            @case ('BINARY') {
+              <span>{{ localization.translate('binary.fileLabel').replace('{maximum}', formatBytes(maximumBinaryBytes())) }}</span>
+              <input type="file" required (change)="selectBinaryFile($event)" name="configurationBinary" />
+              @if (editingConfiguration()?.binaryFileName && !configurationForm().binaryFile) { <small>{{ editingConfiguration()!.binaryFileName }} — {{ localization.translate('binary.selectReplacement') }}</small> }
+            }
             @case ('EXPRESSION') {
               <app-expression-editor
                 name="configurationValue"

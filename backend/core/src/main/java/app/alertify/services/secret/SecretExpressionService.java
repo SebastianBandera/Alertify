@@ -50,8 +50,9 @@ public class SecretExpressionService {
     private final EnvironmentVariableResolver environmentVariables;
     private final ConfigurationExpressionUtilityResolver utilities;
     private final ApplicationEventLogger eventLogger;
+    private final SecretExpressionDependencySynchronizer dependencySynchronizer;
 
-    public SecretExpressionService(ApplicationSecretRepository secretRepository, ApplicationConfigurationRepository configurationRepository, SecretExpressionDependencyRepository dependencyRepository, SecretEncryptionService encryptionService, ConfigurationExpressionParser parser, ConfigurationExpressionService configurationExpressionService, EnvironmentVariableResolver environmentVariables, ConfigurationExpressionUtilityResolver utilities, ApplicationEventLogger eventLogger) {
+    public SecretExpressionService(ApplicationSecretRepository secretRepository, ApplicationConfigurationRepository configurationRepository, SecretExpressionDependencyRepository dependencyRepository, SecretEncryptionService encryptionService, ConfigurationExpressionParser parser, ConfigurationExpressionService configurationExpressionService, EnvironmentVariableResolver environmentVariables, ConfigurationExpressionUtilityResolver utilities, ApplicationEventLogger eventLogger, SecretExpressionDependencySynchronizer dependencySynchronizer) {
         this.secretRepository = secretRepository;
         this.configurationRepository = configurationRepository;
         this.dependencyRepository = dependencyRepository;
@@ -61,6 +62,7 @@ public class SecretExpressionService {
         this.environmentVariables = environmentVariables;
         this.utilities = utilities;
         this.eventLogger = eventLogger;
+        this.dependencySynchronizer = dependencySynchronizer;
     }
 
     /** Decrypts the secret and, for expression secrets, evaluates it. */
@@ -115,18 +117,7 @@ public class SecretExpressionService {
 
     /** Persists the dependency edges of a saved secret from its plaintext, validating references and cycles. */
     public void synchronizeDependencies(ApplicationSecret secret, String plaintext) {
-        if (secret.getValueType() != SecretValueType.EXPRESSION) {
-            dependencyRepository.replace(secret.getId(), Set.of(), Set.of());
-            return;
-        }
-
-        ParsedExpression parsed = parse(plaintext);
-        Set<Long> referencedSecretIds = referencedSecretIds(parsed);
-        Set<Long> referencedConfigurationIds = referencedConfigurationIds(parsed);
-        validateEnvironmentAndUtilities(parsed);
-
-        dependencyRepository.replace(secret.getId(), referencedSecretIds, referencedConfigurationIds);
-        ensureAcyclic(secret.getId(), new LinkedHashSet<>(), 0);
+        dependencySynchronizer.synchronize(secret, plaintext);
     }
 
     public void ensureNotReferenced(ApplicationSecret secret, String operation) {
@@ -142,6 +133,8 @@ public class SecretExpressionService {
     }
 
     private String resolveSecret(ApplicationSecret secret, Set<String> path, int depth, ZonedDateTime now) {
+        if (secret.getValueType() == SecretValueType.BINARY)
+            throw new InvalidConfigurationExpressionException("BINARY secret '" + secret.getName() + "' cannot be used in an expression");
         String key = normalizedKey(secret.getName());
         if (depth > MAX_DEPTH)
             throw new InvalidConfigurationExpressionException("Secret expression exceeds the maximum resolution depth of " + MAX_DEPTH);
@@ -214,21 +207,6 @@ public class SecretExpressionService {
             parsed.utilityFunctionNames().forEach(name -> utilities.ensureSupported(name, true));
         } catch (InvalidConfigurationExpressionException exception) {
             throw new InvalidSecretValueException("EXPRESSION value is invalid: " + exception.getMessage());
-        }
-    }
-
-    private void ensureAcyclic(Long secretId, Set<Long> path, int depth) {
-        if (depth > MAX_DEPTH)
-            throw new InvalidSecretValueException("EXPRESSION value is invalid: exceeds the maximum dependency depth of " + MAX_DEPTH);
-
-        if (!path.add(secretId))
-            throw new InvalidSecretValueException("EXPRESSION value is invalid: secret expression dependency cycle detected");
-
-        try {
-            for (Long referencedId : dependencyRepository.findReferencedSecretIds(secretId))
-                ensureAcyclic(referencedId, path, depth + 1);
-        } finally {
-            path.remove(secretId);
         }
     }
 

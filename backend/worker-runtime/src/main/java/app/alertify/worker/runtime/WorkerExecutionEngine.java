@@ -10,6 +10,7 @@ import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import com.google.protobuf.Timestamp;
 
@@ -42,14 +43,21 @@ class WorkerExecutionEngine implements AutoCloseable {
     private final WorkerExecutionTracker tracker;
     private final WorkerRuntimeProperties properties;
     private final WorkerInstanceIdentity instanceIdentity;
+    private final BinaryExecutionGuard binaryExecutionGuard;
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
     private final JsonMapper jsonMapper = JsonMapper.builder().build();
 
     WorkerExecutionEngine(AlertTemplateCompiler compiler, WorkerExecutionTracker tracker, WorkerRuntimeProperties properties, WorkerInstanceIdentity instanceIdentity) {
+        this(compiler, tracker, properties, instanceIdentity, new BinaryExecutionGuard());
+    }
+
+    @Autowired
+    WorkerExecutionEngine(AlertTemplateCompiler compiler, WorkerExecutionTracker tracker, WorkerRuntimeProperties properties, WorkerInstanceIdentity instanceIdentity, BinaryExecutionGuard binaryExecutionGuard) {
         this.compiler = compiler;
         this.tracker = tracker;
         this.properties = properties;
         this.instanceIdentity = instanceIdentity;
+        this.binaryExecutionGuard = binaryExecutionGuard;
     }
 
     void execute(ExecuteAlertRequest request, StreamObserver<AlertExecutionResult> observer) {
@@ -63,10 +71,12 @@ class WorkerExecutionEngine implements AutoCloseable {
 
     private void run(ExecuteAlertRequest request, StreamObserver<AlertExecutionResult> observer, Instant startedAt, Deadline deadline, ProcedureHandleFactory procedureHandles) {
         WorkerExecutionTracker.Permit permit = null;
+        BinaryExecutionGuard.Lease binaryLease = null;
         AlertExecutionContext context = null;
         AlertExecutionStatus finalStatus = AlertExecutionStatus.ERROR;
         try {
             permit = tracker.acquire(request, startedAt);
+            binaryLease = binaryExecutionGuard.acquire(request);
             Map<String, AlertParameterSource> parameterSources = request.getParametersList().stream()
                     .collect(Collectors.toUnmodifiableMap(
                             parameter -> parameter.getName(),
@@ -114,6 +124,8 @@ class WorkerExecutionEngine implements AutoCloseable {
                     .build());
             observer.onCompleted();
         } finally {
+            if (binaryLease != null)
+                binaryLease.close();
             if (permit != null)
                 permit.close();
 

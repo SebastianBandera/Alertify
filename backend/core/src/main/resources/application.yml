@@ -9,8 +9,8 @@ spring:
     timeout-per-shutdown-phase: 30s
   servlet:
     multipart:
-      max-file-size: 10MB
-      max-request-size: 12MB
+      max-file-size: 100MB
+      max-request-size: 101MB
   datasource:
     url: ${DATABASE_URL}
     username: ${DATABASE_USER}
@@ -94,6 +94,9 @@ security:
   symmetric-key:
     environment-part: ${KEY_ENV_PART}
 
+binary:
+  max-value-bytes: ${BINARY_VALUE_MAX_BYTES:104857600}
+
 configuration-expressions:
   allowed-environment-variables: ${CONFIGURATION_EXPRESSION_ALLOWED_ENVIRONMENT_VARIABLES:}
 
@@ -101,6 +104,7 @@ worker:
   grpc:
     host: ${WORKER_GRPC_HOST:localhost}
     port: ${WORKER_GRPC_PORT:9090}
+    max-inbound-message-bytes: ${WORKER_GRPC_MAX_MESSAGE_BYTES:134217728}
     tls:
       enabled: ${WORKER_GRPC_TLS_ENABLED:true}
       server-name: ${WORKER_GRPC_TLS_SERVER_NAME:worker}

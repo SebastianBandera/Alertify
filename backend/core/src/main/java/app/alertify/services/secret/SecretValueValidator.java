@@ -38,6 +38,7 @@ public class SecretValueValidator {
             case STRING -> validateString(value, "STRING");
             case DB_SECRET -> validateDatabaseCredentials(value);
             case EXPRESSION -> validateExpression(validateString(value, "EXPRESSION"));
+            case BINARY -> throw new InvalidSecretValueException("BINARY values require multipart file upload");
         };
     }
 
@@ -62,6 +63,7 @@ public class SecretValueValidator {
                 }
             }
             case EXPRESSION -> validateExpression(raw);
+            case BINARY -> throw new InvalidSecretValueException("BINARY values require binary transport");
         };
     }
 

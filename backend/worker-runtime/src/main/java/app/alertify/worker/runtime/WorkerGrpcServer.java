@@ -47,6 +47,7 @@ class WorkerGrpcServer implements SmartLifecycle {
                 healthStatusManager.setStatus(capability.healthServiceName(), SERVING);
 
             server = NettyServerBuilder.forPort(properties.grpcPort(), serverCredentials())
+                    .maxInboundMessageSize(properties.maxInboundMessageBytes())
                     .addService(healthStatusManager.getHealthService())
                     .addService(workerService)
                     .build()

@@ -71,6 +71,13 @@ public class SecretEncryptionService {
         }
     }
 
+    public EncryptedSecretValue encryptBinary(byte[] value) {
+        if (value == null || value.length == 0)
+            throw new InvalidSecretValueException("Binary secret value must contain at least one byte");
+        
+        return encryptBytes(value.clone());
+    }
+
     public String decrypt(ApplicationSecret secret) {
         byte[] valueBytes = decryptAndVerify(secret);
         try {
@@ -78,6 +85,11 @@ public class SecretEncryptionService {
         } finally {
             Arrays.fill(valueBytes, (byte) 0);
         }
+    }
+
+    public byte[] decryptBinary(app.alertify.jpa.entity.SecretBinaryValue value) {
+        return decryptAndVerify(value.getEncryptedValue(), value.getEncryptionIv(), value.getValueHash(),
+                value.getHashSalt(), value.getEncryptionVersion(), "binary secret");
     }
 
     public boolean isRecoverable(ApplicationSecret secret) {
@@ -94,8 +106,13 @@ public class SecretEncryptionService {
     }
 
     private byte[] decryptAndVerify(ApplicationSecret secret) {
-        if (secret.getEncryptionVersion() != CURRENT_ENCRYPTION_VERSION)
-            throw new SecretNotRecoverableException(secret.getName());
+        return decryptAndVerify(secret.getEncryptedValue(), secret.getEncryptionIv(), secret.getValueHash(),
+                secret.getHashSalt(), secret.getEncryptionVersion(), secret.getName());
+    }
+
+    private byte[] decryptAndVerify(byte[] encrypted, byte[] iv, byte[] hash, byte[] salt, short version, String name) {
+        if (version != CURRENT_ENCRYPTION_VERSION)
+            throw new SecretNotRecoverableException(name);
 
         byte[] decryptedValue = null;
         byte[] calculatedHash = null;
@@ -104,13 +121,13 @@ public class SecretEncryptionService {
             cipher.init(
                     Cipher.DECRYPT_MODE,
                     symmetricKeyService.getKey(),
-                    new GCMParameterSpec(GCM_TAG_LENGTH_BITS, secret.getEncryptionIv())
+                    new GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv)
             );
-            decryptedValue = cipher.doFinal(secret.getEncryptedValue());
-            calculatedHash = saltedHash(secret.getHashSalt(), decryptedValue);
-            if (!MessageDigest.isEqual(secret.getValueHash(), calculatedHash)) {
+            decryptedValue = cipher.doFinal(encrypted);
+            calculatedHash = saltedHash(salt, decryptedValue);
+            if (!MessageDigest.isEqual(hash, calculatedHash)) {
                 Arrays.fill(decryptedValue, (byte) 0);
-                throw new SecretNotRecoverableException(secret.getName());
+                throw new SecretNotRecoverableException(name);
             }
             return decryptedValue;
         } catch (GeneralSecurityException | RuntimeException exception) {
@@ -120,10 +137,25 @@ public class SecretEncryptionService {
             if (decryptedValue != null)
                 Arrays.fill(decryptedValue, (byte) 0);
 
-            throw new SecretNotRecoverableException(secret.getName(), exception);
+            throw new SecretNotRecoverableException(name, exception);
         } finally {
             if (calculatedHash != null)
                 Arrays.fill(calculatedHash, (byte) 0);
+        }
+    }
+
+    private EncryptedSecretValue encryptBytes(byte[] valueBytes) {
+        byte[] iv = randomBytes(IV_LENGTH);
+        byte[] hashSalt = randomBytes(HASH_SALT_LENGTH);
+        try {
+            Cipher cipher = Cipher.getInstance(CIPHER_TRANSFORMATION);
+            cipher.init(Cipher.ENCRYPT_MODE, symmetricKeyService.getKey(), new GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv));
+            return new EncryptedSecretValue(cipher.doFinal(valueBytes), iv, saltedHash(hashSalt, valueBytes), hashSalt,
+                    CURRENT_ENCRYPTION_VERSION);
+        } catch (GeneralSecurityException exception) {
+            throw new IllegalStateException("Secret value could not be encrypted", exception);
+        } finally {
+            Arrays.fill(valueBytes, (byte) 0);
         }
     }
 

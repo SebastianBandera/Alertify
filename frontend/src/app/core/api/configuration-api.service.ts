@@ -12,7 +12,8 @@ export type ConfigurationValueType =
   | 'DATE'
   | 'TIME'
   | 'DATE_TIME'
-  | 'JSON';
+  | 'JSON'
+  | 'BINARY';
 
 export type TagMatchMode = 'OR' | 'AND';
 
@@ -33,6 +34,10 @@ export interface ApplicationConfiguration {
   readonly description: string | null;
   readonly valueType: ConfigurationValueType;
   readonly value: unknown | null;
+  readonly binaryFileName: string | null;
+  readonly binaryContentType: string | null;
+  readonly binarySize: number | null;
+  readonly binaryZipSize: number | null;
   readonly writable: boolean;
   readonly tags: readonly ConfigurationTag[];
   readonly createdAt: string;
@@ -45,6 +50,10 @@ export interface ConfigurationImportResult {
   readonly updated: number;
   readonly unchanged: number;
   readonly tagsCreated: number;
+}
+
+export interface BinaryLimits {
+  readonly maximumBytes: number;
 }
 
 export interface ConfigurationWriteRequest {
@@ -162,6 +171,35 @@ export class ConfigurationApiService {
 
   async createConfiguration(request: ConfigurationWriteRequest): Promise<ApplicationConfiguration> {
     return this.request('/api/configurations', { method: 'POST', body: JSON.stringify(request) });
+  }
+
+  async getBinaryLimits(): Promise<BinaryLimits> {
+    return this.request('/api/binary-values/limits');
+  }
+
+  async createBinaryConfiguration(metadata: Omit<ConfigurationWriteRequest, 'valueType' | 'value' | 'version'>, file: File): Promise<ApplicationConfiguration> {
+    return this.binaryRequest('/api/configurations', 'POST', metadata, file);
+  }
+
+  async updateBinaryConfiguration(id: number, metadata: Omit<ConfigurationWriteRequest, 'valueType' | 'value'>, file: File): Promise<ApplicationConfiguration> {
+    return this.binaryRequest(`/api/configurations/${id}`, 'PUT', metadata, file);
+  }
+
+  async downloadBinaryConfiguration(id: number): Promise<Blob> {
+    const token = await this.authService.getAccessToken();
+    const response = await fetch(`${this.apiBaseUrl}/api/configurations/${id}/binary`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!response.ok) throw await this.responseError(response);
+    return response.blob();
+  }
+
+  private async binaryRequest(path: string, method: string, metadata: object, file: File): Promise<ApplicationConfiguration> {
+    const token = await this.authService.getAccessToken();
+    const body = new FormData();
+    body.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+    body.append('file', file);
+    const response = await fetch(`${this.apiBaseUrl}${path}`, { method, headers: { Authorization: `Bearer ${token}` }, body });
+    if (!response.ok) throw await this.responseError(response);
+    return (await response.json()) as ApplicationConfiguration;
   }
 
   async updateConfiguration(id: number, request: ConfigurationWriteRequest): Promise<ApplicationConfiguration> {

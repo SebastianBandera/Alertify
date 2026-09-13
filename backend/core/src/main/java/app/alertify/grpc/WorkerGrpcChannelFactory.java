@@ -24,6 +24,7 @@ public class WorkerGrpcChannelFactory {
     public ManagedChannel create(WorkerEndpoint endpoint) {
         WorkerGrpcProperties.Tls tls = properties.tls();
         NettyChannelBuilder builder = NettyChannelBuilder.forAddress(endpoint.ipAddress(), endpoint.port(), channelCredentials(tls));
+        builder.maxInboundMessageSize(properties.maxInboundMessageBytes());
         if (tls != null && tls.enabled())
             builder.overrideAuthority(tls.serverName());
 

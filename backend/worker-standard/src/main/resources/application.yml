@@ -11,6 +11,7 @@ alertify:
   worker:
     name: ${spring.application.name}
     grpc-port: ${WORKER_GRPC_PORT:9090}
+    max-inbound-message-bytes: ${WORKER_GRPC_MAX_MESSAGE_BYTES:134217728}
     shutdown-grace-period: 10s
     capabilities: ${WORKER_STANDARD_CAPABILITIES:STANDARD}
     max-concurrent-alerts: ${WORKER_STANDARD_MAX_CONCURRENT_ALERTS:8}

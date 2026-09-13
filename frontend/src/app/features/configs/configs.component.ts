@@ -18,6 +18,7 @@ interface ConfigurationForm {
   description: string;
   valueType: ConfigurationValueType;
   rawValue: string;
+  binaryFile: File | null;
   tagIds: number[];
   writable: boolean;
 }
@@ -37,10 +38,12 @@ const VALUE_TYPES: readonly ConfigurationValueType[] = [
   'DATE_TIME',
   'JSON',
   'EXPRESSION',
+  'BINARY',
 ];
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100, 250, 500, 1000] as const;
 const PAGE_SIZE_STORAGE_KEY = 'alertify.configs.page-size';
+const DEFAULT_MAXIMUM_BINARY_BYTES = 100 * 1024 * 1024;
 
 function readStoredPageSize(): number {
   try {
@@ -73,6 +76,7 @@ export class ConfigsComponent implements OnInit {
   protected readonly importing = signal(false);
   protected readonly error = signal<string | null>(null);
   protected readonly notice = signal<string | null>(null);
+  protected readonly maximumBinaryBytes = signal(DEFAULT_MAXIMUM_BINARY_BYTES);
   protected readonly searchTerm = signal('');
   protected readonly appliedSearchTerm = signal('');
   protected readonly valueSearchTerm = signal('');
@@ -111,7 +115,12 @@ export class ConfigsComponent implements OnInit {
   protected readonly tagError = signal<string | null>(null);
 
   async ngOnInit(): Promise<void> {
-    await Promise.all([this.loadConfigurations(), this.loadTags(), this.loadExpressionSuggestions()]);
+    await Promise.all([this.loadConfigurations(), this.loadTags(), this.loadExpressionSuggestions(), this.loadBinaryLimits()]);
+  }
+
+  private async loadBinaryLimits(): Promise<void> {
+    try { this.maximumBinaryBytes.set((await this.api.getBinaryLimits()).maximumBytes); }
+    catch (error) { this.error.set(this.errorMessage(error)); }
   }
 
   protected async loadConfigurations(): Promise<void> {
@@ -300,6 +309,7 @@ export class ConfigsComponent implements OnInit {
       description: configuration.description ?? '',
       valueType: configuration.valueType,
       rawValue: this.toEditorValue(configuration.valueType, configuration.value),
+      binaryFile: null,
       tagIds: configuration.tags.map((tag) => tag.id),
       writable: configuration.writable,
     });
@@ -321,6 +331,16 @@ export class ConfigsComponent implements OnInit {
     if (patch.rawValue !== undefined || patch.name !== undefined || patch.valueType !== undefined) {
       this.evaluatedExpression.set(null);
     }
+  }
+
+  protected selectBinaryFile(event: Event): void {
+    const file = (event.target as HTMLInputElement).files?.item(0) ?? null;
+    if (file && file.size > this.maximumBinaryBytes()) {
+      this.patchConfigurationForm({ binaryFile: null });
+      this.formError.set(this.localization.translate('binary.tooLarge').replace('{maximum}', this.formatBytes(this.maximumBinaryBytes())));
+      return;
+    }
+    this.patchConfigurationForm({ binaryFile: file });
   }
 
   protected async evaluateExpression(): Promise<void> {
@@ -364,6 +384,19 @@ export class ConfigsComponent implements OnInit {
 
     if (!form.name.trim()) return;
 
+    if (form.valueType === 'BINARY') {
+      if (!form.binaryFile) { this.formError.set(this.localization.translate('binary.selectFile')); return; }
+      this.saving.set(true);
+      try {
+        const metadata = { name: form.name.trim(), description: form.description.trim() || null, tagIds: form.tagIds, writable: form.writable };
+        if (editing) await this.api.updateBinaryConfiguration(editing.id, { ...metadata, version: editing.version }, form.binaryFile);
+        else await this.api.createBinaryConfiguration(metadata, form.binaryFile);
+        this.editorOpen.set(false);
+        await Promise.all([this.loadConfigurations(), this.loadExpressionSuggestions()]);
+      } catch (error) { this.formError.set(this.errorMessage(error, 'rename')); }
+      finally { this.saving.set(false); }
+      return;
+    }
     let value: unknown;
     try {
       value = this.parseValue(form.valueType, form.rawValue);
@@ -420,12 +453,24 @@ export class ConfigsComponent implements OnInit {
   }
 
   protected valuePreview(configuration: ApplicationConfiguration): string {
+    if (configuration.valueType === 'BINARY') return `${configuration.binaryFileName ?? 'binary'} (${this.formatBytes(configuration.binarySize ?? 0)} → ${this.formatBytes(configuration.binaryZipSize ?? 0)})`;
     if (configuration.valueType === 'EXPRESSION') {
       return this.localization.translate('configs.expression.onDemand');
     }
     if (configuration.valueType === 'JSON') return JSON.stringify(configuration.value);
     return String(configuration.value);
   }
+
+  protected async downloadBinary(configuration: ApplicationConfiguration): Promise<void> {
+    try {
+      const blob = await this.api.downloadBinaryConfiguration(configuration.id);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a'); link.href = url; link.download = configuration.binaryFileName ?? 'binary.bin'; link.click();
+      URL.revokeObjectURL(url);
+    } catch (error) { this.error.set(this.errorMessage(error)); }
+  }
+
+  protected formatBytes(value: number): string { return value < 1024 ? `${value} B` : `${(value / 1024 / 1024).toFixed(2)} MiB`; }
 
   protected formatDate(value: string): string {
     const parsed = new Date(value);
@@ -569,6 +614,7 @@ export class ConfigsComponent implements OnInit {
       description: '',
       valueType: 'STRING',
       rawValue: '',
+      binaryFile: null,
       tagIds: [],
       writable: false,
     };

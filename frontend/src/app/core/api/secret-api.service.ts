@@ -1,6 +1,6 @@
 import { inject, Injectable } from '@angular/core';
 
-import { ApiRequestError, PageResponse, TagMatchMode, TagWriteRequest } from './configuration-api.service';
+import { ApiRequestError, BinaryLimits, PageResponse, TagMatchMode, TagWriteRequest } from './configuration-api.service';
 import { AuthService } from '../auth/auth.service';
 import { RUNTIME_CONFIG } from '../config/runtime-config';
 
@@ -14,11 +14,11 @@ export interface SecretTag {
   readonly updatedAt: string;
 }
 
-export type SecretValueType = 'STRING' | 'DB_SECRET' | 'EXPRESSION';
+export type SecretValueType = 'STRING' | 'DB_SECRET' | 'EXPRESSION' | 'BINARY';
 
 export type DatabaseEngine = 'POSTGRESQL' | 'MARIADB' | 'SQL_SERVER' | 'ORACLE' | 'OTHER';
 
-export const SECRET_VALUE_TYPES: readonly SecretValueType[] = ['STRING', 'DB_SECRET', 'EXPRESSION'];
+export const SECRET_VALUE_TYPES: readonly SecretValueType[] = ['STRING', 'DB_SECRET', 'EXPRESSION', 'BINARY'];
 
 export const DATABASE_ENGINES: readonly DatabaseEngine[] = ['POSTGRESQL', 'MARIADB', 'SQL_SERVER', 'ORACLE', 'OTHER'];
 
@@ -55,6 +55,10 @@ export interface ApplicationSecret {
   readonly name: string;
   readonly description: string | null;
   readonly valueType: SecretValueType;
+  readonly binaryFileName: string | null;
+  readonly binaryContentType: string | null;
+  readonly binarySize: number | null;
+  readonly binaryZipSize: number | null;
   readonly tags: readonly SecretTag[];
   readonly writable: boolean;
   readonly recoveryStatus: 'RECOVERABLE' | 'UNRECOVERABLE';
@@ -106,8 +110,30 @@ export class SecretApiService {
     return this.request('/api/secrets', { method: 'POST', body: JSON.stringify(request) });
   }
 
+  async getBinaryLimits(): Promise<BinaryLimits> {
+    return this.request('/api/binary-values/limits');
+  }
+
   async updateSecret(id: number, request: SecretUpdateRequest): Promise<ApplicationSecret> {
     return this.request(`/api/secrets/${id}`, { method: 'PUT', body: JSON.stringify(request) });
+  }
+
+  async createBinarySecret(metadata: Omit<SecretCreateRequest, 'valueType' | 'value'>, file: File): Promise<ApplicationSecret> {
+    return this.binaryRequest('/api/secrets', 'POST', metadata, file);
+  }
+
+  async updateBinarySecret(id: number, metadata: Omit<SecretUpdateRequest, 'valueType' | 'newValue'>, file: File): Promise<ApplicationSecret> {
+    return this.binaryRequest(`/api/secrets/${id}`, 'PUT', metadata, file);
+  }
+
+  private async binaryRequest(path: string, method: string, metadata: object, file: File): Promise<ApplicationSecret> {
+    const token = await this.authService.getAccessToken();
+    const body = new FormData();
+    body.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+    body.append('file', file);
+    const response = await fetch(`${this.apiBaseUrl}${path}`, { method, headers: { Authorization: `Bearer ${token}` }, body });
+    if (!response.ok) throw await this.responseError(response);
+    return (await response.json()) as ApplicationSecret;
   }
 
   async deleteSecret(id: number, version: number): Promise<void> {

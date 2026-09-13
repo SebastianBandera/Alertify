@@ -316,7 +316,8 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
                     .setInvocationToken(tokenService.issue(parameter.procedureId(), rootExecutionId,
                             parentExecutionId, parentKind, childDepth, deadline));
         } else if (!parameter.nullValue()) {
-            value.setValue(parameter.value());
+            if (parameter.binaryZip() != null) value.setBinaryValue(com.google.protobuf.ByteString.copyFrom(parameter.binaryZip()));
+            else value.setValue(parameter.value());
         }
         if (parameter.writable()) {
             value.setWritable(true);

@@ -15,6 +15,9 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestPart;
+import org.springframework.http.MediaType;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -25,6 +28,8 @@ import app.alertify.secret.api.SecretExpressionSuggestionsResponse;
 import app.alertify.secret.api.SecretExpressionValidationRequest;
 import app.alertify.secret.api.SecretResponse;
 import app.alertify.secret.api.SecretUpdateRequest;
+import app.alertify.secret.api.BinarySecretCreateRequest;
+import app.alertify.secret.api.BinarySecretUpdateRequest;
 import app.alertify.services.secret.ApplicationSecretService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.PositiveOrZero;
@@ -73,9 +78,21 @@ public class ApplicationSecretController {
         return ResponseEntity.created(location).body(response);
     }
 
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<SecretResponse> createBinary(@Valid @RequestPart("metadata") BinarySecretCreateRequest request, @RequestPart("file") MultipartFile file) {
+        SecretResponse response = service.createBinary(request, file);
+        URI location = ServletUriComponentsBuilder.fromCurrentRequest().path("/{id}").buildAndExpand(response.id()).toUri();
+        return ResponseEntity.created(location).body(response);
+    }
+
     @PutMapping("/{id}")
     public SecretResponse update(@PathVariable Long id, @Valid @RequestBody SecretUpdateRequest request) {
         return service.update(id, request);
+    }
+
+    @PutMapping(value = "/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public SecretResponse updateBinary(@PathVariable Long id, @Valid @RequestPart("metadata") BinarySecretUpdateRequest request, @RequestPart("file") MultipartFile file) { 
+        return service.updateBinary(id, request, file);
     }
 
     @DeleteMapping("/{id}")

@@ -166,7 +166,7 @@ export class ProceduresComponent implements OnInit {
     } catch {
       this.bindings.update((current) => ({
         ...current,
-        secrets: [...current.secrets, { id: result.secretId, name: result.secretName, description: null, enabled: true }],
+        secrets: [...current.secrets, { id: result.secretId, name: result.secretName, description: null, enabled: true, valueType: 'STRING' }],
       }));
     }
     const template = this.templates().find((candidate) => candidate.templateKey === TOTP_TEMPLATE_KEY) ?? null;
@@ -272,6 +272,18 @@ export class ProceduresComponent implements OnInit {
 
   protected parameterForm(key: string): ParameterForm {
     return this.form().parameters[key];
+  }
+
+  protected compatibleConfigurationBindings(parameter: ProcedureTemplateParameter) {
+    return this.bindings().configurations.filter((option) => this.isCompatibleBinaryBinding(parameter.javaType, option.valueType));
+  }
+
+  protected compatibleSecretBindings(parameter: ProcedureTemplateParameter) {
+    return this.bindings().secrets.filter((option) => this.isCompatibleBinaryBinding(parameter.javaType, option.valueType));
+  }
+
+  private isCompatibleBinaryBinding(javaType: string, valueType: string | null): boolean {
+    return (javaType === '[B') === (valueType === 'BINARY');
   }
 
   protected toggleTag(tagId: number, checked: boolean): void {

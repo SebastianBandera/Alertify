@@ -21,14 +21,22 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.multipart.MultipartFile;
+import java.security.MessageDigest;
 
 import app.alertify.api.error.ConflictException;
 import app.alertify.api.error.InvalidConfigurationImportException;
+import app.alertify.api.error.InvalidConfigurationValueException;
 import app.alertify.api.error.ResourceNotFoundException;
 import app.alertify.configuration.api.ConfigurationCreateRequest;
 import app.alertify.configuration.api.ConfigurationImportResult;
 import app.alertify.configuration.api.ConfigurationResponse;
 import app.alertify.configuration.api.ConfigurationUpdateRequest;
+import app.alertify.configuration.api.BinaryConfigurationCreateRequest;
+import app.alertify.configuration.api.BinaryConfigurationUpdateRequest;
+import app.alertify.binary.BinaryPayloadService;
+import app.alertify.jpa.entity.ConfigurationBinaryValue;
+import app.alertify.jpa.repository.ConfigurationBinaryValueRepository;
+import tools.jackson.databind.node.JsonNodeFactory;
 import app.alertify.jpa.entity.ApplicationConfiguration;
 import app.alertify.jpa.entity.ConfigurationValueType;
 import app.alertify.jpa.entity.Tag;
@@ -67,8 +75,10 @@ public class ApplicationConfigurationService {
     private final ConfigurationCsvCodec csvCodec;
     private final ConfigurationExpressionService expressionService;
     private final ApplicationEventLogger eventLogger;
+    private final ConfigurationBinaryValueRepository binaryRepository;
+    private final BinaryPayloadService binaryPayloadService;
 
-    public ApplicationConfigurationService(ApplicationConfigurationRepository configurationRepository, TagRepository tagRepository, ConfigurationValueValidator valueValidator, ApplicationConfigurationLookupService lookupService, ConfigurationCacheInvalidator cacheInvalidator, ConfigurationCsvCodec csvCodec, ConfigurationExpressionService expressionService, ApplicationEventLogger eventLogger) {
+    public ApplicationConfigurationService(ApplicationConfigurationRepository configurationRepository, TagRepository tagRepository, ConfigurationValueValidator valueValidator, ApplicationConfigurationLookupService lookupService, ConfigurationCacheInvalidator cacheInvalidator, ConfigurationCsvCodec csvCodec, ConfigurationExpressionService expressionService, ApplicationEventLogger eventLogger, ConfigurationBinaryValueRepository binaryRepository, BinaryPayloadService binaryPayloadService) {
         this.configurationRepository = configurationRepository;
         this.tagRepository = tagRepository;
         this.valueValidator = valueValidator;
@@ -77,7 +87,68 @@ public class ApplicationConfigurationService {
         this.csvCodec = csvCodec;
         this.expressionService = expressionService;
         this.eventLogger = eventLogger;
+        this.binaryRepository = binaryRepository;
+        this.binaryPayloadService = binaryPayloadService;
     }
+
+    @Transactional
+    public ConfigurationResponse createBinary(BinaryConfigurationCreateRequest request, MultipartFile file) {
+        String name = normalizeRequired(request.name());
+        ensureNameAvailable(name, null);
+        BinaryPayloadService.PreparedBinary binary = prepare(file);
+        ApplicationConfiguration configuration = new ApplicationConfiguration(name, normalizeOptional(request.description()),
+                ConfigurationValueType.BINARY, JsonNodeFactory.instance.objectNode(), resolveConfigurationTags(request.tagIds()), request.writable());
+        configuration.changeBinaryMetadata(binary.fileName(), binary.contentType(), binary.size(), binary.zipSize(), binary.sha256());
+        ApplicationConfiguration saved = configurationRepository.saveAndFlush(configuration);
+        binaryRepository.saveAndFlush(new ConfigurationBinaryValue(saved.getId(), binary.zip()));
+        cacheInvalidator.evictAfterCommit(saved.getId(), Set.of(saved.getName()));
+        eventLogger.successAfterCommit("CONFIGURATION_CREATED", Map.of("configurationId", saved.getId(), "name", saved.getName(), "valueType", "BINARY"));
+        return ConfigurationMapper.toResponse(saved);
+    }
+
+    @Transactional
+    public ConfigurationResponse updateBinary(Long id, BinaryConfigurationUpdateRequest request, MultipartFile file) {
+        ApplicationConfiguration configuration = find(id);
+        verifyVersion(configuration.getVersion(), request.version(), "Configuration");
+        BinaryPayloadService.PreparedBinary binary = prepare(file);
+        String previousName = configuration.getName();
+        String name = normalizeRequired(request.name());
+        if (!configuration.getName().equals(name)) { expressionService.ensureNotReferenced(configuration, "renamed"); ensureNameAvailable(name, id); configuration.rename(name); }
+        configuration.changeDescription(normalizeOptional(request.description()));
+        configuration.replaceTags(resolveConfigurationTags(request.tagIds()));
+        configuration.changeWritable(request.writable());
+        if (configuration.getValueType() != ConfigurationValueType.BINARY) expressionService.ensureNotReferenced(configuration, "changed to BINARY");
+        configuration.changeValue(ConfigurationValueType.BINARY, JsonNodeFactory.instance.objectNode());
+        configuration.changeBinaryMetadata(binary.fileName(), binary.contentType(), binary.size(), binary.zipSize(), binary.sha256());
+        configurationRepository.flush();
+        binaryRepository.saveAndFlush(new ConfigurationBinaryValue(id, binary.zip()));
+        expressionService.synchronizeDependencies(configuration);
+        cacheInvalidator.evictAfterCommit(id, new LinkedHashSet<>(List.of(previousName, configuration.getName())));
+        eventLogger.successAfterCommit("CONFIGURATION_UPDATED", Map.of(
+                "configurationId", id, "name", configuration.getName(), "valueType", ConfigurationValueType.BINARY,
+                "writable", configuration.isWritable()
+        ));
+        return ConfigurationMapper.toResponse(configuration);
+    }
+
+    @Transactional(readOnly = true)
+    public BinaryDownload downloadBinary(Long id) {
+        ApplicationConfiguration configuration = find(id);
+        if (configuration.getValueType() != ConfigurationValueType.BINARY) throw new ConflictException("Configuration is not BINARY");
+        ConfigurationBinaryValue value = binaryRepository.findById(id).orElseThrow(() -> new IllegalStateException("Binary configuration payload is missing"));
+        byte[] content = binaryPayloadService.decompress(value.getZipValue());
+        if (!MessageDigest.isEqual(configuration.getBinarySha256(), sha256(content))) throw new IllegalStateException("Binary configuration checksum is invalid");
+        return new BinaryDownload(configuration.getBinaryFileName(), configuration.getBinaryContentType(), content);
+    }
+
+    private BinaryPayloadService.PreparedBinary prepare(MultipartFile file) {
+        if (file == null || file.isEmpty()) throw new InvalidConfigurationValueException("A non-empty binary file is required");
+        try { return binaryPayloadService.prepare(file.getBytes(), file.getOriginalFilename(), file.getContentType()); }
+        catch (IOException | IllegalArgumentException exception) { throw new InvalidConfigurationValueException(exception.getMessage(), exception); }
+    }
+
+    private static byte[] sha256(byte[] value) { try { return MessageDigest.getInstance("SHA-256").digest(value); } catch (java.security.NoSuchAlgorithmException e) { throw new IllegalStateException(e); } }
+    public record BinaryDownload(String fileName, String contentType, byte[] content) { }
 
     @Transactional(readOnly = true)
     public Page<ConfigurationResponse> search(MultiValueMap<String, String> params, Pageable pageable) {
@@ -260,6 +331,7 @@ public class ApplicationConfigurationService {
 
     @Transactional
     public ConfigurationResponse create(ConfigurationCreateRequest request) {
+        if (request.valueType() == ConfigurationValueType.BINARY) throw new InvalidConfigurationValueException("BINARY values require multipart file upload");
         String name = normalizeRequired(request.name());
         ensureNameAvailable(name, null);
 
@@ -285,6 +357,7 @@ public class ApplicationConfigurationService {
 
     @Transactional
     public ConfigurationResponse update(Long id, ConfigurationUpdateRequest request) {
+        if (request.valueType() == ConfigurationValueType.BINARY) throw new InvalidConfigurationValueException("BINARY values require multipart file upload");
         ApplicationConfiguration configuration = find(id);
         verifyVersion(configuration.getVersion(), request.version(), "Configuration");
         String previousName = configuration.getName();
@@ -308,6 +381,7 @@ public class ApplicationConfigurationService {
         }
         boolean valueTypeChanged = configuration.getValueType() != request.valueType();
         if (valueTypeChanged || !valuesEqual(request.valueType(), configuration.getValue(), value)) {
+            if (configuration.getValueType() == ConfigurationValueType.BINARY) { binaryRepository.deleteById(id); configuration.clearBinaryMetadata(); }
             configuration.changeValue(request.valueType(), value);
             changedFields.add("value");
             if (valueTypeChanged)

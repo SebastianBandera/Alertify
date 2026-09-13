@@ -800,6 +800,18 @@ export class AlertsComponent implements OnInit {
     return this.form().parameters[key];
   }
 
+  protected compatibleConfigurationBindings(parameter: AlertTemplateParameter) {
+    return this.bindings().configurations.filter((option) => this.isCompatibleBinaryBinding(parameter.javaType, option.valueType));
+  }
+
+  protected compatibleSecretBindings(parameter: AlertTemplateParameter) {
+    return this.bindings().secrets.filter((option) => this.isCompatibleBinaryBinding(parameter.javaType, option.valueType));
+  }
+
+  private isCompatibleBinaryBinding(javaType: string, valueType: string | null): boolean {
+    return (javaType === '[B') === (valueType === 'BINARY');
+  }
+
   protected dynamic(key: string): string {
     return this.localization.translateDynamic(key);
   }

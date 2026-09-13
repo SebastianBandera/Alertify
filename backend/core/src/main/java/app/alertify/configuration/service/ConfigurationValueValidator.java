@@ -41,6 +41,7 @@ public class ConfigurationValueValidator {
             case TIME -> validateTime(value);
             case DATE_TIME -> validateDateTime(value);
             case JSON -> validateJson(value);
+            case BINARY -> throw new InvalidConfigurationValueException("BINARY values require multipart file upload");
         };
     }
 

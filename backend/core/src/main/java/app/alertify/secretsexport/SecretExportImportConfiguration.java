@@ -6,17 +6,27 @@ import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.FilterType;
 import org.springframework.context.annotation.Profile;
+import org.springframework.context.annotation.Import;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 
 import app.alertify.jpa.audit.AuditRevisionEntity;
 import app.alertify.jpa.entity.ApplicationSecret;
+import app.alertify.jpa.entity.ApplicationConfiguration;
 import app.alertify.jpa.entity.SystemConfiguration;
 import app.alertify.jpa.entity.Tag;
+import app.alertify.jpa.entity.SecretBinaryValue;
 import app.alertify.jpa.repository.ApplicationSecretRepository;
+import app.alertify.jpa.repository.ApplicationConfigurationRepository;
 import app.alertify.jpa.repository.SystemConfigurationRepository;
 import app.alertify.jpa.repository.TagRepository;
+import app.alertify.jpa.repository.SecretBinaryValueRepository;
+import app.alertify.binary.BinaryPayloadService;
+import app.alertify.configuration.service.ConfigurationExpressionParser;
+import app.alertify.configuration.service.ConfigurationExpressionUtilityResolver;
+import app.alertify.configuration.service.EnvironmentVariableResolver;
 import app.alertify.services.secret.ApplicationSecretService;
 import app.alertify.services.secret.SecretAccessService;
+import app.alertify.services.secret.SecretExpressionService;
 import app.alertify.services.secret.SecretTagService;
 import app.alertify.services.secret.SymmetricKeyService;
 import app.alertify.services.secret.WritableSecretService;
@@ -33,8 +43,10 @@ import app.alertify.services.secret.WritableSecretService;
  * {@link SecretExportImportService} exports/imports every system
  * configuration into its own {@code system-configurations.json} entry
  * alongside {@code secrets.json}.
+ * {@code ApplicationConfiguration} is present so imported secret expressions
+ * can validate and rebuild their configuration dependency edges.
  *
- * <p>{@code AuditRevisionEntity} must be included too: all three audited
+ * <p>{@code AuditRevisionEntity} must be included too: all four audited
  * entities need Envers to resolve the custom revision entity in
  * {@code app.alertify.jpa.audit}, or it falls back to Envers' own default
  * revision entity, whose mapping does not match the {@code audit.revinfo}
@@ -49,7 +61,8 @@ import app.alertify.services.secret.WritableSecretService;
  *
  * <p>{@code app.alertify.services.secret} also holds
  * {@code ApplicationSecretService}, {@code WritableSecretService},
- * {@code SecretTagService} and {@code SecretAccessService}, which all need
+ * {@code SecretTagService}, {@code SecretAccessService} and the full
+ * {@code SecretExpressionService}, which need
  * {@code ApplicationEventLogger} (and the audit-log subsystem behind it).
  * They are excluded from the scan rather than wired in, since pulling in
  * that subsystem would defeat the point of a minimal, isolated context.
@@ -71,17 +84,21 @@ import app.alertify.services.secret.WritableSecretService;
 @Configuration
 @Profile(SecretExportImportConfiguration.PROFILE)
 @EnableAutoConfiguration
-@EntityScan(basePackageClasses = { ApplicationSecret.class, Tag.class, SystemConfiguration.class, AuditRevisionEntity.class })
+@EntityScan(basePackageClasses = { ApplicationSecret.class, ApplicationConfiguration.class, SecretBinaryValue.class, Tag.class, SystemConfiguration.class, AuditRevisionEntity.class })
 @EnableJpaRepositories(
         basePackageClasses = ApplicationSecretRepository.class,
         includeFilters = @ComponentScan.Filter(
                 type = FilterType.ASSIGNABLE_TYPE,
-                classes = { ApplicationSecretRepository.class, TagRepository.class, SystemConfigurationRepository.class }
+                classes = { ApplicationSecretRepository.class, ApplicationConfigurationRepository.class,
+                        SecretBinaryValueRepository.class, TagRepository.class, SystemConfigurationRepository.class }
         )
 )
+@Import({ BinaryPayloadService.class, ConfigurationExpressionParser.class,
+        EnvironmentVariableResolver.class, ConfigurationExpressionUtilityResolver.class })
 @ComponentScan(basePackageClasses = { SymmetricKeyService.class, SecretExportImportConfiguration.class }, excludeFilters = @ComponentScan.Filter(
         type = FilterType.ASSIGNABLE_TYPE,
-        classes = { ApplicationSecretService.class, WritableSecretService.class, SecretTagService.class, SecretAccessService.class }
+        classes = { ApplicationSecretService.class, WritableSecretService.class, SecretTagService.class,
+                SecretAccessService.class, SecretExpressionService.class }
 ))
 class SecretExportImportConfiguration {
 

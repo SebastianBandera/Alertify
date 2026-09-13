@@ -29,6 +29,7 @@ import app.alertify.jpa.repository.AlertRepository;
 import app.alertify.jpa.repository.AlertStateRepository;
 import app.alertify.jpa.repository.AlertTemplateParameterDefinitionRepository;
 import app.alertify.services.secret.SecretAccessService;
+import app.alertify.binary.BinaryBindingService;
 import app.alertify.worker.contract.WorkerCapability;
 import app.alertify.configuration.service.ConfigurationExpressionService;
 
@@ -43,6 +44,7 @@ class AlertExecutionPreparationServiceTest {
     @Mock private AlertStateRepository stateRepository;
     @Mock private ConfigurationExpressionService configurationExpressionService;
     @Mock private SecretAccessService secretAccessService;
+    @Mock private BinaryBindingService binaryBindingService;
 
     @Test
     void preparesWritableSecretBindingWithItsDecryptedValueAndTargetId() throws Exception {
@@ -91,7 +93,7 @@ class AlertExecutionPreparationServiceTest {
                 new WorkerGrpcProperties(
                         "worker", 9090, null, null,
                         new WorkerGrpcProperties.Execution(null, sourceRoot)
-                )
+                ), binaryBindingService
         );
     }
 }
