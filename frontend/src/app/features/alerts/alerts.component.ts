@@ -25,7 +25,7 @@ import { templateClassName } from '../../core/utils/template-key';
 
 type AlertTab = 'alerts' | 'templates' | 'history';
 type AlertFormField = 'template' | 'name' | 'cron';
-type ParameterFormSource = AlertParameterSource | 'OPTION';
+type ParameterFormSource = AlertParameterSource | 'OPTION' | '';
 type AlertFormErrors = Partial<Record<AlertFormField, string>>;
 
 interface ParameterForm {
@@ -603,7 +603,7 @@ export class AlertsComponent implements OnInit {
     for (const definition of template.parameters) {
       const value = form.parameters[definition.key];
       if (!value?.configured) continue;
-      const source: AlertParameterSource = value.source === 'OPTION' ? 'TEXT' : value.source;
+      const source: AlertParameterSource = value.source === 'OPTION' ? 'TEXT' : (value.source as AlertParameterSource);
       parameters.push({
         parameterKey: definition.key,
         source,
@@ -863,7 +863,7 @@ export class AlertsComponent implements OnInit {
       configured: parameter.required || parameter.defaultValue !== null || !parameter.bindingAllowed,
       source: parameter.javaType === 'app.alertify.procedures.Procedure'
         ? 'PROCEDURE'
-        : parameter.options.length ? 'OPTION' : 'TEXT',
+        : parameter.options.length ? 'OPTION' : '',
       textValue: parameter.defaultValue ?? parameter.options[0] ?? '',
       configurationId: null,
       secretId: null,

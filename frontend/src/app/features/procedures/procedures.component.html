@@ -387,7 +387,8 @@
                   <div class="parameter-fields">
                     <label>
                       <span>{{ localization.translate('procedures.form.source') }}</span>
-                      <select [name]="'source-' + parameter.id" [ngModel]="parameterForm(parameter.key).source" (ngModelChange)="patchParameter(parameter.key, { source: $event })">
+                      <select required [name]="'source-' + parameter.id" [ngModel]="parameterForm(parameter.key).source" (ngModelChange)="patchParameter(parameter.key, { source: $event })">
+                        <option value="" disabled>{{ localization.translate('procedures.form.selectSource') }}</option>
                         @if (parameter.options.length) {
                           <option value="OPTION">{{ localization.translate('procedures.source.option') }}</option>
                         }

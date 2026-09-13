@@ -23,7 +23,7 @@ import { isCompatibleConfigurationValueType, isCompatibleSecretValueType } from 
 import { templateClassName } from '../../core/utils/template-key';
 
 type ProcedureTab = 'procedures' | 'templates' | 'wizards' | 'history';
-type ParameterSource = AlertParameterSource | 'OPTION';
+type ParameterSource = AlertParameterSource | 'OPTION' | '';
 type WizardKind = 'totp-qr';
 type WizardStatus = 'idle' | 'analyzing' | 'error';
 type ProcedureFormErrors = Partial<Record<'cron', string>>;
@@ -309,7 +309,7 @@ export class ProceduresComponent implements OnInit {
     for (const definition of template.parameters) {
       const value = form.parameters[definition.key];
       if (!value?.configured) continue;
-      const source: AlertParameterSource = value.source === 'OPTION' ? 'TEXT' : value.source;
+      const source: AlertParameterSource = value.source === 'OPTION' ? 'TEXT' : (value.source as AlertParameterSource);
       parameters.push({
         parameterKey: definition.key,
         source,
@@ -512,9 +512,7 @@ export class ProceduresComponent implements OnInit {
   }
 
   private defaultParameter(parameter: ProcedureTemplateParameter): ParameterForm {
-    const source: ParameterSource = parameter.options.length
-      ? 'OPTION'
-      : parameter.allowedSources[0] ?? 'TEXT';
+    const source: ParameterSource = parameter.options.length ? 'OPTION' : '';
     return {
       configured: parameter.required || parameter.defaultValue !== null,
       source,

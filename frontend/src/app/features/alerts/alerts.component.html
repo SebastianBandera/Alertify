@@ -524,7 +524,8 @@
                     @if (parameter.bindingAllowed || parameter.options.length || parameter.javaType === 'app.alertify.procedures.Procedure') {
                       <label>
                         <span>{{ localization.translate('alerts.form.source') }}</span>
-                        <select [ngModel]="parameterForm(parameter.key).source" (ngModelChange)="patchParameter(parameter.key, { source: $event })" [name]="'source-' + parameter.id">
+                        <select required [ngModel]="parameterForm(parameter.key).source" (ngModelChange)="patchParameter(parameter.key, { source: $event })" [name]="'source-' + parameter.id">
+                          <option value="" disabled>{{ localization.translate('alerts.form.selectSource') }}</option>
                           @if (parameter.options.length) {
                             <option value="OPTION">{{ localization.translate('alerts.source.option') }}</option>
                           }
