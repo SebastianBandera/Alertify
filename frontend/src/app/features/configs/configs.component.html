@@ -147,6 +147,9 @@
               <td>
                 <div class="config-name">
                   <strong>{{ configuration.name }}</strong>
+                  @if (configuration.writable) {
+                    <span class="type-badge type-badge--success" [title]="localization.translate('configs.field.writableHelp')">{{ localization.translate('configs.status.writable') }}</span>
+                  }
                 </div>
                 @if (configuration.description) {
                   <small>{{ configuration.description }}</small>

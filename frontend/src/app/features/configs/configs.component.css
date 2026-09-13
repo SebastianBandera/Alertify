@@ -109,6 +109,12 @@ select {
   padding: 0 11px;
 }
 
+input[type='file'] {
+  height: auto;
+  padding: 9px 11px;
+  line-height: 1.4;
+}
+
 textarea {
   min-height: 72px;
   padding: 10px 11px;
@@ -449,6 +455,12 @@ td small {
   padding: 5px 8px;
   background: #f2f4f7;
   color: #475467;
+}
+
+.type-badge--success {
+  border: 1px solid #abefc6;
+  background: #ecfdf3;
+  color: #067647;
 }
 
 .type-badge--danger {
