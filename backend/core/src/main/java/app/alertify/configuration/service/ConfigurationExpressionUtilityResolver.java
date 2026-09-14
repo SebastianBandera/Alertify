@@ -4,6 +4,7 @@ import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
+import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.WeekFields;
@@ -73,7 +74,7 @@ public class ConfigurationExpressionUtilityResolver {
     }
 
     public ZonedDateTime snapshot() {
-        return ZonedDateTime.now();
+        return ZonedDateTime.now(ZoneId.systemDefault());
     }
 
     public void ensureSupported(String name) {

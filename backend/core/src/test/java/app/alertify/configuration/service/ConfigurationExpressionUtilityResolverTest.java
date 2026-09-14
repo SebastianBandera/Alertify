@@ -15,6 +15,11 @@ class ConfigurationExpressionUtilityResolverTest {
     private final ConfigurationExpressionUtilityResolver resolver = new ConfigurationExpressionUtilityResolver();
 
     @Test
+    void createsSnapshotsInTheJvmDefaultTimeZone() {
+        assertThat(resolver.snapshot().getZone()).isEqualTo(ZoneId.systemDefault());
+    }
+
+    @Test
     void resolvesDateAndTimeUtilitiesFromTheSameSnapshot() {
         ZonedDateTime now = ZonedDateTime.of(
                 2026, 8, 5, 7, 4, 3, 456_000_000, ZoneId.of("America/Montevideo")
