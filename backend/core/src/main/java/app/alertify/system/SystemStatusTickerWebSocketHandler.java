@@ -56,7 +56,9 @@ public class SystemStatusTickerWebSocketHandler extends TextWebSocketHandler imp
     @Override
     public void afterConnectionEstablished(WebSocketSession session) {
         SessionState state = new SessionState(session);
-        state.authTimeout = scheduler.schedule(() -> close(session), AUTH_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+        synchronized (state.lifecycleLock) {
+            state.authTimeout = scheduler.schedule(() -> close(session), AUTH_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+        }
         sessions.put(session.getId(), state);
     }
 
@@ -118,7 +120,7 @@ public class SystemStatusTickerWebSocketHandler extends TextWebSocketHandler imp
 
         for (SessionState state : sessions.values())
             if (state.authenticated())
-                send(state.session, payload);
+                send(state, payload);
     }
 
     private void authenticate(SessionState state, String token) {
@@ -135,31 +137,31 @@ public class SystemStatusTickerWebSocketHandler extends TextWebSocketHandler imp
             return;
         }
 
-        synchronized (state) {
+        synchronized (state.lifecycleLock) {
             cancel(state.authTimeout);
             cancel(state.expiration);
             state.authenticated = true;
             state.expiration = scheduler.schedule(() -> close(state.session), Duration.between(Instant.now(), expiresAt).toMillis(), TimeUnit.MILLISECONDS);
         }
-        publishTo(state.session);
+        publishTo(state);
     }
 
-    private void publishTo(WebSocketSession session) {
+    private void publishTo(SessionState state) {
         try {
-            send(session, jsonMapper.writeValueAsString(new StatusMessage("STATUS", systemStatusService.tickerSummary())));
+            send(state, jsonMapper.writeValueAsString(new StatusMessage("STATUS", systemStatusService.tickerSummary())));
         } catch (RuntimeException exception) {
-            close(session);
+            close(state.session);
         }
     }
 
-    private static void send(WebSocketSession session, String payload) {
+    private static void send(SessionState state, String payload) {
         try {
-            synchronized (session) {
-                if (session.isOpen())
-                    session.sendMessage(new TextMessage(payload));
+            synchronized (state.sendLock) {
+                if (state.session.isOpen())
+                    state.session.sendMessage(new TextMessage(payload));
             }
         } catch (IOException exception) {
-            close(session);
+            close(state.session);
         }
     }
 
@@ -175,8 +177,10 @@ public class SystemStatusTickerWebSocketHandler extends TextWebSocketHandler imp
     private void remove(String sessionId) {
         SessionState state = sessions.remove(sessionId);
         if (state != null) {
-            cancel(state.authTimeout);
-            cancel(state.expiration);
+            synchronized (state.lifecycleLock) {
+                cancel(state.authTimeout);
+                cancel(state.expiration);
+            }
         }
     }
 
@@ -193,6 +197,8 @@ public class SystemStatusTickerWebSocketHandler extends TextWebSocketHandler imp
     private record StatusMessage(String type, SystemStatusSummaryResponse summary) { }
 
     private static final class SessionState {
+        private final Object lifecycleLock = new Object();
+        private final Object sendLock = new Object();
         private final WebSocketSession session;
         private volatile boolean authenticated;
         private ScheduledFuture<?> authTimeout;
