@@ -20,7 +20,7 @@ import io.grpc.Deadline;
 final class StreamProcedureInvoker implements ProcedureInvoker, AutoCloseable {
     private final Consumer<ExecutionWorkerMessage> output;
     private final ConcurrentMap<String, CompletableFuture<InvokeProcedureResponse>> pending = new ConcurrentHashMap<>();
-    private volatile Throwable closedCause;
+    private Throwable closedCause;
 
     StreamProcedureInvoker(Consumer<ExecutionWorkerMessage> output) {
         this.output = output;

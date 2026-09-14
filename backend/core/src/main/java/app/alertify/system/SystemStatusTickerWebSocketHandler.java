@@ -44,7 +44,7 @@ public class SystemStatusTickerWebSocketHandler extends TextWebSocketHandler imp
     private final JsonMapper jsonMapper;
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
     private final ConcurrentMap<String, SessionState> sessions = new ConcurrentHashMap<>();
-    private volatile SystemStatusSummaryResponse lastPublishedSummary;
+    private SystemStatusSummaryResponse lastPublishedSummary;
 
     public SystemStatusTickerWebSocketHandler(JwtDecoder jwtDecoder, JwtAuthenticationConverter jwtAuthenticationConverter, SystemStatusService systemStatusService, JsonMapper jsonMapper) {
         this.jwtDecoder = jwtDecoder;
