@@ -389,19 +389,19 @@ public class ProcedureManagementService {
 
     static String validateCron(String value) {
         String cron = required(value, "cronExpression");
-        if (Scheduled.CRON_DISABLED.equals(cron))
-            return cron;
 
-        CronExpression expression;
-        try {
-            expression = CronExpression.parse(cron);
-        } catch (IllegalArgumentException exception) {
-            throw invalid("Invalid cron expression: " + exception.getMessage(), exception);
+        if (!Scheduled.CRON_DISABLED.equals(cron)) {
+            CronExpression expression;
+            try {
+                expression = CronExpression.parse(cron);
+            } catch (IllegalArgumentException exception) {
+                throw invalid("Invalid cron expression: " + exception.getMessage(), exception);
+            }
+            // A syntactically valid expression such as "0 0 5 31 2 ?" may never fire; the scheduler
+            // cannot register it, so reject it here instead of failing after commit or at startup.
+            if (expression.next(ZonedDateTime.now(ZoneId.systemDefault())) == null)
+                throw invalid("Cron expression '" + cron + "' never matches a future date");
         }
-        // A syntactically valid expression such as "0 0 5 31 2 ?" may never fire; the scheduler
-        // cannot register it, so reject it here instead of failing after commit or at startup.
-        if (expression.next(ZonedDateTime.now(ZoneId.systemDefault())) == null)
-            throw invalid("Cron expression '" + cron + "' never matches a future date");
 
         return cron;
     }
