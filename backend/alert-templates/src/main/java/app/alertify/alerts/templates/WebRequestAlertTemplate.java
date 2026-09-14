@@ -426,7 +426,7 @@ public final class WebRequestAlertTemplate implements AlertEvaluator {
             if (this == object)
                 return true;
 
-            return object instanceof ResponseBody other && Arrays.equals(bytes, other.bytes);
+            return object instanceof ResponseBody(var otherBytes) && Arrays.equals(bytes, otherBytes);
         }
 
         @Override

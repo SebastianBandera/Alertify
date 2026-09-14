@@ -158,12 +158,12 @@ public class ApplicationConfigurationService {
             if (this == object)
                 return true;
 
-            if (!(object instanceof BinaryDownload other))
+            if (!(object instanceof BinaryDownload(var otherFileName, var otherContentType, var otherContent)))
                 return false;
 
-            return Objects.equals(fileName, other.fileName)
-                    && Objects.equals(contentType, other.contentType)
-                    && Arrays.equals(content, other.content);
+            return Objects.equals(fileName, otherFileName)
+                    && Objects.equals(contentType, otherContentType)
+                    && Arrays.equals(content, otherContent);
         }
 
         @Override

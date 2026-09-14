@@ -46,14 +46,19 @@ public record EncryptedSecretValue(
         if (this == object)
             return true;
 
-        if (!(object instanceof EncryptedSecretValue other))
+        if (!(object instanceof EncryptedSecretValue(
+                var otherEncryptedValue,
+                var otherEncryptionIv,
+                var otherValueHash,
+                var otherHashSalt,
+                var otherEncryptionVersion)))
             return false;
 
-        return encryptionVersion == other.encryptionVersion
-                && Arrays.equals(encryptedValue, other.encryptedValue)
-                && Arrays.equals(encryptionIv, other.encryptionIv)
-                && Arrays.equals(valueHash, other.valueHash)
-                && Arrays.equals(hashSalt, other.hashSalt);
+        return encryptionVersion == otherEncryptionVersion
+                && Arrays.equals(encryptedValue, otherEncryptedValue)
+                && Arrays.equals(encryptionIv, otherEncryptionIv)
+                && Arrays.equals(valueHash, otherValueHash)
+                && Arrays.equals(hashSalt, otherHashSalt);
     }
 
     @Override

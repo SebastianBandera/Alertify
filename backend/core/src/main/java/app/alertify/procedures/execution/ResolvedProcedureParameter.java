@@ -30,19 +30,29 @@ public record ResolvedProcedureParameter(
         if (this == object)
             return true;
 
-        if (!(object instanceof ResolvedProcedureParameter other))
+        if (!(object instanceof ResolvedProcedureParameter(
+                var otherName,
+                var otherJavaType,
+                var otherValue,
+                var otherBinaryZip,
+                var otherNullValue,
+                var otherSource,
+                var otherConfigurationId,
+                var otherSecretId,
+                var otherProcedureId,
+                var otherWritable)))
             return false;
 
-        return nullValue == other.nullValue
-                && writable == other.writable
-                && Objects.equals(name, other.name)
-                && Objects.equals(javaType, other.javaType)
-                && Objects.equals(value, other.value)
-                && source == other.source
-                && Objects.equals(configurationId, other.configurationId)
-                && Objects.equals(secretId, other.secretId)
-                && Objects.equals(procedureId, other.procedureId)
-                && Arrays.equals(binaryZip, other.binaryZip);
+        return nullValue == otherNullValue
+                && writable == otherWritable
+                && Objects.equals(name, otherName)
+                && Objects.equals(javaType, otherJavaType)
+                && Objects.equals(value, otherValue)
+                && source == otherSource
+                && Objects.equals(configurationId, otherConfigurationId)
+                && Objects.equals(secretId, otherSecretId)
+                && Objects.equals(procedureId, otherProcedureId)
+                && Arrays.equals(binaryZip, otherBinaryZip);
     }
 
     @Override

@@ -60,15 +60,21 @@ public class BinaryPayloadService {
             if (this == object)
                 return true;
 
-            if (!(object instanceof PreparedBinary other))
+            if (!(object instanceof PreparedBinary(
+                    var otherFileName,
+                    var otherContentType,
+                    var otherSize,
+                    var otherZipSize,
+                    var otherSha256,
+                    var otherZip)))
                 return false;
 
-            return size == other.size
-                    && zipSize == other.zipSize
-                    && Objects.equals(fileName, other.fileName)
-                    && Objects.equals(contentType, other.contentType)
-                    && Arrays.equals(sha256, other.sha256)
-                    && Arrays.equals(zip, other.zip);
+            return size == otherSize
+                    && zipSize == otherZipSize
+                    && Objects.equals(fileName, otherFileName)
+                    && Objects.equals(contentType, otherContentType)
+                    && Arrays.equals(sha256, otherSha256)
+                    && Arrays.equals(zip, otherZip);
         }
 
         @Override
