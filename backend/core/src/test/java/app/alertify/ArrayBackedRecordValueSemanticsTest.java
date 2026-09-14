@@ -45,10 +45,10 @@ class ArrayBackedRecordValueSemanticsTest {
         ResolvedProcedureParameter secondProcedure = resolvedProcedure(null);
 
         assertThat(firstAlert).isEqualTo(secondAlert);
-        assertThat(firstAlert.hashCode()).isEqualTo(secondAlert.hashCode());
+        assertThat(firstAlert).hasSameHashCodeAs(secondAlert);
         assertThat(firstAlert.toString()).contains("binaryZipLength=null");
         assertThat(firstProcedure).isEqualTo(secondProcedure);
-        assertThat(firstProcedure.hashCode()).isEqualTo(secondProcedure.hashCode());
+        assertThat(firstProcedure).hasSameHashCodeAs(secondProcedure);
         assertThat(firstProcedure.toString()).contains("binaryZipLength=null");
     }
 
@@ -73,7 +73,7 @@ class ArrayBackedRecordValueSemanticsTest {
 
     private static void assertValueSemantics(Object first, Object same, Object different) {
         assertThat(first).isEqualTo(same).isNotEqualTo(different);
-        assertThat(first.hashCode()).isEqualTo(same.hashCode());
+        assertThat(first).hasSameHashCodeAs(same);
     }
 
     private static BinaryPayloadService.PreparedBinary preparedBinary(byte[] content) {
