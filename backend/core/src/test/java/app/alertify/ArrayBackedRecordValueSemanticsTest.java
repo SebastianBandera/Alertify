@@ -44,11 +44,13 @@ class ArrayBackedRecordValueSemanticsTest {
         ResolvedProcedureParameter firstProcedure = resolvedProcedure(null);
         ResolvedProcedureParameter secondProcedure = resolvedProcedure(null);
 
-        assertThat(firstAlert).isEqualTo(secondAlert);
-        assertThat(firstAlert).hasSameHashCodeAs(secondAlert);
+        assertThat(firstAlert)
+            .isEqualTo(secondAlert)
+            .hasSameHashCodeAs(secondAlert);
         assertThat(firstAlert.toString()).contains("binaryZipLength=null");
-        assertThat(firstProcedure).isEqualTo(secondProcedure);
-        assertThat(firstProcedure).hasSameHashCodeAs(secondProcedure);
+        assertThat(firstProcedure)
+            .isEqualTo(secondProcedure)
+            .hasSameHashCodeAs(secondProcedure);
         assertThat(firstProcedure.toString()).contains("binaryZipLength=null");
     }
 
@@ -68,12 +70,14 @@ class ArrayBackedRecordValueSemanticsTest {
         assertThat(resolvedProcedure(BINARY_CONTENT).toString())
             .contains("valuePresent=true", "binaryZipLength=3")
             .doesNotContain("plain-secret", binaryText);
-        assertThat(encryptedValue(BINARY_CONTENT).toString()).isEqualTo("EncryptedSecretValue");
+        assertThat(encryptedValue(BINARY_CONTENT)).hasToString("EncryptedSecretValue");
     }
 
     private static void assertValueSemantics(Object first, Object same, Object different) {
-        assertThat(first).isEqualTo(same).isNotEqualTo(different);
-        assertThat(first).hasSameHashCodeAs(same);
+        assertThat(first)
+            .isEqualTo(same)
+            .isNotEqualTo(different)
+            .hasSameHashCodeAs(same);
     }
 
     private static BinaryPayloadService.PreparedBinary preparedBinary(byte[] content) {
