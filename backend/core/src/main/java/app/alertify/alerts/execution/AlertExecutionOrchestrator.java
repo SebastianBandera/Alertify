@@ -356,7 +356,7 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
                 long started = System.nanoTime();
                 try {
                     while (!waiter.assigned && remaining > 0) {
-                        long millis = Math.max(1, Math.min(Duration.ofNanos(remaining).toMillis(), Integer.MAX_VALUE));
+                        long millis = Math.clamp(Duration.ofNanos(remaining).toMillis(), 1, Integer.MAX_VALUE);
                         wait(millis);
                         remaining = timeout.toNanos() - (System.nanoTime() - started);
                     }
