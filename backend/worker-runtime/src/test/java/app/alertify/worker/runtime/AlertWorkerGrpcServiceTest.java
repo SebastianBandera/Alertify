@@ -103,6 +103,7 @@ class AlertWorkerGrpcServiceTest {
 
             @Override
             public void onCompleted() {
+                // Stream completion is not part of this test's assertion contract.
             }
         };
     }
@@ -111,6 +112,7 @@ class AlertWorkerGrpcServiceTest {
         return new StreamObserver<>() {
             @Override
             public void onNext(ExecutionWorkerMessage value) {
+                // This observer only captures the terminal error expected by the test.
             }
 
             @Override
@@ -120,6 +122,7 @@ class AlertWorkerGrpcServiceTest {
 
             @Override
             public void onCompleted() {
+                // Normal completion is irrelevant because this test expects onError.
             }
         };
     }

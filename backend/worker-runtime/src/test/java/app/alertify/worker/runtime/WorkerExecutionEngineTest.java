@@ -252,6 +252,7 @@ class WorkerExecutionEngineTest {
 
             @Override
             public void onCompleted() {
+                // The result future is completed by onNext; no completion signal is needed.
             }
         };
     }
