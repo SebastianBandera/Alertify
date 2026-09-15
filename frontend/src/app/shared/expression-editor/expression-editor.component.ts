@@ -38,7 +38,7 @@ export class ExpressionEditorComponent {
 
   protected readonly completions = signal<readonly ExpressionCompletion[]>([]);
   protected readonly selectedCompletion = signal(0);
-  protected readonly listId = `expression-completions-${Math.random().toString(36).slice(2, 9)}`;
+  protected readonly listId = `expression-completions-${crypto.randomUUID()}`;
 
   protected updateValue(event: Event): void {
     const textarea = event.target as HTMLTextAreaElement;
