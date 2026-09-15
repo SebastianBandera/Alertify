@@ -49,14 +49,24 @@ import app.alertify.secret.api.SecretUpdateRequest;
 @Service
 public class ApplicationSecretService {
 
+    private static final String BINARY = "BINARY";
+    private static final String CREATED_AT = "createdAt";
+    private static final String SECRET = "Secret";
+    private static final String SECRET_ID = "secretId";
+    private static final String TAG_IDS = "tagIds";
+    private static final String UPDATED_AT = "updatedAt";
+    private static final String VALUE_REVISION = "valueRevision";
+    private static final String VALUE_TYPE = "valueType";
+    private static final String VERSION = "version";
+    private static final String WRITABLE = "writable";
     private static final Map<String, String> FILTER_ALIASES = Map.of(
-            "created", "createdAt", "modified", "updatedAt", "type", "valueType"
+            "created", CREATED_AT, "modified", UPDATED_AT, "type", VALUE_TYPE
     );
     private static final Set<String> FILTER_FIELDS = Set.of(
-            "id", "version", "name", "description", "valueType", "encryptionVersion", "valueRevision", "createdAt", "updatedAt"
+            "id", VERSION, "name", "description", VALUE_TYPE, "encryptionVersion", VALUE_REVISION, CREATED_AT, UPDATED_AT
     );
     private static final Set<String> SORT_FIELDS = Set.of(
-            "id", "version", "name", "valueType", "encryptionVersion", "valueRevision", "createdAt", "updatedAt"
+            "id", VERSION, "name", VALUE_TYPE, "encryptionVersion", VALUE_REVISION, CREATED_AT, UPDATED_AT
     );
 
     private final ApplicationSecretRepository secretRepository;
@@ -85,7 +95,7 @@ public class ApplicationSecretService {
     public SecretResponse createBinary(BinarySecretCreateRequest request, MultipartFile file) {
         String name = normalizeRequired(request.name()); ensureNameAvailable(name, null);
         BinaryPayloadService.PreparedBinary binary = prepare(file);
-        EncryptedSecretValue placeholder = encryptionService.encrypt("BINARY");
+        EncryptedSecretValue placeholder = encryptionService.encrypt(BINARY);
         ApplicationSecret secret = new ApplicationSecret(name, normalizeOptional(request.description()), SecretValueType.BINARY,
                 placeholder.encryptedValue(), placeholder.encryptionIv(), placeholder.valueHash(), placeholder.hashSalt(),
                 placeholder.encryptionVersion(), resolveSecretTags(request.tagIds()), request.writable());
@@ -94,20 +104,20 @@ public class ApplicationSecretService {
         EncryptedSecretValue encrypted = encryptionService.encryptBinary(binary.zip());
         binaryRepository.saveAndFlush(new SecretBinaryValue(saved.getId(), encrypted.encryptedValue(), encrypted.encryptionIv(),
                 encrypted.valueHash(), encrypted.hashSalt(), encrypted.encryptionVersion()));
-        eventLogger.successAfterCommit("SECRET_CREATED", Map.of("secretId", saved.getId(), "name", saved.getName(), "valueType", "BINARY"));
+        eventLogger.successAfterCommit("SECRET_CREATED", Map.of(SECRET_ID, saved.getId(), "name", saved.getName(), VALUE_TYPE, BINARY));
         return mapper.toResponse(saved);
     }
 
     @Transactional
     public SecretResponse updateBinary(Long id, BinarySecretUpdateRequest request, MultipartFile file) {
-        ApplicationSecret secret = find(id); verifyVersion(secret.getVersion(), request.version(), "Secret");
+        ApplicationSecret secret = find(id); verifyVersion(secret.getVersion(), request.version(), SECRET);
         BinaryPayloadService.PreparedBinary binary = prepare(file);
         String name = normalizeRequired(request.name());
         if (!secret.getName().equals(name)) { expressionService.ensureNotReferenced(secret, "renamed"); ensureNameAvailable(name, id); secret.rename(name); }
         if (secret.getValueType() != SecretValueType.BINARY) expressionService.ensureNotReferenced(secret, "changed to BINARY");
         secret.changeDescription(normalizeOptional(request.description())); secret.replaceTags(resolveSecretTags(request.tagIds()));
         secret.changeWritable(request.writable()); secret.changeValueType(SecretValueType.BINARY);
-        EncryptedSecretValue placeholder = encryptionService.encrypt("BINARY");
+        EncryptedSecretValue placeholder = encryptionService.encrypt(BINARY);
         secret.replaceEncryptedValue(placeholder.encryptedValue(), placeholder.encryptionIv(), placeholder.valueHash(),
                 placeholder.hashSalt(), placeholder.encryptionVersion());
         secret.changeBinaryMetadata(binary.fileName(), binary.contentType(), binary.size(), binary.zipSize());
@@ -116,8 +126,8 @@ public class ApplicationSecretService {
         binaryRepository.saveAndFlush(new SecretBinaryValue(id, encrypted.encryptedValue(), encrypted.encryptionIv(), encrypted.valueHash(), encrypted.hashSalt(), encrypted.encryptionVersion()));
         expressionService.synchronizeDependencies(secret, null);
         eventLogger.successAfterCommit("SECRET_UPDATED", Map.of(
-                "secretId", id, "name", secret.getName(), "valueType", SecretValueType.BINARY,
-                "valueRevision", secret.getValueRevision(), "writable", secret.isWritable()
+                SECRET_ID, id, "name", secret.getName(), VALUE_TYPE, SecretValueType.BINARY,
+                VALUE_REVISION, secret.getValueRevision(), WRITABLE, secret.isWritable()
         ));
         return mapper.toResponse(secret);
     }
@@ -151,7 +161,7 @@ public class ApplicationSecretService {
         data.put("totalElements", result.getTotalElements());
         data.put("secretIds", result.getContent().stream().map(SecretResponse::id).toList());
         if (!tagIds.isEmpty()) {
-            data.put("tagIds", tagIds);
+            data.put(TAG_IDS, tagIds);
             data.put("tagOperator", matchAllTags ? "AND" : "OR");
         }
         eventLogger.successAfterCommit("SECRET_PAGE_VIEWED", data);
@@ -161,7 +171,7 @@ public class ApplicationSecretService {
     @Transactional(readOnly = true)
     public SecretResponse get(Long id) {
         ApplicationSecret secret = find(id);
-        eventLogger.success("SECRET_VIEWED", Map.of("secretId", secret.getId(), "name", secret.getName(), "version", secret.getVersion()));
+        eventLogger.success("SECRET_VIEWED", Map.of(SECRET_ID, secret.getId(), "name", secret.getName(), VERSION, secret.getVersion()));
         return mapper.toResponse(secret);
     }
 
@@ -183,9 +193,9 @@ public class ApplicationSecretService {
         eventLogger.successAfterCommit(
                 "SECRET_CREATED",
                 Map.of(
-                        "secretId", saved.getId(), "name", saved.getName(), "valueType", saved.getValueType(),
-                        "tagIds", tagIds(saved.getTags()), "valueRevision", saved.getValueRevision(),
-                        "writable", saved.isWritable()
+                        SECRET_ID, saved.getId(), "name", saved.getName(), VALUE_TYPE, saved.getValueType(),
+                        TAG_IDS, tagIds(saved.getTags()), VALUE_REVISION, saved.getValueRevision(),
+                        WRITABLE, saved.isWritable()
                 )
         );
         return mapper.toResponse(saved);
@@ -195,7 +205,7 @@ public class ApplicationSecretService {
     public SecretResponse update(Long id, SecretUpdateRequest request) {
         if (request.valueType() == SecretValueType.BINARY) throw new app.alertify.api.error.InvalidSecretValueException("BINARY values require multipart file upload");
         ApplicationSecret secret = find(id);
-        verifyVersion(secret.getVersion(), request.version(), "Secret");
+        verifyVersion(secret.getVersion(), request.version(), SECRET);
         String previousName = secret.getName();
         String name = normalizeRequired(request.name());
         String description = normalizeOptional(request.description());
@@ -219,12 +229,12 @@ public class ApplicationSecretService {
         }
         if (secret.isWritable() != request.writable()) {
             secret.changeWritable(request.writable());
-            changedFields.add("writable");
+            changedFields.add(WRITABLE);
         }
         if (secret.getValueType() != request.valueType()) {
             if (secret.getValueType() == SecretValueType.BINARY) { binaryRepository.deleteById(id); secret.clearBinaryMetadata(); }
             secret.changeValueType(request.valueType());
-            changedFields.add("valueType");
+            changedFields.add(VALUE_TYPE);
         }
 
         EncryptedSecretValue encrypted = encryptionService.encrypt(plaintext);
@@ -234,14 +244,14 @@ public class ApplicationSecretService {
         expressionService.synchronizeDependencies(secret, plaintext);
 
         Map<String, Object> logData = new LinkedHashMap<>();
-        logData.put("secretId", id);
+        logData.put(SECRET_ID, id);
         logData.put("name", secret.getName());
         logData.put("previousName", previousName);
-        logData.put("valueType", secret.getValueType());
-        logData.put("tagIds", tagIds(secret.getTags()));
+        logData.put(VALUE_TYPE, secret.getValueType());
+        logData.put(TAG_IDS, tagIds(secret.getTags()));
         logData.put("changedFields", changedFields);
-        logData.put("valueRevision", secret.getValueRevision());
-        logData.put("writable", secret.isWritable());
+        logData.put(VALUE_REVISION, secret.getValueRevision());
+        logData.put(WRITABLE, secret.isWritable());
         eventLogger.successAfterCommit("SECRET_UPDATED", logData);
         return mapper.toResponse(secret);
     }
@@ -249,12 +259,12 @@ public class ApplicationSecretService {
     @Transactional
     public void delete(Long id, long version) {
         ApplicationSecret secret = find(id);
-        verifyVersion(secret.getVersion(), version, "Secret");
+        verifyVersion(secret.getVersion(), version, SECRET);
         expressionService.ensureNotReferenced(secret, "deleted");
         String name = secret.getName();
         secretRepository.delete(secret);
         secretRepository.flush();
-        eventLogger.successAfterCommit("SECRET_DELETED", Map.of("secretId", id, "name", name, "version", version));
+        eventLogger.successAfterCommit("SECRET_DELETED", Map.of(SECRET_ID, id, "name", name, VERSION, version));
     }
 
     @Transactional(readOnly = true)

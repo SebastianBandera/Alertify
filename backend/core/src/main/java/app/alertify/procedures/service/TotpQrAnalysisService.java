@@ -54,6 +54,7 @@ import app.alertify.services.secret.ApplicationSecretService;
 @Service
 public class TotpQrAnalysisService {
 
+    private static final String DIGITS = "digits";
     private static final String TOTP_TEMPLATE_KEY = "app.alertify.procedures.templates.TotpProcedureTemplate";
     private static final Set<String> SUPPORTED_ALGORITHMS = Set.of("SHA1", "SHA256", "SHA512");
     private static final Set<Integer> SUPPORTED_DIGITS = Set.of(6, 8);
@@ -74,7 +75,7 @@ public class TotpQrAnalysisService {
         TotpBase32.decode(parsed.secret()); // fail fast if the QR secret is not valid Base32
 
         String algorithm = parsed.algorithm() != null ? parsed.algorithm() : defaultParameterValue("algorithm");
-        int digits = parsed.digits() != null ? parsed.digits() : Integer.parseInt(defaultParameterValue("digits"));
+        int digits = parsed.digits() != null ? parsed.digits() : Integer.parseInt(defaultParameterValue(DIGITS));
         int periodSeconds = parsed.periodSeconds() != null ? parsed.periodSeconds() : Integer.parseInt(defaultParameterValue("periodSeconds"));
 
         SecretResponse secret = createSecretWithRetry(parsed.issuer(), parsed.account(), parsed.secret());
@@ -133,7 +134,7 @@ public class TotpQrAnalysisService {
         String issuer = firstNonBlank(query.getFirst("issuer"), labelIssuer);
         return new ParsedTotpUri(issuer, account, secret,
                 normalizeAlgorithm(query.getFirst("algorithm")),
-                normalizeDigits(query.getFirst("digits")),
+                normalizeDigits(query.getFirst(DIGITS)),
                 normalizePeriod(query.getFirst("period")));
     }
 
@@ -149,7 +150,7 @@ public class TotpQrAnalysisService {
     private Integer normalizeDigits(String value) {
         if (value == null || value.isBlank())
             return null;
-        int digits = parsePositiveInt(value, "digits");
+        int digits = parsePositiveInt(value, DIGITS);
         if (!SUPPORTED_DIGITS.contains(digits))
             throw new InvalidTotpQrException("The QR code specifies unsupported digits: " + value);
         return digits;

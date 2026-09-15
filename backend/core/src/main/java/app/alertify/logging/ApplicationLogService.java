@@ -25,26 +25,35 @@ import app.alertify.logging.api.ApplicationLogResponse;
 @Service
 public class ApplicationLogService {
 
+    private static final String EVENT = "event";
+    private static final String EVENT_AT = "eventAt";
+    private static final String EVENT_CODE = "event.code";
+    private static final String LEVEL = "level";
+    private static final String LEVEL_CODE = "level.code";
+    private static final String SOURCE = "source";
+    private static final String SOURCE_CODE = "source.code";
+    private static final String USER_SUBJECT = "userSubject";
+    private static final String USERNAME = "username";
     private static final Map<String, String> FILTER_ALIASES = Map.of(
-            "user", "username",
-            "subject", "userSubject",
-            "date", "eventAt",
-            "level", "level.code",
-            "source", "source.code",
-            "event", "event.code"
+            "user", USERNAME,
+            "subject", USER_SUBJECT,
+            "date", EVENT_AT,
+            LEVEL, LEVEL_CODE,
+            SOURCE, SOURCE_CODE,
+            EVENT, EVENT_CODE
     );
     private static final Set<String> FILTER_FIELDS = Set.of(
-            "id", "eventAt", "level.code", "source.code", "event.code", "outcome",
-            "userSubject", "username", "requestId", "path"
+            "id", EVENT_AT, LEVEL_CODE, SOURCE_CODE, EVENT_CODE, "outcome",
+            USER_SUBJECT, USERNAME, "requestId", "path"
     );
     private static final Set<String> SORT_FIELDS = Set.of(
-            "id", "eventAt", "level", "source", "event", "outcome", "userSubject", "username",
+            "id", EVENT_AT, LEVEL, SOURCE, EVENT, "outcome", USER_SUBJECT, USERNAME,
             "path"
     );
     private static final Map<String, String> SORT_ALIASES = Map.of(
-            "level", "level.code",
-            "source", "source.code",
-            "event", "event.code"
+            LEVEL, LEVEL_CODE,
+            SOURCE, SOURCE_CODE,
+            EVENT, EVENT_CODE
     );
 
     private final ApplicationLogRepository repository;

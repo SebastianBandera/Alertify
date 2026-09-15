@@ -42,6 +42,7 @@ import app.alertify.procedures.model.ProcedureTemplateDefinition;
 @Service
 public class ProcedureCsvService {
     private static final long MAX_IMPORT_FILE_SIZE = 10L * 1024 * 1024;
+    private static final String NOT_FOUND_SUFFIX = "' was not found";
 
     private final ProcedureRepository procedureRepository;
     private final ProcedureParameterValueRepository parameterRepository;
@@ -106,7 +107,7 @@ public class ProcedureCsvService {
         // Create all identities first, so A -> B -> A can be restored from one export.
         for (ProcedureCsvCodec.ImportRow row : rows) {
             ProcedureTemplateDefinition template = templates.get(key(row.templateKey()));
-            if (template == null) throw error(row, "template '" + row.templateKey() + "' was not found");
+            if (template == null) throw error(row, "template '" + row.templateKey() + NOT_FOUND_SUFFIX);
 
             Set<Tag> resolvedTags = new LinkedHashSet<>();
 
@@ -161,19 +162,19 @@ public class ProcedureCsvService {
                     imported.value(), null, null, null);
             case CONFIGURATION -> {
                 ApplicationConfiguration value = configurations.get(reference);
-                if (value == null) throw error(row, "configuration '" + imported.value() + "' was not found");
+                if (value == null) throw error(row, "configuration '" + imported.value() + NOT_FOUND_SUFFIX);
 
                 yield new ProcedureParameterValueRequest(imported.key(), imported.source(), null, value.getId(), null, null);
             }
             case SECRET -> {
                 ApplicationSecret value = secrets.get(reference);
-                if (value == null) throw error(row, "secret '" + imported.value() + "' was not found");
+                if (value == null) throw error(row, "secret '" + imported.value() + NOT_FOUND_SUFFIX);
 
                 yield new ProcedureParameterValueRequest(imported.key(), imported.source(), null, null, value.getId(), null);
             }
             case PROCEDURE -> {
                 Procedure value = procedures.get(reference);
-                if (value == null) throw error(row, "procedure '" + imported.value() + "' was not found");
+                if (value == null) throw error(row, "procedure '" + imported.value() + NOT_FOUND_SUFFIX);
 
                 yield new ProcedureParameterValueRequest(imported.key(), imported.source(), null, null, null, value.getId());
             }

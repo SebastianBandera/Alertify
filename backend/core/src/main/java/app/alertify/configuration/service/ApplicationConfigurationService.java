@@ -57,14 +57,22 @@ import app.alertify.logging.ApplicationEventLogger;
 @Service
 public class ApplicationConfigurationService {
 
+    private static final String CONFIGURATION = "Configuration";
+    private static final String CONFIGURATION_ID = "configurationId";
+    private static final String CREATED_AT = "createdAt";
+    private static final String TAG_IDS = "tagIds";
+    private static final String UPDATED_AT = "updatedAt";
+    private static final String VALUE_TYPE = "valueType";
+    private static final String VERSION = "version";
+    private static final String WRITABLE = "writable";
     private static final Map<String, String> FILTER_ALIASES = Map.of(
-            "type", "valueType", "created", "createdAt", "modified", "updatedAt"
+            "type", VALUE_TYPE, "created", CREATED_AT, "modified", UPDATED_AT
     );
     private static final Set<String> FILTER_FIELDS = Set.of(
-            "id", "version", "name", "description", "valueType", "createdAt", "updatedAt"
+            "id", VERSION, "name", "description", VALUE_TYPE, CREATED_AT, UPDATED_AT
     );
     private static final Set<String> SORT_FIELDS = Set.of(
-            "id", "version", "name", "valueType", "createdAt", "updatedAt"
+            "id", VERSION, "name", VALUE_TYPE, CREATED_AT, UPDATED_AT
     );
     private static final long MAX_IMPORT_FILE_SIZE = 10L * 1024 * 1024;
 
@@ -103,14 +111,14 @@ public class ApplicationConfigurationService {
         ApplicationConfiguration saved = configurationRepository.saveAndFlush(configuration);
         binaryRepository.saveAndFlush(new ConfigurationBinaryValue(saved.getId(), binary.zip()));
         cacheInvalidator.evictAfterCommit(saved.getId(), Set.of(saved.getName()));
-        eventLogger.successAfterCommit("CONFIGURATION_CREATED", Map.of("configurationId", saved.getId(), "name", saved.getName(), "valueType", "BINARY"));
+        eventLogger.successAfterCommit("CONFIGURATION_CREATED", Map.of(CONFIGURATION_ID, saved.getId(), "name", saved.getName(), VALUE_TYPE, "BINARY"));
         return ConfigurationMapper.toResponse(saved);
     }
 
     @Transactional
     public ConfigurationResponse updateBinary(Long id, BinaryConfigurationUpdateRequest request, MultipartFile file) {
         ApplicationConfiguration configuration = find(id);
-        verifyVersion(configuration.getVersion(), request.version(), "Configuration");
+        verifyVersion(configuration.getVersion(), request.version(), CONFIGURATION);
         BinaryPayloadService.PreparedBinary binary = prepare(file);
         String previousName = configuration.getName();
         String name = normalizeRequired(request.name());
@@ -126,8 +134,8 @@ public class ApplicationConfigurationService {
         expressionService.synchronizeDependencies(configuration);
         cacheInvalidator.evictAfterCommit(id, new LinkedHashSet<>(List.of(previousName, configuration.getName())));
         eventLogger.successAfterCommit("CONFIGURATION_UPDATED", Map.of(
-                "configurationId", id, "name", configuration.getName(), "valueType", ConfigurationValueType.BINARY,
-                "writable", configuration.isWritable()
+                CONFIGURATION_ID, id, "name", configuration.getName(), VALUE_TYPE, ConfigurationValueType.BINARY,
+                WRITABLE, configuration.isWritable()
         ));
         return ConfigurationMapper.toResponse(configuration);
     }
@@ -214,7 +222,7 @@ public class ApplicationConfigurationService {
         data.put("totalElements", result.getTotalElements());
         data.put("configurationIds", result.getContent().stream().map(ConfigurationResponse::id).toList());
         if (!tagIds.isEmpty()) {
-            data.put("tagIds", tagIds);
+            data.put(TAG_IDS, tagIds);
             data.put("tagOperator", matchAllTags ? "AND" : "OR");
         }
         String nameFilter = params.getFirst("name");
@@ -357,7 +365,7 @@ public class ApplicationConfigurationService {
 
     public ConfigurationResponse get(Long id) {
         ConfigurationResponse response = lookupService.getById(id);
-        eventLogger.success("CONFIGURATION_VIEWED", Map.of("configurationId", response.id(), "name", response.name(), "version", response.version()));
+        eventLogger.success("CONFIGURATION_VIEWED", Map.of(CONFIGURATION_ID, response.id(), "name", response.name(), VERSION, response.version()));
         return response;
     }
 
@@ -379,9 +387,9 @@ public class ApplicationConfigurationService {
         eventLogger.successAfterCommit(
                 "CONFIGURATION_CREATED",
                 Map.of(
-                        "configurationId", saved.getId(), "name", saved.getName(),
-                        "valueType", saved.getValueType().name(), "writable", saved.isWritable(),
-                        "tagIds", tagIds(saved.getTags())
+                        CONFIGURATION_ID, saved.getId(), "name", saved.getName(),
+                        VALUE_TYPE, saved.getValueType().name(), WRITABLE, saved.isWritable(),
+                        TAG_IDS, tagIds(saved.getTags())
                 )
         );
         return ConfigurationMapper.toResponse(saved);
@@ -391,7 +399,7 @@ public class ApplicationConfigurationService {
     public ConfigurationResponse update(Long id, ConfigurationUpdateRequest request) {
         if (request.valueType() == ConfigurationValueType.BINARY) throw new InvalidConfigurationValueException("BINARY values require multipart file upload");
         ApplicationConfiguration configuration = find(id);
-        verifyVersion(configuration.getVersion(), request.version(), "Configuration");
+        verifyVersion(configuration.getVersion(), request.version(), CONFIGURATION);
         String previousName = configuration.getName();
 
         String name = normalizeRequired(request.name());
@@ -417,7 +425,7 @@ public class ApplicationConfigurationService {
             configuration.changeValue(request.valueType(), value);
             changedFields.add("value");
             if (valueTypeChanged)
-                changedFields.add("valueType");
+                changedFields.add(VALUE_TYPE);
         }
         if (!tagIds(configuration.getTags()).equals(tagIds(tags))) {
             configuration.replaceTags(tags);
@@ -425,7 +433,7 @@ public class ApplicationConfigurationService {
         }
         if (configuration.isWritable() != request.writable()) {
             configuration.changeWritable(request.writable());
-            changedFields.add("writable");
+            changedFields.add(WRITABLE);
         }
 
         if (!changedFields.isEmpty()) {
@@ -439,12 +447,12 @@ public class ApplicationConfigurationService {
             );
         }
         Map<String, Object> logData = new LinkedHashMap<>();
-        logData.put("configurationId", id);
+        logData.put(CONFIGURATION_ID, id);
         logData.put("name", configuration.getName());
         logData.put("previousName", previousName);
-        logData.put("valueType", configuration.getValueType().name());
-        logData.put("writable", configuration.isWritable());
-        logData.put("tagIds", tagIds(configuration.getTags()));
+        logData.put(VALUE_TYPE, configuration.getValueType().name());
+        logData.put(WRITABLE, configuration.isWritable());
+        logData.put(TAG_IDS, tagIds(configuration.getTags()));
         logData.put("changed", !changedFields.isEmpty());
         logData.put("changedFields", changedFields);
         eventLogger.successAfterCommit("CONFIGURATION_UPDATED", logData);
@@ -454,7 +462,7 @@ public class ApplicationConfigurationService {
     @Transactional
     public void delete(Long id, long version) {
         ApplicationConfiguration configuration = find(id);
-        verifyVersion(configuration.getVersion(), version, "Configuration");
+        verifyVersion(configuration.getVersion(), version, CONFIGURATION);
         expressionService.ensureNotReferenced(configuration, "deleted");
         String name = configuration.getName();
         configurationRepository.delete(configuration);
@@ -462,7 +470,7 @@ public class ApplicationConfigurationService {
         cacheInvalidator.evictAfterCommit(id, Set.of(name));
         eventLogger.successAfterCommit(
                 "CONFIGURATION_DELETED",
-                Map.of("configurationId", id, "name", name, "version", version)
+                Map.of(CONFIGURATION_ID, id, "name", name, VERSION, version)
         );
     }
 

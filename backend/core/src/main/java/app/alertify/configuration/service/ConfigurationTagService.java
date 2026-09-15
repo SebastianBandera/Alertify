@@ -32,15 +32,20 @@ import app.alertify.logging.ApplicationEventLogger;
 @Service
 public class ConfigurationTagService {
 
+    private static final String COLOR = "color";
+    private static final String CREATED_AT = "createdAt";
+    private static final String TAG_ID = "tagId";
+    private static final String UPDATED_AT = "updatedAt";
+    private static final String VERSION = "version";
     private static final TagScope SCOPE = TagScope.CONFIGURATION;
     private static final Map<String, String> FILTER_ALIASES = Map.of(
-            "created", "createdAt", "modified", "updatedAt"
+            "created", CREATED_AT, "modified", UPDATED_AT
     );
     private static final Set<String> FILTER_FIELDS = Set.of(
-            "id", "version", "name", "color", "createdAt", "updatedAt"
+            "id", VERSION, "name", COLOR, CREATED_AT, UPDATED_AT
     );
     private static final Set<String> SORT_FIELDS = Set.of(
-            "id", "version", "name", "color", "createdAt", "updatedAt"
+            "id", VERSION, "name", COLOR, CREATED_AT, UPDATED_AT
     );
 
     private final TagRepository tagRepository;
@@ -76,7 +81,7 @@ public class ConfigurationTagService {
         Tag saved = tagRepository.saveAndFlush(new Tag(SCOPE, name, color));
         eventLogger.successAfterCommit(
                 "CONFIGURATION_TAG_CREATED",
-                Map.of("tagId", saved.getId(), "name", saved.getName(), "color", saved.getColor())
+                Map.of(TAG_ID, saved.getId(), "name", saved.getName(), COLOR, saved.getColor())
         );
         return ConfigurationMapper.toResponse(saved);
     }
@@ -99,17 +104,17 @@ public class ConfigurationTagService {
         }
         if (!tag.getColor().equals(color)) {
             tag.changeColor(color);
-            changedFields.add("color");
+            changedFields.add(COLOR);
         }
         if (!changedFields.isEmpty()) {
             tagRepository.flush();
             cacheInvalidator.clearAfterCommit();
         }
         Map<String, Object> logData = new LinkedHashMap<>();
-        logData.put("tagId", id);
+        logData.put(TAG_ID, id);
         logData.put("name", tag.getName());
         logData.put("previousName", previousName);
-        logData.put("color", tag.getColor());
+        logData.put(COLOR, tag.getColor());
         logData.put("previousColor", previousColor);
         logData.put("changed", !changedFields.isEmpty());
         logData.put("changedFields", changedFields);
@@ -132,7 +137,7 @@ public class ConfigurationTagService {
         tagRepository.flush();
         eventLogger.successAfterCommit(
                 "CONFIGURATION_TAG_DELETED",
-                Map.of("tagId", id, "name", tag.getName(), "color", tag.getColor(), "version", version)
+                Map.of(TAG_ID, id, "name", tag.getName(), COLOR, tag.getColor(), VERSION, version)
         );
     }
 

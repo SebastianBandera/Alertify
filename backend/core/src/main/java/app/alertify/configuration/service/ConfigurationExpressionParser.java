@@ -21,6 +21,8 @@ import app.alertify.api.error.InvalidConfigurationExpressionException;
 @Component
 public class ConfigurationExpressionParser {
 
+    private static final String UTILITY_PREFIX = "utils.";
+
     private static final Pattern ENVIRONMENT_NAME = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*");
     private static final Pattern UTILITY_NAME = Pattern.compile("[A-Z][A-Z0-9_]*");
     private static final Pattern UTILITY_FUNCTION = Pattern.compile("utils\\.([A-Z][A-Z0-9_]*)\\((.*)\\)", Pattern.DOTALL);
@@ -100,7 +102,7 @@ public class ConfigurationExpressionParser {
 
     private ExpressionReference parseReference(String token, int start, int end, ExpressionScope scope, int nesting) {
         Matcher function = UTILITY_FUNCTION.matcher(token);
-        if (token.startsWith("utils.") && function.matches()) {
+        if (token.startsWith(UTILITY_PREFIX) && function.matches()) {
             ParsedExpression argument = parse(function.group(2), scope, nesting + 1);
             return new ExpressionReference(ReferenceType.UTILITY, function.group(1), start, end, argument);
         }
@@ -138,8 +140,8 @@ public class ConfigurationExpressionParser {
             }
             return new ExpressionReference(ReferenceType.ENVIRONMENT, name, start, end, null);
         }
-        if (token.startsWith("utils.")) {
-            String name = token.substring("utils.".length());
+        if (token.startsWith(UTILITY_PREFIX)) {
+            String name = token.substring(UTILITY_PREFIX.length());
             if (!UTILITY_NAME.matcher(name).matches()) {
                 throw new InvalidConfigurationExpressionException("Invalid utility reference '{{" + token + "}}'");
             }

@@ -58,6 +58,8 @@ import tools.jackson.databind.json.JsonMapper;
  */
 @Service
 public class ProcedureExecutionOrchestrator implements AutoCloseable {
+    private static final String PROCEDURE_EXECUTION_REJECTED = "PROCEDURE_EXECUTION_REJECTED";
+
     private final ProcedureExecutionPreparationService preparationService;
     private final ProcedureExecutionPersistenceService persistenceService;
     private final ProcedureInvocationTokenService tokenService;
@@ -100,7 +102,7 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
 
     private boolean triggerAsync(long procedureId, String procedureName, boolean allowConcurrentExecutions, ProcedureExecutionTrigger trigger, String triggeredBy, boolean includeDisabled) {
         if (!enter(procedureId, allowConcurrentExecutions)) {
-            eventLogger.failure("PROCEDURE_EXECUTION_REJECTED", rejectionData(procedureId, procedureName, trigger, triggeredBy));
+            eventLogger.failure(PROCEDURE_EXECUTION_REJECTED, rejectionData(procedureId, procedureName, trigger, triggeredBy));
             return false;
         }
 
@@ -179,7 +181,7 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
             PreparedProcedureExecution prepared = preparationService.prepare(claims.procedureId(), false);
             if (!enter(claims.procedureId(), prepared.allowConcurrentExecutions())) {
                 ProcedureBusyException exception = busy(prepared.procedureName());
-                eventLogger.failure("PROCEDURE_EXECUTION_REJECTED", rejectionData(claims.procedureId(), prepared.procedureName(), trigger, null));
+                eventLogger.failure(PROCEDURE_EXECUTION_REJECTED, rejectionData(claims.procedureId(), prepared.procedureName(), trigger, null));
                 return failure(ProcedureInvocationFailureKind.PROCEDURE_INVOCATION_FAILURE_KIND_BUSY, null, exception, null);
             }
 
@@ -219,7 +221,7 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
             try {
                 prepared = preparedExecution == null ? preparationService.prepare(procedureId, includeDisabled) : preparedExecution;
             } catch (ProcedureDisabledException exception) {
-                eventLogger.failure("PROCEDURE_EXECUTION_REJECTED", Map.of("procedureId", procedureId, "reason", "DISABLED", "parentExecutionId", parentAlertExecutionId != null ? parentAlertExecutionId : parentProcedureExecutionId));
+                eventLogger.failure(PROCEDURE_EXECUTION_REJECTED, Map.of("procedureId", procedureId, "reason", "DISABLED", "parentExecutionId", parentAlertExecutionId != null ? parentAlertExecutionId : parentProcedureExecutionId));
                 throw exception;
             }
             persistenceService.start(executionId, prepared, trigger, rootExecutionId,

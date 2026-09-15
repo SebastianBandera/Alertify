@@ -48,6 +48,7 @@ import app.alertify.procedures.model.Procedure;
 public class AlertCsvService {
 
     private static final long MAX_IMPORT_FILE_SIZE = 10L * 1024 * 1024;
+    private static final String NOT_FOUND_SUFFIX = "' was not found";
 
     private final AlertRepository alertRepository;
     private final AlertParameterValueRepository parameterValueRepository;
@@ -120,7 +121,7 @@ public class AlertCsvService {
         for (AlertCsvCodec.ImportRow row : rows) {
             AlertTemplateDefinition template = templatesByKey.get(row.templateKey().toLowerCase(Locale.ROOT));
             if (template == null) {
-                throw rowError(row, "template '" + row.templateKey() + "' was not found");
+                throw rowError(row, "template '" + row.templateKey() + NOT_FOUND_SUFFIX);
             }
 
             Set<Long> tagIds = new LinkedHashSet<>();
@@ -187,7 +188,7 @@ public class AlertCsvService {
             case CONFIGURATION -> {
                 ApplicationConfiguration configuration = configurationsByName.get(reference);
                 if (configuration == null)
-                    throw rowError(row, "configuration '" + parameter.value() + "' was not found");
+                    throw rowError(row, "configuration '" + parameter.value() + NOT_FOUND_SUFFIX);
 
                 yield new AlertParameterValueRequest(
                         parameter.key(), AlertParameterSource.CONFIGURATION, null, configuration.getId(), null
@@ -196,7 +197,7 @@ public class AlertCsvService {
             case SECRET -> {
                 ApplicationSecret secret = secretsByName.get(reference);
                 if (secret == null)
-                    throw rowError(row, "secret '" + parameter.value() + "' was not found");
+                    throw rowError(row, "secret '" + parameter.value() + NOT_FOUND_SUFFIX);
 
                 yield new AlertParameterValueRequest(
                         parameter.key(), AlertParameterSource.SECRET, null, null, secret.getId()
@@ -205,7 +206,7 @@ public class AlertCsvService {
             case PROCEDURE -> {
                 Procedure procedure = proceduresByName.get(reference);
                 if (procedure == null)
-                    throw rowError(row, "procedure '" + parameter.value() + "' was not found");
+                    throw rowError(row, "procedure '" + parameter.value() + NOT_FOUND_SUFFIX);
 
                 yield new AlertParameterValueRequest(
                         parameter.key(), AlertParameterSource.PROCEDURE, null, null, null, procedure.getId()

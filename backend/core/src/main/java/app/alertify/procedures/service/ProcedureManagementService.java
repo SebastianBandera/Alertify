@@ -71,7 +71,11 @@ import app.alertify.procedures.model.ProcedureTemplateParameterDefinition;
 @Service
 public class ProcedureManagementService {
 
-    private static final Set<String> SORT_FIELDS = Set.of("id", "version", "name", "cronExpression", "enabled", "allowConcurrentExecutions", "createdAt", "updatedAt");
+    private static final String ALLOW_CONCURRENT_EXECUTIONS = "allowConcurrentExecutions";
+    private static final String PARAMETER_PREFIX = "Parameter '";
+    private static final String PROCEDURE = "Procedure";
+    private static final String PROCEDURE_ID = "procedureId";
+    private static final Set<String> SORT_FIELDS = Set.of("id", "version", "name", "cronExpression", "enabled", ALLOW_CONCURRENT_EXECUTIONS, "createdAt", "updatedAt");
 
     private final ProcedureRepository procedureRepository;
     private final ProcedureTemplateDefinitionRepository templateRepository;
@@ -142,14 +146,14 @@ public class ProcedureManagementService {
                 optional(request.description()), validateCron(request.cronExpression()), request.enabled(), request.allowConcurrentExecutions() == null || request.allowConcurrentExecutions(),
                 resolveTags(request.tagIds())));
         List<ProcedureParameterValue> values = synchronizeParameters(procedure, request.parameters(), List.of());
-        eventLogger.successAfterCommit("PROCEDURE_CREATED", Map.of("procedureId", procedure.getId(), "name", procedure.getName(), "templateId", template.getId(), "allowConcurrentExecutions", procedure.isConcurrentExecutionAllowed()));
+        eventLogger.successAfterCommit("PROCEDURE_CREATED", Map.of(PROCEDURE_ID, procedure.getId(), "name", procedure.getName(), "templateId", template.getId(), ALLOW_CONCURRENT_EXECUTIONS, procedure.isConcurrentExecutionAllowed()));
         scheduleService.rescheduleAfterCommit(procedure.getId());
         return ProcedureMapper.toProcedure(procedure, values);
     }
 
     @Transactional
     public ProcedureResponse update(Long id, ProcedureUpdateRequest request) {
-        Procedure procedure = procedureRepository.findById(id).orElseThrow(() -> notFound("Procedure", id));
+        Procedure procedure = procedureRepository.findById(id).orElseThrow(() -> notFound(PROCEDURE, id));
         if (procedure.getVersion() != request.version())
             throw new ConflictException("Procedure was modified by another request; reload it and try again");
 
@@ -168,14 +172,14 @@ public class ProcedureManagementService {
         List<ProcedureParameterValue> values = synchronizeParameters(procedure, request.parameters(),
                 parameterValueRepository.findAllByOwnerIdOrdered(id));
         procedureRepository.flush();
-        eventLogger.successAfterCommit("PROCEDURE_UPDATED", Map.of("procedureId", id, "name", procedure.getName(), "version", procedure.getVersion(), "allowConcurrentExecutions", procedure.isConcurrentExecutionAllowed()));
+        eventLogger.successAfterCommit("PROCEDURE_UPDATED", Map.of(PROCEDURE_ID, id, "name", procedure.getName(), "version", procedure.getVersion(), ALLOW_CONCURRENT_EXECUTIONS, procedure.isConcurrentExecutionAllowed()));
         scheduleService.rescheduleAfterCommit(procedure.getId());
         return ProcedureMapper.toProcedure(procedure, values);
     }
 
     @Transactional(readOnly = true)
     public void runNow(Long id) {
-        Procedure procedure = procedureRepository.findById(id).orElseThrow(() -> notFound("Procedure", id));
+        Procedure procedure = procedureRepository.findById(id).orElseThrow(() -> notFound(PROCEDURE, id));
         boolean accepted = orchestrator.triggerManual(procedure.getId(), procedure.getName(), procedure.isConcurrentExecutionAllowed(), eventLogger.currentUsername());
         if (!accepted)
             throw new ConflictException("PROCEDURE_ALREADY_RUNNING",
@@ -185,14 +189,14 @@ public class ProcedureManagementService {
 
     @Transactional(readOnly = true)
     public ProcedureDeletionImpactResponse deletionImpact(Long id) {
-        Procedure procedure = procedureRepository.findById(id).orElseThrow(() -> notFound("Procedure", id));
+        Procedure procedure = procedureRepository.findById(id).orElseThrow(() -> notFound(PROCEDURE, id));
         return new ProcedureDeletionImpactResponse(id, procedure.getName(), executionRepository.countByProcedure_Id(id),
                 alertParameterValueRepository.countByProcedure_Id(id), parameterValueRepository.countByReferencedProcedure_Id(id));
     }
 
     @Transactional
     public void delete(Long id, long version) {
-        Procedure procedure = procedureRepository.findById(id).orElseThrow(() -> notFound("Procedure", id));
+        Procedure procedure = procedureRepository.findById(id).orElseThrow(() -> notFound(PROCEDURE, id));
         if (procedure.getVersion() != version)
             throw new ConflictException("Procedure was modified by another request; reload it and try again");
 
@@ -211,7 +215,7 @@ public class ProcedureManagementService {
         parameterValueRepository.deleteAllByOwner_Id(id);
         parameterValueRepository.flush();
         procedureRepository.delete(procedure);
-        eventLogger.successAfterCommit("PROCEDURE_DELETED", Map.of("procedureId", id, "name", procedure.getName(), "executionsDeleted", executions));
+        eventLogger.successAfterCommit("PROCEDURE_DELETED", Map.of(PROCEDURE_ID, id, "name", procedure.getName(), "executionsDeleted", executions));
         scheduleService.removeAfterCommit(id);
     }
 
@@ -226,7 +230,7 @@ public class ProcedureManagementService {
                 throw invalid("Unknown parameter '" + value.parameterKey() + "' for the selected template");
 
             if (requests.put(value.parameterKey(), value) != null)
-                throw invalid("Parameter '" + value.parameterKey() + "' was provided more than once");
+                throw invalid(PARAMETER_PREFIX + value.parameterKey() + "' was provided more than once");
         }
         Map<String, ProcedureParameterValue> existingByKey = existing.stream().collect(Collectors.toMap(
                 value -> value.getTemplateParameter().getParameterKey(), Function.identity()));
@@ -306,24 +310,24 @@ public class ProcedureManagementService {
 
     private void validateConfigurationBinding(ProcedureTemplateParameterDefinition definition, ApplicationConfiguration configuration) {
         if (!ParameterValueTypeCompatibility.isConfigurationValueTypeCompatible(definition.getJavaType(), configuration.getValueType()))
-            throw invalid("Parameter '" + definition.getParameterKey() + "' and its binding must both be binary or both be non-binary");
+            throw invalid(PARAMETER_PREFIX + definition.getParameterKey() + "' and its binding must both be binary or both be non-binary");
 
         List<String> allowed = definition.getAllowedConfigurationValueTypes();
         if (!allowed.isEmpty() && !allowed.contains(configuration.getValueType().name()))
-            throw invalid("Parameter '" + definition.getParameterKey() + "' only accepts configurations of type " + allowed);
+            throw invalid(PARAMETER_PREFIX + definition.getParameterKey() + "' only accepts configurations of type " + allowed);
     }
 
     private void validateSecretBinding(ProcedureTemplateParameterDefinition definition, ApplicationSecret secret) {
         if (!ParameterValueTypeCompatibility.isSecretValueTypeCompatible(definition.getJavaType(), secret.getValueType()))
-            throw invalid("Parameter '" + definition.getParameterKey() + "' and its binding must match the parameter's required secret type");
+            throw invalid(PARAMETER_PREFIX + definition.getParameterKey() + "' and its binding must match the parameter's required secret type");
 
         List<String> allowed = definition.getAllowedSecretValueTypes();
         if (!allowed.isEmpty() && !allowed.contains(secret.getValueType().name()))
-            throw invalid("Parameter '" + definition.getParameterKey() + "' only accepts secrets of type " + allowed);
+            throw invalid(PARAMETER_PREFIX + definition.getParameterKey() + "' only accepts secrets of type " + allowed);
     }
 
     private Procedure procedure(Long id) {
-        return procedureRepository.findById(id).orElseThrow(() -> notFound("Procedure", id));
+        return procedureRepository.findById(id).orElseThrow(() -> notFound(PROCEDURE, id));
     }
 
     private Set<Tag> resolveTags(Set<Long> ids) {
@@ -345,12 +349,12 @@ public class ProcedureManagementService {
             throw invalid("Procedure parameter '" + definition.getParameterKey() + "' must use a procedure binding");
 
         if (!definition.isBindingAllowed() && !definition.getOptions().contains(value))
-            throw invalid("Parameter '" + definition.getParameterKey() + "' must use one of its declared options");
+            throw invalid(PARAMETER_PREFIX + definition.getParameterKey() + "' must use one of its declared options");
 
         try {
             validateJavaType(definition.getJavaType(), value);
         } catch (RuntimeException exception) {
-            throw invalid("Parameter '" + definition.getParameterKey() + "' is not a valid " + definition.getJavaType(), exception);
+            throw invalid(PARAMETER_PREFIX + definition.getParameterKey() + "' is not a valid " + definition.getJavaType(), exception);
         }
         return value;
     }

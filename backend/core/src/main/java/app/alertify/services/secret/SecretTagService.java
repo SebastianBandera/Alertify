@@ -33,10 +33,15 @@ import app.alertify.logging.ApplicationEventLogger;
 @Service
 public class SecretTagService {
 
+    private static final String COLOR = "color";
+    private static final String CREATED_AT = "createdAt";
+    private static final String TAG_ID = "tagId";
+    private static final String UPDATED_AT = "updatedAt";
+    private static final String VERSION = "version";
     private static final TagScope SCOPE = TagScope.SECRET;
-    private static final Map<String, String> FILTER_ALIASES = Map.of("created", "createdAt", "modified", "updatedAt");
-    private static final Set<String> FILTER_FIELDS = Set.of("id", "version", "name", "color", "createdAt", "updatedAt");
-    private static final Set<String> SORT_FIELDS = Set.of("id", "version", "name", "color", "createdAt", "updatedAt");
+    private static final Map<String, String> FILTER_ALIASES = Map.of("created", CREATED_AT, "modified", UPDATED_AT);
+    private static final Set<String> FILTER_FIELDS = Set.of("id", VERSION, "name", COLOR, CREATED_AT, UPDATED_AT);
+    private static final Set<String> SORT_FIELDS = Set.of("id", VERSION, "name", COLOR, CREATED_AT, UPDATED_AT);
 
     private final TagRepository tagRepository;
     private final ApplicationSecretRepository secretRepository;
@@ -67,7 +72,7 @@ public class SecretTagService {
         String color = normalizeColor(request.color());
         ensureNameAvailable(name, null);
         Tag saved = tagRepository.saveAndFlush(new Tag(SCOPE, name, color));
-        eventLogger.successAfterCommit("SECRET_TAG_CREATED", Map.of("tagId", saved.getId(), "name", saved.getName(), "color", saved.getColor()));
+        eventLogger.successAfterCommit("SECRET_TAG_CREATED", Map.of(TAG_ID, saved.getId(), "name", saved.getName(), COLOR, saved.getColor()));
         return toResponse(saved);
     }
 
@@ -87,16 +92,16 @@ public class SecretTagService {
         }
         if (!tag.getColor().equals(color)) {
             tag.changeColor(color);
-            changedFields.add("color");
+            changedFields.add(COLOR);
         }
         if (!changedFields.isEmpty())
             tagRepository.flush();
 
         Map<String, Object> data = new LinkedHashMap<>();
-        data.put("tagId", id);
+        data.put(TAG_ID, id);
         data.put("name", tag.getName());
         data.put("previousName", previousName);
-        data.put("color", tag.getColor());
+        data.put(COLOR, tag.getColor());
         data.put("previousColor", previousColor);
         data.put("changed", !changedFields.isEmpty());
         data.put("changedFields", changedFields);
@@ -117,7 +122,7 @@ public class SecretTagService {
         }
         tagRepository.delete(tag);
         tagRepository.flush();
-        eventLogger.successAfterCommit("SECRET_TAG_DELETED", Map.of("tagId", id, "name", tag.getName(), "color", tag.getColor(), "version", version));
+        eventLogger.successAfterCommit("SECRET_TAG_DELETED", Map.of(TAG_ID, id, "name", tag.getName(), COLOR, tag.getColor(), VERSION, version));
     }
 
     private Tag find(Long id) {

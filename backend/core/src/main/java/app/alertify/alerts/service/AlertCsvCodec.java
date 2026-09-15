@@ -34,6 +34,7 @@ class AlertCsvCodec {
             "enabled", "allowConcurrentExecutions", "parameters", "tags"
     );
     private static final int MAX_ROWS = 10_000;
+    private static final String PARAMETER_PREFIX = "parameter '";
     private static final Pattern TAG_COLOR = Pattern.compile("^#[0-9A-Fa-f]{6}$");
 
     private final JsonMapper jsonMapper;
@@ -193,19 +194,19 @@ class AlertCsvCodec {
                 throw rowError(rowNumber, "parameter key must contain between 1 and 255 characters");
             }
             if (!keys.add(key.toLowerCase(Locale.ROOT))) {
-                throw rowError(rowNumber, "parameter '" + key + "' is listed more than once");
+                throw rowError(rowNumber, PARAMETER_PREFIX + key + "' is listed more than once");
             }
 
             AlertParameterSource source;
             try {
                 source = AlertParameterSource.valueOf(sourceNode.stringValue().trim().toUpperCase(Locale.ROOT));
             } catch (RuntimeException exception) {
-                throw rowError(rowNumber, "parameter '" + key + "' has an invalid source", exception);
+                throw rowError(rowNumber, PARAMETER_PREFIX + key + "' has an invalid source", exception);
             }
 
             String value = valueNode.stringValue();
             if (source != AlertParameterSource.TEXT && value.isBlank()) {
-                throw rowError(rowNumber, "parameter '" + key + "' requires the referenced name");
+                throw rowError(rowNumber, PARAMETER_PREFIX + key + "' requires the referenced name");
             }
             parameters.add(new ImportParameter(key, source, source == AlertParameterSource.TEXT ? value : value.trim()));
         }

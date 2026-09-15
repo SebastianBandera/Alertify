@@ -25,6 +25,7 @@ import tools.jackson.databind.json.JsonMapper;
 /** CSV format for procedure definitions; secret values are never exported. */
 @Component
 class ProcedureCsvCodec {
+    private static final String PARAMETER_PREFIX = "parameter '";
     private static final List<String> HEADER = List.of(
             "name", "description", "templateKey", "cronExpression", "enabled", "allowConcurrentExecutions", "parameters", "tags"
     );
@@ -133,18 +134,18 @@ class ProcedureCsvCodec {
             String key = value.get("key").stringValue().trim();
             if (key.isEmpty() || key.length() > 255) throw error(row, "parameter key must contain between 1 and 255 characters");
 
-            if (!keys.add(key.toLowerCase(Locale.ROOT))) throw error(row, "parameter '" + key + "' is listed more than once");
+            if (!keys.add(key.toLowerCase(Locale.ROOT))) throw error(row, PARAMETER_PREFIX + key + "' is listed more than once");
 
             AlertParameterSource source;
 
             try {
                 source = AlertParameterSource.valueOf(value.get("source").stringValue().trim().toUpperCase(Locale.ROOT));
             } catch (RuntimeException exception) {
-                throw error(row, "parameter '" + key + "' has an invalid source", exception);
+                throw error(row, PARAMETER_PREFIX + key + "' has an invalid source", exception);
             }
             String parameterValue = value.get("value").stringValue();
             if (source != AlertParameterSource.TEXT && parameterValue.isBlank())
-                throw error(row, "parameter '" + key + "' requires the referenced name");
+                throw error(row, PARAMETER_PREFIX + key + "' requires the referenced name");
 
             result.add(new ImportParameter(key, source,
                     source == AlertParameterSource.TEXT ? parameterValue : parameterValue.trim()));

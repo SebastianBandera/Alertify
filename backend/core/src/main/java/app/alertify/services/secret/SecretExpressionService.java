@@ -40,6 +40,7 @@ import app.alertify.secret.api.SecretExpressionSuggestionsResponse;
 public class SecretExpressionService {
 
     private static final int MAX_DEPTH = ExpressionEvaluator.MAX_DEPTH;
+    private static final String NOT_FOUND_SUFFIX = "' was not found";
 
     private final ApplicationSecretRepository secretRepository;
     private final ApplicationConfigurationRepository configurationRepository;
@@ -163,7 +164,7 @@ public class SecretExpressionService {
 
     private String resolveSecretReference(String name, Set<String> path, int depth, ZonedDateTime now) {
         ApplicationSecret referenced = secretRepository.findByNameIgnoreCase(name).orElseThrow(
-                () -> new ResourceNotFoundException("Secret '" + name + "' was not found")
+                () -> new ResourceNotFoundException("Secret '" + name + NOT_FOUND_SUFFIX)
         );
         String value = resolveSecret(referenced, path, depth, now);
         eventLogger.success("SECRET_VALUE_ACCESSED", Map.of("secretId", referenced.getId(), "name", referenced.getName(), "reason", "EXPRESSION_REFERENCE"));
@@ -182,7 +183,7 @@ public class SecretExpressionService {
         Set<Long> ids = new LinkedHashSet<>();
         for (String name : parsed.secretNames()) {
             ApplicationSecret referenced = secretRepository.findByNameIgnoreCase(name).orElseThrow(
-                    () -> new InvalidSecretValueException("EXPRESSION value is invalid: referenced secret '" + name + "' was not found")
+                    () -> new InvalidSecretValueException("EXPRESSION value is invalid: referenced secret '" + name + NOT_FOUND_SUFFIX)
             );
             ids.add(referenced.getId());
         }
@@ -193,7 +194,7 @@ public class SecretExpressionService {
         Set<Long> ids = new LinkedHashSet<>();
         for (String name : parsed.configurationNames()) {
             ApplicationConfiguration referenced = configurationRepository.findByNameIgnoreCase(name).orElseThrow(
-                    () -> new InvalidSecretValueException("EXPRESSION value is invalid: referenced configuration '" + name + "' was not found")
+                    () -> new InvalidSecretValueException("EXPRESSION value is invalid: referenced configuration '" + name + NOT_FOUND_SUFFIX)
             );
             ids.add(referenced.getId());
         }

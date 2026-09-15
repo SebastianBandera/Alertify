@@ -34,6 +34,7 @@ import app.alertify.system.SystemConfigurationChangedEvent;
 public class SystemConfigurationService {
 
     private static final int RANDOM_VALUE_BYTES = 32;
+    private static final String SYSTEM_CONFIGURATION_ID = "systemConfigurationId";
 
     /**
      * Names allowed to use {@link #regenerate}. An opaque random value only
@@ -73,7 +74,7 @@ public class SystemConfigurationService {
         SystemConfiguration configuration = find(id);
         eventLogger.success(
                 "SYSTEM_CONFIGURATION_VIEWED",
-                Map.of("systemConfigurationId", configuration.getId(), "name", configuration.getName(), "version", configuration.getVersion())
+                Map.of(SYSTEM_CONFIGURATION_ID, configuration.getId(), "name", configuration.getName(), "version", configuration.getVersion())
         );
         return SystemConfigurationMapper.toResponse(configuration);
     }
@@ -94,7 +95,7 @@ public class SystemConfigurationService {
             repository.flush();
 
         Map<String, Object> logData = new LinkedHashMap<>();
-        logData.put("systemConfigurationId", id);
+        logData.put(SYSTEM_CONFIGURATION_ID, id);
         logData.put("name", configuration.getName());
         logData.put("changed", !changedFields.isEmpty());
         logData.put("changedFields", changedFields);
@@ -124,7 +125,7 @@ public class SystemConfigurationService {
 
         eventLogger.successAfterCommit(
                 "SYSTEM_CONFIGURATION_UPDATED",
-                Map.of("systemConfigurationId", id, "name", configuration.getName(), "changed", true, "changedFields", Set.of("value"))
+                Map.of(SYSTEM_CONFIGURATION_ID, id, "name", configuration.getName(), "changed", true, "changedFields", Set.of("value"))
         );
         return SystemConfigurationMapper.toResponse(configuration);
     }

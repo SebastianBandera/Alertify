@@ -31,6 +31,7 @@ import app.alertify.logging.ApplicationEventLogger;
  */
 @Service
 public class ProcedureTagService {
+    private static final String TAG_ID = "tagId";
     private static final TagScope SCOPE = TagScope.PROCEDURE;
     private static final Map<String, String> FILTER_ALIASES = Map.of("created", "createdAt", "modified", "updatedAt");
     private static final Set<String> FIELDS = Set.of("id", "version", "name", "color", "createdAt", "updatedAt");
@@ -60,7 +61,7 @@ public class ProcedureTagService {
         String name = request.name().trim();
         ensureAvailable(name, null);
         Tag tag = tags.saveAndFlush(new Tag(SCOPE, name, request.color().trim().toUpperCase(Locale.ROOT)));
-        eventLogger.successAfterCommit("PROCEDURE_TAG_CREATED", Map.of("tagId", tag.getId(), "name", tag.getName()));
+        eventLogger.successAfterCommit("PROCEDURE_TAG_CREATED", Map.of(TAG_ID, tag.getId(), "name", tag.getName()));
         return response(tag);
     }
 
@@ -75,7 +76,7 @@ public class ProcedureTagService {
         tag.rename(name);
         tag.changeColor(request.color().trim().toUpperCase(Locale.ROOT));
         tags.flush();
-        eventLogger.successAfterCommit("PROCEDURE_TAG_UPDATED", Map.of("tagId", id, "name", name));
+        eventLogger.successAfterCommit("PROCEDURE_TAG_UPDATED", Map.of(TAG_ID, id, "name", name));
         return response(tag);
     }
 
@@ -91,7 +92,7 @@ public class ProcedureTagService {
 
         tags.delete(tag);
         tags.flush();
-        eventLogger.successAfterCommit("PROCEDURE_TAG_DELETED", Map.of("tagId", id, "name", tag.getName()));
+        eventLogger.successAfterCommit("PROCEDURE_TAG_DELETED", Map.of(TAG_ID, id, "name", tag.getName()));
     }
 
     private Tag find(Long id) {

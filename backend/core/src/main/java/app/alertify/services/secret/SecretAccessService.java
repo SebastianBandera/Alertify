@@ -21,6 +21,10 @@ import app.alertify.logging.ApplicationEventLogger;
 @Service
 public class SecretAccessService {
 
+    private static final String REASON = "reason";
+    private static final String SECRET_ID = "secretId";
+    private static final String SECRET_VALUE_ACCESSED = "SECRET_VALUE_ACCESSED";
+
     private final ApplicationSecretRepository secretRepository;
     private final SecretExpressionService expressionService;
     private final ApplicationEventLogger eventLogger;
@@ -46,19 +50,19 @@ public class SecretAccessService {
         ApplicationSecret secret = secretRepository.findByNameIgnoreCase(name)
                 .orElse(null);
         if (secret == null) {
-            eventLogger.failure("SECRET_VALUE_ACCESSED", Map.of("name", name, "reason", "NOT_FOUND"));
+            eventLogger.failure(SECRET_VALUE_ACCESSED, Map.of("name", name, REASON, "NOT_FOUND"));
             throw new ResourceNotFoundException("Secret '" + name + "' was not found");
         }
 
         try {
             String value = expressionService.resolve(secret);
-            eventLogger.success("SECRET_VALUE_ACCESSED", Map.of("secretId", secret.getId(), "name", secret.getName(), "valueType", secret.getValueType()));
+            eventLogger.success(SECRET_VALUE_ACCESSED, Map.of(SECRET_ID, secret.getId(), "name", secret.getName(), "valueType", secret.getValueType()));
             return value;
         } catch (SecretNotRecoverableException exception) {
-            eventLogger.failure("SECRET_VALUE_ACCESSED", Map.of("secretId", secret.getId(), "name", secret.getName(), "reason", "UNRECOVERABLE"));
+            eventLogger.failure(SECRET_VALUE_ACCESSED, Map.of(SECRET_ID, secret.getId(), "name", secret.getName(), REASON, "UNRECOVERABLE"));
             throw exception;
         } catch (RuntimeException exception) {
-            eventLogger.failure("SECRET_VALUE_ACCESSED", Map.of("secretId", secret.getId(), "name", secret.getName(), "reason", "EXPRESSION_FAILED", "message", String.valueOf(exception.getMessage())));
+            eventLogger.failure(SECRET_VALUE_ACCESSED, Map.of(SECRET_ID, secret.getId(), "name", secret.getName(), REASON, "EXPRESSION_FAILED", "message", String.valueOf(exception.getMessage())));
             throw exception;
         }
     }

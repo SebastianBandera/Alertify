@@ -29,10 +29,14 @@ import app.alertify.logging.ApplicationEventLogger;
 @Service
 public class AlertTagService {
 
+    private static final String COLOR = "color";
+    private static final String CREATED_AT = "createdAt";
+    private static final String TAG_ID = "tagId";
+    private static final String UPDATED_AT = "updatedAt";
     private static final TagScope SCOPE = TagScope.ALERT;
-    private static final Map<String, String> FILTER_ALIASES = Map.of("created", "createdAt", "modified", "updatedAt");
-    private static final Set<String> FILTER_FIELDS = Set.of("id", "version", "name", "color", "createdAt", "updatedAt");
-    private static final Set<String> SORT_FIELDS = Set.of("id", "version", "name", "color", "createdAt", "updatedAt");
+    private static final Map<String, String> FILTER_ALIASES = Map.of("created", CREATED_AT, "modified", UPDATED_AT);
+    private static final Set<String> FILTER_FIELDS = Set.of("id", "version", "name", COLOR, CREATED_AT, UPDATED_AT);
+    private static final Set<String> SORT_FIELDS = Set.of("id", "version", "name", COLOR, CREATED_AT, UPDATED_AT);
 
     private final TagRepository tagRepository;
     private final AlertRepository alertRepository;
@@ -57,7 +61,7 @@ public class AlertTagService {
         String name = request.name().trim();
         ensureNameAvailable(name, null);
         Tag saved = tagRepository.saveAndFlush(new Tag(SCOPE, name, normalizeColor(request.color())));
-        eventLogger.successAfterCommit("ALERT_TAG_CREATED", Map.of("tagId", saved.getId(), "name", saved.getName()));
+        eventLogger.successAfterCommit("ALERT_TAG_CREATED", Map.of(TAG_ID, saved.getId(), "name", saved.getName()));
         return toResponse(saved);
     }
 
@@ -75,13 +79,13 @@ public class AlertTagService {
         }
         if (!tag.getColor().equals(color)) {
             tag.changeColor(color);
-            changedFields.add("color");
+            changedFields.add(COLOR);
         }
         if (!changedFields.isEmpty())
             tagRepository.flush();
 
         Map<String, Object> data = new LinkedHashMap<>();
-        data.put("tagId", id);
+        data.put(TAG_ID, id);
         data.put("name", tag.getName());
         data.put("changedFields", changedFields);
         eventLogger.successAfterCommit("ALERT_TAG_UPDATED", data);
@@ -101,7 +105,7 @@ public class AlertTagService {
         }
         tagRepository.delete(tag);
         tagRepository.flush();
-        eventLogger.successAfterCommit("ALERT_TAG_DELETED", Map.of("tagId", id, "name", tag.getName()));
+        eventLogger.successAfterCommit("ALERT_TAG_DELETED", Map.of(TAG_ID, id, "name", tag.getName()));
     }
 
     private Tag find(Long id) {

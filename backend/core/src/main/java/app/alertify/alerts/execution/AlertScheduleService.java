@@ -20,6 +20,7 @@ import app.alertify.logging.ApplicationEventLogger;
 @Service
 public class AlertScheduleService implements AutoCloseable {
 
+    private static final String ALERT_ID = "alertId";
     private static final Logger log = LoggerFactory.getLogger(AlertScheduleService.class);
 
     private final AlertRepository alertRepository;
@@ -45,7 +46,7 @@ public class AlertScheduleService implements AutoCloseable {
                 // Keep the application starting: a single unschedulable alert is reported, not fatal.
                 log.error("Alert {} ({}) could not be scheduled and stays inactive: {}", alert.getId(), alert.getName(), exception.getMessage());
                 eventLogger.failure("ALERT_SCHEDULE_FAILED", Map.of(
-                        "alertId", alert.getId(), "alertName", alert.getName(),
+                        ALERT_ID, alert.getId(), "alertName", alert.getName(),
                         "cronExpression", alert.getCronExpression(), "reason", String.valueOf(exception.getMessage())
                 ));
             }
@@ -79,7 +80,7 @@ public class AlertScheduleService implements AutoCloseable {
             throw new IllegalStateException("Could not schedule alert " + alert.getId());
 
         schedules.put(alert.getId(), future);
-        eventLogger.success("ALERT_SCHEDULE_REGISTERED", Map.of("alertId", alert.getId(), "alertName", alert.getName(), "cronExpression", alert.getCronExpression()));
+        eventLogger.success("ALERT_SCHEDULE_REGISTERED", Map.of(ALERT_ID, alert.getId(), "alertName", alert.getName(), "cronExpression", alert.getCronExpression()));
     }
 
     private synchronized void remove(Long alertId) {
@@ -88,7 +89,7 @@ public class AlertScheduleService implements AutoCloseable {
             return;
 
         existing.cancel(false);
-        eventLogger.success("ALERT_SCHEDULE_REMOVED", Map.of("alertId", alertId));
+        eventLogger.success("ALERT_SCHEDULE_REMOVED", Map.of(ALERT_ID, alertId));
     }
 
     private static void afterCommit(Runnable action) {

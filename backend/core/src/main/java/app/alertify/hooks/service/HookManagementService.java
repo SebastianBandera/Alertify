@@ -46,6 +46,8 @@ import app.alertify.services.secret.SecretEncryptionService;
 @Service
 public class HookManagementService {
 
+    private static final String NOT_FOUND_SUFFIX = " was not found";
+
     private final HookRepository hookRepository;
     private final AlertRepository alertRepository;
     private final ProcedureRepository procedureRepository;
@@ -179,10 +181,10 @@ public class HookManagementService {
                 throw invalid("Target busy wait timeout must be positive");
 
             if (request.type() == HookTargetType.ALERT) {
-                Alert alert = alertRepository.findById(request.resourceId()).orElseThrow(() -> new ResourceNotFoundException("Alert " + request.resourceId() + " was not found"));
+                Alert alert = alertRepository.findById(request.resourceId()).orElseThrow(() -> new ResourceNotFoundException("Alert " + request.resourceId() + NOT_FOUND_SUFFIX));
                 result.add(HookTarget.alert(hook, alert, position, outcomes, timeout.toMillis()));
             } else {
-                Procedure procedure = procedureRepository.findById(request.resourceId()).orElseThrow(() -> new ResourceNotFoundException("Procedure " + request.resourceId() + " was not found"));
+                Procedure procedure = procedureRepository.findById(request.resourceId()).orElseThrow(() -> new ResourceNotFoundException("Procedure " + request.resourceId() + NOT_FOUND_SUFFIX));
                 result.add(HookTarget.procedure(hook, procedure, position, outcomes, timeout.toMillis()));
             }
         }
@@ -203,14 +205,14 @@ public class HookManagementService {
         if (id == null)
             return null;
 
-        ApplicationSecret secret = secretRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Secret " + id + " was not found"));
+        ApplicationSecret secret = secretRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Secret " + id + NOT_FOUND_SUFFIX));
         if (secret.getValueType() != SecretValueType.STRING)
             throw invalid("Hook token secret must be a STRING secret");
 
         return secret;
     }
 
-    private Hook find(Long id) { return hookRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Hook " + id + " was not found")); }
+    private Hook find(Long id) { return hookRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Hook " + id + NOT_FOUND_SUFFIX)); }
 
     private void ensureNameAvailable(String name, Long id) {
         boolean exists = id == null ? hookRepository.existsByNameIgnoreCase(name) : hookRepository.existsByNameIgnoreCaseAndIdNot(name, id);

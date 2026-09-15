@@ -22,6 +22,7 @@ import app.alertify.procedures.model.Procedure;
 public class ProcedureScheduleService implements AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(ProcedureScheduleService.class);
+    private static final String PROCEDURE_ID = "procedureId";
 
     private final ProcedureRepository procedureRepository;
     private final ProcedureExecutionOrchestrator orchestrator;
@@ -46,7 +47,7 @@ public class ProcedureScheduleService implements AutoCloseable {
                 // Keep the application starting: a single unschedulable procedure is reported, not fatal.
                 log.error("Procedure {} ({}) could not be scheduled and stays inactive: {}", procedure.getId(), procedure.getName(), exception.getMessage());
                 eventLogger.failure("PROCEDURE_SCHEDULE_FAILED", Map.of(
-                        "procedureId", procedure.getId(), "procedureName", procedure.getName(),
+                        PROCEDURE_ID, procedure.getId(), "procedureName", procedure.getName(),
                         "cronExpression", procedure.getCronExpression(), "reason", String.valueOf(exception.getMessage())
                 ));
             }
@@ -80,7 +81,7 @@ public class ProcedureScheduleService implements AutoCloseable {
             throw new IllegalStateException("Could not schedule procedure " + procedure.getId());
 
         schedules.put(procedure.getId(), future);
-        eventLogger.success("PROCEDURE_SCHEDULE_REGISTERED", Map.of("procedureId", procedure.getId(), "procedureName", procedure.getName(), "cronExpression", procedure.getCronExpression()));
+        eventLogger.success("PROCEDURE_SCHEDULE_REGISTERED", Map.of(PROCEDURE_ID, procedure.getId(), "procedureName", procedure.getName(), "cronExpression", procedure.getCronExpression()));
     }
 
     private synchronized void remove(Long procedureId) {
@@ -89,7 +90,7 @@ public class ProcedureScheduleService implements AutoCloseable {
             return;
 
         existing.cancel(false);
-        eventLogger.success("PROCEDURE_SCHEDULE_REMOVED", Map.of("procedureId", procedureId));
+        eventLogger.success("PROCEDURE_SCHEDULE_REMOVED", Map.of(PROCEDURE_ID, procedureId));
     }
 
     private static void afterCommit(Runnable action) {

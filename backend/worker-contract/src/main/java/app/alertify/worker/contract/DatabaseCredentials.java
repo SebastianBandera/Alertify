@@ -1,6 +1,7 @@
 package app.alertify.worker.contract;
 
 import java.util.Objects;
+import java.util.Set;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -24,18 +25,29 @@ public record DatabaseCredentials(
 
     public static final int MIN_PORT = 1;
     public static final int MAX_PORT = 65_535;
+    private static final String JSON_FIELD_DATABASE = "database";
+    private static final String JSON_FIELD_ENGINE = "engine";
+    private static final String JSON_FIELD_HOST = "host";
+    private static final String JSON_FIELD_OPTIONS = "options";
+    private static final String JSON_FIELD_PASSWORD = "password";
+    private static final String JSON_FIELD_PORT = "port";
+    private static final String JSON_FIELD_USERNAME = "username";
+    private static final Set<String> JSON_FIELDS = Set.of(
+            JSON_FIELD_ENGINE, JSON_FIELD_HOST, JSON_FIELD_PORT, JSON_FIELD_DATABASE,
+            JSON_FIELD_USERNAME, JSON_FIELD_PASSWORD, JSON_FIELD_OPTIONS
+    );
     private static final String JDBC_URL_PREFIX = "jdbc:";
 
     private static final JsonMapper JSON_MAPPER = JsonMapper.builder().build();
 
     public DatabaseCredentials {
         Objects.requireNonNull(engine, "engine must not be null");
-        host = requireText(host, "host");
+        host = requireText(host, JSON_FIELD_HOST);
         if (port < MIN_PORT || port > MAX_PORT)
             throw new IllegalArgumentException("port must be between " + MIN_PORT + " and " + MAX_PORT);
 
-        database = requireText(database, "database");
-        username = requireText(username, "username");
+        database = requireText(database, JSON_FIELD_DATABASE);
+        username = requireText(username, JSON_FIELD_USERNAME);
         if (password == null || password.isEmpty())
             throw new IllegalArgumentException("password must not be empty");
 
@@ -67,20 +79,18 @@ public record DatabaseCredentials(
             throw new IllegalArgumentException("Database credentials must be a JSON object");
 
         for (String key : node.propertyNames()) {
-            switch (key) {
-                case "engine", "host", "port", "database", "username", "password", "options" -> { }
-                default -> throw new IllegalArgumentException("Unknown database credentials field '" + key + "'");
-            }
+            if (!JSON_FIELDS.contains(key))
+                throw new IllegalArgumentException("Unknown database credentials field '" + key + "'");
         }
 
         return new DatabaseCredentials(
-                engine(node.get("engine")),
-                text(node.get("host"), "host"),
-                port(node.get("port")),
-                text(node.get("database"), "database"),
-                text(node.get("username"), "username"),
-                text(node.get("password"), "password"),
-                optionalText(node.get("options"))
+                engine(node.get(JSON_FIELD_ENGINE)),
+                text(node.get(JSON_FIELD_HOST), JSON_FIELD_HOST),
+                port(node.get(JSON_FIELD_PORT)),
+                text(node.get(JSON_FIELD_DATABASE), JSON_FIELD_DATABASE),
+                text(node.get(JSON_FIELD_USERNAME), JSON_FIELD_USERNAME),
+                text(node.get(JSON_FIELD_PASSWORD), JSON_FIELD_PASSWORD),
+                optionalText(node.get(JSON_FIELD_OPTIONS))
         );
     }
 
@@ -91,16 +101,16 @@ public record DatabaseCredentials(
 
     public ObjectNode toJsonNode() {
         ObjectNode node = JSON_MAPPER.createObjectNode();
-        node.put("engine", engine.name());
-        node.put("host", host);
-        node.put("port", port);
-        node.put("database", database);
-        node.put("username", username);
-        node.put("password", password);
+        node.put(JSON_FIELD_ENGINE, engine.name());
+        node.put(JSON_FIELD_HOST, host);
+        node.put(JSON_FIELD_PORT, port);
+        node.put(JSON_FIELD_DATABASE, database);
+        node.put(JSON_FIELD_USERNAME, username);
+        node.put(JSON_FIELD_PASSWORD, password);
         if (options == null)
-            node.putNull("options");
+            node.putNull(JSON_FIELD_OPTIONS);
         else
-            node.put("options", options);
+            node.put(JSON_FIELD_OPTIONS, options);
         return node;
     }
 

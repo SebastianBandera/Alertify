@@ -70,9 +70,13 @@ import app.alertify.worker.contract.DatabaseCredentials;
 @Service
 public class AlertManagementService {
 
+    private static final String ALERT = "Alert";
+    private static final String ALERT_ID = "alertId";
+    private static final String ALLOW_CONCURRENT_EXECUTIONS = "allowConcurrentExecutions";
+    private static final String PARAMETER_PREFIX = "Parameter '";
     private static final Set<String> SORT_FIELDS = Set.of(
             "id", "version", "name", "cronExpression", "enabled",
-            "allowConcurrentExecutions", "createdAt", "updatedAt"
+            ALLOW_CONCURRENT_EXECUTIONS, "createdAt", "updatedAt"
     );
     private final AlertRepository alertRepository;
     private final AlertTemplateDefinitionRepository templateRepository;
@@ -131,7 +135,7 @@ public class AlertManagementService {
     @Transactional(readOnly = true)
     public AlertStateResponse state(Long alertId) {
         if (!alertRepository.existsById(alertId))
-            throw notFound("Alert", alertId);
+            throw notFound(ALERT, alertId);
 
         String state = stateRepository.findById(alertId).map(value -> value.getState()).orElse("");
         return new AlertStateResponse(alertId, state);
@@ -150,14 +154,14 @@ public class AlertManagementService {
                 request.allowConcurrentExecutions(), tags
         ));
         List<AlertParameterValue> values = synchronizeParameters(alert, request.parameters(), List.of());
-        eventLogger.successAfterCommit("ALERT_CREATED", Map.of("alertId", alert.getId(), "name", alert.getName(), "templateId", template.getId(), "allowConcurrentExecutions", alert.isConcurrentExecutionAllowed()));
+        eventLogger.successAfterCommit("ALERT_CREATED", Map.of(ALERT_ID, alert.getId(), "name", alert.getName(), "templateId", template.getId(), ALLOW_CONCURRENT_EXECUTIONS, alert.isConcurrentExecutionAllowed()));
         scheduleService.rescheduleAfterCommit(alert.getId());
         return AlertMapper.toAlert(alert, values);
     }
 
     @Transactional
     public AlertResponse update(Long id, AlertUpdateRequest request) {
-        Alert alert = alertRepository.findById(id).orElseThrow(() -> notFound("Alert", id));
+        Alert alert = alertRepository.findById(id).orElseThrow(() -> notFound(ALERT, id));
         ensureVersion(alert, request.version());
         String name = normalizeRequired(request.name(), "name");
         ensureNameAvailable(name, id);
@@ -175,7 +179,7 @@ public class AlertManagementService {
         List<AlertParameterValue> existing = parameterValueRepository.findAllByAlertIdOrdered(id);
         List<AlertParameterValue> values = synchronizeParameters(alert, request.parameters(), existing);
         alertRepository.flush();
-        eventLogger.successAfterCommit("ALERT_UPDATED", Map.of("alertId", alert.getId(), "name", alert.getName(), "version", alert.getVersion(), "allowConcurrentExecutions", alert.isConcurrentExecutionAllowed()));
+        eventLogger.successAfterCommit("ALERT_UPDATED", Map.of(ALERT_ID, alert.getId(), "name", alert.getName(), "version", alert.getVersion(), ALLOW_CONCURRENT_EXECUTIONS, alert.isConcurrentExecutionAllowed()));
         scheduleService.rescheduleAfterCommit(alert.getId());
         return AlertMapper.toAlert(alert, values);
     }
@@ -186,7 +190,7 @@ public class AlertManagementService {
      */
     @Transactional(readOnly = true)
     public void runNow(Long id) {
-        Alert alert = alertRepository.findById(id).orElseThrow(() -> notFound("Alert", id));
+        Alert alert = alertRepository.findById(id).orElseThrow(() -> notFound(ALERT, id));
         boolean accepted = executionOrchestrator.trigger(
                 alert.getId(), alert.getName(), alert.isConcurrentExecutionAllowed(),
                 AlertExecutionTrigger.MANUAL, eventLogger.currentUsername()
@@ -202,7 +206,7 @@ public class AlertManagementService {
 
     @Transactional
     public void delete(Long id, long version) {
-        Alert alert = alertRepository.findById(id).orElseThrow(() -> notFound("Alert", id));
+        Alert alert = alertRepository.findById(id).orElseThrow(() -> notFound(ALERT, id));
         ensureVersion(alert, version);
         if (executionOrchestrator.isRunning(id))
             throw new ConflictException("Alert is currently running and cannot be deleted");
@@ -215,7 +219,7 @@ public class AlertManagementService {
         parameterValueRepository.deleteAll(values);
         parameterValueRepository.flush();
         alertRepository.delete(alert);
-        eventLogger.successAfterCommit("ALERT_DELETED", Map.of("alertId", id, "name", alert.getName(), "executionsDeleted", executionsDeleted));
+        eventLogger.successAfterCommit("ALERT_DELETED", Map.of(ALERT_ID, id, "name", alert.getName(), "executionsDeleted", executionsDeleted));
         scheduleService.removeAfterCommit(id);
     }
 
@@ -225,7 +229,7 @@ public class AlertManagementService {
      */
     @Transactional(readOnly = true)
     public AlertDeletionImpactResponse deletionImpact(Long id) {
-        Alert alert = alertRepository.findById(id).orElseThrow(() -> notFound("Alert", id));
+        Alert alert = alertRepository.findById(id).orElseThrow(() -> notFound(ALERT, id));
         return new AlertDeletionImpactResponse(
                 alert.getId(), alert.getName(), executionRepository.countByAlert_Id(id)
         );
@@ -242,7 +246,7 @@ public class AlertManagementService {
                 throw invalid("Unknown parameter '" + value.parameterKey() + "' for the selected template");
 
             if (requestsByKey.put(value.parameterKey(), value) != null)
-                throw invalid("Parameter '" + value.parameterKey() + "' was provided more than once");
+                throw invalid(PARAMETER_PREFIX + value.parameterKey() + "' was provided more than once");
         }
 
         Map<String, AlertParameterValue> existingByKey = existing.stream().collect(Collectors.toMap(
@@ -328,20 +332,20 @@ public class AlertManagementService {
 
     private void validateConfigurationBinding(AlertTemplateParameterDefinition definition, ApplicationConfiguration configuration) {
         if (!ParameterValueTypeCompatibility.isConfigurationValueTypeCompatible(definition.getJavaType(), configuration.getValueType()))
-            throw invalid("Parameter '" + definition.getParameterKey() + "' and its binding must both be binary or both be non-binary");
+                    throw invalid(PARAMETER_PREFIX + definition.getParameterKey() + "' and its binding must both be binary or both be non-binary");
 
         List<String> allowed = definition.getAllowedConfigurationValueTypes();
         if (!allowed.isEmpty() && !allowed.contains(configuration.getValueType().name()))
-            throw invalid("Parameter '" + definition.getParameterKey() + "' only accepts configurations of type " + allowed);
+            throw invalid(PARAMETER_PREFIX + definition.getParameterKey() + "' only accepts configurations of type " + allowed);
     }
 
     private void validateSecretBinding(AlertTemplateParameterDefinition definition, ApplicationSecret secret) {
         if (!ParameterValueTypeCompatibility.isSecretValueTypeCompatible(definition.getJavaType(), secret.getValueType()))
-            throw invalid("Parameter '" + definition.getParameterKey() + "' and its binding must match the parameter's required secret type");
+            throw invalid(PARAMETER_PREFIX + definition.getParameterKey() + "' and its binding must match the parameter's required secret type");
 
         List<String> allowed = definition.getAllowedSecretValueTypes();
         if (!allowed.isEmpty() && !allowed.contains(secret.getValueType().name()))
-            throw invalid("Parameter '" + definition.getParameterKey() + "' only accepts secrets of type " + allowed);
+            throw invalid(PARAMETER_PREFIX + definition.getParameterKey() + "' only accepts secrets of type " + allowed);
     }
 
     private app.alertify.procedures.model.Procedure procedure(Long id) {
@@ -367,12 +371,12 @@ public class AlertManagementService {
             throw invalid("Text value is required for parameter '" + definition.getParameterKey() + "'");
 
         if (!definition.isBindingAllowed() && !definition.getOptions().contains(value))
-            throw invalid("Parameter '" + definition.getParameterKey() + "' must use one of its declared options");
+            throw invalid(PARAMETER_PREFIX + definition.getParameterKey() + "' must use one of its declared options");
 
         try {
             validateJavaType(definition.getJavaType(), value);
         } catch (RuntimeException exception) {
-            throw invalid("Parameter '" + definition.getParameterKey() + "' is not a valid " + definition.getJavaType(), exception);
+            throw invalid(PARAMETER_PREFIX + definition.getParameterKey() + "' is not a valid " + definition.getJavaType(), exception);
         }
         return value;
     }
