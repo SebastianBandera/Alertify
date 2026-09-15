@@ -42,7 +42,7 @@ public final class SecretExportImportCli {
             else
                 runExport(service);
         } catch (RuntimeException exception) {
-            System.err.println("ERROR: " + exception.getMessage());
+            printErrorLine("ERROR: " + exception.getMessage());
             System.exit(1);
         } finally {
             if (password != null)
@@ -52,40 +52,48 @@ public final class SecretExportImportCli {
 
     private static void runExport(SecretExportImportService service) {
         SecretExportImportService.ExportResult result = service.export(EXPORT_DIRECTORY);
-        System.out.println();
-        System.out.println("Exported " + result.secretCount() + " secret(s) and " + result.systemConfigurationCount()
+        printLine("");
+        printLine("Exported " + result.secretCount() + " secret(s) and " + result.systemConfigurationCount()
                 + " system configuration(s) to: " + result.file());
-        System.out.println();
-        System.out.println("MASTER PASSWORD (shown only once, write it down now):");
-        System.out.println("  " + result.password());
-        System.out.println();
-        System.out.println("This path is not a Docker volume: copy the file out now, e.g.");
-        System.out.println("  docker cp <container>:" + result.file() + " ./");
-        System.out.println("before the container is rebuilt or recreated, or it will be lost.");
+        printLine("");
+        printLine("MASTER PASSWORD (shown only once, write it down now):");
+        printLine("  " + result.password());
+        printLine("");
+        printLine("This path is not a Docker volume: copy the file out now, e.g.");
+        printLine("  docker cp <container>:" + result.file() + " ./");
+        printLine("before the container is rebuilt or recreated, or it will be lost.");
     }
 
     private static void runImport(SecretExportImportService service, Path file, char[] password) {
         SecretExportImportService.ImportResult result = service.importFrom(file, password);
-        System.out.println();
-        System.out.println("Secrets: created " + result.secrets().created().size() + " " + result.secrets().created()
+        printLine("");
+        printLine("Secrets: created " + result.secrets().created().size() + " " + result.secrets().created()
                 + ", skipped " + result.secrets().skipped().size() + " that already existed " + result.secrets().skipped());
-        System.out.println("System configurations: created " + result.systemConfigurations().created().size() + " "
+        printLine("System configurations: created " + result.systemConfigurations().created().size() + " "
                 + result.systemConfigurations().created() + ", skipped " + result.systemConfigurations().skipped().size()
                 + " that already existed " + result.systemConfigurations().skipped());
+    }
+
+    private static void printLine(String text) {
+        System.out.println(text);
+    }
+
+    private static void printErrorLine(String text) {
+        System.err.println(text);
     }
 
     private static char[] readPasswordOrExit() {
         Console console = System.console();
         if (console == null) {
-            System.err.println("ERROR: no console available; run with 'docker exec -it' so the password can be entered interactively.");
+            printErrorLine("ERROR: no console available; run with 'docker exec -it' so the password can be entered interactively.");
             System.exit(1);
         }
         return console.readPassword("Archive password: ");
     }
 
     private static void usageError() {
-        System.err.println("Usage: secrets-tool.sh export");
-        System.err.println("       secrets-tool.sh import <path-to-zip>");
+        printErrorLine("Usage: secrets-tool.sh export");
+        printErrorLine("       secrets-tool.sh import <path-to-zip>");
         System.exit(1);
     }
 }
