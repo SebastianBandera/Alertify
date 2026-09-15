@@ -11,14 +11,14 @@ import java.util.UUID;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 
-import org.springframework.stereotype.Component;
+import org.springframework.stereotype.Service;
 
 import app.alertify.procedures.ProcedureDepthExceededException;
 import app.alertify.procedures.ProcedureExecutionException;
 import app.alertify.worker.grpc.ProcedureParentKind;
 
 /** Issues short-lived, parent-bound opaque capabilities for procedure handles. */
-@Component
+@Service 
 public class ProcedureInvocationTokenService {
     private static final Base64.Encoder ENCODER = Base64.getUrlEncoder().withoutPadding();
     private static final Base64.Decoder DECODER = Base64.getUrlDecoder();
