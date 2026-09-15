@@ -64,7 +64,7 @@ public class AlertExecutionPreparationService {
 
     @Transactional(readOnly = true)
     public Optional<PreparedAlertExecution> prepare(Long alertId) {
-        return prepare(alertId, false);
+        return prepareInternal(alertId, false);
     }
 
     /**
@@ -72,6 +72,10 @@ public class AlertExecutionPreparationService {
      */
     @Transactional(readOnly = true)
     public Optional<PreparedAlertExecution> prepare(Long alertId, boolean includeDisabled) {
+        return prepareInternal(alertId, includeDisabled);
+    }
+
+    private Optional<PreparedAlertExecution> prepareInternal(Long alertId, boolean includeDisabled) {
         Alert alert = alertRepository.findById(alertId).orElse(null);
         if (alert == null || (!alert.isEnabled() && !includeDisabled))
             return Optional.empty();
