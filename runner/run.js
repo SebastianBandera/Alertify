@@ -3,6 +3,7 @@
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
+const readline = require('node:readline');
 const { spawnSync } = require('node:child_process');
 
 const SECRET_PATTERN = /<GENERATE_([A-Z][A-Z0-9_]*)>/g;
@@ -954,6 +955,14 @@ function imageReferencePattern(pattern) {
   return new RegExp(`^${expression}$`);
 }
 
+function splitImagePatterns(rawPatterns) {
+  const imagePatterns = rawPatterns.split(';').map((pattern) => pattern.trim());
+  if (imagePatterns.some((pattern) => pattern.length === 0)) {
+    throw new Error('--cleanup-docker image patterns must not be empty.');
+  }
+  return [...new Set(imagePatterns)];
+}
+
 function parseCleanupDockerOption(argv) {
   const options = argv.filter((argument) => argument === '--cleanup-docker' || argument.startsWith('--cleanup-docker='));
   if (options.length > 1) {
@@ -969,11 +978,7 @@ function parseCleanupDockerOption(argv) {
   }
 
   const rawPatterns = option.substring('--cleanup-docker='.length);
-  const imagePatterns = rawPatterns.split(';').map((pattern) => pattern.trim());
-  if (imagePatterns.some((pattern) => pattern.length === 0)) {
-    throw new Error('--cleanup-docker image patterns must not be empty.');
-  }
-  return { enabled: true, imagePatterns: [...new Set(imagePatterns)] };
+  return { enabled: true, imagePatterns: splitImagePatterns(rawPatterns) };
 }
 
 function preservationImages(projectDirectory, imagePatterns) {
@@ -1080,7 +1085,9 @@ function cleanupDockerResources(projectDirectory, imagePatterns = []) {
 
 function printHelp() {
   console.log(`Usage: run.bat [options]\n       ./run.sh [options]\n\n` +
-    '  No options          Reconcile .env and start local components.\n' +
+    '  No options          Show an interactive checklist to choose the options below.\n' +
+    '  --non-interactive  Skip the interactive checklist; required in automation when every\n' +
+    '                     other option is also omitted.\n' +
     '  --configure-only   Reconcile .env and show the plan without starting services.\n' +
     '  --skip-keycloak    Do not rebuild or restart Keycloak or its local database.\n' +
     '  --skip-redis       Do not rebuild or restart the local Redis service.\n' +
@@ -1092,17 +1099,164 @@ function printHelp() {
     '  --skip-worker-playwright  Do not rebuild or restart Playwright workers.\n' +
     '  --cleanup-docker[=PATTERNS]  Remove unused Docker images and build cache. Optional semicolon-separated image reference globs are preserved.\n' +
     '                              Example: "--cleanup-docker=maven:*;mcr.microsoft.com/playwright:*;monitoring-*"\n' +
-    '  --help             Show this help.');
+    '  --help             Show this help.\n\n' +
+    '  Passing any option above without --non-interactive runs non-interactively, exactly as\n' +
+    '  if --non-interactive had also been passed.\n\n' +
+    '  --replace-stale-runner  Handled by run.bat/run.sh before this program starts: automatically\n' +
+    '                          removes a leftover runner container from a previous run without\n' +
+    '                          prompting. Accepted here only so it can be forwarded unchanged.');
 }
 
-function main(argv = process.argv.slice(2), projectDirectory = path.resolve(__dirname, '..')) {
+const SKIP_ALL_KEY = 'skipAll';
+const SKIP_ITEM_KEYS = [
+  'skipKeycloak',
+  'skipRedis',
+  'skipDatabase',
+  'skipBackend',
+  'skipFrontend',
+  'skipPublisher',
+  'skipWorkerStandard',
+  'skipWorkerPlaywright',
+];
+
+const INTERACTIVE_MENU_ITEMS = [
+  { key: SKIP_ALL_KEY, label: 'Skip all: mark every "Skip *" option below at once' },
+  { key: 'skipKeycloak', label: 'Skip Keycloak: do not rebuild or restart Keycloak or its local database' },
+  { key: 'skipRedis', label: 'Skip Redis: do not rebuild or restart the local Redis service' },
+  { key: 'skipDatabase', label: 'Skip database: do not rebuild or restart the local application database' },
+  { key: 'skipBackend', label: 'Skip backend: do not rebuild or restart the local backend' },
+  { key: 'skipFrontend', label: 'Skip frontend: do not rebuild or restart the local frontend' },
+  { key: 'skipPublisher', label: 'Skip publisher: do not rebuild or restart the local HTTP publisher' },
+  { key: 'skipWorkerStandard', label: 'Skip standard workers: do not rebuild or restart standard workers' },
+  { key: 'skipWorkerPlaywright', label: 'Skip Playwright workers: do not rebuild or restart Playwright workers' },
+  { key: 'configureOnly', label: 'Configure only: reconcile .env and show the plan without starting services' },
+];
+
+function renderInteractiveMenu(items, cursor) {
+  return items.map((item, index) => {
+    const pointer = index === cursor ? '>' : ' ';
+    if (item.key === SKIP_ALL_KEY) {
+      return `${pointer} (*) ${item.label}`;
+    }
+    const checkbox = item.checked ? '[x]' : '[ ]';
+    return `${pointer} ${checkbox} ${item.label}`;
+  });
+}
+
+function terminalColumns() {
+  return process.stdout.columns > 0 ? process.stdout.columns : 80;
+}
+
+function visualRowCount(lines, columns) {
+  return lines.reduce((total, line) => total + Math.max(1, Math.ceil(line.length / columns)), 0);
+}
+
+function promptInteractiveSelections(environment) {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    throw new Error(
+      'Interactive mode requires a TTY. Re-run from an interactive terminal, or pass ' +
+        '--non-interactive together with explicit options for automation.',
+    );
+  }
+
+  const cleanupPatterns = required(environment, 'CLEANUP_DOCKER_DEFAULT_PATTERNS');
+  const items = INTERACTIVE_MENU_ITEMS.map((item) => ({ ...item, checked: false }));
+  items.push({
+    key: 'cleanupDocker',
+    label: `Clean up unused Docker images/cache after startup (preserving: ${cleanupPatterns})`,
+    checked: false,
+  });
+
+  console.log(
+    '\nNo options were provided; select which ones to enable below ' +
+      '(↑/↓ move, Space toggle, Enter confirm):\n',
+  );
+
+  return new Promise((resolve) => {
+    let cursor = 0;
+    let rendered = 0;
+
+    const redraw = () => {
+      if (rendered > 0) {
+        readline.moveCursor(process.stdout, 0, -rendered);
+        readline.cursorTo(process.stdout, 0);
+        readline.clearScreenDown(process.stdout);
+      }
+      const lines = renderInteractiveMenu(items, cursor);
+      process.stdout.write(`${lines.join('\n')}\n`);
+      rendered = visualRowCount(lines, terminalColumns());
+    };
+
+    const onStdinClosed = () => {
+      process.exitCode = 130;
+      process.exit();
+    };
+
+    const finish = () => {
+      process.stdin.removeListener('keypress', onKeypress);
+      process.stdin.removeListener('close', onStdinClosed);
+      process.stdin.removeListener('end', onStdinClosed);
+      if (process.stdin.isTTY) {
+        process.stdin.setRawMode(false);
+      }
+      process.stdin.pause();
+      console.log('');
+      const selections = Object.fromEntries(items.map((item) => [item.key, item.checked]));
+      resolve(selections);
+    };
+
+    const onKeypress = (_string, key) => {
+      if (!key) {
+        return;
+      }
+      if (key.ctrl && key.name === 'c') {
+        console.log('\nCancelled.');
+        process.exit(130);
+        return;
+      }
+      if (key.name === 'up') {
+        cursor = (cursor - 1 + items.length) % items.length;
+        redraw();
+      } else if (key.name === 'down') {
+        cursor = (cursor + 1) % items.length;
+        redraw();
+      } else if (key.name === 'space') {
+        const selected = items[cursor];
+        if (selected.key === SKIP_ALL_KEY) {
+          const skipItems = items.filter((item) => SKIP_ITEM_KEYS.includes(item.key));
+          const allSkipsChecked = skipItems.every((item) => item.checked);
+          for (const item of skipItems) {
+            item.checked = !allSkipsChecked;
+          }
+        } else {
+          selected.checked = !selected.checked;
+        }
+        redraw();
+      } else if (key.name === 'return') {
+        finish();
+      }
+    };
+
+    readline.emitKeypressEvents(process.stdin);
+    process.stdin.setRawMode(true);
+    process.stdin.resume();
+    process.stdin.on('keypress', onKeypress);
+    process.stdin.once('close', onStdinClosed);
+    process.stdin.once('end', onStdinClosed);
+    redraw();
+  });
+}
+
+async function main(argv = process.argv.slice(2), projectDirectory = path.resolve(__dirname, '..')) {
   const nodeMajorVersion = Number.parseInt(process.versions.node.split('.')[0], 10);
   if (nodeMajorVersion < 18) {
     throw new Error(`Node.js 18 or later is required; detected version: ${process.versions.node}.`);
   }
 
-  const cleanupDocker = parseCleanupDockerOption(argv);
+  const cleanupDockerFromArgv = parseCleanupDockerOption(argv);
   const allowed = new Set([
+    '--non-interactive',
+    '--replace-stale-runner',
     '--configure-only',
     '--skip-keycloak',
     '--skip-redis',
@@ -1123,9 +1277,11 @@ function main(argv = process.argv.slice(2), projectDirectory = path.resolve(__di
     printHelp();
     return;
   }
-  if (argv.includes('--configure-only') && cleanupDocker.enabled) {
-    throw new Error('--cleanup-docker cannot be combined with --configure-only.');
-  }
+
+  const recognizedSelectionFlags = argv.filter(
+    (argument) => argument !== '--non-interactive' && argument !== '--replace-stale-runner' && argument !== '--help',
+  );
+  const interactiveModeRequested = !argv.includes('--non-interactive') && recognizedSelectionFlags.length === 0;
 
   const templatePath = path.join(projectDirectory, '.env.template');
   const envPath = path.join(projectDirectory, '.env');
@@ -1159,21 +1315,54 @@ function main(argv = process.argv.slice(2), projectDirectory = path.resolve(__di
   }
 
   const effectiveEnvironment = applyApplicationContext(result.environment);
-  const plan = buildPlan(effectiveEnvironment, {
-    skipKeycloak: argv.includes('--skip-keycloak'),
-    skipRedis: argv.includes('--skip-redis'),
-    skipDatabase: argv.includes('--skip-database'),
-    skipBackend: argv.includes('--skip-backend'),
-    skipFrontend: argv.includes('--skip-frontend'),
-    skipPublisher: argv.includes('--skip-publisher'),
-    skipWorkerStandard: argv.includes('--skip-worker-standard'),
-    skipWorkerPlaywright: argv.includes('--skip-worker-playwright'),
-  });
+
+  let skipOptions;
+  let configureOnlySelected;
+  let cleanupDocker;
+  if (interactiveModeRequested) {
+    const selections = await promptInteractiveSelections(effectiveEnvironment);
+    skipOptions = {
+      skipKeycloak: selections.skipKeycloak,
+      skipRedis: selections.skipRedis,
+      skipDatabase: selections.skipDatabase,
+      skipBackend: selections.skipBackend,
+      skipFrontend: selections.skipFrontend,
+      skipPublisher: selections.skipPublisher,
+      skipWorkerStandard: selections.skipWorkerStandard,
+      skipWorkerPlaywright: selections.skipWorkerPlaywright,
+    };
+    configureOnlySelected = selections.configureOnly;
+    cleanupDocker = selections.cleanupDocker
+      ? {
+          enabled: true,
+          imagePatterns: splitImagePatterns(required(effectiveEnvironment, 'CLEANUP_DOCKER_DEFAULT_PATTERNS')),
+        }
+      : { enabled: false, imagePatterns: [] };
+  } else {
+    skipOptions = {
+      skipKeycloak: argv.includes('--skip-keycloak'),
+      skipRedis: argv.includes('--skip-redis'),
+      skipDatabase: argv.includes('--skip-database'),
+      skipBackend: argv.includes('--skip-backend'),
+      skipFrontend: argv.includes('--skip-frontend'),
+      skipPublisher: argv.includes('--skip-publisher'),
+      skipWorkerStandard: argv.includes('--skip-worker-standard'),
+      skipWorkerPlaywright: argv.includes('--skip-worker-playwright'),
+    };
+    configureOnlySelected = argv.includes('--configure-only');
+    cleanupDocker = cleanupDockerFromArgv;
+  }
+
+  if (configureOnlySelected && cleanupDocker.enabled) {
+    throw new Error('--cleanup-docker cannot be combined with --configure-only.');
+  }
+
+  const plan = buildPlan(effectiveEnvironment, skipOptions);
   const privateKeyPartClassResult = ensurePrivateKeyPartClass(effectiveEnvironment, projectDirectory);
   printPrivateKeyPartClassResult(privateKeyPartClassResult, projectDirectory);
   printPlan(plan, effectiveEnvironment);
 
-  if (argv.includes('--configure-only')) {
+  if (configureOnlySelected) {
     console.log('\nConfiguration completed; no application containers were started.');
     return;
   }
@@ -1187,12 +1376,10 @@ function main(argv = process.argv.slice(2), projectDirectory = path.resolve(__di
 }
 
 if (require.main === module) {
-  try {
-    main();
-  } catch (error) {
+  main().catch((error) => {
     console.error(`ERROR: ${error.message}`);
     process.exitCode = 1;
-  }
+  });
 }
 
 module.exports = {

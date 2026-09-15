@@ -82,6 +82,45 @@ if defined PUBLISHER_OWNS_PORT (
     echo PUBLIC_PORT !PUBLIC_PORT! is available.
 )
 
+set "HOST_IS_INTERACTIVE="
+powershell -NoProfile -Command "if ([Console]::IsInputRedirected -or [Console]::IsOutputRedirected) { exit 1 } else { exit 0 }"
+if not errorlevel 1 set "HOST_IS_INTERACTIVE=1"
+
+set "NON_INTERACTIVE_REQUESTED="
+echo(%*| findstr /C:"--non-interactive" >nul
+if not errorlevel 1 set "NON_INTERACTIVE_REQUESTED=1"
+
+set "REPLACE_STALE_RUNNER="
+echo(%*| findstr /C:"--replace-stale-runner" >nul
+if not errorlevel 1 set "REPLACE_STALE_RUNNER=1"
+
+set "DOCKER_TTY_FLAGS="
+if defined HOST_IS_INTERACTIVE if not defined NON_INTERACTIVE_REQUESTED set "DOCKER_TTY_FLAGS=-it"
+
+set "STALE_RUNNER_FOUND="
+for /f "delims=" %%N in ('docker ps -a --filter "name=^/monitoring-bootstrap-runner$" --format "{{.Names}}" 2^>nul') do set "STALE_RUNNER_FOUND=1"
+
+if defined STALE_RUNNER_FOUND (
+    if defined REPLACE_STALE_RUNNER (
+        echo A previous monitoring-bootstrap-runner container was found; removing it because --replace-stale-runner was passed.
+        docker rm -f monitoring-bootstrap-runner >nul 2>nul
+    ) else if defined HOST_IS_INTERACTIVE (
+        echo.
+        echo WARNING: a monitoring-bootstrap-runner container from a previous run already exists.
+        echo This usually happens when a previous window was closed while the interactive menu was waiting for input.
+        choice /C SN /N /M "Remove it and continue (S), or abort (N)? "
+        if errorlevel 2 (
+            echo Aborted; the existing container was left untouched. 1>&2
+            exit /b 1
+        )
+        docker rm -f monitoring-bootstrap-runner >nul 2>nul
+    ) else (
+        echo ERROR: a monitoring-bootstrap-runner container from a previous run already exists, and this session cannot prompt for confirmation. 1>&2
+        echo Remove it manually with "docker rm -f monitoring-bootstrap-runner", or re-run with --replace-stale-runner to remove it automatically. 1>&2
+        exit /b 1
+    )
+)
+
 echo Preparing the Node.js runner image...
 docker build ^
     --file "%PROJECT_DIRECTORY%\runner\Dockerfile" ^
@@ -89,7 +128,7 @@ docker build ^
     "%PROJECT_DIRECTORY%\runner"
 if errorlevel 1 exit /b %ERRORLEVEL%
 
-docker run --rm ^
+docker run --rm %DOCKER_TTY_FLAGS% ^
     --name monitoring-bootstrap-runner ^
     --env DOCKER_HOST=unix:///var/run/docker.sock ^
     --env HOME=/tmp ^
@@ -98,4 +137,10 @@ docker run --rm ^
     --workdir /workspace ^
     "%RUNNER_IMAGE%" %*
 
-exit /b %ERRORLEVEL%
+set "RUN_EXIT_CODE=%ERRORLEVEL%"
+if not "%RUN_EXIT_CODE%"=="0" if defined HOST_IS_INTERACTIVE (
+    echo.
+    echo ERROR: run.bat finished with exit code %RUN_EXIT_CODE%. 1>&2
+    pause
+)
+exit /b %RUN_EXIT_CODE%

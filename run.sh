@@ -135,13 +135,23 @@ else
   socket_gid=$(stat -f '%g' "$socket_source")
 fi
 
+docker_tty_flags=""
+case " $* " in
+  *' --non-interactive '*) ;;
+  *)
+    if [ -t 0 ] && [ -t 1 ]; then
+      docker_tty_flags="-it"
+    fi
+    ;;
+esac
+
 echo "Preparing the Node.js runner image..."
 docker build \
   --file "$script_directory/runner/Dockerfile" \
   --tag "$runner_image" \
   "$script_directory/runner"
 
-exec docker run --rm \
+exec docker run --rm $docker_tty_flags \
   --env DOCKER_HOST=unix:///var/run/docker.sock \
   --env HOME=/tmp \
   --user "$host_uid:$host_gid" \
