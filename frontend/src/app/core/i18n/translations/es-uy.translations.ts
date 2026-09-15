@@ -213,6 +213,8 @@ export const ES_UY_TRANSLATIONS = {
   'alerts.template.webRequest.headersOverrideJsonDescription': 'Arreglo JSON opcional con el mismo formato; sus headers reemplazan a los headers base con el mismo nombre. Vinculálo a un secreto para credenciales como Authorization.',
   'alerts.template.webRequest.responseBodyRegexes': 'Regex del body de respuesta',
   'alerts.template.webRequest.responseBodyRegexesDescription': 'Una expresión regular por línea; todas deben coincidir. Usa [\\s\\S] o (?s) si una regex debe atravesar líneas.',
+  'alerts.template.webRequest.jsonAssertions': 'Aserciones JSON',
+  'alerts.template.webRequest.jsonAssertionsDescription': 'Una condición por línea sobre el body JSON de la respuesta, con el formato "puntero operador [valor]"; todas deben cumplirse. El puntero usa sintaxis JSON Pointer (por ejemplo /status o /items/0/id). Operadores: exists, equals, notEquals, gt, gte, lt, lte, contains, sizeEquals, sizeNotEquals, sizeGt, sizeGte, sizeLt, sizeLte (los últimos seis comparan la cantidad de elementos de un array o de campos de un objeto). Ejemplos: /status equals ok · /items sizeLt 100.',
   'alerts.template.webRequest.timeout': 'Tiempo de espera',
   'alerts.template.webRequest.timeoutDescription': 'Tiempo máximo de conexión y respuesta en segundos.',
   'alerts.template.httpsCertificate.name': 'Vencimiento de certificado HTTPS',

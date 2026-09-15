@@ -213,6 +213,8 @@ export const EN_TRANSLATIONS = {
   'alerts.template.webRequest.headersOverrideJsonDescription': 'Optional JSON array with the same format; its headers replace the base headers with the same name. Bind it to a secret for credentials such as Authorization.',
   'alerts.template.webRequest.responseBodyRegexes': 'Response body regexes',
   'alerts.template.webRequest.responseBodyRegexesDescription': 'One regular expression per line; all must match. Use [\\s\\S] or (?s) when a regex must cross lines.',
+  'alerts.template.webRequest.jsonAssertions': 'JSON assertions',
+  'alerts.template.webRequest.jsonAssertionsDescription': 'One condition per line against the JSON response body, formatted as "pointer operator [value]"; all must pass. The pointer uses JSON Pointer syntax (for example /status or /items/0/id). Operators: exists, equals, notEquals, gt, gte, lt, lte, contains, sizeEquals, sizeNotEquals, sizeGt, sizeGte, sizeLt, sizeLte (the last six compare the number of elements of an array or fields of an object). Examples: /status equals ok · /items sizeLt 100.',
   'alerts.template.webRequest.timeout': 'Timeout',
   'alerts.template.webRequest.timeoutDescription': 'Maximum connection and response wait in seconds.',
   'alerts.template.httpsCertificate.name': 'HTTPS certificate expiry',

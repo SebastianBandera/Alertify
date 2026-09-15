@@ -40,7 +40,7 @@ class WebRequestAlertTemplateTest {
     }
 
     @Test
-    void declaresMultilineFieldsForTheBodyHeadersAndRegexes() throws ReflectiveOperationException {
+    void declaresMultilineFieldsForTheBodyHeadersRegexesAndJsonAssertions() throws ReflectiveOperationException {
         AlertTemplate template = WebRequestAlertTemplate.class.getAnnotation(AlertTemplate.class);
 
         assertEquals("alerts.template.webRequest.name", template.nameKey());
@@ -48,6 +48,8 @@ class WebRequestAlertTemplateTest {
         assertTrue(parameter("headersJson").multiline());
         assertTrue(parameter("headersOverrideJson").multiline());
         assertTrue(parameter("responseBodyRegexes").multiline());
+        assertTrue(parameter("jsonAssertions").multiline());
+        assertFalse(parameter("jsonAssertions").required());
         assertEquals("GET", parameter("method").defaultValue());
         assertEquals("200", parameter("expectedStatusCodes").defaultValue());
         assertFalse(parameter("headersJson").required());
@@ -58,7 +60,8 @@ class WebRequestAlertTemplateTest {
         assertEquals(5, parameter("headersJson").order());
         assertEquals(6, parameter("headersOverrideJson").order());
         assertEquals(7, parameter("responseBodyRegexes").order());
-        assertEquals(8, parameter("timeoutSeconds").order());
+        assertEquals(8, parameter("jsonAssertions").order());
+        assertEquals(9, parameter("timeoutSeconds").order());
     }
 
     @Test
@@ -77,7 +80,7 @@ class WebRequestAlertTemplateTest {
                 "http://127.0.0.1:" + server.getAddress().getPort() + "/", "GET", "200", null,
                 "[\"Accept: application/json\", \"authorization: Basic invalid\", \"X-Multi: a\", \"X-Multi: b\"]",
                 "[\"Authorization: Basic dXNlcjpwYXNz\"]",
-                null, 3
+                null, null, 3
             ).evaluate(new AlertExecutionContext());
 
             assertEquals(AlertExecutionStatus.SUCCESS, result.status());
@@ -97,10 +100,10 @@ class WebRequestAlertTemplateTest {
         HttpServer server = server(exchange -> respond(exchange, 200, "ok"));
         try {
             AlertResult blank = new WebRequestAlertTemplate(
-                "http://127.0.0.1:" + server.getAddress().getPort() + "/", "GET", "200", null, "", null, null, 3
+                "http://127.0.0.1:" + server.getAddress().getPort() + "/", "GET", "200", null, "", null, null, null, 3
             ).evaluate(new AlertExecutionContext());
             AlertResult nulls = new WebRequestAlertTemplate(
-                "http://127.0.0.1:" + server.getAddress().getPort() + "/", "GET", "200", null, null, "  ", null, 3
+                "http://127.0.0.1:" + server.getAddress().getPort() + "/", "GET", "200", null, null, "  ", null, null, 3
             ).evaluate(new AlertExecutionContext());
 
             assertEquals(AlertExecutionStatus.SUCCESS, blank.status());
@@ -153,7 +156,7 @@ class WebRequestAlertTemplateTest {
             assertEquals("unexpectedStatusCode", statusResult.statusMessage().get("failureReason"));
             assertEquals(AlertExecutionStatus.WARN, regexResult.status());
             assertEquals("responseBodyRegexMismatch", regexResult.statusMessage().get("failureReason"));
-            assertEquals(0, regexResult.statusMessage().get("unmatchedRegexIndex"));
+            assertEquals("\"status\"\\s*:\\s*\"UP\"", regexResult.statusMessage().get("unmatchedRegex"));
         } finally {
             server.stop(0);
         }
@@ -200,16 +203,132 @@ class WebRequestAlertTemplateTest {
     }
 
     @Test
+    void evaluatesJsonAssertionsSuccessfully() throws Exception {
+        HttpServer server = server(exchange -> respond(
+            exchange, 200,
+            "{\"status\":\"UP\",\"count\":42,\"tags\":[\"admin\",\"beta\"],\"items\":[1,2,3],\"nested\":{\"id\":7}}"
+        ));
+        try {
+            AlertResult result = template(
+                server, "GET", "200", null, "[]", null,
+                String.join(
+                    "\n",
+                    "/status exists",
+                    "/status equals UP",
+                    "/count gt 10",
+                    "/count lte 42",
+                    "/nested/id notEquals 0",
+                    "/tags contains admin",
+                    "/items sizeLt 5",
+                    "/items sizeGte 3"
+                ),
+                3
+            ).evaluate(new AlertExecutionContext());
+
+            assertEquals(AlertExecutionStatus.SUCCESS, result.status());
+            assertEquals(8, result.statusMessage().get("jsonAssertionCount"));
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void reportsMissingJsonFieldAsWarning() throws Exception {
+        HttpServer server = server(exchange -> respond(exchange, 200, "{\"status\":\"UP\"}"));
+        try {
+            AlertResult result = template(server, "GET", "200", null, "[]", null, "/missing exists", 3)
+                .evaluate(new AlertExecutionContext());
+
+            assertEquals(AlertExecutionStatus.WARN, result.status());
+            assertEquals("jsonAssertionMismatch", result.statusMessage().get("failureReason"));
+            assertEquals(0, result.statusMessage().get("unmatchedJsonAssertionIndex"));
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void reportsNonNumericFieldForNumericOperatorAsWarning() throws Exception {
+        HttpServer server = server(exchange -> respond(exchange, 200, "{\"name\":\"abc\"}"));
+        try {
+            AlertResult result = template(server, "GET", "200", null, "[]", null, "/name gt 1", 3)
+                .evaluate(new AlertExecutionContext());
+
+            assertEquals(AlertExecutionStatus.WARN, result.status());
+            assertEquals("jsonAssertionMismatch", result.statusMessage().get("failureReason"));
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void reportsSizeAssertionMismatchesForScalarsArraysAndObjects() throws Exception {
+        HttpServer server = server(exchange -> respond(
+            exchange, 200, "{\"name\":\"abc\",\"items\":[1,2,3],\"obj\":{\"a\":1,\"b\":2}}"
+        ));
+        try {
+            AlertResult onScalar = template(server, "GET", "200", null, "[]", null, "/name sizeGt 0", 3)
+                .evaluate(new AlertExecutionContext());
+            AlertResult tooSmall = template(server, "GET", "200", null, "[]", null, "/items sizeLt 2", 3)
+                .evaluate(new AlertExecutionContext());
+            AlertResult objectSize = template(server, "GET", "200", null, "[]", null, "/obj sizeEquals 2", 3)
+                .evaluate(new AlertExecutionContext());
+
+            assertEquals(AlertExecutionStatus.WARN, onScalar.status());
+            assertEquals("jsonAssertionMismatch", onScalar.statusMessage().get("failureReason"));
+            assertEquals(AlertExecutionStatus.WARN, tooSmall.status());
+            assertEquals("jsonAssertionMismatch", tooSmall.statusMessage().get("failureReason"));
+            assertEquals(AlertExecutionStatus.SUCCESS, objectSize.status());
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void reportsInvalidJsonResponseAsWarning() throws Exception {
+        HttpServer server = server(exchange -> respond(exchange, 200, "not-json"));
+        try {
+            AlertResult result = template(server, "GET", "200", null, "[]", null, "/status exists", 3)
+                .evaluate(new AlertExecutionContext());
+
+            assertEquals(AlertExecutionStatus.WARN, result.status());
+            assertEquals("invalidJsonResponse", result.statusMessage().get("failureReason"));
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
     void rejectsInvalidConfigurationBeforeSendingTheRequest() {
         WebRequestAlertTemplate invalidHeaders = new WebRequestAlertTemplate(
-            "https://example.test", "GET", "200", null, "[1]", null, null, 3
+            "https://example.test", "GET", "200", null, "[1]", null, null, null, 3
         );
         WebRequestAlertTemplate invalidRegex = new WebRequestAlertTemplate(
-            "https://example.test", "GET", "200", null, "[]", null, "[", 3
+            "https://example.test", "GET", "200", null, "[]", null, "[", null, 3
+        );
+        WebRequestAlertTemplate invalidPointer = new WebRequestAlertTemplate(
+            "https://example.test", "GET", "200", null, "[]", null, null, "bad-pointer exists", 3
+        );
+        WebRequestAlertTemplate unknownOperator = new WebRequestAlertTemplate(
+            "https://example.test", "GET", "200", null, "[]", null, null, "/status isUp", 3
+        );
+        WebRequestAlertTemplate nonNumericValue = new WebRequestAlertTemplate(
+            "https://example.test", "GET", "200", null, "[]", null, null, "/count gt abc", 3
+        );
+        WebRequestAlertTemplate negativeSizeValue = new WebRequestAlertTemplate(
+            "https://example.test", "GET", "200", null, "[]", null, null, "/items sizeLt -1", 3
+        );
+        WebRequestAlertTemplate missingValue = new WebRequestAlertTemplate(
+            "https://example.test", "GET", "200", null, "[]", null, null, "/status equals", 3
         );
 
         assertThrows(IllegalArgumentException.class, () -> invalidHeaders.evaluate(new AlertExecutionContext()));
         assertThrows(java.util.regex.PatternSyntaxException.class, () -> invalidRegex.evaluate(new AlertExecutionContext()));
+        assertThrows(IllegalArgumentException.class, () -> invalidPointer.evaluate(new AlertExecutionContext()));
+        assertThrows(IllegalArgumentException.class, () -> unknownOperator.evaluate(new AlertExecutionContext()));
+        assertThrows(IllegalArgumentException.class, () -> nonNumericValue.evaluate(new AlertExecutionContext()));
+        assertThrows(IllegalArgumentException.class, () -> negativeSizeValue.evaluate(new AlertExecutionContext()));
+        assertThrows(IllegalArgumentException.class, () -> missingValue.evaluate(new AlertExecutionContext()));
     }
 
     private static WebRequestAlertTemplate template(
@@ -220,7 +339,7 @@ class WebRequestAlertTemplateTest {
         String headersJson,
         String responseBodyRegexes
     ) {
-        return template(server, method, expectedStatusCodes, body, headersJson, responseBodyRegexes, 3);
+        return template(server, method, expectedStatusCodes, body, headersJson, responseBodyRegexes, null, 3);
     }
 
     private static WebRequestAlertTemplate template(
@@ -232,6 +351,19 @@ class WebRequestAlertTemplateTest {
         String responseBodyRegexes,
         int timeoutSeconds
     ) {
+        return template(server, method, expectedStatusCodes, body, headersJson, responseBodyRegexes, null, timeoutSeconds);
+    }
+
+    private static WebRequestAlertTemplate template(
+        HttpServer server,
+        String method,
+        String expectedStatusCodes,
+        String body,
+        String headersJson,
+        String responseBodyRegexes,
+        String jsonAssertions,
+        int timeoutSeconds
+    ) {
         return new WebRequestAlertTemplate(
             "http://127.0.0.1:" + server.getAddress().getPort() + "/",
             method,
@@ -240,6 +372,7 @@ class WebRequestAlertTemplateTest {
             headersJson,
             null,
             responseBodyRegexes,
+            jsonAssertions,
             timeoutSeconds
         );
     }

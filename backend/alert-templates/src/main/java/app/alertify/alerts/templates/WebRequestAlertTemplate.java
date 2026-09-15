@@ -118,11 +118,20 @@ public final class WebRequestAlertTemplate implements AlertEvaluator {
     private final String responseBodyRegexes;
 
     @AlertParameter(
+        labelKey = "alerts.template.webRequest.jsonAssertions",
+        descriptionKey = "alerts.template.webRequest.jsonAssertionsDescription",
+        multiline = true,
+        required = false,
+        order = 8
+    )
+    private final String jsonAssertions;
+
+    @AlertParameter(
         labelKey = "alerts.template.webRequest.timeout",
         descriptionKey = "alerts.template.webRequest.timeoutDescription",
         options = { "1", "3", "5", "10", "30" },
         defaultValue = "10",
-        order = 8
+        order = 9
     )
     private final int timeoutSeconds;
 
@@ -134,6 +143,7 @@ public final class WebRequestAlertTemplate implements AlertEvaluator {
         String headersJson,
         String headersOverrideJson,
         String responseBodyRegexes,
+        String jsonAssertions,
         int timeoutSeconds
     ) {
         this.url = url;
@@ -143,6 +153,7 @@ public final class WebRequestAlertTemplate implements AlertEvaluator {
         this.headersJson = headersJson;
         this.headersOverrideJson = headersOverrideJson;
         this.responseBodyRegexes = responseBodyRegexes;
+        this.jsonAssertions = jsonAssertions;
         this.timeoutSeconds = timeoutSeconds;
     }
 
@@ -153,6 +164,7 @@ public final class WebRequestAlertTemplate implements AlertEvaluator {
         List<Integer> expectedCodes = parseExpectedStatusCodes(expectedStatusCodes);
         List<Header> headers = mergeHeaders(parseHeaders(headersJson), parseHeaders(headersOverrideJson));
         List<Pattern> bodyPatterns = parsePatterns(responseBodyRegexes);
+        List<JsonAssertion> assertions = parseJsonAssertions(jsonAssertions);
         Duration timeout = timeout(timeoutSeconds);
         byte[] requestBody = requestBody(body, requestMethod);
         String endpoint = safeEndpoint(uri);
@@ -188,16 +200,32 @@ public final class WebRequestAlertTemplate implements AlertEvaluator {
             statusMessage.put("statusCode", response.statusCode());
             statusMessage.put("responseBodyBytes", responseBody.bytes().length);
             statusMessage.put("regexCount", bodyPatterns.size());
+            statusMessage.put("jsonAssertionCount", assertions.size());
 
             if (!expectedCodes.contains(response.statusCode())) {
                 return warn(context, statusMessage, "unexpectedStatusCode", endpoint, requestMethod);
             }
 
             String responseText = new String(responseBody.bytes(), StandardCharsets.UTF_8);
-            for (int index = 0; index < bodyPatterns.size(); index++) {
-                if (!bodyPatterns.get(index).matcher(responseText).find()) {
-                    statusMessage.put("unmatchedRegexIndex", index);
+            for (Pattern pattern : bodyPatterns) {
+                if (!pattern.matcher(responseText).find()) {
+                    statusMessage.put("unmatchedRegex", pattern.pattern());
                     return warn(context, statusMessage, "responseBodyRegexMismatch", endpoint, requestMethod);
+                }
+            }
+
+            if (!assertions.isEmpty()) {
+                JsonNode responseJson;
+                try {
+                    responseJson = JSON.readTree(responseText);
+                } catch (RuntimeException exception) {
+                    return warn(context, statusMessage, "invalidJsonResponse", endpoint, requestMethod);
+                }
+                for (int index = 0; index < assertions.size(); index++) {
+                    if (!assertions.get(index).matches(responseJson)) {
+                        statusMessage.put("unmatchedJsonAssertionIndex", index);
+                        return warn(context, statusMessage, "jsonAssertionMismatch", endpoint, requestMethod);
+                    }
                 }
             }
 
@@ -324,6 +352,39 @@ public final class WebRequestAlertTemplate implements AlertEvaluator {
             .toList();
     }
 
+    private static List<JsonAssertion> parseJsonAssertions(String configured) {
+        if (configured == null || configured.isBlank())
+            return List.of();
+
+        List<JsonAssertion> assertions = new ArrayList<>();
+        for (String line : configured.lines().filter(value -> !value.isBlank()).toList()) {
+            String[] tokens = line.trim().split("\\s+", 3);
+            if (tokens.length < 2)
+                throw new IllegalArgumentException("Each JSON assertion must be '<pointer> <operator> [value]'");
+
+            String pointer = tokens[0];
+            validatePointer(pointer);
+            JsonAssertionOperator operator = JsonAssertionOperator.byKeyword(tokens[1]);
+            String value = tokens.length == 3 ? tokens[2].trim() : "";
+            if (operator == JsonAssertionOperator.EXISTS && !value.isEmpty())
+                throw new IllegalArgumentException("The 'exists' JSON assertion operator does not take a value");
+            if (operator != JsonAssertionOperator.EXISTS && value.isEmpty())
+                throw new IllegalArgumentException("JSON assertion operator '" + tokens[1] + "' requires a value");
+
+            operator.validateValue(value);
+            assertions.add(new JsonAssertion(pointer, operator, value));
+        }
+        return List.copyOf(assertions);
+    }
+
+    private static void validatePointer(String pointer) {
+        try {
+            JSON.createObjectNode().at(pointer);
+        } catch (RuntimeException exception) {
+            throw new IllegalArgumentException("Invalid JSON pointer: " + pointer, exception);
+        }
+    }
+
     private static Duration timeout(int seconds) {
         if (seconds <= 0)
             throw new IllegalArgumentException("timeoutSeconds must be positive");
@@ -417,6 +478,108 @@ public final class WebRequestAlertTemplate implements AlertEvaluator {
     }
 
     private record Header(String name, String value) {
+    }
+
+    private enum JsonAssertionOperator {
+        EXISTS("exists"),
+        EQUALS("equals"),
+        NOT_EQUALS("notEquals"),
+        GREATER_THAN("gt"),
+        GREATER_THAN_OR_EQUAL("gte"),
+        LESS_THAN("lt"),
+        LESS_THAN_OR_EQUAL("lte"),
+        CONTAINS("contains"),
+        SIZE_EQUALS("sizeEquals"),
+        SIZE_NOT_EQUALS("sizeNotEquals"),
+        SIZE_GREATER_THAN("sizeGt"),
+        SIZE_GREATER_THAN_OR_EQUAL("sizeGte"),
+        SIZE_LESS_THAN("sizeLt"),
+        SIZE_LESS_THAN_OR_EQUAL("sizeLte");
+
+        private final String keyword;
+
+        JsonAssertionOperator(String keyword) {
+            this.keyword = keyword;
+        }
+
+        static JsonAssertionOperator byKeyword(String keyword) {
+            for (JsonAssertionOperator operator : values()) {
+                if (operator.keyword.equals(keyword))
+                    return operator;
+            }
+            throw new IllegalArgumentException("Unsupported JSON assertion operator: " + keyword);
+        }
+
+        void validateValue(String value) {
+            switch (this) {
+                case GREATER_THAN, GREATER_THAN_OR_EQUAL, LESS_THAN, LESS_THAN_OR_EQUAL -> {
+                    try {
+                        Double.parseDouble(value);
+                    } catch (NumberFormatException exception) {
+                        throw new IllegalArgumentException(
+                            "JSON assertion operator '" + keyword + "' requires a numeric value", exception
+                        );
+                    }
+                }
+                case SIZE_EQUALS, SIZE_NOT_EQUALS, SIZE_GREATER_THAN, SIZE_GREATER_THAN_OR_EQUAL,
+                     SIZE_LESS_THAN, SIZE_LESS_THAN_OR_EQUAL -> {
+                    int size;
+                    try {
+                        size = Integer.parseInt(value);
+                    } catch (NumberFormatException exception) {
+                        throw new IllegalArgumentException(
+                            "JSON assertion operator '" + keyword + "' requires an integer value", exception
+                        );
+                    }
+                    if (size < 0)
+                        throw new IllegalArgumentException("JSON assertion operator '" + keyword + "' requires a non-negative value");
+                }
+                default -> {
+                }
+            }
+        }
+    }
+
+    private record JsonAssertion(String pointer, JsonAssertionOperator operator, String value) {
+
+        boolean matches(JsonNode root) {
+            JsonNode node = root.at(pointer);
+            return switch (operator) {
+                case EXISTS -> !node.isMissingNode();
+                case EQUALS -> !node.isMissingNode() && canonicalText(node).equals(value);
+                case NOT_EQUALS -> !node.isMissingNode() && !canonicalText(node).equals(value);
+                case GREATER_THAN -> node.isNumber() && node.asDouble() > Double.parseDouble(value);
+                case GREATER_THAN_OR_EQUAL -> node.isNumber() && node.asDouble() >= Double.parseDouble(value);
+                case LESS_THAN -> node.isNumber() && node.asDouble() < Double.parseDouble(value);
+                case LESS_THAN_OR_EQUAL -> node.isNumber() && node.asDouble() <= Double.parseDouble(value);
+                case CONTAINS -> contains(node);
+                case SIZE_EQUALS -> isContainer(node) && node.size() == Integer.parseInt(value);
+                case SIZE_NOT_EQUALS -> isContainer(node) && node.size() != Integer.parseInt(value);
+                case SIZE_GREATER_THAN -> isContainer(node) && node.size() > Integer.parseInt(value);
+                case SIZE_GREATER_THAN_OR_EQUAL -> isContainer(node) && node.size() >= Integer.parseInt(value);
+                case SIZE_LESS_THAN -> isContainer(node) && node.size() < Integer.parseInt(value);
+                case SIZE_LESS_THAN_OR_EQUAL -> isContainer(node) && node.size() <= Integer.parseInt(value);
+            };
+        }
+
+        private boolean contains(JsonNode node) {
+            if (node.isArray()) {
+                for (JsonNode element : node) {
+                    if (canonicalText(element).equals(value))
+                        return true;
+                }
+                return false;
+            }
+            return node.isTextual() && node.textValue().contains(value);
+        }
+
+        private static String canonicalText(JsonNode node) {
+            return node.isTextual() ? node.textValue() : node.toString();
+        }
+
+        private static boolean isContainer(JsonNode node) {
+            return node.isArray() || node.isObject();
+        }
     }
 
     private record ResponseBody(byte[] bytes) {

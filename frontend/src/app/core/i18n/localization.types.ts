@@ -458,6 +458,8 @@ export type TranslationKey =
   | 'alerts.template.webRequest.headersOverrideJsonDescription'
   | 'alerts.template.webRequest.responseBodyRegexes'
   | 'alerts.template.webRequest.responseBodyRegexesDescription'
+  | 'alerts.template.webRequest.jsonAssertions'
+  | 'alerts.template.webRequest.jsonAssertionsDescription'
   | 'alerts.template.webRequest.timeout'
   | 'alerts.template.webRequest.timeoutDescription'
   | 'alerts.template.httpsCertificate.name'
