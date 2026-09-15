@@ -22,8 +22,8 @@ class ConsoleParameterProcedureTemplateTest {
     void printsTheConfiguredValueToStandardOutput() {
         PrintStream previousOutput = System.out;
         ByteArrayOutputStream output = new ByteArrayOutputStream();
-        try {
-            System.setOut(new PrintStream(output, true, StandardCharsets.UTF_8));
+        try (PrintStream redirectedOutput = new PrintStream(output, true, StandardCharsets.UTF_8)) {
+            System.setOut(redirectedOutput);
 
             var result = new ConsoleParameterProcedureTemplate("sample value")
                     .execute(new ProcedureExecutionContext(Instant.now(), Map.of()));
