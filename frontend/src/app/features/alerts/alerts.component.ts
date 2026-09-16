@@ -840,6 +840,11 @@ export class AlertsComponent implements OnInit {
     return this.localization.translateDynamic(key);
   }
 
+  protected simpleJavaType(javaType: string): string {
+    const separator = Math.max(javaType.lastIndexOf('.'), javaType.lastIndexOf('$'));
+    return javaType.slice(separator + 1);
+  }
+
   protected readonly templateClassName = templateClassName;
 
   protected templateTagColor(tag: AlertTemplateTag): string {

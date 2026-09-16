@@ -255,7 +255,7 @@
                         @for (parameter of template.parameters; track parameter.id) {
                           <div>
                             <strong>{{ dynamic(parameter.labelKey) }}</strong>
-                            <small>{{ parameter.javaType }}</small>
+                            <small>{{ simpleJavaType(parameter.javaType) }}</small>
                             @if (parameter.bindingAllowed) {
                               <span>{{ localization.translate(parameter.options.length ? 'alerts.binding.allowedWithOptions' : 'alerts.binding.allowed') }}</span>
                             } @else {
