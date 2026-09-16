@@ -24,8 +24,10 @@ import org.springframework.core.io.DefaultResourceLoader;
 
 import app.alertify.alerts.model.AlertTemplateDefinition;
 import app.alertify.alerts.model.AlertTemplateParameterDefinition;
+import app.alertify.alerts.template.annotation.AlertParameterSource;
 import app.alertify.alerts.templates.HttpsCertificateExpiryAlertTemplate;
 import app.alertify.alerts.templates.InternetConnectionAlertTemplate;
+import app.alertify.alerts.templates.SqlThresholdAlertTemplate;
 import app.alertify.alerts.templates.TcpConnectionAlertTemplate;
 import app.alertify.alerts.templates.WebRequestAlertTemplate;
 import app.alertify.jpa.repository.AlertTemplateDefinitionRepository;
@@ -55,12 +57,12 @@ class AlertTemplateRegistrationServiceTest {
 
         AlertTemplateRegistrationSummary summary = service.scanAndRegister();
 
-        assertTrue(summary.templates() >= 5);
-        assertTrue(summary.parameters() >= 18);
+        assertTrue(summary.templates() >= 6);
+        assertTrue(summary.parameters() >= 27);
 
         ArgumentCaptor<AlertTemplateDefinition> templateCaptor =
             ArgumentCaptor.forClass(AlertTemplateDefinition.class);
-        verify(templateRepository, atLeast(5)).save(templateCaptor.capture());
+        verify(templateRepository, atLeast(6)).save(templateCaptor.capture());
         Map<String, AlertTemplateDefinition> templatesByKey = new LinkedHashMap<>();
         for (AlertTemplateDefinition template : templateCaptor.getAllValues())
             templatesByKey.put(template.getTemplateKey(), template);
@@ -102,9 +104,18 @@ class AlertTemplateRegistrationServiceTest {
             webRequestTemplate.getSourcePath()
         );
 
+        AlertTemplateDefinition sqlThresholdTemplate =
+            templatesByKey.get(SqlThresholdAlertTemplate.class.getName());
+        assertNotNull(sqlThresholdTemplate);
+        assertEquals("alerts.template.sqlThreshold.name", sqlThresholdTemplate.getNameKey());
+        assertEquals(
+            "app/alertify/alerts/templates/SqlThresholdAlertTemplate.java",
+            sqlThresholdTemplate.getSourcePath()
+        );
+
         ArgumentCaptor<AlertTemplateParameterDefinition> parameterCaptor =
             ArgumentCaptor.forClass(AlertTemplateParameterDefinition.class);
-        verify(parameterRepository, atLeast(18)).save(parameterCaptor.capture());
+        verify(parameterRepository, atLeast(27)).save(parameterCaptor.capture());
 
         List<AlertTemplateParameterDefinition> httpsParameters = parametersOf(parameterCaptor, httpsCertificateTemplate);
         assertEquals(4, httpsParameters.size());
@@ -161,6 +172,20 @@ class AlertTemplateRegistrationServiceTest {
         assertEquals(List.of("1", "3", "5", "10", "30"), tcpParameters.get(2).getOptions());
         assertTrue(tcpParameters.get(2).isBindingAllowed());
         assertEquals("3", tcpParameters.get(2).getDefaultValue());
+
+        List<AlertTemplateParameterDefinition> sqlThresholdParameters = parametersOf(parameterCaptor, sqlThresholdTemplate);
+        assertEquals(9, sqlThresholdParameters.size());
+        assertEquals("credentials", sqlThresholdParameters.get(0).getParameterKey());
+        assertEquals(List.of(AlertParameterSource.SECRET), sqlThresholdParameters.get(0).getAllowedSources());
+        assertEquals(List.of("DB_SECRET"), sqlThresholdParameters.get(0).getAllowedSecretValueTypes());
+        assertEquals("numericColumnName", sqlThresholdParameters.get(3).getParameterKey());
+        assertEquals("detailColumnName", sqlThresholdParameters.get(4).getParameterKey());
+        assertFalse(sqlThresholdParameters.get(4).isRequired());
+        assertEquals("threshold", sqlThresholdParameters.get(5).getParameterKey());
+        assertEquals(long.class.getName(), sqlThresholdParameters.get(5).getJavaType());
+        assertEquals("thresholdType", sqlThresholdParameters.get(6).getParameterKey());
+        assertFalse(sqlThresholdParameters.get(6).isBindingAllowed());
+        assertEquals("warn_if_bigger", sqlThresholdParameters.get(6).getDefaultValue());
     }
 
     private static List<AlertTemplateParameterDefinition> parametersOf(
