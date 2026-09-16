@@ -125,6 +125,7 @@ _.code-workspace
 
 nogit/
 *.md
+!THIRD_PARTY_NOTICES.md
 
 /*.bat
 !/run.bat

@@ -125,6 +125,8 @@ class AlertExecutionOrchestratorTest {
             assertThat(request.getParameters(0).getWritable()).isTrue();
             assertThat(request.getParameters(0).getSecretId()).isEqualTo(73L);
             assertThat(request.getParameters(0).getConfigurationId()).isZero();
+            assertThat(request.getParameters(0).hasBindingVersion()).isTrue();
+            assertThat(request.getParameters(0).getBindingVersion()).isEqualTo(4L);
         });
         assertThat(synchronizationRequest.getValue().getTemplateClassName())
                 .isEqualTo("dynamic.SampleAlert");
@@ -311,8 +313,8 @@ class AlertExecutionOrchestratorTest {
                 7L, "Sample alert", "dynamic.SampleAlert", WorkerCapability.STANDARD,
                 CHECKSUM, "source", "previous-state",
                 List.of(new ResolvedAlertParameter(
-                        "endpoint", String.class.getName(), "google", false,
-                        AlertParameterSource.SECRET, null, 73L, true
+                        "endpoint", String.class.getName(), "google", null, false,
+                        AlertParameterSource.SECRET, null, 73L, null, true, 4L
                 ))
         );
     }

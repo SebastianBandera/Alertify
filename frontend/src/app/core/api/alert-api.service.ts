@@ -27,6 +27,7 @@ export interface AlertTemplateParameter {
   readonly javaType: string;
   readonly options: readonly string[];
   readonly bindingAllowed: boolean;
+  readonly writableBindingRequired: boolean;
   readonly defaultValue: string | null;
   readonly multiline: boolean;
   readonly order: number;
@@ -123,6 +124,7 @@ export interface AlertBindingOption {
   readonly description: string | null;
   readonly enabled: boolean;
   readonly valueType: string | null;
+  readonly writable: boolean;
 }
 
 export interface AlertBindingOptions {

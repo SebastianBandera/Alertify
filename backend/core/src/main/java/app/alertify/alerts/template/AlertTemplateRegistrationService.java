@@ -155,6 +155,7 @@ public class AlertTemplateRegistrationService {
                 javaType,
                 options,
                 metadata.bindingAllowed(),
+                metadata.writableBindingRequired(),
                 defaultValue,
                 metadata.multiline(),
                 metadata.order(),
@@ -170,6 +171,7 @@ public class AlertTemplateRegistrationService {
                 javaType,
                 options,
                 metadata.bindingAllowed(),
+                metadata.writableBindingRequired(),
                 defaultValue,
                 metadata.multiline(),
                 metadata.order(),
@@ -226,6 +228,16 @@ public class AlertTemplateRegistrationService {
                     "Alert parameter options must not be empty when binding is disabled: "
                         + templateClass.getName() + "." + field.getName()
                 );
+            }
+            if (parameter.writableBindingRequired()) {
+                Set<AlertParameterSource> writableSources = Set.of(parameter.allowedSources());
+                if (!parameter.bindingAllowed() || writableSources.isEmpty()
+                        || !Set.of(AlertParameterSource.CONFIGURATION, AlertParameterSource.SECRET).containsAll(writableSources)) {
+                    throw new IllegalStateException(
+                        "Writable alert parameters must allow only configuration or secret bindings: "
+                            + templateClass.getName() + "." + field.getName()
+                    );
+                }
             }
             if (!parameter.bindingAllowed()
                     && !parameter.defaultValue().isEmpty()

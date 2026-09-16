@@ -323,6 +323,9 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
         }
         if (parameter.writable()) {
             value.setWritable(true);
+            if (parameter.bindingVersion() != null)
+                value.setBindingVersion(parameter.bindingVersion());
+
             if (parameter.configurationId() != null)
                 value.setConfigurationId(parameter.configurationId());
             else if (parameter.secretId() != null)

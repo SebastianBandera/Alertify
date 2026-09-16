@@ -85,6 +85,7 @@ class AlertExecutionPreparationServiceTest {
             assertThat(parameter.writable()).isTrue();
             assertThat(parameter.secretId()).isEqualTo(73L);
             assertThat(parameter.configurationId()).isNull();
+            assertThat(parameter.bindingVersion()).isEqualTo(0L);
         });
     }
 

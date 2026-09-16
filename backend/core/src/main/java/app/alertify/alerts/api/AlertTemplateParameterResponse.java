@@ -18,6 +18,7 @@ public record AlertTemplateParameterResponse(
     String javaType,
     List<String> options,
     boolean bindingAllowed,
+    boolean writableBindingRequired,
     String defaultValue,
     boolean multiline,
     int order,

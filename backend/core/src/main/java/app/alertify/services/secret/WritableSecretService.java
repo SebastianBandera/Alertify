@@ -50,11 +50,14 @@ public class WritableSecretService {
     }
 
     private void applyOne(Owner owner, UUID executionId, WritableSecretValue result) {
-        ApplicationSecret secret = secretRepository.findById(result.getSecretId()).orElse(null);
+        ApplicationSecret secret = secretRepository.findByIdForUpdate(result.getSecretId()).orElse(null);
         if (secret == null || !secret.isWritable())
             return;
 
         try {
+            if (result.hasExpectedVersion() && secret.getVersion() != result.getExpectedVersion())
+                throw new IllegalStateException("Secret changed after execution preparation");
+
             if (result.getNullValue())
                 throw new IllegalArgumentException("Writable secret value must not be null");
 

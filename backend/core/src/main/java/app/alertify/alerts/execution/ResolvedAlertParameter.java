@@ -22,18 +22,23 @@ public record ResolvedAlertParameter(
     Long configurationId,
     Long secretId,
     Long procedureId,
-    boolean writable
+    boolean writable,
+    Long bindingVersion
 ) {
+    public ResolvedAlertParameter(String name, String javaType, String value, byte[] binaryZip, boolean nullValue, AlertParameterSource source, Long configurationId, Long secretId, Long procedureId, boolean writable) {
+        this(name, javaType, value, binaryZip, nullValue, source, configurationId, secretId, procedureId, writable, null);
+    }
+
     ResolvedAlertParameter(String name, String javaType, String value, boolean nullValue,
             AlertParameterSource source, Long configurationId, Long secretId, Long procedureId, boolean writable) {
-        this(name, javaType, value, null, nullValue, source, configurationId, secretId, procedureId, writable);
+        this(name, javaType, value, null, nullValue, source, configurationId, secretId, procedureId, writable, null);
     }
     ResolvedAlertParameter(String name, String javaType, String value, boolean nullValue, AlertParameterSource source, Long configurationId, Long secretId, boolean writable) {
-        this(name, javaType, value, null, nullValue, source, configurationId, secretId, null, writable);
+        this(name, javaType, value, null, nullValue, source, configurationId, secretId, null, writable, null);
     }
 
     ResolvedAlertParameter(String name, String javaType, String value, boolean nullValue) {
-        this(name, javaType, value, null, nullValue, AlertParameterSource.TEXT, null, null, null, false);
+        this(name, javaType, value, null, nullValue, AlertParameterSource.TEXT, null, null, null, false, null);
     }
 
     @Override
@@ -51,7 +56,8 @@ public record ResolvedAlertParameter(
                 var otherConfigurationId,
                 var otherSecretId,
                 var otherProcedureId,
-                var otherWritable)))
+                var otherWritable,
+                var otherBindingVersion)))
             return false;
 
         return nullValue == otherNullValue
@@ -63,13 +69,14 @@ public record ResolvedAlertParameter(
                 && Objects.equals(configurationId, otherConfigurationId)
                 && Objects.equals(secretId, otherSecretId)
                 && Objects.equals(procedureId, otherProcedureId)
+                && Objects.equals(bindingVersion, otherBindingVersion)
                 && Arrays.equals(binaryZip, otherBinaryZip);
     }
 
     @Override
     public int hashCode() {
         int result = Objects.hash(
-            name, javaType, value, nullValue, source, configurationId, secretId, procedureId, writable
+            name, javaType, value, nullValue, source, configurationId, secretId, procedureId, writable, bindingVersion
         );
         return 31 * result + Arrays.hashCode(binaryZip);
     }
@@ -87,6 +94,7 @@ public record ResolvedAlertParameter(
                 + ", secretId=" + secretId
                 + ", procedureId=" + procedureId
                 + ", writable=" + writable
+                + ", bindingVersion=" + bindingVersion
                 + "]";
     }
 }

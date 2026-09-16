@@ -97,6 +97,7 @@ record CompiledAlertTemplate(
                     if (serialized != null)
                         value.setValue(serialized);
                     if (binary != null) value.setBinaryValue(com.google.protobuf.ByteString.copyFrom(binary));
+                    if (parameter.hasBindingVersion()) value.setExpectedVersion(parameter.getBindingVersion());
 
                     configurationValues.add(value.build());
                 } else {
@@ -107,6 +108,7 @@ record CompiledAlertTemplate(
                     if (serialized != null)
                         value.setValue(serialized);
                     if (binary != null) value.setBinaryValue(com.google.protobuf.ByteString.copyFrom(binary));
+                    if (parameter.hasBindingVersion()) value.setExpectedVersion(parameter.getBindingVersion());
 
                     secretValues.add(value.build());
                 }

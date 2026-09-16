@@ -76,6 +76,7 @@ record CompiledProcedureTemplate(String checksum, Class<? extends ProcedureEvalu
                     if (serialized != null)
                         value.setValue(serialized);
                     if (binary != null) value.setBinaryValue(com.google.protobuf.ByteString.copyFrom(binary));
+                    if (parameter.hasBindingVersion()) value.setExpectedVersion(parameter.getBindingVersion());
 
                     configurations.add(value.build());
                 } else {
@@ -85,6 +86,7 @@ record CompiledProcedureTemplate(String checksum, Class<? extends ProcedureEvalu
                     if (serialized != null)
                         value.setValue(serialized);
                     if (binary != null) value.setBinaryValue(com.google.protobuf.ByteString.copyFrom(binary));
+                    if (parameter.hasBindingVersion()) value.setExpectedVersion(parameter.getBindingVersion());
 
                     secrets.add(value.build());
                 }

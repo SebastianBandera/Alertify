@@ -137,6 +137,7 @@ class WorkerExecutionEngineTest {
                                     .setValue("5")
                                     .setSource(AlertParameterValueSource.ALERT_PARAMETER_VALUE_SOURCE_CONFIGURATION)
                                     .setWritable(true)
+                                    .setBindingVersion(7L)
                                     .setConfigurationId(42))
                             .build(),
                     observer(result)
@@ -149,6 +150,8 @@ class WorkerExecutionEngineTest {
                 assertThat(value.getParameterName()).isEqualTo("counter");
                 assertThat(value.getValue()).isEqualTo("6");
                 assertThat(value.getNullValue()).isFalse();
+                assertThat(value.hasExpectedVersion()).isTrue();
+                assertThat(value.getExpectedVersion()).isEqualTo(7L);
             });
         }
     }
@@ -211,6 +214,7 @@ class WorkerExecutionEngineTest {
                                     .setValue("previous-token")
                                     .setSource(AlertParameterValueSource.ALERT_PARAMETER_VALUE_SOURCE_SECRET)
                                     .setWritable(true)
+                                    .setBindingVersion(9L)
                                     .setSecretId(73))
                             .build(),
                     observer(result)
@@ -223,6 +227,8 @@ class WorkerExecutionEngineTest {
                 assertThat(value.getParameterName()).isEqualTo("targetToken");
                 assertThat(value.getValue()).isEqualTo("rotated-token");
                 assertThat(value.getNullValue()).isFalse();
+                assertThat(value.hasExpectedVersion()).isTrue();
+                assertThat(value.getExpectedVersion()).isEqualTo(9L);
             });
             assertThat(execution.getWritableConfigurationValuesList()).isEmpty();
             assertThat(execution.getStatusMessageJson())

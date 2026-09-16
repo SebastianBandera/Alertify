@@ -55,6 +55,7 @@ message AlertParameter {
   int64 procedure_id = 9;
   string invocation_token = 10;
   bytes binary_value = 11;
+  optional int64 binding_version = 12;
 }
 
 enum AlertParameterValueSource {
@@ -188,6 +189,7 @@ message WritableConfigurationValue {
   string value = 3;
   bool null_value = 4;
   bytes binary_value = 5;
+  optional int64 expected_version = 6;
 }
 
 message WritableSecretValue {
@@ -196,6 +198,7 @@ message WritableSecretValue {
   string value = 3;
   bool null_value = 4;
   bytes binary_value = 5;
+  optional int64 expected_version = 6;
 }
 
 message ExecutionError {

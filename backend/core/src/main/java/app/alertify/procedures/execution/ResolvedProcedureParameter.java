@@ -22,8 +22,13 @@ public record ResolvedProcedureParameter(
     Long configurationId,
     Long secretId,
     Long procedureId,
-    boolean writable
+    boolean writable,
+    Long bindingVersion
 ) {
+
+    public ResolvedProcedureParameter(String name, String javaType, String value, byte[] binaryZip, boolean nullValue, AlertParameterSource source, Long configurationId, Long secretId, Long procedureId, boolean writable) {
+        this(name, javaType, value, binaryZip, nullValue, source, configurationId, secretId, procedureId, writable, null);
+    }
 
     @Override
     public boolean equals(Object object) {
@@ -40,7 +45,8 @@ public record ResolvedProcedureParameter(
                 var otherConfigurationId,
                 var otherSecretId,
                 var otherProcedureId,
-                var otherWritable)))
+                var otherWritable,
+                var otherBindingVersion)))
             return false;
 
         return nullValue == otherNullValue
@@ -52,13 +58,14 @@ public record ResolvedProcedureParameter(
                 && Objects.equals(configurationId, otherConfigurationId)
                 && Objects.equals(secretId, otherSecretId)
                 && Objects.equals(procedureId, otherProcedureId)
+                && Objects.equals(bindingVersion, otherBindingVersion)
                 && Arrays.equals(binaryZip, otherBinaryZip);
     }
 
     @Override
     public int hashCode() {
         int result = Objects.hash(
-            name, javaType, value, nullValue, source, configurationId, secretId, procedureId, writable
+            name, javaType, value, nullValue, source, configurationId, secretId, procedureId, writable, bindingVersion
         );
         return 31 * result + Arrays.hashCode(binaryZip);
     }
@@ -76,6 +83,7 @@ public record ResolvedProcedureParameter(
                 + ", secretId=" + secretId
                 + ", procedureId=" + procedureId
                 + ", writable=" + writable
+                + ", bindingVersion=" + bindingVersion
                 + "]";
     }
 }

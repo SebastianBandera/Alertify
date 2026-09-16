@@ -826,13 +826,15 @@ export class AlertsComponent implements OnInit {
 
   protected compatibleConfigurationBindings(parameter: AlertTemplateParameter) {
     return this.bindings().configurations.filter((option) =>
-      isCompatibleConfigurationValueType(parameter.javaType, parameter.allowedConfigurationValueTypes, option.valueType)
+      (!parameter.writableBindingRequired || option.writable)
+        && isCompatibleConfigurationValueType(parameter.javaType, parameter.allowedConfigurationValueTypes, option.valueType)
     );
   }
 
   protected compatibleSecretBindings(parameter: AlertTemplateParameter) {
     return this.bindings().secrets.filter((option) =>
-      isCompatibleSecretValueType(parameter.javaType, parameter.allowedSecretValueTypes, option.valueType)
+      (!parameter.writableBindingRequired || option.writable)
+        && isCompatibleSecretValueType(parameter.javaType, parameter.allowedSecretValueTypes, option.valueType)
     );
   }
 
@@ -841,6 +843,8 @@ export class AlertsComponent implements OnInit {
   }
 
   protected simpleJavaType(javaType: string): string {
+    if (javaType === '[B') return 'Binary';
+
     const separator = Math.max(javaType.lastIndexOf('.'), javaType.lastIndexOf('$'));
     return javaType.slice(separator + 1);
   }

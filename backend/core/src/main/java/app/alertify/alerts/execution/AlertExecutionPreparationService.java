@@ -138,11 +138,24 @@ public class AlertExecutionPreparationService {
                     case CONFIGURATION -> configured.getConfiguration().isWritable();
                     case SECRET -> configured.getSecret().isWritable();
                     case TEXT, PROCEDURE -> false;
+                },
+                switch (configured.getSource()) {
+                    case CONFIGURATION -> configured.getConfiguration().getVersion();
+                    case SECRET -> configured.getSecret().getVersion();
+                    case TEXT, PROCEDURE -> null;
                 }
         );
     }
 
     private static void validateResolvedBinding(AlertTemplateParameterDefinition definition, AlertParameterValue configured) {
+        boolean writable = switch (configured.getSource()) {
+            case CONFIGURATION -> configured.getConfiguration().isWritable();
+            case SECRET -> configured.getSecret().isWritable();
+            case TEXT, PROCEDURE -> false;
+        };
+        if (definition.isWritableBindingRequired() && !writable)
+            throw new IllegalArgumentException("Parameter '" + definition.getParameterKey() + "' requires a writable binding");
+
         boolean compatible = switch (configured.getSource()) {
             case CONFIGURATION -> ParameterValueTypeCompatibility.isConfigurationValueTypeCompatible(
                     definition.getJavaType(), configured.getConfiguration().getValueType());

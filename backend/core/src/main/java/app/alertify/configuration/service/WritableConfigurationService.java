@@ -58,12 +58,15 @@ public class WritableConfigurationService {
     }
 
     private void applyOne(Owner owner, UUID executionId, WritableConfigurationValue result) {
-        ApplicationConfiguration configuration = configurationRepository.findById(result.getConfigurationId()).orElse(null);
+        ApplicationConfiguration configuration = configurationRepository.findByIdForUpdate(result.getConfigurationId()).orElse(null);
         if (configuration == null || !configuration.isWritable())
             return;
 
         JsonNode previousValue = configuration.getValue().deepCopy();
         try {
+            if (result.hasExpectedVersion() && configuration.getVersion() != result.getExpectedVersion())
+                throw new IllegalStateException("Configuration changed after execution preparation");
+
             if (result.getNullValue())
                 throw new IllegalArgumentException("Writable configuration value must not be null");
 

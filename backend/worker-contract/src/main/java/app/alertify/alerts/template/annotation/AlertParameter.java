@@ -32,6 +32,13 @@ public @interface AlertParameter {
     boolean bindingAllowed() default true;
 
     /**
+     * Whether configuration and secret bindings must allow write-back. This is
+     * intended for mutable template state such as binary snapshots; direct text
+     * and procedure bindings are invalid when this flag is enabled.
+     */
+    boolean writableBindingRequired() default false;
+
+    /**
      * Direct value used when the alert instance does not provide one. An empty
      * value means that the parameter has no declared default.
      */

@@ -331,6 +331,9 @@ public class AlertManagementService {
     }
 
     private void validateConfigurationBinding(AlertTemplateParameterDefinition definition, ApplicationConfiguration configuration) {
+        if (definition.isWritableBindingRequired() && !configuration.isWritable())
+            throw invalid(PARAMETER_PREFIX + definition.getParameterKey() + "' requires a writable configuration");
+
         if (!ParameterValueTypeCompatibility.isConfigurationValueTypeCompatible(definition.getJavaType(), configuration.getValueType()))
                     throw invalid(PARAMETER_PREFIX + definition.getParameterKey() + "' and its binding must both be binary or both be non-binary");
 
@@ -340,6 +343,9 @@ public class AlertManagementService {
     }
 
     private void validateSecretBinding(AlertTemplateParameterDefinition definition, ApplicationSecret secret) {
+        if (definition.isWritableBindingRequired() && !secret.isWritable())
+            throw invalid(PARAMETER_PREFIX + definition.getParameterKey() + "' requires a writable secret");
+
         if (!ParameterValueTypeCompatibility.isSecretValueTypeCompatible(definition.getJavaType(), secret.getValueType()))
             throw invalid(PARAMETER_PREFIX + definition.getParameterKey() + "' and its binding must match the parameter's required secret type");
 

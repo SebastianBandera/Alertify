@@ -265,6 +265,9 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
                     throw new IllegalStateException("Writable parameter '" + parameter.name() + "' must have exactly one target");
 
                 value.setWritable(true);
+                if (parameter.bindingVersion() != null)
+                    value.setBindingVersion(parameter.bindingVersion());
+
                 if (configurationTarget)
                     value.setConfigurationId(parameter.configurationId());
                 else

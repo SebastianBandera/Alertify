@@ -5,7 +5,11 @@ import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+
+import jakarta.persistence.LockModeType;
 
 import app.alertify.jpa.entity.ApplicationConfiguration;
 
@@ -24,6 +28,10 @@ public interface ApplicationConfigurationRepository extends JpaRepository<Applic
     Optional<ApplicationConfiguration> findByName(String name);
 
     Optional<ApplicationConfiguration> findByNameIgnoreCase(String name);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select configuration from ApplicationConfiguration configuration where configuration.id = :id")
+    Optional<ApplicationConfiguration> findByIdForUpdate(@Param("id") Long id);
 
     @Query("select configuration.name from ApplicationConfiguration configuration order by lower(configuration.name), configuration.name")
     List<String> findAllNames();

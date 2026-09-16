@@ -72,7 +72,7 @@ final class AlertMapper {
         return new AlertTemplateParameterResponse(
                 parameter.getId(), parameter.getVersion(), parameter.getParameterKey(),
                 parameter.getLabelKey(), parameter.getDescriptionKey(), parameter.getJavaType(),
-                parameter.getOptions(), parameter.isBindingAllowed(), parameter.getDefaultValue(),
+                parameter.getOptions(), parameter.isBindingAllowed(), parameter.isWritableBindingRequired(), parameter.getDefaultValue(),
                 parameter.isMultiline(), parameter.getParameterOrder(), parameter.isRequired(),
                 parameter.getAllowedSources(), parameter.getAllowedConfigurationValueTypes(),
                 parameter.getAllowedSecretValueTypes(), parameter.getCreatedAt(),

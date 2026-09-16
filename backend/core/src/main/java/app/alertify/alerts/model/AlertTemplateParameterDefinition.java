@@ -76,6 +76,9 @@ public class AlertTemplateParameterDefinition {
     @Column(name = "binding_allowed", nullable = false)
     private boolean bindingAllowed;
 
+    @Column(name = "writable_binding_required", nullable = false)
+    private boolean writableBindingRequired;
+
     @Column(name = "default_value", columnDefinition = "text")
     private String defaultValue;
 
@@ -114,10 +117,14 @@ public class AlertTemplateParameterDefinition {
     }
 
     public AlertTemplateParameterDefinition(AlertTemplateDefinition template, String parameterKey, String labelKey, String descriptionKey, String javaType, List<String> options, boolean bindingAllowed, String defaultValue, boolean multiline, int parameterOrder, boolean required, List<AlertParameterSource> allowedSources, List<String> allowedConfigurationValueTypes, List<String> allowedSecretValueTypes) {
+        this(template, parameterKey, labelKey, descriptionKey, javaType, options, bindingAllowed, false, defaultValue, multiline, parameterOrder, required, allowedSources, allowedConfigurationValueTypes, allowedSecretValueTypes);
+    }
+
+    public AlertTemplateParameterDefinition(AlertTemplateDefinition template, String parameterKey, String labelKey, String descriptionKey, String javaType, List<String> options, boolean bindingAllowed, boolean writableBindingRequired, String defaultValue, boolean multiline, int parameterOrder, boolean required, List<AlertParameterSource> allowedSources, List<String> allowedConfigurationValueTypes, List<String> allowedSecretValueTypes) {
         this.template = Objects.requireNonNull(template, "template must not be null");
         this.parameterKey = Objects.requireNonNull(parameterKey, "parameterKey must not be null");
         synchronize(
-            labelKey, descriptionKey, javaType, options, bindingAllowed,
+            labelKey, descriptionKey, javaType, options, bindingAllowed, writableBindingRequired,
             defaultValue, multiline, parameterOrder, required,
             allowedSources, allowedConfigurationValueTypes, allowedSecretValueTypes
         );
@@ -159,6 +166,10 @@ public class AlertTemplateParameterDefinition {
         return bindingAllowed;
     }
 
+    public boolean isWritableBindingRequired() {
+        return writableBindingRequired;
+    }
+
     public String getDefaultValue() {
         return defaultValue;
     }
@@ -195,12 +206,13 @@ public class AlertTemplateParameterDefinition {
         return updatedAt;
     }
 
-    public void synchronize(String labelKey, String descriptionKey, String javaType, List<String> options, boolean bindingAllowed, String defaultValue, boolean multiline, int parameterOrder, boolean required, List<AlertParameterSource> allowedSources, List<String> allowedConfigurationValueTypes, List<String> allowedSecretValueTypes) {
+    public void synchronize(String labelKey, String descriptionKey, String javaType, List<String> options, boolean bindingAllowed, boolean writableBindingRequired, String defaultValue, boolean multiline, int parameterOrder, boolean required, List<AlertParameterSource> allowedSources, List<String> allowedConfigurationValueTypes, List<String> allowedSecretValueTypes) {
         this.labelKey = Objects.requireNonNull(labelKey, "labelKey must not be null");
         this.descriptionKey = Objects.requireNonNull(descriptionKey, "descriptionKey must not be null");
         this.javaType = Objects.requireNonNull(javaType, "javaType must not be null");
         replaceOptions(options);
         this.bindingAllowed = bindingAllowed;
+        this.writableBindingRequired = writableBindingRequired;
         this.defaultValue = defaultValue;
         this.multiline = multiline;
         validateBindingMetadata();
@@ -210,6 +222,7 @@ public class AlertTemplateParameterDefinition {
         this.parameterOrder = parameterOrder;
         this.required = required;
         replaceAllowedSources(allowedSources);
+        validateWritableBindingMetadata();
         this.allowedConfigurationValueTypes.clear();
         this.allowedConfigurationValueTypes.addAll(Objects.requireNonNull(allowedConfigurationValueTypes, "allowedConfigurationValueTypes must not be null"));
         this.allowedSecretValueTypes.clear();
@@ -240,5 +253,14 @@ public class AlertTemplateParameterDefinition {
                 "defaultValue must be one of options when binding is disabled"
             );
         }
+    }
+
+    private void validateWritableBindingMetadata() {
+        if (!writableBindingRequired)
+            return;
+
+        if (!bindingAllowed || allowedSources.isEmpty()
+                || !List.of(AlertParameterSource.CONFIGURATION, AlertParameterSource.SECRET).containsAll(allowedSources))
+            throw new IllegalArgumentException("Writable parameters must allow only configuration or secret bindings");
     }
 }

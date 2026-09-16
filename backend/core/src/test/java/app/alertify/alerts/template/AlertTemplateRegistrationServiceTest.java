@@ -28,6 +28,7 @@ import app.alertify.alerts.template.annotation.AlertParameterSource;
 import app.alertify.alerts.templates.HttpsCertificateExpiryAlertTemplate;
 import app.alertify.alerts.templates.InternetConnectionAlertTemplate;
 import app.alertify.alerts.templates.SqlThresholdAlertTemplate;
+import app.alertify.alerts.templates.SqlWatchAlertTemplate;
 import app.alertify.alerts.templates.TcpConnectionAlertTemplate;
 import app.alertify.alerts.templates.WebRequestAlertTemplate;
 import app.alertify.jpa.repository.AlertTemplateDefinitionRepository;
@@ -186,6 +187,17 @@ class AlertTemplateRegistrationServiceTest {
         assertEquals("thresholdType", sqlThresholdParameters.get(6).getParameterKey());
         assertFalse(sqlThresholdParameters.get(6).isBindingAllowed());
         assertEquals("warn_if_bigger", sqlThresholdParameters.get(6).getDefaultValue());
+
+        AlertTemplateDefinition sqlWatchTemplate = templatesByKey.get(SqlWatchAlertTemplate.class.getName());
+        assertNotNull(sqlWatchTemplate);
+        List<AlertTemplateParameterDefinition> sqlWatchParameters = parametersOf(parameterCaptor, sqlWatchTemplate);
+        assertEquals(8, sqlWatchParameters.size());
+        AlertTemplateParameterDefinition snapshot = sqlWatchParameters.get(4);
+        assertEquals("snapshot", snapshot.getParameterKey());
+        assertTrue(snapshot.isWritableBindingRequired());
+        assertEquals(List.of(AlertParameterSource.CONFIGURATION, AlertParameterSource.SECRET), snapshot.getAllowedSources());
+        assertEquals(List.of("BINARY"), snapshot.getAllowedConfigurationValueTypes());
+        assertEquals(List.of("BINARY"), snapshot.getAllowedSecretValueTypes());
     }
 
     private static List<AlertTemplateParameterDefinition> parametersOf(

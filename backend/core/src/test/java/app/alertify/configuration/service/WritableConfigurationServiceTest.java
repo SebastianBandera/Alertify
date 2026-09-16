@@ -41,7 +41,7 @@ class WritableConfigurationServiceTest {
     @Test
     void persistsChangedValueAndLogsTheAlertThatOverwroteIt() {
         ApplicationConfiguration configuration = configuration(true);
-        when(configurationRepository.findById(10L)).thenReturn(Optional.of(configuration));
+        when(configurationRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(configuration));
         WritableConfigurationService service = service();
         UUID executionId = UUID.randomUUID();
 
@@ -65,7 +65,7 @@ class WritableConfigurationServiceTest {
     @Test
     void ignoresWorkerValueWhenConfigurationIsNoLongerWritable() {
         ApplicationConfiguration configuration = configuration(false);
-        when(configurationRepository.findById(10L)).thenReturn(Optional.of(configuration));
+        when(configurationRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(configuration));
 
         service().apply(20L, "Counter alert", UUID.randomUUID(), Set.of(result("6")));
 
@@ -76,6 +76,23 @@ class WritableConfigurationServiceTest {
     }
 
     @Test
+    void rejectsWriteBackWhenTheConfigurationChangedAfterPreparation() {
+        ApplicationConfiguration configuration = configuration(true);
+        ReflectionTestUtils.setField(configuration, "version", 2L);
+        when(configurationRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(configuration));
+        WritableConfigurationValue stale = result("6").toBuilder().setExpectedVersion(1L).build();
+
+        service().apply(20L, "Counter alert", UUID.randomUUID(), Set.of(stale));
+
+        assertThat(configuration.getValue().intValue()).isEqualTo(5);
+        verify(configurationRepository, never()).flush();
+        verify(eventLogger).errorAfterCommit(
+                eq("CONFIGURATION_OVERWRITE_REJECTED"),
+                org.mockito.ArgumentMatchers.argThat(data -> data.get("reason").toString().contains("changed after execution preparation"))
+        );
+    }
+
+    @Test
     void recompressesAndPersistsWritableBinaryBytes() {
         byte[] changed = new byte[] { 0, 1, 2, 3, 4, (byte) 255 };
         ApplicationConfiguration configuration = new ApplicationConfiguration(
@@ -83,7 +100,7 @@ class WritableConfigurationServiceTest {
                 tools.jackson.databind.node.JsonNodeFactory.instance.objectNode(), Set.of(), true);
         configuration.changeBinaryMetadata("data.sqlite", "application/vnd.sqlite3", 1, 1, new byte[32]);
         ReflectionTestUtils.setField(configuration, "id", 10L);
-        when(configurationRepository.findById(10L)).thenReturn(Optional.of(configuration));
+        when(configurationRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(configuration));
 
         WritableConfigurationValue value = WritableConfigurationValue.newBuilder()
                 .setConfigurationId(10L).setParameterName("database")
@@ -105,7 +122,7 @@ class WritableConfigurationServiceTest {
                 tools.jackson.databind.node.JsonNodeFactory.instance.objectNode(), Set.of(), true);
         configuration.changeBinaryMetadata("data.sqlite", "application/vnd.sqlite3", 6, 1, new byte[32]);
         ReflectionTestUtils.setField(configuration, "id", 10L);
-        when(configurationRepository.findById(10L)).thenReturn(Optional.of(configuration));
+        when(configurationRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(configuration));
 
         WritableConfigurationValue value = WritableConfigurationValue.newBuilder()
                 .setConfigurationId(10L).setParameterName("database")

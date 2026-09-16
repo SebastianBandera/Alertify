@@ -114,6 +114,11 @@ public class ProcedureExecutionPreparationService {
                                 case CONFIGURATION -> value.getConfiguration().isWritable();
                                 case SECRET -> value.getSecret().isWritable();
                                 case TEXT, PROCEDURE -> false;
+                            },
+                            switch (value.getSource()) {
+                                case CONFIGURATION -> value.getConfiguration().getVersion();
+                                case SECRET -> value.getSecret().getVersion();
+                                case TEXT, PROCEDURE -> null;
                             });
                 }).toList();
         return new PreparedProcedureExecution(procedure.getId(), procedure.getVersion(), procedure.getName(),

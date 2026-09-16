@@ -80,7 +80,7 @@ public class AlertCatalogService {
         List<AlertBindingOptionResponse> secrets = secretRepository
                 .findAll(Sort.by(Sort.Direction.ASC, "name"))
                 .stream()
-                .map(secret -> new AlertBindingOptionResponse(secret.getId(), secret.getName(), secret.getDescription(), true, secret.getValueType().name()))
+                .map(secret -> new AlertBindingOptionResponse(secret.getId(), secret.getName(), secret.getDescription(), true, secret.getValueType().name(), secret.isWritable()))
                 .toList();
         List<AlertBindingOptionResponse> procedures = procedureRepository
                 .findAll(Sort.by(Sort.Direction.ASC, "name"))
@@ -99,7 +99,7 @@ public class AlertCatalogService {
 
     private static AlertBindingOptionResponse toBindingOption(ApplicationConfiguration configuration) {
         return new AlertBindingOptionResponse(
-                configuration.getId(), configuration.getName(), configuration.getDescription(), true, configuration.getValueType().name()
+                configuration.getId(), configuration.getName(), configuration.getDescription(), true, configuration.getValueType().name(), configuration.isWritable()
         );
     }
 }
