@@ -10,6 +10,7 @@ import app.alertify.configuration.service.ConfigurationExpressionParser;
 import app.alertify.configuration.service.ConfigurationExpressionParser.ExpressionScope;
 import app.alertify.jpa.entity.SecretValueType;
 import app.alertify.worker.contract.DatabaseCredentials;
+import app.alertify.worker.contract.GitCredentials;
 
 /**
  * Validates a submitted secret value against its declared type and returns the
@@ -37,6 +38,7 @@ public class SecretValueValidator {
         return switch (type) {
             case STRING -> validateString(value, "STRING");
             case DB_SECRET -> validateDatabaseCredentials(value);
+            case GIT_SECRET -> validateGitCredentials(value);
             case EXPRESSION -> validateExpression(validateString(value, "EXPRESSION"));
             case BINARY -> throw new InvalidSecretValueException("BINARY values require multipart file upload");
         };
@@ -60,6 +62,13 @@ public class SecretValueValidator {
                     yield DatabaseCredentials.fromJson(raw).toJson();
                 } catch (IllegalArgumentException exception) {
                     throw new InvalidSecretValueException("DB_SECRET value is invalid: " + exception.getMessage());
+                }
+            }
+            case GIT_SECRET -> {
+                try {
+                    yield GitCredentials.fromJson(raw).toJson();
+                } catch (IllegalArgumentException exception) {
+                    throw new InvalidSecretValueException("GIT_SECRET value is invalid: " + exception.getMessage());
                 }
             }
             case EXPRESSION -> validateExpression(raw);
@@ -94,6 +103,17 @@ public class SecretValueValidator {
             return DatabaseCredentials.fromJson(value).toJson();
         } catch (IllegalArgumentException exception) {
             throw new InvalidSecretValueException("DB_SECRET value is invalid: " + exception.getMessage());
+        }
+    }
+
+    private static String validateGitCredentials(JsonNode value) {
+        if (!value.isObject())
+            throw new InvalidSecretValueException("GIT_SECRET requires a JSON object with the credential fields");
+
+        try {
+            return GitCredentials.fromJson(value).toJson();
+        } catch (IllegalArgumentException exception) {
+            throw new InvalidSecretValueException("GIT_SECRET value is invalid: " + exception.getMessage());
         }
     }
 }

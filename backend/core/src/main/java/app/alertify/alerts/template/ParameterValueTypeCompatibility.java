@@ -52,7 +52,8 @@ public final class ParameterValueTypeCompatibility {
     public static boolean isSecretValueTypeCompatible(String javaType, SecretValueType valueType) {
         return requiredSecretValueType(javaType)
             .map(required -> required == valueType)
-            .orElse(valueType != SecretValueType.BINARY && valueType != SecretValueType.DB_SECRET);
+            .orElse(valueType != SecretValueType.BINARY && valueType != SecretValueType.DB_SECRET
+                && valueType != SecretValueType.GIT_SECRET);
     }
 
     /**
@@ -84,8 +85,9 @@ public final class ParameterValueTypeCompatibility {
 
     /**
      * Same resolution as {@link #effectiveAllowedConfigurationValueTypes} but for
-     * secret value types, where both {@code BINARY} and {@code DB_SECRET} are
-     * physically required pairings.
+     * secret value types, where {@code BINARY}, {@code DB_SECRET} and
+     * {@code GIT_SECRET} are structured pairings that are not meaningful as free
+     * text, so they may only be bound by a java type that requires them.
      */
     public static List<String> effectiveAllowedSecretValueTypes(String javaType, List<String> declared, String description) {
         List<String> names = validNames(declared, SecretValueType.class, "allowedSecretValueTypes", description);
@@ -99,9 +101,10 @@ public final class ParameterValueTypeCompatibility {
             }
             return List.of(required.get().name());
         }
-        if (names.contains(SecretValueType.BINARY.name()) || names.contains(SecretValueType.DB_SECRET.name())) {
+        if (names.contains(SecretValueType.BINARY.name()) || names.contains(SecretValueType.DB_SECRET.name())
+                || names.contains(SecretValueType.GIT_SECRET.name())) {
             throw new IllegalStateException(
-                "allowedSecretValueTypes must not include BINARY or DB_SECRET unless the java type requires them: " + description
+                "allowedSecretValueTypes must not include BINARY, DB_SECRET or GIT_SECRET unless the java type requires them: " + description
             );
         }
         return names;

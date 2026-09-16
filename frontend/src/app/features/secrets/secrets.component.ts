@@ -6,6 +6,8 @@ import {
   ApplicationSecret,
   DATABASE_ENGINES,
   DatabaseEngine,
+  GIT_PROVIDERS,
+  GitProvider,
   SECRET_VALUE_TYPES,
   SecretApiService,
   SecretTag,
@@ -26,12 +28,23 @@ interface DatabaseSecretForm {
   options: string;
 }
 
+/** Editor state for a GIT_SECRET; every field is kept as text and parsed on save, like configs' rawValue. */
+interface GitSecretForm {
+  provider: GitProvider;
+  providerManuallySet: boolean;
+  host: string;
+  username: string;
+  token: string;
+  tokenExpiresAt: string;
+}
+
 interface SecretForm {
   name: string;
   description: string;
   valueType: SecretValueType;
   newValue: string;
   dbValue: DatabaseSecretForm;
+  gitValue: GitSecretForm;
   binaryFile: File | null;
   tagIds: number[];
   writable: boolean;
@@ -43,6 +56,16 @@ const DEFAULT_PORTS: Readonly<Record<DatabaseEngine, string>> = {
   SQL_SERVER: '1433',
   ORACLE: '1521',
   OTHER: '',
+};
+
+/** Hosts whose provider can be inferred automatically; anything else requires a manual choice. */
+const GIT_HOSTS_BY_PROVIDER: Readonly<Record<string, GitProvider>> = {
+  'github.com': 'GITHUB',
+  'www.github.com': 'GITHUB',
+  'gitlab.com': 'GITLAB',
+  'www.gitlab.com': 'GITLAB',
+  'bitbucket.org': 'BITBUCKET',
+  'www.bitbucket.org': 'BITBUCKET',
 };
 
 interface TagForm {
@@ -75,6 +98,7 @@ export class SecretsComponent implements OnInit {
   protected readonly pageSizeOptions = PAGE_SIZE_OPTIONS;
   protected readonly valueTypes = SECRET_VALUE_TYPES;
   protected readonly databaseEngines = DATABASE_ENGINES;
+  protected readonly gitProviders = GIT_PROVIDERS;
   protected readonly expressionScopes: readonly string[] = ['secrets', 'configs', 'env', 'utils'];
   protected readonly expressionNames = signal<Readonly<Record<string, readonly string[]>>>({ secrets: [], configs: [], env: [], utils: [] });
   protected readonly expressionUtilityFunctions = signal<readonly string[]>([]);
@@ -218,6 +242,7 @@ export class SecretsComponent implements OnInit {
       valueType: secret.valueType,
       newValue: '',
       dbValue: this.emptyDatabaseForm(),
+      gitValue: this.emptyGitForm(),
       binaryFile: null,
       tagIds: secret.tags.map((tag) => tag.id),
       writable: secret.writable,
@@ -255,7 +280,7 @@ export class SecretsComponent implements OnInit {
   }
 
   protected changeValueType(valueType: SecretValueType): void {
-    this.patchSecretForm({ valueType, newValue: '', dbValue: this.emptyDatabaseForm(), binaryFile: null });
+    this.patchSecretForm({ valueType, newValue: '', dbValue: this.emptyDatabaseForm(), gitValue: this.emptyGitForm(), binaryFile: null });
   }
 
   protected selectBinaryFile(event: Event): void {
@@ -279,6 +304,25 @@ export class SecretsComponent implements OnInit {
       return { ...form, dbValue: { ...form.dbValue, engine, port: keepPort ? form.dbValue.port : DEFAULT_PORTS[engine] } };
     });
     this.formError.set(null);
+  }
+
+  protected patchGitForm(patch: Partial<GitSecretForm>): void {
+    this.secretForm.update((form) => ({ ...form, gitValue: { ...form.gitValue, ...patch } }));
+    this.formError.set(null);
+  }
+
+  /** Infers the provider from well-known hosts unless the user already picked one manually. */
+  protected changeGitHost(host: string): void {
+    this.secretForm.update((form) => {
+      const inferred = GIT_HOSTS_BY_PROVIDER[host.trim().toLowerCase()];
+      const provider = !form.gitValue.providerManuallySet && inferred ? inferred : form.gitValue.providerManuallySet ? form.gitValue.provider : 'OTHER';
+      return { ...form, gitValue: { ...form.gitValue, host, provider } };
+    });
+    this.formError.set(null);
+  }
+
+  protected changeGitProvider(provider: GitProvider): void {
+    this.patchGitForm({ provider, providerManuallySet: true });
   }
 
   protected toggleFormTag(tagId: number, checked: boolean): void {
@@ -408,6 +452,14 @@ export class SecretsComponent implements OnInit {
         if (db.engine === 'OTHER' && !options.startsWith('jdbc:')) throw new Error(this.localization.translate('secrets.value.jdbcUrlRequired'));
         return { engine: db.engine, host, port: Number(db.port), database, username, password: db.password, options: options || null };
       }
+      case 'GIT_SECRET': {
+        const git = form.gitValue;
+        const host = git.host.trim();
+        const username = git.username.trim();
+        const tokenExpiresAt = git.tokenExpiresAt.trim();
+        if (!host || !git.token) throw new Error(this.localization.translate('secrets.value.gitRequired'));
+        return { provider: git.provider, host, username: username || null, token: git.token, tokenExpiresAt: tokenExpiresAt || null };
+      }
       case 'EXPRESSION':
         if (!form.newValue.trim()) throw new Error(this.localization.translate('secrets.value.expressionRequired'));
         return form.newValue;
@@ -418,11 +470,15 @@ export class SecretsComponent implements OnInit {
   }
 
   private emptySecretForm(): SecretForm {
-    return { name: '', description: '', valueType: 'STRING', newValue: '', dbValue: this.emptyDatabaseForm(), binaryFile: null, tagIds: [], writable: false };
+    return { name: '', description: '', valueType: 'STRING', newValue: '', dbValue: this.emptyDatabaseForm(), gitValue: this.emptyGitForm(), binaryFile: null, tagIds: [], writable: false };
   }
 
   private emptyDatabaseForm(): DatabaseSecretForm {
     return { engine: 'POSTGRESQL', host: '', port: DEFAULT_PORTS.POSTGRESQL, database: '', username: '', password: '', options: '' };
+  }
+
+  private emptyGitForm(): GitSecretForm {
+    return { provider: 'OTHER', providerManuallySet: false, host: '', username: '', token: '', tokenExpiresAt: '' };
   }
 
   private errorMessage(error: unknown, referencedOperation?: 'delete' | 'rename'): string {

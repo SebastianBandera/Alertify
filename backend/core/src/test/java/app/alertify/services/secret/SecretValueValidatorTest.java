@@ -78,6 +78,35 @@ class SecretValueValidatorTest {
     }
 
     @Test
+    void normalizesGitSecretsToCanonicalJson() {
+        JsonNode value = json("{\"token\":\"tok\",\"tokenExpiresAt\":\"\",\"username\":\" bot \","
+                + "\"host\":\" github.com \",\"provider\":\"GITHUB\"}");
+
+        String canonical = validator.validateAndNormalize(SecretValueType.GIT_SECRET, value);
+
+        assertThat(canonical).isEqualTo("{\"provider\":\"GITHUB\",\"host\":\"github.com\","
+                + "\"username\":\"bot\",\"token\":\"tok\",\"tokenExpiresAt\":null}");
+        assertThat(validator.validateAndNormalizeRaw(SecretValueType.GIT_SECRET, canonical)).isEqualTo(canonical);
+    }
+
+    @Test
+    void rejectsMalformedGitSecrets() {
+        assertThatThrownBy(() -> validator.validateAndNormalize(SecretValueType.GIT_SECRET, StringNode.valueOf("host")))
+                .isInstanceOf(InvalidSecretValueException.class)
+                .hasMessageContaining("JSON object");
+        assertThatThrownBy(() -> validator.validateAndNormalize(SecretValueType.GIT_SECRET, json(
+                "{\"provider\":\"GITHUB\",\"host\":\"h\"}")))
+                .isInstanceOf(InvalidSecretValueException.class)
+                .hasMessageContaining("token");
+        assertThatThrownBy(() -> validator.validateAndNormalize(SecretValueType.GIT_SECRET, json(
+                "{\"provider\":\"PERFORCE\",\"host\":\"h\",\"token\":\"t\"}")))
+                .isInstanceOf(InvalidSecretValueException.class)
+                .hasMessageContaining("provider");
+        assertThatThrownBy(() -> validator.validateAndNormalizeRaw(SecretValueType.GIT_SECRET, "not json"))
+                .isInstanceOf(InvalidSecretValueException.class);
+    }
+
+    @Test
     void validatesExpressionSyntaxWithSecretScope() {
         String expression = "Basic {{utils.BASE64({{secrets.USER}}:{{secrets.PASS}})}} {{configs.REALM}}";
 

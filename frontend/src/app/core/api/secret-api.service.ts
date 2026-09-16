@@ -14,13 +14,17 @@ export interface SecretTag {
   readonly updatedAt: string;
 }
 
-export type SecretValueType = 'STRING' | 'DB_SECRET' | 'EXPRESSION' | 'BINARY';
+export type SecretValueType = 'STRING' | 'DB_SECRET' | 'GIT_SECRET' | 'EXPRESSION' | 'BINARY';
 
 export type DatabaseEngine = 'POSTGRESQL' | 'MARIADB' | 'SQL_SERVER' | 'ORACLE' | 'OTHER';
 
-export const SECRET_VALUE_TYPES: readonly SecretValueType[] = ['STRING', 'DB_SECRET', 'EXPRESSION', 'BINARY'];
+export type GitProvider = 'GITHUB' | 'GITLAB' | 'BITBUCKET' | 'OTHER';
+
+export const SECRET_VALUE_TYPES: readonly SecretValueType[] = ['STRING', 'DB_SECRET', 'GIT_SECRET', 'EXPRESSION', 'BINARY'];
 
 export const DATABASE_ENGINES: readonly DatabaseEngine[] = ['POSTGRESQL', 'MARIADB', 'SQL_SERVER', 'ORACLE', 'OTHER'];
+
+export const GIT_PROVIDERS: readonly GitProvider[] = ['GITHUB', 'GITLAB', 'BITBUCKET', 'OTHER'];
 
 /** Value shape sent for DB_SECRET secrets; the backend stores it as canonical JSON. */
 export interface DatabaseSecretValue {
@@ -33,7 +37,16 @@ export interface DatabaseSecretValue {
   readonly options: string | null;
 }
 
-export type SecretValue = string | DatabaseSecretValue;
+/** Value shape sent for GIT_SECRET secrets; the backend stores it as canonical JSON. */
+export interface GitSecretValue {
+  readonly provider: GitProvider;
+  readonly host: string;
+  readonly username: string | null;
+  readonly token: string;
+  readonly tokenExpiresAt: string | null;
+}
+
+export type SecretValue = string | DatabaseSecretValue | GitSecretValue;
 
 export interface SecretExpressionSuggestions {
   readonly configurations: readonly string[];

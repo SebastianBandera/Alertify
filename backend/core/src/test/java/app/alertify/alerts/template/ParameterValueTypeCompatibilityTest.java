@@ -49,6 +49,10 @@ class ParameterValueTypeCompatibilityTest {
         assertThat(ParameterValueTypeCompatibility.isSecretValueTypeCompatible(STRING, SecretValueType.DB_SECRET)).isFalse();
         assertThat(ParameterValueTypeCompatibility.isSecretValueTypeCompatible(STRING, SecretValueType.STRING)).isTrue();
         assertThat(ParameterValueTypeCompatibility.isSecretValueTypeCompatible(BYTE_ARRAY, SecretValueType.BINARY)).isTrue();
+        // GIT_SECRET has no java type that requires it yet, but it must stay excluded from the
+        // generic fallback just like DB_SECRET, so a plain String parameter cannot silently bind
+        // a git secret and receive its raw canonical JSON as free text.
+        assertThat(ParameterValueTypeCompatibility.isSecretValueTypeCompatible(STRING, SecretValueType.GIT_SECRET)).isFalse();
     }
 
     @Test
@@ -79,6 +83,13 @@ class ParameterValueTypeCompatibilityTest {
     void rejectsDeclaringAMismatchedTypeForAByteArrayField() {
         assertThatIllegalStateException()
                 .isThrownBy(() -> ParameterValueTypeCompatibility.effectiveAllowedConfigurationValueTypes(BYTE_ARRAY, List.of("STRING"), "field"));
+    }
+
+    @Test
+    void rejectsDeclaringGitSecretForAJavaTypeThatDoesNotRequireIt() {
+        assertThatIllegalStateException()
+                .isThrownBy(() -> ParameterValueTypeCompatibility.effectiveAllowedSecretValueTypes(STRING, List.of("GIT_SECRET"), "field"))
+                .withMessageContaining("GIT_SECRET");
     }
 
     @Test
