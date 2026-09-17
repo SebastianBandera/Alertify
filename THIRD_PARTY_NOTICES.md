@@ -9,3 +9,12 @@ license. The SQLite library bundled with the driver is dedicated to the public
 domain. See the upstream project for the complete license and bundled-component
 notices:
 https://github.com/xerial/sqlite-jdbc
+
+## JGit
+
+Alertify's standard worker includes Eclipse JGit
+(`org.eclipse.jgit:org.eclipse.jgit:7.8.0.202609011348-r`) to fetch and
+analyse Git repositories from alert templates. JGit is distributed under the
+Eclipse Distribution License 1.0 (a BSD 3-Clause license). See the upstream
+project for the complete license and bundled-component notices:
+https://github.com/eclipse-jgit/jgit

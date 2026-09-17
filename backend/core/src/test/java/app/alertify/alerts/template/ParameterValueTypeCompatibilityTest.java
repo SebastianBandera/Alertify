@@ -12,11 +12,13 @@ import app.alertify.alerts.template.annotation.AlertParameterSource;
 import app.alertify.jpa.entity.ConfigurationValueType;
 import app.alertify.jpa.entity.SecretValueType;
 import app.alertify.worker.contract.DatabaseCredentials;
+import app.alertify.worker.contract.GitCredentials;
 
 class ParameterValueTypeCompatibilityTest {
 
     private static final String BYTE_ARRAY = byte[].class.getName();
     private static final String DATABASE_CREDENTIALS = DatabaseCredentials.class.getName();
+    private static final String GIT_CREDENTIALS = GitCredentials.class.getName();
     private static final String STRING = String.class.getName();
 
     @Test
@@ -32,6 +34,8 @@ class ParameterValueTypeCompatibilityTest {
                 .contains(SecretValueType.BINARY);
         assertThat(ParameterValueTypeCompatibility.requiredSecretValueType(DATABASE_CREDENTIALS))
                 .contains(SecretValueType.DB_SECRET);
+        assertThat(ParameterValueTypeCompatibility.requiredSecretValueType(GIT_CREDENTIALS))
+                .contains(SecretValueType.GIT_SECRET);
         assertThat(ParameterValueTypeCompatibility.requiredSecretValueType(STRING)).isEmpty();
     }
 
@@ -49,9 +53,8 @@ class ParameterValueTypeCompatibilityTest {
         assertThat(ParameterValueTypeCompatibility.isSecretValueTypeCompatible(STRING, SecretValueType.DB_SECRET)).isFalse();
         assertThat(ParameterValueTypeCompatibility.isSecretValueTypeCompatible(STRING, SecretValueType.STRING)).isTrue();
         assertThat(ParameterValueTypeCompatibility.isSecretValueTypeCompatible(BYTE_ARRAY, SecretValueType.BINARY)).isTrue();
-        // GIT_SECRET has no java type that requires it yet, but it must stay excluded from the
-        // generic fallback just like DB_SECRET, so a plain String parameter cannot silently bind
-        // a git secret and receive its raw canonical JSON as free text.
+        assertThat(ParameterValueTypeCompatibility.isSecretValueTypeCompatible(GIT_CREDENTIALS, SecretValueType.GIT_SECRET)).isTrue();
+        assertThat(ParameterValueTypeCompatibility.isSecretValueTypeCompatible(GIT_CREDENTIALS, SecretValueType.STRING)).isFalse();
         assertThat(ParameterValueTypeCompatibility.isSecretValueTypeCompatible(STRING, SecretValueType.GIT_SECRET)).isFalse();
     }
 

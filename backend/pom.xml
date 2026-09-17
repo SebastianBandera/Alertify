@@ -23,6 +23,7 @@
         <maven.compiler.parameters>true</maven.compiler.parameters>
         <grpc.version>1.83.1</grpc.version>
         <jacoco.version>0.8.15</jacoco.version>
+        <jgit.version>7.8.0.202609011348-r</jgit.version>
         <protobuf.version>4.33.2</protobuf.version>
         <playwright.version>1.62.0</playwright.version>
         <sqlite.version>3.53.4.0</sqlite.version>
@@ -50,6 +51,11 @@
                 <groupId>org.xerial</groupId>
                 <artifactId>sqlite-jdbc</artifactId>
                 <version>${sqlite.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.eclipse.jgit</groupId>
+                <artifactId>org.eclipse.jgit</artifactId>
+                <version>${jgit.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

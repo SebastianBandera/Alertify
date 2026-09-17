@@ -7,6 +7,7 @@ import java.time.Duration;
 import java.time.Instant;
 
 import app.alertify.worker.contract.DatabaseCredentials;
+import app.alertify.worker.contract.GitCredentials;
 import app.alertify.worker.contract.BinaryPayloadCodec;
 import app.alertify.worker.grpc.AlertParameter;
 
@@ -74,6 +75,9 @@ final class AlertParameterConverter {
         if (targetType == DatabaseCredentials.class)
             return DatabaseCredentials.fromJson(value);
 
+        if (targetType == GitCredentials.class)
+            return GitCredentials.fromJson(value);
+
         if (targetType.isEnum())
             return enumValue(targetType, value);
 
@@ -89,6 +93,9 @@ final class AlertParameterConverter {
 
         if (declaredType == DatabaseCredentials.class)
             return ((DatabaseCredentials) value).toJson();
+
+        if (declaredType == GitCredentials.class)
+            return ((GitCredentials) value).toJson();
 
         if (declaredType == String.class || declaredType == Character.class || declaredType == char.class
                 || declaredType == URI.class || declaredType == Duration.class || declaredType == Instant.class

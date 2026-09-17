@@ -10,13 +10,15 @@ import app.alertify.alerts.template.annotation.AlertParameterSource;
 import app.alertify.jpa.entity.ConfigurationValueType;
 import app.alertify.jpa.entity.SecretValueType;
 import app.alertify.worker.contract.DatabaseCredentials;
+import app.alertify.worker.contract.GitCredentials;
 
 /**
  * Single source of truth for how a template parameter's java type constrains
  * which {@link ConfigurationValueType}/{@link SecretValueType} it may bind
- * to. A java type such as {@code byte[]} or {@link DatabaseCredentials} has a
- * physically required value type (the worker only knows how to convert that
- * exact pairing); every other java type accepts any value type except those
+ * to. A java type such as {@code byte[]}, {@link DatabaseCredentials} or
+ * {@link GitCredentials} has a physically required value type (the worker only
+ * knows how to convert that exact pairing); every other java type accepts any
+ * value type except those
  * reserved ones, unless the template further narrows the choice with an
  * explicit, optional {@code allowedConfigurationValueTypes}/
  * {@code allowedSecretValueTypes} declaration.
@@ -25,6 +27,7 @@ public final class ParameterValueTypeCompatibility {
 
     private static final String BYTE_ARRAY_JAVA_TYPE = byte[].class.getName();
     private static final String DATABASE_CREDENTIALS_JAVA_TYPE = DatabaseCredentials.class.getName();
+    private static final String GIT_CREDENTIALS_JAVA_TYPE = GitCredentials.class.getName();
 
     private ParameterValueTypeCompatibility() {
     }
@@ -39,6 +42,9 @@ public final class ParameterValueTypeCompatibility {
 
         if (DATABASE_CREDENTIALS_JAVA_TYPE.equals(javaType))
             return Optional.of(SecretValueType.DB_SECRET);
+
+        if (GIT_CREDENTIALS_JAVA_TYPE.equals(javaType))
+            return Optional.of(SecretValueType.GIT_SECRET);
 
         return Optional.empty();
     }
