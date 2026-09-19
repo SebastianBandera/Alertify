@@ -31,8 +31,10 @@ import app.alertify.alerts.templates.SqlThresholdAlertTemplate;
 import app.alertify.alerts.templates.SqlWatchAlertTemplate;
 import app.alertify.alerts.templates.TcpConnectionAlertTemplate;
 import app.alertify.alerts.templates.WebRequestAlertTemplate;
+import app.alertify.alerts.templates.devtools.SimulatedLongRunningPlaywrightAlertTemplate;
 import app.alertify.jpa.repository.AlertTemplateDefinitionRepository;
 import app.alertify.jpa.repository.AlertTemplateParameterDefinitionRepository;
+import app.alertify.worker.contract.WorkerCapability;
 
 @ExtendWith(MockitoExtension.class)
 class AlertTemplateRegistrationServiceTest {
@@ -105,6 +107,15 @@ class AlertTemplateRegistrationServiceTest {
             webRequestTemplate.getSourcePath()
         );
 
+        AlertTemplateDefinition simulatedPlaywrightTemplate =
+            templatesByKey.get(SimulatedLongRunningPlaywrightAlertTemplate.class.getName());
+        assertNotNull(simulatedPlaywrightTemplate);
+        assertEquals(WorkerCapability.PLAYWRIGHT, simulatedPlaywrightTemplate.getRequiredCapability());
+        assertEquals(
+            "app/alertify/alerts/templates/devtools/SimulatedLongRunningPlaywrightAlertTemplate.java",
+            simulatedPlaywrightTemplate.getSourcePath()
+        );
+
         AlertTemplateDefinition sqlThresholdTemplate =
             templatesByKey.get(SqlThresholdAlertTemplate.class.getName());
         assertNotNull(sqlThresholdTemplate);
@@ -157,6 +168,13 @@ class AlertTemplateRegistrationServiceTest {
         assertEquals(List.of("1", "3", "5", "10"), internetParameters.get(1).getOptions());
         assertTrue(internetParameters.get(1).isBindingAllowed());
         assertEquals("3", internetParameters.get(1).getDefaultValue());
+
+        List<AlertTemplateParameterDefinition> simulatedPlaywrightParameters = parametersOf(parameterCaptor, simulatedPlaywrightTemplate);
+        assertEquals(4, simulatedPlaywrightParameters.size());
+        assertEquals("sleepMilliseconds", simulatedPlaywrightParameters.get(0).getParameterKey());
+        assertEquals("10000", simulatedPlaywrightParameters.get(0).getDefaultValue());
+        assertEquals("randomInitialDelayEnabled", simulatedPlaywrightParameters.get(1).getParameterKey());
+        assertFalse(simulatedPlaywrightParameters.get(1).isBindingAllowed());
 
         List<AlertTemplateParameterDefinition> tcpParameters = parametersOf(parameterCaptor, tcpTemplate);
         assertEquals(3, tcpParameters.size());
