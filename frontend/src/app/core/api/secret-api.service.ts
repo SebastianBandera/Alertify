@@ -14,13 +14,13 @@ export interface SecretTag {
   readonly updatedAt: string;
 }
 
-export type SecretValueType = 'STRING' | 'DB_SECRET' | 'GIT_SECRET' | 'EXPRESSION' | 'BINARY';
+export type SecretValueType = 'STRING' | 'DB_SECRET' | 'GIT_SECRET' | 'OIDC_TOKEN_SET' | 'EXPRESSION' | 'BINARY';
 
 export type DatabaseEngine = 'POSTGRESQL' | 'MARIADB' | 'SQL_SERVER' | 'ORACLE' | 'OTHER';
 
 export type GitProvider = 'GITHUB' | 'GITLAB' | 'BITBUCKET' | 'OTHER';
 
-export const SECRET_VALUE_TYPES: readonly SecretValueType[] = ['STRING', 'DB_SECRET', 'GIT_SECRET', 'EXPRESSION', 'BINARY'];
+export const SECRET_VALUE_TYPES: readonly SecretValueType[] = ['STRING', 'DB_SECRET', 'GIT_SECRET', 'OIDC_TOKEN_SET', 'EXPRESSION', 'BINARY'];
 
 export const DATABASE_ENGINES: readonly DatabaseEngine[] = ['POSTGRESQL', 'MARIADB', 'SQL_SERVER', 'ORACLE', 'OTHER'];
 
@@ -46,7 +46,17 @@ export interface GitSecretValue {
   readonly tokenExpiresAt: string | null;
 }
 
-export type SecretValue = string | DatabaseSecretValue | GitSecretValue;
+/** Value shape sent for OIDC_TOKEN_SET secrets; token strings remain uninterpreted by Alertify. */
+export interface OidcTokenSetSecretValue {
+  readonly accessToken: string;
+  readonly refreshToken: string | null;
+  readonly idToken: string | null;
+  readonly tokenType: string;
+  readonly expiresAt: string | null;
+  readonly refreshExpiresAt: string | null;
+}
+
+export type SecretValue = string | DatabaseSecretValue | GitSecretValue | OidcTokenSetSecretValue;
 
 export interface SecretExpressionSuggestions {
   readonly configurations: readonly string[];

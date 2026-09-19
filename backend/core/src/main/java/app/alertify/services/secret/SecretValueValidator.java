@@ -11,6 +11,7 @@ import app.alertify.configuration.service.ConfigurationExpressionParser.Expressi
 import app.alertify.jpa.entity.SecretValueType;
 import app.alertify.worker.contract.DatabaseCredentials;
 import app.alertify.worker.contract.GitCredentials;
+import app.alertify.worker.contract.OidcTokenSet;
 
 /**
  * Validates a submitted secret value against its declared type and returns the
@@ -39,6 +40,7 @@ public class SecretValueValidator {
             case STRING -> validateString(value, "STRING");
             case DB_SECRET -> validateDatabaseCredentials(value);
             case GIT_SECRET -> validateGitCredentials(value);
+            case OIDC_TOKEN_SET -> validateOidcTokenSet(value);
             case EXPRESSION -> validateExpression(validateString(value, "EXPRESSION"));
             case BINARY -> throw new InvalidSecretValueException("BINARY values require multipart file upload");
         };
@@ -69,6 +71,13 @@ public class SecretValueValidator {
                     yield GitCredentials.fromJson(raw).toJson();
                 } catch (IllegalArgumentException exception) {
                     throw new InvalidSecretValueException("GIT_SECRET value is invalid: " + exception.getMessage());
+                }
+            }
+            case OIDC_TOKEN_SET -> {
+                try {
+                    yield OidcTokenSet.fromJson(raw).toJson();
+                } catch (IllegalArgumentException exception) {
+                    throw new InvalidSecretValueException("OIDC_TOKEN_SET value is invalid: " + exception.getMessage());
                 }
             }
             case EXPRESSION -> validateExpression(raw);
@@ -114,6 +123,17 @@ public class SecretValueValidator {
             return GitCredentials.fromJson(value).toJson();
         } catch (IllegalArgumentException exception) {
             throw new InvalidSecretValueException("GIT_SECRET value is invalid: " + exception.getMessage());
+        }
+    }
+
+    private static String validateOidcTokenSet(JsonNode value) {
+        if (!value.isObject())
+            throw new InvalidSecretValueException("OIDC_TOKEN_SET requires a JSON object with the token fields");
+
+        try {
+            return OidcTokenSet.fromJson(value).toJson();
+        } catch (IllegalArgumentException exception) {
+            throw new InvalidSecretValueException("OIDC_TOKEN_SET value is invalid: " + exception.getMessage());
         }
     }
 }

@@ -38,6 +38,16 @@ interface GitSecretForm {
   tokenExpiresAt: string;
 }
 
+/** Editor state for an OIDC_TOKEN_SET; date-time values are converted to UTC ISO instants on save. */
+interface OidcTokenSetForm {
+  accessToken: string;
+  refreshToken: string;
+  idToken: string;
+  tokenType: string;
+  expiresAt: string;
+  refreshExpiresAt: string;
+}
+
 interface SecretForm {
   name: string;
   description: string;
@@ -45,6 +55,7 @@ interface SecretForm {
   newValue: string;
   dbValue: DatabaseSecretForm;
   gitValue: GitSecretForm;
+  oidcValue: OidcTokenSetForm;
   binaryFile: File | null;
   tagIds: number[];
   writable: boolean;
@@ -243,6 +254,7 @@ export class SecretsComponent implements OnInit {
       newValue: '',
       dbValue: this.emptyDatabaseForm(),
       gitValue: this.emptyGitForm(),
+      oidcValue: this.emptyOidcForm(),
       binaryFile: null,
       tagIds: secret.tags.map((tag) => tag.id),
       writable: secret.writable,
@@ -280,7 +292,7 @@ export class SecretsComponent implements OnInit {
   }
 
   protected changeValueType(valueType: SecretValueType): void {
-    this.patchSecretForm({ valueType, newValue: '', dbValue: this.emptyDatabaseForm(), gitValue: this.emptyGitForm(), binaryFile: null });
+    this.patchSecretForm({ valueType, newValue: '', dbValue: this.emptyDatabaseForm(), gitValue: this.emptyGitForm(), oidcValue: this.emptyOidcForm(), binaryFile: null });
   }
 
   protected selectBinaryFile(event: Event): void {
@@ -323,6 +335,11 @@ export class SecretsComponent implements OnInit {
 
   protected changeGitProvider(provider: GitProvider): void {
     this.patchGitForm({ provider, providerManuallySet: true });
+  }
+
+  protected patchOidcForm(patch: Partial<OidcTokenSetForm>): void {
+    this.secretForm.update((form) => ({ ...form, oidcValue: { ...form.oidcValue, ...patch } }));
+    this.formError.set(null);
   }
 
   protected toggleFormTag(tagId: number, checked: boolean): void {
@@ -460,6 +477,19 @@ export class SecretsComponent implements OnInit {
         if (!host || !git.token) throw new Error(this.localization.translate('secrets.value.gitRequired'));
         return { provider: git.provider, host, username: username || null, token: git.token, tokenExpiresAt: tokenExpiresAt || null };
       }
+      case 'OIDC_TOKEN_SET': {
+        const oidc = form.oidcValue;
+        const tokenType = oidc.tokenType.trim();
+        if (!oidc.accessToken || !tokenType) throw new Error(this.localization.translate('secrets.value.oidcRequired'));
+        return {
+          accessToken: oidc.accessToken,
+          refreshToken: oidc.refreshToken || null,
+          idToken: oidc.idToken || null,
+          tokenType,
+          expiresAt: this.parseOptionalInstant(oidc.expiresAt),
+          refreshExpiresAt: this.parseOptionalInstant(oidc.refreshExpiresAt),
+        };
+      }
       case 'EXPRESSION':
         if (!form.newValue.trim()) throw new Error(this.localization.translate('secrets.value.expressionRequired'));
         return form.newValue;
@@ -470,7 +500,7 @@ export class SecretsComponent implements OnInit {
   }
 
   private emptySecretForm(): SecretForm {
-    return { name: '', description: '', valueType: 'STRING', newValue: '', dbValue: this.emptyDatabaseForm(), gitValue: this.emptyGitForm(), binaryFile: null, tagIds: [], writable: false };
+    return { name: '', description: '', valueType: 'STRING', newValue: '', dbValue: this.emptyDatabaseForm(), gitValue: this.emptyGitForm(), oidcValue: this.emptyOidcForm(), binaryFile: null, tagIds: [], writable: false };
   }
 
   private emptyDatabaseForm(): DatabaseSecretForm {
@@ -479,6 +509,21 @@ export class SecretsComponent implements OnInit {
 
   private emptyGitForm(): GitSecretForm {
     return { provider: 'OTHER', providerManuallySet: false, host: '', username: '', token: '', tokenExpiresAt: '' };
+  }
+
+  private emptyOidcForm(): OidcTokenSetForm {
+    return { accessToken: '', refreshToken: '', idToken: '', tokenType: 'Bearer', expiresAt: '', refreshExpiresAt: '' };
+  }
+
+  private parseOptionalInstant(value: string): string | null {
+    if (!value)
+      return null;
+
+    const instant = new Date(value);
+    if (Number.isNaN(instant.getTime()))
+      throw new Error(this.localization.translate('secrets.value.invalidInstant'));
+
+    return instant.toISOString();
   }
 
   private errorMessage(error: unknown, referencedOperation?: 'delete' | 'rename'): string {

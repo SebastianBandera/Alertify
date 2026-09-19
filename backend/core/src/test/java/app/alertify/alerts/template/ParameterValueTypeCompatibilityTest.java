@@ -13,12 +13,14 @@ import app.alertify.jpa.entity.ConfigurationValueType;
 import app.alertify.jpa.entity.SecretValueType;
 import app.alertify.worker.contract.DatabaseCredentials;
 import app.alertify.worker.contract.GitCredentials;
+import app.alertify.worker.contract.OidcTokenSet;
 
 class ParameterValueTypeCompatibilityTest {
 
     private static final String BYTE_ARRAY = byte[].class.getName();
     private static final String DATABASE_CREDENTIALS = DatabaseCredentials.class.getName();
     private static final String GIT_CREDENTIALS = GitCredentials.class.getName();
+    private static final String OIDC_TOKEN_SET = OidcTokenSet.class.getName();
     private static final String STRING = String.class.getName();
 
     @Test
@@ -36,6 +38,8 @@ class ParameterValueTypeCompatibilityTest {
                 .contains(SecretValueType.DB_SECRET);
         assertThat(ParameterValueTypeCompatibility.requiredSecretValueType(GIT_CREDENTIALS))
                 .contains(SecretValueType.GIT_SECRET);
+        assertThat(ParameterValueTypeCompatibility.requiredSecretValueType(OIDC_TOKEN_SET))
+                .contains(SecretValueType.OIDC_TOKEN_SET);
         assertThat(ParameterValueTypeCompatibility.requiredSecretValueType(STRING)).isEmpty();
     }
 
@@ -45,6 +49,7 @@ class ParameterValueTypeCompatibilityTest {
         assertThat(ParameterValueTypeCompatibility.isConfigurationValueTypeCompatible(BYTE_ARRAY, ConfigurationValueType.STRING)).isFalse();
         assertThat(ParameterValueTypeCompatibility.isConfigurationValueTypeCompatible(STRING, ConfigurationValueType.STRING)).isTrue();
         assertThat(ParameterValueTypeCompatibility.isConfigurationValueTypeCompatible(STRING, ConfigurationValueType.BINARY)).isFalse();
+        assertThat(ParameterValueTypeCompatibility.isConfigurationValueTypeCompatible(OIDC_TOKEN_SET, ConfigurationValueType.STRING)).isFalse();
     }
 
     @Test
@@ -56,6 +61,8 @@ class ParameterValueTypeCompatibilityTest {
         assertThat(ParameterValueTypeCompatibility.isSecretValueTypeCompatible(GIT_CREDENTIALS, SecretValueType.GIT_SECRET)).isTrue();
         assertThat(ParameterValueTypeCompatibility.isSecretValueTypeCompatible(GIT_CREDENTIALS, SecretValueType.STRING)).isFalse();
         assertThat(ParameterValueTypeCompatibility.isSecretValueTypeCompatible(STRING, SecretValueType.GIT_SECRET)).isFalse();
+        assertThat(ParameterValueTypeCompatibility.isSecretValueTypeCompatible(OIDC_TOKEN_SET, SecretValueType.OIDC_TOKEN_SET)).isTrue();
+        assertThat(ParameterValueTypeCompatibility.isSecretValueTypeCompatible(STRING, SecretValueType.OIDC_TOKEN_SET)).isFalse();
     }
 
     @Test
@@ -64,6 +71,8 @@ class ParameterValueTypeCompatibilityTest {
                 .containsExactly("BINARY");
         assertThat(ParameterValueTypeCompatibility.effectiveAllowedSecretValueTypes(DATABASE_CREDENTIALS, List.of(), "field"))
                 .containsExactly("DB_SECRET");
+        assertThat(ParameterValueTypeCompatibility.effectiveAllowedSecretValueTypes(OIDC_TOKEN_SET, List.of(), "field"))
+                .containsExactly("OIDC_TOKEN_SET");
         assertThat(ParameterValueTypeCompatibility.effectiveAllowedConfigurationValueTypes(STRING, List.of(), "field")).isEmpty();
     }
 
@@ -110,10 +119,15 @@ class ParameterValueTypeCompatibilityTest {
         assertThatIllegalStateException()
                 .isThrownBy(() -> ParameterValueTypeCompatibility.validateAllowedSourcesForRequiredTypes(
                         DATABASE_CREDENTIALS, Set.of(AlertParameterSource.TEXT, AlertParameterSource.SECRET), "field"));
+        assertThatIllegalStateException()
+                .isThrownBy(() -> ParameterValueTypeCompatibility.validateAllowedSourcesForRequiredTypes(
+                        OIDC_TOKEN_SET, Set.of(AlertParameterSource.CONFIGURATION, AlertParameterSource.SECRET), "field"));
 
         ParameterValueTypeCompatibility.validateAllowedSourcesForRequiredTypes(
                 BYTE_ARRAY, Set.of(AlertParameterSource.CONFIGURATION, AlertParameterSource.SECRET), "field");
         ParameterValueTypeCompatibility.validateAllowedSourcesForRequiredTypes(
                 STRING, Set.of(AlertParameterSource.TEXT, AlertParameterSource.CONFIGURATION, AlertParameterSource.SECRET), "field");
+        ParameterValueTypeCompatibility.validateAllowedSourcesForRequiredTypes(
+                OIDC_TOKEN_SET, Set.of(AlertParameterSource.SECRET), "field");
     }
 }

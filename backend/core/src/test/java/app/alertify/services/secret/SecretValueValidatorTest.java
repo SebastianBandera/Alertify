@@ -107,6 +107,33 @@ class SecretValueValidatorTest {
     }
 
     @Test
+    void normalizesOidcTokenSetsToCanonicalJson() {
+        JsonNode value = json("{\"refreshExpiresAt\":null,\"idToken\":\"id.jwt\",\"accessToken\":\"opaque-access\","
+                + "\"expiresAt\":\"2026-09-18T15:30:00Z\",\"tokenType\":\" Bearer \",\"refreshToken\":\"\"}");
+
+        String canonical = validator.validateAndNormalize(SecretValueType.OIDC_TOKEN_SET, value);
+
+        assertThat(canonical).isEqualTo("{\"accessToken\":\"opaque-access\",\"refreshToken\":null,"
+                + "\"idToken\":\"id.jwt\",\"tokenType\":\"Bearer\",\"expiresAt\":\"2026-09-18T15:30:00Z\","
+                + "\"refreshExpiresAt\":null}");
+        assertThat(validator.validateAndNormalizeRaw(SecretValueType.OIDC_TOKEN_SET, canonical)).isEqualTo(canonical);
+    }
+
+    @Test
+    void rejectsMalformedOidcTokenSets() {
+        assertThatThrownBy(() -> validator.validateAndNormalize(SecretValueType.OIDC_TOKEN_SET, StringNode.valueOf("token")))
+                .isInstanceOf(InvalidSecretValueException.class)
+                .hasMessageContaining("JSON object");
+        assertThatThrownBy(() -> validator.validateAndNormalize(SecretValueType.OIDC_TOKEN_SET, json(
+                "{\"accessToken\":\"a\",\"tokenType\":\"Bearer\",\"expiresAt\":\"tomorrow\"}")))
+                .isInstanceOf(InvalidSecretValueException.class)
+                .hasMessageContaining("expiresAt");
+        assertThatThrownBy(() -> validator.validateAndNormalizeRaw(SecretValueType.OIDC_TOKEN_SET, "not json"))
+                .isInstanceOf(InvalidSecretValueException.class)
+                .hasMessageContaining("OIDC_TOKEN_SET");
+    }
+
+    @Test
     void validatesExpressionSyntaxWithSecretScope() {
         String expression = "Basic {{utils.BASE64({{secrets.USER}}:{{secrets.PASS}})}} {{configs.REALM}}";
 

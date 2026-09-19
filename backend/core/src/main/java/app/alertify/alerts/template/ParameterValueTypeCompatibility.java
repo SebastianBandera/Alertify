@@ -11,6 +11,7 @@ import app.alertify.jpa.entity.ConfigurationValueType;
 import app.alertify.jpa.entity.SecretValueType;
 import app.alertify.worker.contract.DatabaseCredentials;
 import app.alertify.worker.contract.GitCredentials;
+import app.alertify.worker.contract.OidcTokenSet;
 
 /**
  * Single source of truth for how a template parameter's java type constrains
@@ -28,6 +29,7 @@ public final class ParameterValueTypeCompatibility {
     private static final String BYTE_ARRAY_JAVA_TYPE = byte[].class.getName();
     private static final String DATABASE_CREDENTIALS_JAVA_TYPE = DatabaseCredentials.class.getName();
     private static final String GIT_CREDENTIALS_JAVA_TYPE = GitCredentials.class.getName();
+    private static final String OIDC_TOKEN_SET_JAVA_TYPE = OidcTokenSet.class.getName();
 
     private ParameterValueTypeCompatibility() {
     }
@@ -46,10 +48,16 @@ public final class ParameterValueTypeCompatibility {
         if (GIT_CREDENTIALS_JAVA_TYPE.equals(javaType))
             return Optional.of(SecretValueType.GIT_SECRET);
 
+        if (OIDC_TOKEN_SET_JAVA_TYPE.equals(javaType))
+            return Optional.of(SecretValueType.OIDC_TOKEN_SET);
+
         return Optional.empty();
     }
 
     public static boolean isConfigurationValueTypeCompatible(String javaType, ConfigurationValueType valueType) {
+        if (requiredSecretValueType(javaType).isPresent() && !BYTE_ARRAY_JAVA_TYPE.equals(javaType))
+            return false;
+
         return requiredConfigurationValueType(javaType)
             .map(required -> required == valueType)
             .orElse(valueType != ConfigurationValueType.BINARY);
@@ -59,7 +67,7 @@ public final class ParameterValueTypeCompatibility {
         return requiredSecretValueType(javaType)
             .map(required -> required == valueType)
             .orElse(valueType != SecretValueType.BINARY && valueType != SecretValueType.DB_SECRET
-                && valueType != SecretValueType.GIT_SECRET);
+                && valueType != SecretValueType.GIT_SECRET && valueType != SecretValueType.OIDC_TOKEN_SET);
     }
 
     /**
@@ -91,9 +99,10 @@ public final class ParameterValueTypeCompatibility {
 
     /**
      * Same resolution as {@link #effectiveAllowedConfigurationValueTypes} but for
-     * secret value types, where {@code BINARY}, {@code DB_SECRET} and
-     * {@code GIT_SECRET} are structured pairings that are not meaningful as free
-     * text, so they may only be bound by a java type that requires them.
+     * secret value types, where {@code BINARY}, {@code DB_SECRET},
+     * {@code GIT_SECRET} and {@code OIDC_TOKEN_SET} are structured pairings that
+     * are not meaningful as free text, so they may only be bound by a java type
+     * that requires them.
      */
     public static List<String> effectiveAllowedSecretValueTypes(String javaType, List<String> declared, String description) {
         List<String> names = validNames(declared, SecretValueType.class, "allowedSecretValueTypes", description);
@@ -108,9 +117,9 @@ public final class ParameterValueTypeCompatibility {
             return List.of(required.get().name());
         }
         if (names.contains(SecretValueType.BINARY.name()) || names.contains(SecretValueType.DB_SECRET.name())
-                || names.contains(SecretValueType.GIT_SECRET.name())) {
+                || names.contains(SecretValueType.GIT_SECRET.name()) || names.contains(SecretValueType.OIDC_TOKEN_SET.name())) {
             throw new IllegalStateException(
-                "allowedSecretValueTypes must not include BINARY, DB_SECRET or GIT_SECRET unless the java type requires them: " + description
+                "allowedSecretValueTypes must not include BINARY, DB_SECRET, GIT_SECRET or OIDC_TOKEN_SET unless the java type requires it: " + description
             );
         }
         return names;
@@ -118,9 +127,8 @@ public final class ParameterValueTypeCompatibility {
 
     /**
      * A parameter whose java type has a physically required configuration or
-     * secret value type (BINARY, DB_SECRET) has no meaningful free-text
-     * representation today, so {@code TEXT} must not be one of its allowed
-     * sources.
+     * secret value type has no meaningful free-text representation. Structured
+     * secret-only types also cannot bind to a configuration.
      */
     public static void validateAllowedSourcesForRequiredTypes(String javaType, Set<AlertParameterSource> allowedSources, String description) {
         boolean requiresSpecialType = requiredConfigurationValueType(javaType).isPresent()
@@ -128,7 +136,15 @@ public final class ParameterValueTypeCompatibility {
         if (requiresSpecialType && allowedSources.contains(AlertParameterSource.TEXT)) {
             throw new IllegalStateException(
                 "allowedSources must not include TEXT for java type " + javaType
-                    + " because it requires a binary or database-secret binding: " + description
+                    + " because it requires a structured binding: " + description
+            );
+        }
+        boolean requiresSecretOnlyType = requiredSecretValueType(javaType).isPresent()
+                && !BYTE_ARRAY_JAVA_TYPE.equals(javaType);
+        if (requiresSecretOnlyType && allowedSources.contains(AlertParameterSource.CONFIGURATION)) {
+            throw new IllegalStateException(
+                    "allowedSources must not include CONFIGURATION for java type " + javaType
+                            + " because it requires a structured secret binding: " + description
             );
         }
     }

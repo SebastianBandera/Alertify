@@ -2,6 +2,8 @@ package app.alertify.worker.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.Instant;
+
 import org.junit.jupiter.api.Test;
 
 import com.google.protobuf.ByteString;
@@ -9,6 +11,7 @@ import com.google.protobuf.ByteString;
 import app.alertify.worker.contract.BinaryPayloadCodec;
 import app.alertify.worker.contract.GitCredentials;
 import app.alertify.worker.contract.GitProvider;
+import app.alertify.worker.contract.OidcTokenSet;
 import app.alertify.worker.grpc.AlertParameter;
 
 class AlertParameterConverterTest {
@@ -23,6 +26,19 @@ class AlertParameterConverterTest {
 
         assertThat(value).isEqualTo(credentials);
         assertThat(AlertParameterConverter.serialize(value, GitCredentials.class)).isEqualTo(credentials.toJson());
+    }
+
+    @Test
+    void roundTripsOidcTokenSetsThroughCanonicalJson() {
+        OidcTokenSet tokens = new OidcTokenSet("opaque-access", "opaque-refresh", "id.jwt", "Bearer",
+                Instant.parse("2026-09-18T15:30:00Z"), null);
+        AlertParameter parameter = AlertParameter.newBuilder().setName("tokens")
+                .setJavaType(OidcTokenSet.class.getName()).setValue(tokens.toJson()).build();
+
+        Object value = AlertParameterConverter.convert(parameter, OidcTokenSet.class);
+
+        assertThat(value).isEqualTo(tokens);
+        assertThat(AlertParameterConverter.serialize(value, OidcTokenSet.class)).isEqualTo(tokens.toJson());
     }
 
     @Test

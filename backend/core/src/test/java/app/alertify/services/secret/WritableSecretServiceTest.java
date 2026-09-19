@@ -145,6 +145,25 @@ class WritableSecretServiceTest {
     }
 
     @Test
+    void normalizesOidcTokenSetsBeforeEncryptingThem() {
+        ApplicationSecret secret = secret(SecretValueType.OIDC_TOKEN_SET, true);
+        String canonical = "{\"accessToken\":\"opaque-access\",\"refreshToken\":\"opaque-refresh\","
+                + "\"idToken\":null,\"tokenType\":\"Bearer\",\"expiresAt\":\"2026-09-18T15:30:00Z\","
+                + "\"refreshExpiresAt\":null}";
+        EncryptedSecretValue encrypted = encrypted("oidc-cipher");
+        when(secretRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(secret));
+        when(encryptionService.encrypt(canonical)).thenReturn(encrypted);
+
+        service().applyProcedure(30L, "OIDC rotation", UUID.randomUUID(), Set.of(result(
+                "{\"tokenType\":\" Bearer \",\"accessToken\":\"opaque-access\","
+                        + "\"refreshToken\":\"opaque-refresh\",\"expiresAt\":\"2026-09-18T15:30:00Z\"}")));
+
+        assertThat(secret.getEncryptedValue()).isEqualTo(encrypted.encryptedValue());
+        assertThat(secret.getValueRevision()).isEqualTo(2);
+        verify(eventLogger).successAfterCommit(eq("SECRET_OVERWRITTEN_BY_PROCEDURE"), anyMap());
+    }
+
+    @Test
     void recompressesEncryptsAndRevisesWritableBinaryBytes() {
         byte[] changed = new byte[] { 9, 8, 7, 6 };
         ApplicationSecret secret = secret(SecretValueType.BINARY, true);
