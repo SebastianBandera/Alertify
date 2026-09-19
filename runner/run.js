@@ -2,6 +2,7 @@
 
 const crypto = require('node:crypto');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const readline = require('node:readline');
 const { spawnSync } = require('node:child_process');
@@ -405,6 +406,16 @@ function workerCapabilitiesValue(environment, key) {
   return [...new Set(values)];
 }
 
+function workerInstances(serviceName, baseName, replicas, uniqueNames) {
+  return Array.from({ length: replicas }, (_, offset) => {
+    const index = offset + 1;
+    return {
+      serviceName: `${serviceName}-${index}`,
+      workerName: uniqueNames ? `${baseName}-${index}` : baseName,
+    };
+  });
+}
+
 function dnsNameValue(environment, key) {
   const value = required(environment, key);
   if (!/^[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?$/.test(value)) {
@@ -540,8 +551,14 @@ function buildPlan(environment, options = {}) {
     skipWorkerPlaywright,
     workerStandardReplicas: null,
     workerStandardCapabilities: null,
+    workerStandardName: null,
+    workerStandardUniqueNames: false,
+    workerStandardInstances: [],
     workerPlaywrightReplicas: null,
     workerPlaywrightCapabilities: null,
+    workerPlaywrightName: null,
+    workerPlaywrightUniqueNames: false,
+    workerPlaywrightInstances: [],
     identityDatabaseMode: null,
     applicationDatabaseMode: null,
     services: [],
@@ -619,10 +636,16 @@ function buildPlan(environment, options = {}) {
     required(environment, 'WORKER_HEALTH_TIMEOUT');
     plan.workerStandardReplicas = positiveIntegerValue(environment, 'WORKER_STANDARD_REPLICAS');
     plan.workerStandardCapabilities = workerCapabilitiesValue(environment, 'WORKER_STANDARD_CAPABILITIES');
+    plan.workerStandardName = required(environment, 'WORKER_STANDARD_NAME');
+    plan.workerStandardUniqueNames = booleanValue(environment, 'WORKER_STANDARD_UNIQUE_NAMES');
+    plan.workerStandardInstances = workerInstances('worker-standard', plan.workerStandardName, plan.workerStandardReplicas, plan.workerStandardUniqueNames);
     required(environment, 'WORKER_PLAYWRIGHT_IMAGE');
     required(environment, 'WORKER_PLAYWRIGHT_CONTAINER_MEMORY');
     plan.workerPlaywrightReplicas = positiveIntegerValue(environment, 'WORKER_PLAYWRIGHT_REPLICAS');
     plan.workerPlaywrightCapabilities = workerCapabilitiesValue(environment, 'WORKER_PLAYWRIGHT_CAPABILITIES');
+    plan.workerPlaywrightName = required(environment, 'WORKER_PLAYWRIGHT_NAME');
+    plan.workerPlaywrightUniqueNames = booleanValue(environment, 'WORKER_PLAYWRIGHT_UNIQUE_NAMES');
+    plan.workerPlaywrightInstances = workerInstances('worker-playwright', plan.workerPlaywrightName, plan.workerPlaywrightReplicas, plan.workerPlaywrightUniqueNames);
     validateUrlPort(environment, 'BACKEND_PUBLIC_URL', publicPort);
     if (keycloakMode === 'local') {
       validateUrlPort(environment, 'OIDC_ISSUER_URI', publicPort);
@@ -648,10 +671,10 @@ function buildPlan(environment, options = {}) {
       }
     }
     if (!skipWorkerStandard) {
-      plan.services.push({ name: 'worker-standard', build: true, scale: plan.workerStandardReplicas });
+      plan.services.push({ name: 'worker-standard', build: true, instances: plan.workerStandardInstances });
     }
     if (!skipWorkerPlaywright) {
-      plan.services.push({ name: 'worker-playwright', build: true, scale: plan.workerPlaywrightReplicas });
+      plan.services.push({ name: 'worker-playwright', build: true, instances: plan.workerPlaywrightInstances });
     }
     if (!skipBackend) {
       plan.services.push({ name: 'backend', build: true });
@@ -748,14 +771,16 @@ function printPlan(plan, environment) {
       `  - Standard worker: ${plan.workerStandardReplicas} local gRPC ` +
         `${plan.workerStandardReplicas === 1 ? 'replica' : 'replicas'} ` +
         `published under ${plan.workerGrpcHost}:${plan.workerGrpcPort} ` +
-        `(capabilities: ${plan.workerStandardCapabilities.join(', ')}; ` +
+        `(names: ${plan.workerStandardInstances.map((instance) => instance.workerName).join(', ')}; ` +
+        `capabilities: ${plan.workerStandardCapabilities.join(', ')}; ` +
         `${plan.skipWorkerStandard ? 'reused without restart' : 'rebuilt and restarted'})`,
     );
     console.log(
       `  - Playwright worker: ${plan.workerPlaywrightReplicas} local gRPC ` +
         `${plan.workerPlaywrightReplicas === 1 ? 'replica' : 'replicas'} ` +
         `published under ${plan.workerGrpcHost}:${plan.workerGrpcPort} ` +
-        `(capabilities: ${plan.workerPlaywrightCapabilities.join(', ')}; ` +
+        `(names: ${plan.workerPlaywrightInstances.map((instance) => instance.workerName).join(', ')}; ` +
+        `capabilities: ${plan.workerPlaywrightCapabilities.join(', ')}; ` +
         `${plan.skipWorkerPlaywright ? 'reused without restart' : 'rebuilt and restarted'})`,
     );
     console.log(
@@ -923,27 +948,139 @@ function prepareGrpcCertificates(plan, environment, projectDirectory) {
   );
 }
 
+function createWorkerComposeOverride(plan, projectDirectory) {
+  const workerGroups = [
+    { baseService: 'worker-standard', instances: plan.workerStandardInstances },
+    { baseService: 'worker-playwright', instances: plan.workerPlaywrightInstances },
+  ].filter((group) => group.instances.length > 0);
+  if (workerGroups.length === 0) {
+    return null;
+  }
+
+  const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'alertify-worker-compose-'));
+  const overridePath = path.join(temporaryDirectory, 'compose.yaml');
+  const baseComposePath = path.join(projectDirectory, 'compose.yaml');
+  const lines = ['services:'];
+  for (const group of workerGroups) {
+    for (const instance of group.instances) {
+      lines.push(
+        `  ${instance.serviceName}:`,
+        '    extends:',
+        `      file: ${JSON.stringify(baseComposePath)}`,
+        `      service: ${group.baseService}`,
+        `    container_name: \${COMPOSE_PROJECT_NAME}-${instance.serviceName}`,
+        '    environment:',
+        `      WORKER_NAME: ${JSON.stringify(instance.workerName)}`,
+        '    deploy:',
+        '      replicas: 1',
+      );
+    }
+  }
+  fs.writeFileSync(overridePath, `${lines.join('\n')}\n`, 'utf8');
+  return { path: overridePath, directory: temporaryDirectory };
+}
+
+function composeArguments(workerComposeOverride) {
+  const args = ['compose', '--env-file', '.env', '--file', 'compose.yaml'];
+  if (workerComposeOverride) {
+    args.push('--file', workerComposeOverride.path);
+  }
+  return args;
+}
+
+function removeStaleWorkerContainers(service, environment, projectDirectory) {
+  const projectName = required(environment, 'COMPOSE_PROJECT_NAME');
+  const desiredServices = new Set(service.instances.map((instance) => instance.serviceName));
+  const instancePattern = new RegExp(`^${service.name}-(\\d+)$`);
+  const containerIds = captureCommand(
+    'docker',
+    [
+      'container', 'ls', '--all',
+      '--filter', `label=com.docker.compose.project=${projectName}`,
+      '--quiet',
+    ],
+    projectDirectory,
+    `Listing existing ${service.name} containers`,
+  ).split(/\r?\n/).filter(Boolean);
+  if (containerIds.length === 0) {
+    return;
+  }
+
+  const containers = JSON.parse(captureCommand(
+    'docker',
+    ['container', 'inspect', ...containerIds],
+    projectDirectory,
+    `Inspecting existing ${service.name} containers`,
+  ));
+  const staleContainerIds = containers.flatMap((container) => {
+    const composeService = container.Config?.Labels?.['com.docker.compose.service'];
+    const staleLegacyService = composeService === service.name;
+    const staleInstance = instancePattern.test(composeService) && !desiredServices.has(composeService);
+    return staleLegacyService || staleInstance ? [container.Id] : [];
+  });
+  if (staleContainerIds.length > 0) {
+    runCommand(
+      'docker',
+      ['container', 'rm', '--force', ...staleContainerIds],
+      projectDirectory,
+      `Removing replaced or excess ${service.name} containers...`,
+    );
+  }
+}
+
 function startLocalServices(plan, environment, projectDirectory) {
   if (plan.services.length === 0) {
     console.log('\nNo local application components need to be started.');
     return;
   }
 
-  runCommand('docker', ['compose', 'version'], projectDirectory, 'Checking Docker Compose...', environment);
-  runCommand(
-    'docker',
-    ['compose', '--env-file', '.env', 'config', '--quiet'],
-    projectDirectory,
-    'Validating compose.yaml...',
-    environment,
-  );
+  const workerComposeOverride = createWorkerComposeOverride(plan, projectDirectory);
+  const baseComposeArguments = composeArguments(workerComposeOverride);
+  try {
+    runCommand('docker', ['compose', 'version'], projectDirectory, 'Checking Docker Compose...', environment);
+    runCommand(
+      'docker',
+      [...baseComposeArguments, 'config', '--quiet'],
+      projectDirectory,
+      'Validating compose.yaml...',
+      environment,
+    );
 
-  for (const service of plan.services) {
-    const args = ['compose', '--env-file', '.env', 'up', '--detach'];
-    if (service.build) args.push('--build');
-    if (service.scale) args.push('--scale', `${service.name}=${service.scale}`);
-    args.push('--wait', service.name);
-    runCommand('docker', args, projectDirectory, `Starting ${service.name}...`, environment);
+    for (const service of plan.services) {
+      if (service.instances) {
+        if (service.build) {
+          runCommand(
+            'docker',
+            [...baseComposeArguments, 'build', service.name],
+            projectDirectory,
+            `Building ${service.name}...`,
+            environment,
+          );
+        }
+        removeStaleWorkerContainers(service, environment, projectDirectory);
+        runCommand(
+          'docker',
+          [
+            ...baseComposeArguments,
+            'up', '--detach', '--no-build', '--wait',
+            ...service.instances.map((instance) => instance.serviceName),
+          ],
+          projectDirectory,
+          `Starting ${service.name} instances...`,
+          environment,
+        );
+        continue;
+      }
+
+      const args = [...baseComposeArguments, 'up', '--detach'];
+      if (service.build) args.push('--build');
+      args.push('--wait', service.name);
+      runCommand('docker', args, projectDirectory, `Starting ${service.name}...`, environment);
+    }
+  } finally {
+    if (workerComposeOverride) {
+      fs.rmSync(workerComposeOverride.directory, { recursive: true, force: true });
+    }
   }
 }
 
@@ -1385,6 +1522,7 @@ if (require.main === module) {
 module.exports = {
   applyApplicationContext,
   buildPlan,
+  createWorkerComposeOverride,
   ensurePrivateKeyPartClass,
   imageReferencePattern,
   main,
@@ -1393,4 +1531,5 @@ module.exports = {
   prepareGrpcCertificates,
   reconcileEnvironment,
   resolveSecretValues,
+  workerInstances,
 };
