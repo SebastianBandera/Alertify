@@ -426,11 +426,14 @@ p {
 }
 
 /* Look-back summary: a light pill so it reads the same on every card color. */
+.alert-card__meta-item {
+  margin-left: auto;
+}
+
 .alert-card__stability {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  margin-left: auto;
   padding: 3px 8px 3px 7px;
   border-radius: 999px;
   font-size: 10px;

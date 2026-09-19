@@ -285,10 +285,11 @@ export class DashboardComponent {
   }
 
   /**
-   * Reacts to a store change before the DOM caught up with it. An updated card
-   * fades to its new colour and pulses in place first; only then does it slide
-   * to where the board order puts it, with the other cards making room (FLIP
-   * over the rects captured here). New pages just let the others make room.
+   * Reacts to a store change before the DOM caught up with it. A card whose
+   * result status changed fades to its new colour and pulses in place first;
+   * only then does it slide to where the board order puts it, with the other
+   * cards making room (FLIP over the rects captured here). A repeated result
+   * (same status again) or a new page just lets the others make room quietly.
    */
   private animateChange(change: DashboardChange): void {
     const before = this.cardRects();
@@ -297,9 +298,9 @@ export class DashboardComponent {
       if (selected?.alert.id === change.alertId) {
         this.selectedCard.set(this.cards().find((card) => card.alert.id === change.alertId) ?? selected);
       }
-      this.highlight(change.alertId);
+      if (change.stateChanged) this.highlight(change.alertId);
     }
-    const delay = change.kind === 'update' ? MOVE_DELAY_MILLIS : 0;
+    const delay = change.stateChanged ? MOVE_DELAY_MILLIS : 0;
     afterNextRender(() => this.slideToNewPositions(before, delay), { injector: this.injector });
   }
 

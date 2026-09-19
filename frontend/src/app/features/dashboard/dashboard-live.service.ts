@@ -17,6 +17,12 @@ const RECENT_RESULT_MILLIS = 2 * 60_000;
 export interface DashboardChange {
   readonly kind: 'page' | 'update' | 'removal';
   readonly alertId: number | null;
+  /** For updates: the last result's status (or "never ran") differs from what we held before. */
+  readonly stateChanged: boolean;
+}
+
+function resultStatus(card: DashboardAlertCard | undefined): string {
+  return card?.lastExecution?.status ?? 'NONE';
 }
 
 /**
@@ -82,7 +88,7 @@ export class DashboardLiveService {
         });
         this.totalCards.set(page.page.totalElements);
         this.loadedFromPages.update((count) => count + page.content.length);
-        this.changes$.next({ kind: 'page', alertId: null });
+        this.changes$.next({ kind: 'page', alertId: null, stateChanged: false });
         if (pageNumber + 1 >= page.page.totalPages) break;
       }
       /* Anything we still hold that the snapshot did not mention was deleted while we were away. */
@@ -102,7 +108,7 @@ export class DashboardLiveService {
     const previous = this.cardsById().get(alertId);
     this.snapshotIds?.add(alertId);
     this.cardsById.update((cards) => new Map(cards).set(alertId, card));
-    this.changes$.next({ kind: 'update', alertId });
+    this.changes$.next({ kind: 'update', alertId, stateChanged: resultStatus(previous) !== resultStatus(card) });
     if (this.isNewResult(previous, card)) this.notify(card);
   }
 
@@ -113,7 +119,7 @@ export class DashboardLiveService {
       next.delete(alertId);
       return next;
     });
-    this.changes$.next({ kind: 'removal', alertId });
+    this.changes$.next({ kind: 'removal', alertId, stateChanged: false });
   }
 
   /**

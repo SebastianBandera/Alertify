@@ -56,17 +56,17 @@
       </p>
 
       <footer class="alert-card__meta">
-        @if (card.lastExecution; as execution) {
-          <span class="alert-card__meta-item" [title]="localization.translate('dashboard.card.duration')">
-            {{ formatDuration(execution.durationMillis) }}
+        @if (stability(card); as stability) {
+          <span [class]="'alert-card__stability alert-card__stability--' + stability.state" [title]="historyWindowTitle()">
+            {{ stability.label }}
           </span>
         }
         @if (!card.alert.enabled) {
           <span class="alert-card__disabled">{{ localization.translate('dashboard.card.disabled') }}</span>
         }
-        @if (stability(card); as stability) {
-          <span [class]="'alert-card__stability alert-card__stability--' + stability.state" [title]="historyWindowTitle()">
-            {{ stability.label }}
+        @if (card.lastExecution; as execution) {
+          <span class="alert-card__meta-item" [title]="localization.translate('dashboard.card.duration')">
+            {{ formatDuration(execution.durationMillis) }}
           </span>
         }
       </footer>
