@@ -21,6 +21,10 @@ import app.alertify.alerts.execution.AlertExecutionStatus;
  * Batch reporting queries over {@code core.alert_executions} for the dashboard.
  * JDBC keeps these aggregates separate from the execution entity lifecycle,
  * like the worker activity history does.
+ *
+ * <p>Every figure is a {@code LATERAL ... LIMIT 1} probe on the
+ * {@code (alert_id, status, started_at desc)} index, so the cost per alert
+ * stays flat no matter how many executions it accumulated.
  */
 @Component
 public class DashboardExecutionQuery {
@@ -38,11 +42,16 @@ public class DashboardExecutionQuery {
 
         Map<Long, Long> result = new HashMap<>();
         jdbcTemplate.query("""
-                select distinct on (alert_id) alert_id, id
-                from core.alert_executions
-                where alert_id in (%s)
-                order by alert_id, started_at desc, id desc
-                """.formatted(placeholders(alertIds.size())),
+                select alerts.alert_id, latest.id
+                from (values %s) as alerts(alert_id)
+                cross join lateral (
+                    select execution.id
+                    from core.alert_executions execution
+                    where execution.alert_id = alerts.alert_id
+                    order by execution.started_at desc, execution.id desc
+                    limit 1
+                ) latest
+                """.formatted(valueRows(alertIds.size())),
                 resultSet -> {
                     result.put(resultSet.getLong("alert_id"), resultSet.getLong("id"));
                 },
@@ -52,7 +61,7 @@ public class DashboardExecutionQuery {
 
     /**
      * Look-back summary of each alert that ran at least once. The window covers
-     * executions finished since {@code since}, always including the latest one
+     * executions started since {@code since}, always including the latest one
      * so an alert that has been idle for longer still gets a summary.
      */
     public Map<Long, DashboardHistorySummaryResponse> historySummaries(Collection<Long> alertIds, Instant since) {
@@ -63,45 +72,57 @@ public class DashboardExecutionQuery {
         parameters.add(timestamp(since));
         Map<Long, DashboardHistorySummaryResponse> result = new HashMap<>();
         jdbcTemplate.query("""
-                with last as (
-                    select distinct on (alert_id) alert_id, status, finished_at
-                    from core.alert_executions
-                    where alert_id in (%s)
-                    order by alert_id, started_at desc, id desc
-                ), boundary as (
-                    select execution.alert_id, max(execution.finished_at) as last_other_at
+                select distinct on (alerts.alert_id)
+                       alerts.alert_id, candidate.status as worst_status, candidate.last_at as worst_last_at,
+                       coalesce(streak.since, last.finished_at) as since
+                from (values %s) as alerts(alert_id)
+                cross join lateral (
+                    select execution.status, execution.started_at, execution.finished_at
                     from core.alert_executions execution
-                    join last on last.alert_id = execution.alert_id
-                    where execution.status <> last.status
-                    group by execution.alert_id
-                ), streak as (
-                    select execution.alert_id, min(execution.finished_at) as since
+                    where execution.alert_id = alerts.alert_id
+                    order by execution.started_at desc, execution.id desc
+                    limit 1
+                ) last
+                left join lateral (
+                    select max(other.started_at) as started_at
+                    from (values ('SUCCESS'), ('WARN'), ('ERROR')) as kinds(status)
+                    cross join lateral (
+                        select execution.started_at
+                        from core.alert_executions execution
+                        where execution.alert_id = alerts.alert_id and execution.status = kinds.status
+                        order by execution.started_at desc, execution.id desc
+                        limit 1
+                    ) other
+                    where kinds.status <> last.status
+                ) boundary on true
+                left join lateral (
+                    select execution.finished_at as since
                     from core.alert_executions execution
-                    join last on last.alert_id = execution.alert_id
-                    left join boundary on boundary.alert_id = execution.alert_id
-                    where execution.status = last.status
-                      and (boundary.last_other_at is null or execution.finished_at > boundary.last_other_at)
-                    group by execution.alert_id
-                ), ranked as (
-                    select execution.alert_id, execution.status, max(execution.finished_at) as last_at,
-                           case execution.status when 'ERROR' then 2 when 'WARN' then 1 else 0 end as severity
-                    from core.alert_executions execution
-                    join last on last.alert_id = execution.alert_id
-                    where execution.finished_at >= ? or execution.finished_at >= last.finished_at
-                    group by execution.alert_id, execution.status
-                ), worst as (
-                    select distinct on (alert_id) alert_id, status, last_at
-                    from ranked
-                    order by alert_id, severity desc
-                )
-                select worst.alert_id, worst.status, worst.last_at, streak.since
-                from worst
-                join streak on streak.alert_id = worst.alert_id
-                """.formatted(placeholders(alertIds.size())),
+                    where execution.alert_id = alerts.alert_id and execution.status = last.status
+                      and (boundary.started_at is null or execution.started_at > boundary.started_at)
+                    order by execution.started_at asc, execution.id asc
+                    limit 1
+                ) streak on true
+                cross join lateral (
+                    select kinds.status, kinds.severity,
+                           coalesce(
+                               (select execution.finished_at
+                                from core.alert_executions execution
+                                where execution.alert_id = alerts.alert_id and execution.status = kinds.status
+                                  and execution.started_at >= ?
+                                order by execution.started_at desc, execution.id desc
+                                limit 1),
+                               case when kinds.status = last.status then last.finished_at end
+                           ) as last_at
+                    from (values ('ERROR', 2), ('WARN', 1), ('SUCCESS', 0)) as kinds(status, severity)
+                ) candidate
+                where candidate.last_at is not null
+                order by alerts.alert_id, candidate.severity desc
+                """.formatted(valueRows(alertIds.size())),
                 resultSet -> {
                     result.put(resultSet.getLong("alert_id"), new DashboardHistorySummaryResponse(
-                            AlertExecutionStatus.valueOf(resultSet.getString("status")),
-                            instant(resultSet.getObject("last_at", OffsetDateTime.class)),
+                            AlertExecutionStatus.valueOf(resultSet.getString("worst_status")),
+                            instant(resultSet.getObject("worst_last_at", OffsetDateTime.class)),
                             instant(resultSet.getObject("since", OffsetDateTime.class))
                     ));
                 },
@@ -109,8 +130,8 @@ public class DashboardExecutionQuery {
         return result;
     }
 
-    private static String placeholders(int count) {
-        return String.join(", ", Collections.nCopies(count, "?"));
+    private static String valueRows(int count) {
+        return String.join(", ", Collections.nCopies(count, "(?)"));
     }
 
     private static SqlParameterValue timestamp(Instant value) {
