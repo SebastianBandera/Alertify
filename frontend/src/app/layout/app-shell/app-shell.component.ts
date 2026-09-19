@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  afterNextRender,
   computed,
   effect,
   ElementRef,
@@ -17,8 +18,9 @@ import { filter } from 'rxjs';
 import { AuthService } from '../../core/auth/auth.service';
 import { LogApiService } from '../../core/api/log-api.service';
 import { LocalizationService } from '../../core/i18n/localization.service';
+import { AdminEventChannelService } from '../../core/realtime/admin-event-channel.service';
 import { TranslationKey } from '../../core/i18n/localization.types';
-import { StatusTickerComponent } from '../status-ticker/status-ticker.component';
+import { AdminStatusBarComponent } from '../admin-status-bar/admin-status-bar.component';
 
 interface NavigationItem {
   readonly labelKey: TranslationKey;
@@ -28,7 +30,7 @@ interface NavigationItem {
 
 @Component({
   selector: 'app-shell',
-  imports: [FormsModule, RouterLink, RouterLinkActive, RouterOutlet, StatusTickerComponent],
+  imports: [FormsModule, RouterLink, RouterLinkActive, RouterOutlet, AdminStatusBarComponent],
   templateUrl: './app-shell.component.html',
   styleUrl: './app-shell.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -39,6 +41,7 @@ export class AppShellComponent {
 
   protected readonly authService = inject(AuthService);
   protected readonly localization = inject(LocalizationService);
+  private readonly adminEventChannel = inject(AdminEventChannelService);
   private readonly logApi = inject(LogApiService);
   private readonly router = inject(Router);
   private readonly title = inject(Title);
@@ -85,6 +88,10 @@ export class AppShellComponent {
   });
 
   constructor() {
+    afterNextRender(() => {
+      if (this.authService.isAdmin) this.adminEventChannel.start();
+    });
+
     this.router.events
       .pipe(
         filter((event): event is NavigationEnd => event instanceof NavigationEnd),

@@ -1,0 +1,16 @@
+@if (message(); as message) {
+  <div
+    #statusBar
+    class="admin-status-bar"
+    [class.admin-status-bar--error]="connectionUnavailable()"
+    aria-live="polite"
+    aria-atomic="true"
+  >
+    <div class="admin-status-bar__track" [class.admin-status-bar__track--scrolling]="scrolling()">
+      <span class="admin-status-bar__message">{{ message }}</span>
+      @if (scrolling()) {
+        <span class="admin-status-bar__message" aria-hidden="true">{{ message }}</span>
+      }
+    </div>
+  </div>
+}

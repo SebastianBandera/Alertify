@@ -68,7 +68,7 @@ public class SecurityConfig {
                                 .permitAll()
                                 .requestMatchers(HttpMethod.GET, "/api/hooks/*/invocations/*")
                                 .permitAll()
-                                .requestMatchers(HttpMethod.GET, "/api/system-status/ticker")
+                                .requestMatchers(HttpMethod.GET, "/api/admin/events")
                                 .permitAll()
                                 .anyRequest()
                                 .authenticated()

@@ -4,7 +4,7 @@
   overflow: hidden;
 }
 
-.status-ticker {
+.admin-status-bar {
   overflow: hidden;
   color: #93370d;
   font-size: 12px;
@@ -13,19 +13,19 @@
   white-space: nowrap;
 }
 
-.status-ticker__track {
+.admin-status-bar__track {
   display: inline-flex;
   align-items: center;
   min-width: 100%;
 }
 
-.status-ticker__track--scrolling {
+.admin-status-bar__track--scrolling {
   width: max-content;
   min-width: max-content;
-  animation: status-ticker-scroll 18s linear infinite;
+  animation: admin-status-bar-scroll 18s linear infinite;
 }
 
-.status-ticker__message {
+.admin-status-bar__message {
   display: inline-block;
   margin-right: 48px;
   padding: 5px 10px;
@@ -34,11 +34,20 @@
   background: #fffaeb;
 }
 
-@keyframes status-ticker-scroll {
+.admin-status-bar--error {
+  color: #b42318;
+}
+
+.admin-status-bar--error .admin-status-bar__message {
+  border-color: #fecdca;
+  background: #fef3f2;
+}
+
+@keyframes admin-status-bar-scroll {
   from { transform: translateX(0); }
   to { transform: translateX(-50%); }
 }
 
 @media (max-width: 520px) {
-  :host { display: none; }
+  :host:not(.admin-status-bar-host--error) { display: none; }
 }

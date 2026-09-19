@@ -41,9 +41,9 @@ public class SystemStatusService {
         return summary(workerStatusService.status());
     }
 
-    public SystemStatusSummaryResponse tickerSummary() {
-        // The frequently refreshed ticker deliberately avoids that audit side effect.
-        return summary(workerStatusService.tickerStatus());
+    public SystemStatusSummaryResponse realtimeSummary() {
+        // Background real-time refreshes deliberately avoid that audit side effect.
+        return summary(workerStatusService.realtimeStatus());
     }
 
     private SystemStatusSummaryResponse summary(List<WorkerNodeStatusResponse> workers) {
@@ -52,7 +52,7 @@ public class SystemStatusService {
                 cronQuietHoursService.isQuietNow(),
                 count(workers, WorkerNodeStatusResponse::runningTasks, ALERT_KIND),
                 count(workers, WorkerNodeStatusResponse::waitingTasks, ALERT_KIND),
-                count(workers, WorkerNodeStatusResponse::runningTasks, PROCEDURE_KIND),
+                count(workers, WorkerNodeStatusResponse::runningProcedures, PROCEDURE_KIND),
                 count(workers, WorkerNodeStatusResponse::waitingTasks, PROCEDURE_KIND),
                 workers.stream()
                         .filter(WorkerNodeStatusResponse::available)
