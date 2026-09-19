@@ -28,6 +28,7 @@ import app.alertify.worker.contract.WorkerCapability;
 import app.alertify.worker.grpc.WorkerResourceUsage;
 import app.alertify.worker.grpc.WorkerStatusResponse;
 import app.alertify.worker.grpc.WorkerTask;
+import app.alertify.worker.grpc.WorkerTaskKind;
 
 /**
  * Inspects the discovered workers in parallel and selects the one that will run
@@ -188,10 +189,19 @@ public class WorkerStatusService implements AutoCloseable {
         Instant workStartedAt = task.hasWorkStartedAt() ? instant(task.getWorkStartedAt()) : null;
         Instant elapsedFrom = running && workStartedAt != null ? workStartedAt : queuedAt;
         return new WorkerTaskStatusResponse(
-                task.getExecutionId(), task.getKind().name(), task.getAlertId(), task.getAlertName(),
+                task.getExecutionId(), kind(task.getKind()), task.getAlertId(), task.getAlertName(),
                 task.getParentExecutionId().isBlank() ? null : task.getParentExecutionId(), task.getDepth(), queuedAt,
                 workStartedAt, Math.max(0, Duration.between(elapsedFrom, now).toMillis())
         );
+    }
+
+    /** The API speaks in short kinds ("ALERT"/"PROCEDURE"), not in protobuf enum constant names. */
+    public static String kind(WorkerTaskKind kind) {
+        return switch (kind) {
+            case WORKER_TASK_KIND_ALERT -> "ALERT";
+            case WORKER_TASK_KIND_PROCEDURE -> "PROCEDURE";
+            default -> kind.name();
+        };
     }
 
     private static Instant instant(com.google.protobuf.Timestamp timestamp) {

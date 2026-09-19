@@ -18,6 +18,7 @@ import app.alertify.alerts.execution.MaintenanceModeService;
 import app.alertify.grpc.api.WorkerNodeStatusResponse;
 import app.alertify.grpc.api.WorkerTaskStatusResponse;
 import app.alertify.grpc.discovery.WorkerStatusService;
+import app.alertify.worker.grpc.WorkerTaskKind;
 
 @ExtendWith(MockitoExtension.class)
 class SystemStatusServiceTest {
@@ -29,8 +30,8 @@ class SystemStatusServiceTest {
 
     @Test
     void countsRunningProceduresFromTheDedicatedWorkerInventory() {
-        WorkerTaskStatusResponse alert = task("alert-execution", "ALERT");
-        WorkerTaskStatusResponse procedure = task("procedure-execution", "PROCEDURE");
+        WorkerTaskStatusResponse alert = task("alert-execution", WorkerTaskKind.WORKER_TASK_KIND_ALERT);
+        WorkerTaskStatusResponse procedure = task("procedure-execution", WorkerTaskKind.WORKER_TASK_KIND_PROCEDURE);
         WorkerNodeStatusResponse worker = new WorkerNodeStatusResponse(
                 "worker:9090", true, "worker", "instance", Instant.now(), Set.of(),
                 0, 1, 0, 1, List.of(alert), List.of(), 0, 1, List.of(procedure), null, null
@@ -44,8 +45,10 @@ class SystemStatusServiceTest {
         assertThat(summary.waitingProcedureExecutions()).isZero();
     }
 
-    private static WorkerTaskStatusResponse task(String executionId, String kind) {
+    /* Kinds go through the same mapping the gRPC status uses, so a drift between the layers fails here. */
+    private static WorkerTaskStatusResponse task(String executionId, WorkerTaskKind kind) {
         Instant now = Instant.now();
-        return new WorkerTaskStatusResponse(executionId, kind, 1, kind, null, 0, now, now, 0);
+        String label = WorkerStatusService.kind(kind);
+        return new WorkerTaskStatusResponse(executionId, label, 1, label, null, 0, now, now, 0);
     }
 }

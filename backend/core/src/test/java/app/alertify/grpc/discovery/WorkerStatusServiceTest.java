@@ -22,6 +22,8 @@ import app.alertify.grpc.WorkerGrpcProperties;
 import app.alertify.logging.ApplicationEventLogger;
 import app.alertify.worker.contract.WorkerCapability;
 import app.alertify.worker.grpc.WorkerStatusResponse;
+import app.alertify.worker.grpc.WorkerTask;
+import app.alertify.worker.grpc.WorkerTaskKind;
 
 @ExtendWith(MockitoExtension.class)
 class WorkerStatusServiceTest {
@@ -105,6 +107,25 @@ class WorkerStatusServiceTest {
 
         assertThat(service.status())
                 .allSatisfy(status -> assertThat(status.workerStartedAt()).isEqualTo(WORKER_STARTED_AT));
+    }
+
+    @Test
+    void reportsLiveTasksWithTheShortKindsTheApiPromises() {
+        WorkerTask alert = WorkerTask.newBuilder()
+                .setExecutionId("alert-execution")
+                .setKind(WorkerTaskKind.WORKER_TASK_KIND_ALERT)
+                .setAlertId(1)
+                .setAlertName("alert")
+                .setQueuedAt(Timestamp.newBuilder().setSeconds(WORKER_STARTED_AT.getEpochSecond()))
+                .build();
+        WorkerTask procedure = alert.toBuilder().setExecutionId("procedure-execution").setKind(WorkerTaskKind.WORKER_TASK_KIND_PROCEDURE).build();
+        when(client.status(FIRST, TIMEOUT)).thenReturn(status(1, 0).toBuilder().addRunningTasks(alert).addRunningProcedures(procedure).build());
+        when(client.status(SECOND, TIMEOUT)).thenReturn(status(0, 0));
+
+        var first = service.status().stream().filter(status -> status.address().equals(FIRST.toString())).findFirst().orElseThrow();
+
+        assertThat(first.runningTasks()).singleElement().satisfies(task -> assertThat(task.kind()).isEqualTo("ALERT"));
+        assertThat(first.runningProcedures()).singleElement().satisfies(task -> assertThat(task.kind()).isEqualTo("PROCEDURE"));
     }
 
     private static WorkerStatusResponse status(int running, int waiting) {
