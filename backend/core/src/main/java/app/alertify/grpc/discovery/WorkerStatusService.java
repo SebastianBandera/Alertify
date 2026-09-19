@@ -21,9 +21,11 @@ import org.springframework.stereotype.Service;
 import app.alertify.grpc.AlertWorkerClient;
 import app.alertify.grpc.WorkerGrpcProperties;
 import app.alertify.grpc.api.WorkerNodeStatusResponse;
+import app.alertify.grpc.api.WorkerResourceUsageResponse;
 import app.alertify.grpc.api.WorkerTaskStatusResponse;
 import app.alertify.logging.ApplicationEventLogger;
 import app.alertify.worker.contract.WorkerCapability;
+import app.alertify.worker.grpc.WorkerResourceUsage;
 import app.alertify.worker.grpc.WorkerStatusResponse;
 import app.alertify.worker.grpc.WorkerTask;
 
@@ -148,7 +150,7 @@ public class WorkerStatusService implements AutoCloseable {
         if (!result.available()) {
             return new WorkerNodeStatusResponse(
                     result.endpoint().toString(), false, null, null, null, result.capabilities(),
-                    0, 0, 0, 0, List.of(), List.of(), 0, 0, List.of(), result.error()
+                    0, 0, 0, 0, List.of(), List.of(), 0, 0, List.of(), null, result.error()
             );
         }
         WorkerStatusResponse status = result.status();
@@ -164,8 +166,21 @@ public class WorkerStatusService implements AutoCloseable {
                 status.getWaitingTasksList().stream().map(task -> task(task, now, false)).toList(),
                 status.getTotalExecutedProcedures(), status.getRunningProcedureCount(),
                 status.getRunningProceduresList().stream().map(task -> task(task, now, true)).toList(),
+                status.hasResourceUsage() ? resourceUsage(status.getResourceUsage()) : null,
                 null
         );
+    }
+
+    private static WorkerResourceUsageResponse resourceUsage(WorkerResourceUsage usage) {
+        return new WorkerResourceUsageResponse(
+                measured(usage.getMemoryUsedBytes()), measured(usage.getMemoryMaxBytes()),
+                measured(usage.getHeapUsedBytes()), measured(usage.getHeapMaxBytes()),
+                usage.getCpuUsage() < 0 ? null : usage.getCpuUsage(), usage.getAvailableProcessors()
+        );
+    }
+
+    private static Long measured(long bytes) {
+        return bytes < 0 ? null : bytes;
     }
 
     private static WorkerTaskStatusResponse task(WorkerTask task, Instant now, boolean running) {

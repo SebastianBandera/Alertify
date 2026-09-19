@@ -16,6 +16,15 @@ export interface WorkerTaskStatus {
   readonly elapsedMillis: number;
 }
 
+export interface WorkerResourceUsage {
+  readonly memoryUsedBytes: number | null;
+  readonly memoryMaxBytes: number | null;
+  readonly heapUsedBytes: number | null;
+  readonly heapMaxBytes: number | null;
+  readonly cpuUsage: number | null;
+  readonly availableProcessors: number;
+}
+
 export interface WorkerNodeStatus {
   readonly address: string;
   readonly available: boolean;
@@ -32,6 +41,7 @@ export interface WorkerNodeStatus {
   readonly totalExecutedProcedures: number;
   readonly runningProcedureCount: number;
   readonly runningProcedures: readonly WorkerTaskStatus[];
+  readonly resourceUsage: WorkerResourceUsage | null;
   readonly error: string | null;
 }
 

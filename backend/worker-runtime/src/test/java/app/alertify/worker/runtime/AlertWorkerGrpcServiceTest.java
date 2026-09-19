@@ -50,7 +50,7 @@ class AlertWorkerGrpcServiceTest {
                 """;
         String checksum = sha256(source);
         LinkedBlockingQueue<ExecutionWorkerMessage> output = new LinkedBlockingQueue<>();
-        try (WorkerExecutionEngine alertEngine = new WorkerExecutionEngine(compiler, tracker, properties, identity); ProcedureExecutionEngine procedureEngine = new ProcedureExecutionEngine(compiler, tracker, properties, identity); AlertWorkerGrpcService service = new AlertWorkerGrpcService(properties, compiler, tracker, alertEngine, procedureEngine, identity)) {
+        try (WorkerExecutionEngine alertEngine = new WorkerExecutionEngine(compiler, tracker, properties, identity); ProcedureExecutionEngine procedureEngine = new ProcedureExecutionEngine(compiler, tracker, properties, identity); AlertWorkerGrpcService service = new AlertWorkerGrpcService(properties, compiler, tracker, alertEngine, procedureEngine, identity, new WorkerResourceMonitor())) {
             StreamObserver<ExecutionClientMessage> input = service.execute(observer(output));
             input.onNext(ExecutionClientMessage.newBuilder().setStartAlert(ExecuteAlertRequest.newBuilder().setExecutionId("stream-alert").setAlertId(1).setAlertName("Stream alert").setTemplateClassName("dynamic.StreamAlert").setSourceChecksum(checksum)).build());
 
@@ -75,7 +75,7 @@ class AlertWorkerGrpcServiceTest {
         WorkerExecutionTracker tracker = new WorkerExecutionTracker(properties);
         WorkerInstanceIdentity identity = new WorkerInstanceIdentity();
         LinkedBlockingQueue<Throwable> errors = new LinkedBlockingQueue<>();
-        try (WorkerExecutionEngine alertEngine = new WorkerExecutionEngine(compiler, tracker, properties, identity); ProcedureExecutionEngine procedureEngine = new ProcedureExecutionEngine(compiler, tracker, properties, identity); AlertWorkerGrpcService service = new AlertWorkerGrpcService(properties, compiler, tracker, alertEngine, procedureEngine, identity)) {
+        try (WorkerExecutionEngine alertEngine = new WorkerExecutionEngine(compiler, tracker, properties, identity); ProcedureExecutionEngine procedureEngine = new ProcedureExecutionEngine(compiler, tracker, properties, identity); AlertWorkerGrpcService service = new AlertWorkerGrpcService(properties, compiler, tracker, alertEngine, procedureEngine, identity, new WorkerResourceMonitor())) {
             StreamObserver<ExecutionClientMessage> input = service.execute(errorObserver(errors));
             input.onNext(ExecutionClientMessage.newBuilder().setTemplateSource(SynchronizeTemplateRequest.getDefaultInstance()).build());
 

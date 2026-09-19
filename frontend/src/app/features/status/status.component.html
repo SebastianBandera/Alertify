@@ -156,6 +156,49 @@
             </div>
           </dl>
 
+          @if (worker.resourceUsage; as usage) {
+            <dl class="worker-resources" [attr.aria-label]="localization.translate('status.resources')">
+              <div>
+                <dt>{{ localization.translate('status.memory') }}</dt>
+                <dd>
+                  {{ formatBytes(usage.memoryUsedBytes) }}
+                  @if (usage.memoryMaxBytes !== null) {
+                    <span class="worker-resources__max">/ {{ formatBytes(usage.memoryMaxBytes) }}</span>
+                  }
+                </dd>
+                <span
+                  class="worker-resources__meter"
+                  [class.worker-resources__meter--high]="usageRatio(usage.memoryUsedBytes, usage.memoryMaxBytes) >= 90"
+                  role="meter"
+                  [attr.aria-valuenow]="usageRatio(usage.memoryUsedBytes, usage.memoryMaxBytes)"
+                  aria-valuemin="0"
+                  aria-valuemax="100"
+                  [attr.aria-label]="localization.translate('status.memory')"
+                ><span [style.width.%]="usageRatio(usage.memoryUsedBytes, usage.memoryMaxBytes)"></span></span>
+                <small class="worker-metrics__secondary">
+                  {{ localization.translate('status.memoryHeap') }}:
+                  {{ formatBytes(usage.heapUsedBytes) }} / {{ formatBytes(usage.heapMaxBytes) }}
+                </small>
+              </div>
+              <div>
+                <dt>{{ localization.translate('status.cpu') }}</dt>
+                <dd>{{ formatPercent(usage.cpuUsage) }}</dd>
+                <span
+                  class="worker-resources__meter"
+                  [class.worker-resources__meter--high]="cpuPercent(usage.cpuUsage) >= 90"
+                  role="meter"
+                  [attr.aria-valuenow]="cpuPercent(usage.cpuUsage)"
+                  aria-valuemin="0"
+                  aria-valuemax="100"
+                  [attr.aria-label]="localization.translate('status.cpu')"
+                ><span [style.width.%]="cpuPercent(usage.cpuUsage)"></span></span>
+                <small class="worker-metrics__secondary">
+                  {{ usage.availableProcessors }} {{ localization.translate('status.cpuProcessors') }}
+                </small>
+              </div>
+            </dl>
+          }
+
           <section class="task-section">
             <h3>{{ localization.translate('status.runningTaskDetails') }}</h3>
             @if (!worker.runningTasks.length) {

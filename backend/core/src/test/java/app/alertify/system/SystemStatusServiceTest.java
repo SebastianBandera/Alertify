@@ -33,7 +33,7 @@ class SystemStatusServiceTest {
         WorkerTaskStatusResponse procedure = task("procedure-execution", "PROCEDURE");
         WorkerNodeStatusResponse worker = new WorkerNodeStatusResponse(
                 "worker:9090", true, "worker", "instance", Instant.now(), Set.of(),
-                0, 1, 0, 1, List.of(alert), List.of(), 0, 1, List.of(procedure), null
+                0, 1, 0, 1, List.of(alert), List.of(), 0, 1, List.of(procedure), null, null
         );
         when(workerStatusService.realtimeStatus()).thenReturn(List.of(worker));
 

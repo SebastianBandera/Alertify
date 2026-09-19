@@ -45,15 +45,17 @@ class AlertWorkerGrpcService extends AlertWorkerServiceGrpc.AlertWorkerServiceIm
     private final WorkerExecutionEngine executionEngine;
     private final ProcedureExecutionEngine procedureExecutionEngine;
     private final WorkerInstanceIdentity instanceIdentity;
+    private final WorkerResourceMonitor resourceMonitor;
     private final ExecutorService sourceSynchronizations = Executors.newVirtualThreadPerTaskExecutor();
 
-    AlertWorkerGrpcService(WorkerRuntimeProperties properties, AlertTemplateCompiler compiler, WorkerExecutionTracker tracker, WorkerExecutionEngine executionEngine, ProcedureExecutionEngine procedureExecutionEngine, WorkerInstanceIdentity instanceIdentity) {
+    AlertWorkerGrpcService(WorkerRuntimeProperties properties, AlertTemplateCompiler compiler, WorkerExecutionTracker tracker, WorkerExecutionEngine executionEngine, ProcedureExecutionEngine procedureExecutionEngine, WorkerInstanceIdentity instanceIdentity, WorkerResourceMonitor resourceMonitor) {
         this.properties = properties;
         this.compiler = compiler;
         this.tracker = tracker;
         this.executionEngine = executionEngine;
         this.procedureExecutionEngine = procedureExecutionEngine;
         this.instanceIdentity = instanceIdentity;
+        this.resourceMonitor = resourceMonitor;
     }
 
     @Override
@@ -77,7 +79,8 @@ class AlertWorkerGrpcService extends AlertWorkerServiceGrpc.AlertWorkerServiceIm
                 .addAllCapabilities(properties.capabilities().stream().map(Enum::name).sorted().toList())
                 .setTotalExecuted(tracker.totalExecuted())
                 .setRunningCount(running.size())
-                .setWaitingCount(waiting.size());
+                .setWaitingCount(waiting.size())
+                .setResourceUsage(resourceMonitor.usage());
         var procedures = tracker.runningProcedureTasks();
         response.setTotalExecutedProcedures(tracker.totalExecutedProcedures()).setRunningProcedureCount(procedures.size());
         running.stream().map(AlertWorkerGrpcService::task).forEach(response::addRunningTasks);

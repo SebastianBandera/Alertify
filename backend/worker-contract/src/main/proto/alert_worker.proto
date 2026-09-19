@@ -221,6 +221,16 @@ message WorkerStatusResponse {
   int64 total_executed_procedures = 11;
   int32 running_procedure_count = 12;
   repeated WorkerTask running_procedures = 13;
+  WorkerResourceUsage resource_usage = 14;
+}
+
+message WorkerResourceUsage {
+  int64 memory_used_bytes = 1;
+  int64 memory_max_bytes = 2;
+  int64 heap_used_bytes = 3;
+  int64 heap_max_bytes = 4;
+  double cpu_usage = 5;
+  int32 available_processors = 6;
 }
 
 message WorkerTask {

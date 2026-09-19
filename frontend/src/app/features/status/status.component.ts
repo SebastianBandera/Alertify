@@ -149,6 +149,33 @@ export class StatusComponent implements OnInit {
     return `${seconds} s`;
   }
 
+  protected formatBytes(bytes: number | null): string {
+    if (bytes === null) return this.localization.translate('status.resourceUnknown');
+    const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
+    let value = bytes;
+    let unit = 0;
+    while (value >= 1024 && unit < units.length - 1) {
+      value /= 1024;
+      unit++;
+    }
+    const digits = unit === 0 ? 0 : value < 10 ? 2 : 1;
+    return `${new Intl.NumberFormat(this.localization.locale(), { maximumFractionDigits: digits, minimumFractionDigits: digits }).format(value)} ${units[unit]}`;
+  }
+
+  protected formatPercent(ratio: number | null): string {
+    if (ratio === null) return this.localization.translate('status.resourceUnknown');
+    return new Intl.NumberFormat(this.localization.locale(), { style: 'percent', maximumFractionDigits: 0 }).format(ratio);
+  }
+
+  protected cpuPercent(ratio: number | null): number {
+    return ratio === null ? 0 : Math.min(100, Math.max(0, Math.round(ratio * 100)));
+  }
+
+  protected usageRatio(used: number | null, max: number | null): number {
+    if (used === null || max === null || max <= 0) return 0;
+    return Math.min(100, Math.max(0, Math.round((used / max) * 100)));
+  }
+
   protected taskStartedAt(task: WorkerTaskStatus): string {
     return task.workStartedAt ?? task.queuedAt;
   }

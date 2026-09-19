@@ -22,6 +22,7 @@ public record WorkerNodeStatusResponse(
     long totalExecutedProcedures,
     int runningProcedureCount,
     List<WorkerTaskStatusResponse> runningProcedures,
+    WorkerResourceUsageResponse resourceUsage,
     String error
 ) {
 }
