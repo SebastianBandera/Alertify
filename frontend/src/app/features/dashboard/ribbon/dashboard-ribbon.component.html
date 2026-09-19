@@ -1,0 +1,91 @@
+<nav class="ribbon scroll-strip" appDragScroll [attr.aria-label]="localization.translate('dashboard.ribbon.label')">
+  <div class="ribbon__group">
+    <button
+      type="button"
+      class="ribbon__menu"
+      [class.ribbon__menu--open]="openMenu() === 'states'"
+      [attr.aria-expanded]="openMenu() === 'states'"
+      (click)="toggleMenu('states')">
+      {{ localization.translate('dashboard.ribbon.states') }}
+      @if (visibleStateCount() < states.length) {
+        <span class="ribbon__count">{{ visibleStateCount() }}/{{ states.length }}</span>
+      }
+    </button>
+    @if (openMenu() === 'states') {
+      <div class="ribbon__options" animate.enter="ribbon__options--enter" animate.leave="ribbon__options--leave">
+        @for (state of states; track state) {
+          <button
+            type="button"
+            [class]="'chip chip--' + state"
+            [class.chip--off]="!isStateVisible(state)"
+            role="checkbox"
+            [attr.aria-checked]="isStateVisible(state)"
+            (click)="toggleState(state)">
+            {{ stateLabel(state) }}
+          </button>
+        }
+      </div>
+    }
+  </div>
+
+  <div class="ribbon__group">
+    <button
+      type="button"
+      class="ribbon__menu"
+      [class.ribbon__menu--open]="openMenu() === 'tags'"
+      [attr.aria-expanded]="openMenu() === 'tags'"
+      (click)="toggleMenu('tags')">
+      {{ localization.translate('dashboard.ribbon.tags') }}
+      @if (visibleTagCount() < tags().length) {
+        <span class="ribbon__count">{{ visibleTagCount() }}/{{ tags().length }}</span>
+      }
+    </button>
+    @if (openMenu() === 'tags') {
+      <div class="ribbon__options" animate.enter="ribbon__options--enter" animate.leave="ribbon__options--leave">
+        @for (tag of tags(); track tag.id) {
+          <button
+            type="button"
+            class="chip chip--tag"
+            [class.chip--off]="!isTagVisible(tag)"
+            [style.--tag-color]="tag.color"
+            role="checkbox"
+            [attr.aria-checked]="isTagVisible(tag)"
+            (click)="toggleTag(tag)">
+            {{ tag.name }}
+          </button>
+        } @empty {
+          <span class="ribbon__hint">{{ localization.translate('dashboard.ribbon.noTags') }}</span>
+        }
+      </div>
+    }
+  </div>
+
+  <div class="ribbon__group">
+    <button
+      type="button"
+      class="ribbon__menu"
+      [class.ribbon__menu--open]="openMenu() === 'advanced'"
+      [attr.aria-expanded]="openMenu() === 'advanced'"
+      (click)="toggleMenu('advanced')">
+      {{ localization.translate('dashboard.ribbon.advanced') }}
+      @if (activeAdvancedCount() > 0) {
+        <span class="ribbon__count">{{ activeAdvancedCount() }}</span>
+      }
+    </button>
+    @if (openMenu() === 'advanced') {
+      <div class="ribbon__options" animate.enter="ribbon__options--enter" animate.leave="ribbon__options--leave">
+        @for (option of advancedOptions; track option.key) {
+          <button
+            type="button"
+            class="chip chip--toggle"
+            [class.chip--off]="!settings()[option.key]"
+            role="switch"
+            [attr.aria-checked]="settings()[option.key]"
+            (click)="toggleAdvanced(option.key)">
+            {{ localization.translate(option.labelKey) }}
+          </button>
+        }
+      </div>
+    }
+  </div>
+</nav>

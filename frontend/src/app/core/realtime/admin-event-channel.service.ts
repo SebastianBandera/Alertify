@@ -2,6 +2,7 @@ import { DOCUMENT } from '@angular/common';
 import { DestroyRef, inject, Injectable, signal } from '@angular/core';
 import { filter, map, Observable, Subject } from 'rxjs';
 
+import { DashboardAlertCard } from '../../features/dashboard/dashboard-card';
 import { SystemStatusSummary } from '../api/system-status-api.service';
 import { AuthService } from '../auth/auth.service';
 import { RUNTIME_CONFIG } from '../config/runtime-config';
@@ -15,9 +16,17 @@ export type AdminEventConnectionState = 'idle' | 'connecting' | 'connected' | 'r
 
 interface AdminEventPayloads {
   readonly SYSTEM_STATUS: SystemStatusSummary;
+  readonly DASHBOARD_ALERT: DashboardAlertCard;
+  readonly DASHBOARD_ALERT_REMOVED: { readonly alertId: number };
 }
 
 export type AdminEventName = keyof AdminEventPayloads;
+
+const EVENT_NAMES: ReadonlySet<string> = new Set<AdminEventName>(['SYSTEM_STATUS', 'DASHBOARD_ALERT', 'DASHBOARD_ALERT_REMOVED']);
+
+function isEventName(value: unknown): value is AdminEventName {
+  return typeof value === 'string' && EVENT_NAMES.has(value);
+}
 
 type AdminEventMessage = {
   [Name in AdminEventName]: {
@@ -91,8 +100,9 @@ export class AdminEventChannelService {
 
   on<Name extends AdminEventName>(name: Name): Observable<AdminEventPayloads[Name]> {
     return this.events.pipe(
-      filter((message): message is Extract<AdminEventMessage, { name: Name }> => message.name === name),
-      map((message) => message.payload),
+      filter((message) => message.name === name),
+      /* The discriminated union narrows per member, not per generic name, so the payload is asserted once here. */
+      map((message) => message.payload as AdminEventPayloads[Name]),
     );
   }
 
@@ -175,9 +185,9 @@ export class AdminEventChannelService {
 
   private handleEvent(message: Record<string, unknown>): void {
     const name = message['name'];
-    if (name !== 'SYSTEM_STATUS' || !message['payload']) return;
+    if (!isEventName(name) || !message['payload']) return;
 
-    this.events.next({ name, payload: message['payload'] as SystemStatusSummary });
+    this.events.next({ name, payload: message['payload'] } as AdminEventMessage);
   }
 
   private completeRequest(message: Record<string, unknown>, failed: boolean): void {

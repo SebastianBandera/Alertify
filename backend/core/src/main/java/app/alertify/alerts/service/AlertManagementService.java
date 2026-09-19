@@ -42,6 +42,7 @@ import app.alertify.api.error.ConflictException;
 import app.alertify.api.error.InvalidAlertRequestException;
 import app.alertify.api.error.ResourceNotFoundException;
 import app.alertify.configuration.service.SearchValidation;
+import app.alertify.dashboard.DashboardEventPublisher;
 import app.alertify.jpa.entity.ApplicationConfiguration;
 import app.alertify.jpa.entity.ApplicationSecret;
 import app.alertify.jpa.entity.Tag;
@@ -91,8 +92,9 @@ public class AlertManagementService {
     private final ApplicationEventLogger eventLogger;
     private final AlertScheduleService scheduleService;
     private final AlertExecutionOrchestrator executionOrchestrator;
+    private final DashboardEventPublisher dashboardEventPublisher;
 
-    public AlertManagementService(AlertRepository alertRepository, AlertTemplateDefinitionRepository templateRepository, AlertTemplateParameterDefinitionRepository templateParameterRepository, AlertParameterValueRepository parameterValueRepository, AlertExecutionRepository executionRepository, AlertStateRepository stateRepository, ApplicationConfigurationRepository configurationRepository, ApplicationSecretRepository secretRepository, ProcedureRepository procedureRepository, TagRepository tagRepository, ApplicationEventLogger eventLogger, AlertScheduleService scheduleService, AlertExecutionOrchestrator executionOrchestrator) {
+    public AlertManagementService(AlertRepository alertRepository, AlertTemplateDefinitionRepository templateRepository, AlertTemplateParameterDefinitionRepository templateParameterRepository, AlertParameterValueRepository parameterValueRepository, AlertExecutionRepository executionRepository, AlertStateRepository stateRepository, ApplicationConfigurationRepository configurationRepository, ApplicationSecretRepository secretRepository, ProcedureRepository procedureRepository, TagRepository tagRepository, ApplicationEventLogger eventLogger, AlertScheduleService scheduleService, AlertExecutionOrchestrator executionOrchestrator, DashboardEventPublisher dashboardEventPublisher) {
         this.alertRepository = alertRepository;
         this.templateRepository = templateRepository;
         this.templateParameterRepository = templateParameterRepository;
@@ -106,6 +108,7 @@ public class AlertManagementService {
         this.eventLogger = eventLogger;
         this.scheduleService = scheduleService;
         this.executionOrchestrator = executionOrchestrator;
+        this.dashboardEventPublisher = dashboardEventPublisher;
     }
 
     @Transactional(readOnly = true)
@@ -156,6 +159,7 @@ public class AlertManagementService {
         List<AlertParameterValue> values = synchronizeParameters(alert, request.parameters(), List.of());
         eventLogger.successAfterCommit("ALERT_CREATED", Map.of(ALERT_ID, alert.getId(), "name", alert.getName(), "templateId", template.getId(), ALLOW_CONCURRENT_EXECUTIONS, alert.isConcurrentExecutionAllowed()));
         scheduleService.rescheduleAfterCommit(alert.getId());
+        dashboardEventPublisher.alertChangedAfterCommit(alert.getId());
         return AlertMapper.toAlert(alert, values);
     }
 
@@ -181,6 +185,7 @@ public class AlertManagementService {
         alertRepository.flush();
         eventLogger.successAfterCommit("ALERT_UPDATED", Map.of(ALERT_ID, alert.getId(), "name", alert.getName(), "version", alert.getVersion(), ALLOW_CONCURRENT_EXECUTIONS, alert.isConcurrentExecutionAllowed()));
         scheduleService.rescheduleAfterCommit(alert.getId());
+        dashboardEventPublisher.alertChangedAfterCommit(alert.getId());
         return AlertMapper.toAlert(alert, values);
     }
 
@@ -221,6 +226,7 @@ public class AlertManagementService {
         alertRepository.delete(alert);
         eventLogger.successAfterCommit("ALERT_DELETED", Map.of(ALERT_ID, id, "name", alert.getName(), "executionsDeleted", executionsDeleted));
         scheduleService.removeAfterCommit(id);
+        dashboardEventPublisher.alertRemovedAfterCommit(id);
     }
 
     /**

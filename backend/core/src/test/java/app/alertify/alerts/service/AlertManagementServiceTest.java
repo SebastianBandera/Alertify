@@ -31,6 +31,7 @@ import app.alertify.alerts.model.Alert;
 import app.alertify.alerts.model.AlertTemplateDefinition;
 import app.alertify.api.error.ConflictException;
 import app.alertify.api.error.ResourceNotFoundException;
+import app.alertify.dashboard.DashboardEventPublisher;
 import app.alertify.jpa.repository.AlertExecutionRepository;
 import app.alertify.jpa.repository.AlertParameterValueRepository;
 import app.alertify.jpa.repository.AlertRepository;
@@ -61,6 +62,7 @@ class AlertManagementServiceTest {
     @Mock private ApplicationEventLogger eventLogger;
     @Mock private AlertScheduleService scheduleService;
     @Mock private AlertExecutionOrchestrator executionOrchestrator;
+    @Mock private DashboardEventPublisher dashboardEventPublisher;
 
     @Test
     void deletesTheExecutionHistoryBeforeTheAlertItself() {
@@ -152,7 +154,7 @@ class AlertManagementServiceTest {
         return new AlertManagementService(
                 alertRepository, templateRepository, templateParameterRepository, parameterValueRepository,
                 executionRepository, stateRepository, configurationRepository, secretRepository,
-                procedureRepository, tagRepository, eventLogger, scheduleService, executionOrchestrator
+                procedureRepository, tagRepository, eventLogger, scheduleService, executionOrchestrator, dashboardEventPublisher
         );
     }
 

@@ -19,7 +19,7 @@ import app.alertify.alerts.model.AlertTemplateParameterDefinition;
 import app.alertify.configuration.api.TagResponse;
 
 /** Converts alert entities into the API responses served by the controllers. */
-final class AlertMapper {
+public final class AlertMapper {
 
     private AlertMapper() {
     }
@@ -37,7 +37,7 @@ final class AlertMapper {
         );
     }
 
-    static AlertResponse toAlert(Alert alert, List<AlertParameterValue> values) {
+    public static AlertResponse toAlert(Alert alert, List<AlertParameterValue> values) {
         AlertTemplateDefinition template = alert.getTemplate();
         return new AlertResponse(
                 alert.getId(), alert.getVersion(), template.getId(), template.getTemplateKey(),
@@ -54,7 +54,7 @@ final class AlertMapper {
         );
     }
 
-    static AlertExecutionResponse toExecution(AlertExecution execution) {
+    public static AlertExecutionResponse toExecution(AlertExecution execution) {
         return new AlertExecutionResponse(
                 execution.getId(), execution.getExecutionId(), execution.getAlert().getId(), execution.getAlert().getName(),
                 execution.getStatus(), execution.getTrigger(), execution.getTriggeredBy(), execution.getStartedAt(), execution.getWorkStartedAt(),

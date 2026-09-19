@@ -15,6 +15,7 @@ import java.util.concurrent.Executors;
 import org.springframework.stereotype.Service;
 
 import app.alertify.alerts.template.annotation.AlertParameterSource;
+import app.alertify.dashboard.DashboardEventPublisher;
 import app.alertify.grpc.AlertWorkerClient;
 import app.alertify.grpc.WorkerGrpcProperties;
 import app.alertify.grpc.WorkerTemplateSynchronizationException;
@@ -60,10 +61,11 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
     private final CronQuietHoursService quietHoursService;
     private final MaintenanceModeService maintenanceModeService;
     private final SystemStatusEventPublisher statusEventPublisher;
+    private final DashboardEventPublisher dashboardEventPublisher;
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
     private final ConcurrentMap<Long, AlertGate> alertGates = new ConcurrentHashMap<>();
 
-    public AlertExecutionOrchestrator(AlertExecutionPreparationService preparationService, AlertExecutionPersistenceService persistenceService, WorkerStatusService workerStatusService, AlertWorkerClient workerClient, WorkerGrpcProperties properties, ApplicationEventLogger eventLogger, ProcedureInvocationTokenService procedureTokenService, ProcedureInvocationRegistry procedureInvocationRegistry, ProcedureExecutionOrchestrator procedureExecutionOrchestrator, CronQuietHoursService quietHoursService, MaintenanceModeService maintenanceModeService, SystemStatusEventPublisher statusEventPublisher) {
+    public AlertExecutionOrchestrator(AlertExecutionPreparationService preparationService, AlertExecutionPersistenceService persistenceService, WorkerStatusService workerStatusService, AlertWorkerClient workerClient, WorkerGrpcProperties properties, ApplicationEventLogger eventLogger, ProcedureInvocationTokenService procedureTokenService, ProcedureInvocationRegistry procedureInvocationRegistry, ProcedureExecutionOrchestrator procedureExecutionOrchestrator, CronQuietHoursService quietHoursService, MaintenanceModeService maintenanceModeService, SystemStatusEventPublisher statusEventPublisher, DashboardEventPublisher dashboardEventPublisher) {
         this.preparationService = preparationService;
         this.persistenceService = persistenceService;
         this.workerStatusService = workerStatusService;
@@ -76,6 +78,7 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
         this.quietHoursService = quietHoursService;
         this.maintenanceModeService = maintenanceModeService;
         this.statusEventPublisher = statusEventPublisher;
+        this.dashboardEventPublisher = dashboardEventPublisher;
     }
 
     /**
@@ -182,6 +185,7 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
                 started.put("workerLoad", worker.currentLoad());
                 eventLogger.success("ALERT_EXECUTION_STARTED", started);
                 statusEventPublisher.publish();
+                dashboardEventPublisher.executionStarted(alertId, executionId, startedAt);
 
                 procedureInvocationRegistry.register(executionId, deadline);
                 ExecuteAlertRequest request = request(executionId.toString(), execution, deadline);
@@ -229,6 +233,8 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
             persistenceService.clearTrigger(executionId);
             leave(alertId);
             statusEventPublisher.publish();
+            // Runs after the outcome was persisted, so the published tile carries the fresh result.
+            dashboardEventPublisher.executionFinished(alertId, executionId);
         }
     }
 

@@ -1,0 +1,179 @@
+:host {
+  display: block;
+}
+
+.ribbon {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 5px 26px;
+  border-bottom: 1px solid var(--border);
+  background: #fcfcfd;
+}
+
+/* One row only: overflow scrolls sideways (drag, wheel or touch) with no visible bar. */
+.scroll-strip {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+  user-select: none;
+  touch-action: pan-y;
+}
+
+.scroll-strip::-webkit-scrollbar {
+  display: none;
+}
+
+.scroll-strip.drag-scroll--overflowing {
+  cursor: grab;
+  mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent);
+}
+
+.scroll-strip.drag-scroll--dragging {
+  cursor: grabbing;
+}
+
+.ribbon__group {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: 6px;
+}
+
+.ribbon__menu {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 11px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.ribbon__menu:hover {
+  color: var(--text);
+}
+
+.ribbon__menu--open {
+  border-color: var(--border);
+  background: var(--surface);
+  color: var(--primary-strong);
+  box-shadow: 0 1px 2px rgb(16 24 40 / 6%);
+}
+
+.ribbon__count {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #f4f3ff;
+  color: #5925dc;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Options unfold to the right of their menu, inside the strip. */
+.ribbon__options {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px 0 4px;
+  border-left: 1px solid var(--border);
+}
+
+.ribbon__options--enter {
+  animation: ribbon-unfold 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.ribbon__options--leave {
+  animation: ribbon-unfold 160ms ease-in reverse both;
+}
+
+@keyframes ribbon-unfold {
+  from {
+    opacity: 0;
+    transform: translateX(-12px);
+    clip-path: inset(0 100% 0 0);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+.ribbon__hint {
+  color: var(--text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* Filter chips: lit when the option is active, dimmed when it hides tiles. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  transition: opacity 160ms ease, filter 160ms ease;
+}
+
+.chip--off {
+  opacity: 0.35;
+  filter: grayscale(1);
+}
+
+.chip--error { background: #fef3f2; color: #b42318; }
+.chip--warn { background: #fffaeb; color: #b54708; }
+.chip--success { background: #ecfdf3; color: #027a48; }
+.chip--none { background: #f2f4f7; color: #667085; }
+
+.chip--tag {
+  --tag-color: #6d5dfc;
+  border-color: color-mix(in srgb, var(--tag-color) 38%, white);
+  background: color-mix(in srgb, var(--tag-color) 12%, white);
+  color: color-mix(in srgb, var(--tag-color) 76%, #101828);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.chip--toggle {
+  background: #f4f3ff;
+  color: #5925dc;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.chip--toggle.chip--off {
+  border-color: #d0d5dd;
+  background: white;
+  color: #667085;
+  opacity: 1;
+  filter: none;
+}
+
+@media (max-width: 600px) {
+  .ribbon {
+    padding-right: 20px;
+    padding-left: 20px;
+  }
+}

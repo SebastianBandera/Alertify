@@ -28,6 +28,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import com.google.protobuf.Timestamp;
 
 import app.alertify.alerts.template.annotation.AlertParameterSource;
+import app.alertify.dashboard.DashboardEventPublisher;
 import app.alertify.grpc.AlertWorkerClient;
 import app.alertify.grpc.WorkerGrpcProperties;
 import app.alertify.grpc.discovery.SelectedWorker;
@@ -67,6 +68,7 @@ class AlertExecutionOrchestratorTest {
     @Mock private CronQuietHoursService quietHoursService;
     @Mock private MaintenanceModeService maintenanceModeService;
     @Mock private SystemStatusEventPublisher statusEventPublisher;
+    @Mock private DashboardEventPublisher dashboardEventPublisher;
 
     private AlertExecutionOrchestrator orchestrator;
 
@@ -85,7 +87,7 @@ class AlertExecutionOrchestratorTest {
         orchestrator = new AlertExecutionOrchestrator(
                 preparationService, persistenceService, workerStatusService, workerClient,
                 properties(), eventLogger, procedureTokenService, procedureInvocationRegistry, procedureExecutionOrchestrator,
-                quietHoursService, maintenanceModeService, statusEventPublisher
+                quietHoursService, maintenanceModeService, statusEventPublisher, dashboardEventPublisher
         );
     }
 

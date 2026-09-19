@@ -18,8 +18,10 @@ import { filter } from 'rxjs';
 import { AuthService } from '../../core/auth/auth.service';
 import { LogApiService } from '../../core/api/log-api.service';
 import { LocalizationService } from '../../core/i18n/localization.service';
+import { BrowserNotificationService } from '../../core/notifications/browser-notification.service';
 import { AdminEventChannelService } from '../../core/realtime/admin-event-channel.service';
 import { TranslationKey } from '../../core/i18n/localization.types';
+import { DashboardLiveService } from '../../features/dashboard/dashboard-live.service';
 import { AdminStatusBarComponent } from '../admin-status-bar/admin-status-bar.component';
 
 interface NavigationItem {
@@ -42,6 +44,8 @@ export class AppShellComponent {
   protected readonly authService = inject(AuthService);
   protected readonly localization = inject(LocalizationService);
   private readonly adminEventChannel = inject(AdminEventChannelService);
+  private readonly dashboardLive = inject(DashboardLiveService);
+  private readonly browserNotifications = inject(BrowserNotificationService);
   private readonly logApi = inject(LogApiService);
   private readonly router = inject(Router);
   private readonly title = inject(Title);
@@ -89,7 +93,11 @@ export class AppShellComponent {
 
   constructor() {
     afterNextRender(() => {
-      if (this.authService.isAdmin) this.adminEventChannel.start();
+      if (!this.authService.isAdmin) return;
+      /* The board store starts with the channel so results and notifications arrive from any section. */
+      this.dashboardLive.start();
+      this.adminEventChannel.start();
+      this.browserNotifications.ensurePermission();
     });
 
     this.router.events

@@ -1,17 +1,283 @@
-<article class="dashboard">
-  <header class="dashboard__header">
-    <h1>{{ localization.translate('navigation.dashboard') }}</h1>
-    <p>{{ localization.translate('dashboard.description') }}</p>
-  </header>
+<ng-template #cardTemplate let-card>
+  <article
+    [class]="cardClasses(card)"
+    [attr.data-alert-id]="card.alert.id"
+    animate.enter="alert-card--enter"
+    [style.animation-delay]="enterDelay(card)"
+    role="button"
+    tabindex="0"
+    [attr.aria-label]="openLabel(card)"
+    (click)="openCard(card)"
+    (keydown.enter)="openCardFromKeyboard($event, card)"
+    (keydown.space)="openCardFromKeyboard($event, card)">
+    @if (settings().minified) {
+      <h2 class="scroll-strip" appDragScroll>{{ card.alert.name }}</h2>
+      @if (card.lastExecution; as execution) {
+        <time class="alert-card__time" [attr.datetime]="execution.finishedAt" [title]="execution.finishedAt">
+          {{ relativeTime(execution.finishedAt) }}
+        </time>
+      } @else {
+        <span class="alert-card__time">{{ localization.translate('dashboard.card.neverExecuted') }}</span>
+      }
+    } @else {
+      <div class="alert-card__top">
+        <span class="badge">{{ statusLabel(card) }}</span>
+        <!-- No animate.leave here: Angular defers the removal of a reordered
+             @for item while a descendant leave animation runs, and then drops
+             the already re-inserted card from the DOM. -->
+        @if (card.runningSince; as runningSince) {
+          <span class="running" [title]="runningLabel(runningSince)">
+            <span class="running__icon" aria-hidden="true"></span>
+            {{ localization.translate('dashboard.card.running') }}
+          </span>
+        }
+        @if (card.lastExecution; as execution) {
+          <time class="alert-card__time" [attr.datetime]="execution.finishedAt" [title]="execution.finishedAt">
+            {{ relativeTime(execution.finishedAt) }}
+          </time>
+        } @else {
+          <span class="alert-card__time">{{ localization.translate('dashboard.card.neverExecuted') }}</span>
+        }
+      </div>
 
-  <section class="dashboard__empty">
-    <span class="dashboard__empty-icon" aria-hidden="true">
-      <span></span>
-      <span></span>
-      <span></span>
-      <span></span>
-    </span>
-    <strong>{{ localization.translate('dashboard.empty') }}</strong>
-    <p>{{ localization.translate('dashboard.emptyDescription') }}</p>
+      <div class="alert-card__title">
+        <h2 class="scroll-strip" appDragScroll>{{ card.alert.name }}</h2>
+        <small>{{ dynamic(card.alert.templateNameKey) }}</small>
+      </div>
+
+      <div class="tag-list scroll-strip" appDragScroll>
+        @for (tag of card.alert.tags; track tag.id) {
+          <span class="tag" [style.--tag-color]="tag.color">{{ tag.name }}</span>
+        }
+      </div>
+
+      <p class="alert-card__message" [class.alert-card__message--empty]="!lastExecutionMessage(card)">
+        {{ lastExecutionMessage(card) || localization.translate('dashboard.card.noMessage') }}
+      </p>
+
+      <footer class="alert-card__meta">
+        @if (card.lastExecution; as execution) {
+          <span class="alert-card__meta-item" [title]="localization.translate('dashboard.card.duration')">
+            {{ formatDuration(execution.durationMillis) }}
+          </span>
+        }
+        @if (!card.alert.enabled) {
+          <span class="alert-card__disabled">{{ localization.translate('dashboard.card.disabled') }}</span>
+        }
+        @if (stability(card); as stability) {
+          <span [class]="'alert-card__stability alert-card__stability--' + stability.state" [title]="historyWindowTitle()">
+            {{ stability.label }}
+          </span>
+        }
+      </footer>
+    }
+  </article>
+</ng-template>
+
+<article class="dashboard" [attr.aria-label]="localization.translate('navigation.dashboard')">
+  @if (loading()) {
+    <div class="dashboard__notice" role="status" aria-live="polite">
+      <span class="dashboard__loading">
+        <span class="dashboard__spinner" aria-hidden="true"></span>
+        {{ loadingLabel() }}
+      </span>
+    </div>
+  }
+
+  <app-dashboard-ribbon [(settings)]="settings" [tags]="availableTags()" />
+
+  <section
+    #grid
+    class="dashboard__grid"
+    [class.dashboard__grid--mini]="settings().minified"
+    [attr.aria-label]="localization.translate('dashboard.cards.label')"
+    [attr.aria-busy]="loading()">
+    @for (card of leadingCards(); track card.alert.id) {
+      <ng-container *ngTemplateOutlet="cardTemplate; context: { $implicit: card }" />
+    }
+
+    @if (deckCards().length > 0) {
+      <div #deck class="deck" (pointermove)="scrubDeck($event)" (pointerleave)="leaveDeck()">
+        @for (card of deckCards(); track card.alert.id; let index = $index) {
+          <div
+            class="deck__slot"
+            [class.deck__slot--active]="deckActiveIndex() === index"
+            [style.margin-left.px]="deckSlotLeft(index)"
+            [style.width.px]="deckCardWidthPx()"
+            [style.z-index]="deckSlotZ(index)"
+            (focusin)="focusDeckCard(index)">
+            <ng-container *ngTemplateOutlet="cardTemplate; context: { $implicit: card }" />
+          </div>
+        }
+      </div>
+    }
+
+    @for (card of trailingCards(); track card.alert.id) {
+      <ng-container *ngTemplateOutlet="cardTemplate; context: { $implicit: card }" />
+    }
+
+    @for (placeholder of skeletons(); track placeholder) {
+      <article class="alert-card alert-card--skeleton" [class.alert-card--mini]="settings().minified" aria-hidden="true">
+        @if (settings().minified) {
+          <span class="skeleton skeleton--title"></span>
+          <span class="skeleton skeleton--time"></span>
+        } @else {
+          <div class="alert-card__top">
+            <span class="skeleton skeleton--badge"></span>
+            <span class="skeleton skeleton--time"></span>
+          </div>
+          <div class="alert-card__title">
+            <span class="skeleton skeleton--title"></span>
+            <span class="skeleton skeleton--subtitle"></span>
+          </div>
+          <div class="tag-list">
+            <span class="skeleton skeleton--tag"></span>
+            <span class="skeleton skeleton--tag"></span>
+          </div>
+          <span class="skeleton skeleton--message"></span>
+          <footer class="alert-card__meta">
+            <span class="skeleton skeleton--time"></span>
+          </footer>
+        }
+      </article>
+    }
+
+    @if (!loading() && visibleCards().length === 0 && skeletons().length === 0) {
+      <section class="dashboard__empty">
+        <span class="dashboard__empty-icon" aria-hidden="true">
+          <span></span><span></span><span></span><span></span>
+        </span>
+        @if (!isAdmin) {
+          <strong>{{ localization.translate('dashboard.adminOnly') }}</strong>
+        } @else if (cards().length === 0) {
+          <strong>{{ localization.translate('dashboard.empty') }}</strong>
+          <p>{{ localization.translate('dashboard.emptyDescription') }}</p>
+        } @else {
+          <strong>{{ localization.translate('dashboard.filters.empty') }}</strong>
+        }
+      </section>
+    }
   </section>
 </article>
+
+@if (selectedCard(); as card) {
+  <div class="modal-backdrop" (mousedown)="closeCard()">
+    <section
+      #detailDialog
+      class="modal"
+      role="dialog"
+      aria-modal="true"
+      tabindex="-1"
+      [attr.aria-label]="card.alert.name"
+      (mousedown)="$event.stopPropagation()"
+      (keydown.escape)="closeCard()">
+      <header>
+        <div class="modal__heading">
+          <h2>{{ card.alert.name }}</h2>
+          <p>{{ dynamic(card.alert.templateNameKey) }}</p>
+          <div class="modal__status">
+            <span [class]="'badge badge--' + cardState(card)">{{ statusLabel(card) }}</span>
+            @if (card.runningSince; as runningSince) {
+              <span class="running" [title]="runningSince">
+                <span class="running__icon" aria-hidden="true"></span>
+                {{ runningLabel(runningSince) }}
+              </span>
+            }
+            @if (card.lastExecution; as execution) {
+              <time [attr.datetime]="execution.finishedAt">{{ relativeTime(execution.finishedAt) }}</time>
+            } @else {
+              <span>{{ localization.translate('dashboard.detail.neverExecuted') }}</span>
+            }
+            @if (!card.alert.enabled) {
+              <span class="alert-card__disabled">{{ localization.translate('dashboard.card.disabled') }}</span>
+            }
+          </div>
+        </div>
+        <button type="button" class="close" (click)="closeCard()" [attr.aria-label]="localization.translate('dashboard.detail.close')">×</button>
+      </header>
+
+      <div class="modal__body">
+        <section class="detail-section">
+          <h3>{{ localization.translate('dashboard.detail.definition') }}</h3>
+          @if (card.alert.description) {
+            <p class="detail-description">{{ card.alert.description }}</p>
+          }
+          @if (card.alert.tags.length > 0) {
+            <div class="tag-list">
+              @for (tag of card.alert.tags; track tag.id) {
+                <span class="tag" [style.--tag-color]="tag.color">{{ tag.name }}</span>
+              }
+            </div>
+          }
+          <dl class="detail-list">
+            <dt>{{ localization.translate('dashboard.detail.schedule') }}</dt>
+            <dd><code>{{ card.alert.cronExpression }}</code></dd>
+            <dt>{{ localization.translate('dashboard.detail.templateKey') }}</dt>
+            <dd><code>{{ card.alert.templateKey }}</code></dd>
+            <dt>{{ localization.translate('dashboard.detail.concurrent') }}</dt>
+            <dd>{{ localization.translate(card.alert.allowConcurrentExecutions ? 'dashboard.detail.yes' : 'dashboard.detail.no') }}</dd>
+          </dl>
+        </section>
+
+        <section class="detail-section">
+          <h3>{{ localization.translate('dashboard.detail.lastExecution') }}</h3>
+          @if (card.lastExecution; as execution) {
+            <dl class="detail-list">
+              <dt>{{ localization.translate('dashboard.detail.trigger') }}</dt>
+              <dd>{{ triggerLabel(execution) }}@if (execution.triggeredBy) { · {{ execution.triggeredBy }}}</dd>
+              <dt>{{ localization.translate('dashboard.detail.startedAt') }}</dt>
+              <dd>{{ execution.startedAt | date:'medium' }}</dd>
+              <dt>{{ localization.translate('dashboard.detail.finishedAt') }}</dt>
+              <dd>{{ execution.finishedAt | date:'medium' }}</dd>
+              <dt>{{ localization.translate('dashboard.detail.duration') }}</dt>
+              <dd>
+                {{ formatDuration(execution.durationMillis) }}
+                <small>
+                  {{ localization.translate('dashboard.detail.idle') }} {{ formatDuration(execution.idleMillis) }} ·
+                  {{ localization.translate('dashboard.detail.execution') }} {{ formatDuration(execution.executionMillis) }}
+                </small>
+              </dd>
+              <dt>{{ localization.translate('dashboard.detail.worker') }}</dt>
+              <dd>{{ workerLabel(execution) }}</dd>
+              <dt>{{ localization.translate('dashboard.detail.executionId') }}</dt>
+              <dd><code>{{ execution.executionId }}</code></dd>
+            </dl>
+            <h4>{{ localization.translate(execution.status === 'ERROR' ? 'dashboard.detail.error' : 'dashboard.detail.message') }}</h4>
+            @if (fullMessage(execution); as message) {
+              <pre class="detail-message" [class.detail-message--error]="execution.status === 'ERROR'">{{ message }}</pre>
+            } @else {
+              <p class="detail-empty">{{ localization.translate('dashboard.card.noMessage') }}</p>
+            }
+          } @else {
+            <p class="detail-empty">{{ localization.translate('dashboard.detail.neverExecuted') }}</p>
+          }
+        </section>
+
+        @if (card.history; as history) {
+          <section class="detail-section">
+            <h3>{{ historyTitle() }}</h3>
+            <dl class="detail-list">
+              <dt>{{ localization.translate('dashboard.detail.worstStatus') }}</dt>
+              <dd>
+                <span [class]="'badge badge--' + historyState(history.worstStatus)">{{ localization.translate(statusKey(history.worstStatus)) }}</span>
+                <small>{{ history.worstStatusLastAt | date:'medium' }} · {{ relativeTime(history.worstStatusLastAt) }}</small>
+              </dd>
+              <dt>{{ localization.translate('dashboard.detail.currentSince') }}</dt>
+              <dd>
+                {{ history.currentStatusSince | date:'medium' }}
+                <small>{{ relativeTime(history.currentStatusSince) }}</small>
+              </dd>
+            </dl>
+            @if (stability(card); as stability) {
+              <span [class]="'alert-card__stability alert-card__stability--' + stability.state">{{ stability.label }}</span>
+            }
+          </section>
+        }
+      </div>
+
+      <footer class="modal__footer">
+        <button type="button" class="button button--secondary" (click)="closeCard()">{{ localization.translate('dashboard.detail.close') }}</button>
+      </footer>
+    </section>
+  </div>
+}
