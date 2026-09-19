@@ -350,9 +350,10 @@ export class SecretsComponent implements OnInit {
     const form = this.secretForm();
     if (form.valueType === 'BINARY') {
       if (!form.name.trim()) { this.formError.set(this.localization.translate('secrets.nameRequired')); return; }
+      const editing = this.editingSecret();
+      if (!this.confirmSecretReplacement(editing)) return;
       this.saving.set(true); this.formError.set(null);
       try {
-        const editing = this.editingSecret();
         const metadata = { name: form.name.trim(), description: form.description.trim() || null, tagIds: form.tagIds, writable: form.writable };
         if (editing) await this.api.updateBinarySecret(editing.id, { ...metadata, version: editing.version }, form.binaryFile);
         else await this.api.createBinarySecret(metadata, form.binaryFile);
@@ -370,10 +371,11 @@ export class SecretsComponent implements OnInit {
       this.formError.set(this.errorMessage(error));
       return;
     }
+    const editing = this.editingSecret();
+    if (!this.confirmSecretReplacement(editing)) return;
     this.saving.set(true);
     this.formError.set(null);
     try {
-      const editing = this.editingSecret();
       if (editing) {
         await this.api.updateSecret(editing.id, { version: editing.version, name: form.name.trim(), description: form.description.trim() || null, valueType: form.valueType, newValue: value, tagIds: form.tagIds, writable: form.writable });
       } else {
@@ -387,6 +389,13 @@ export class SecretsComponent implements OnInit {
     } finally {
       this.saving.set(false);
     }
+  }
+
+  private confirmSecretReplacement(secret: ApplicationSecret | null): boolean {
+    if (!secret)
+      return true;
+
+    return window.confirm(this.localization.translate('secrets.editValueConfirm').replace('{name}', secret.name));
   }
 
   protected async deleteSecret(secret: ApplicationSecret): Promise<void> {
