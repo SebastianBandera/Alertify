@@ -60,6 +60,44 @@ public class DashboardExecutionQuery {
     }
 
     /**
+     * Row id of the most recent WARN or ERROR execution of each alert that
+     * precedes its latest execution and started since {@code since}. Takes the
+     * latest execution id per alert so the probe never returns the latest
+     * execution itself.
+     */
+    public Map<Long, Long> previousIssueExecutionIds(Map<Long, Long> latestExecutionIds, Instant since) {
+        if (latestExecutionIds.isEmpty())
+            return Collections.emptyMap();
+
+        List<Object> parameters = new ArrayList<>();
+        latestExecutionIds.forEach((alertId, latestId) -> {
+            parameters.add(alertId);
+            parameters.add(latestId);
+        });
+        parameters.add(timestamp(since));
+        Map<Long, Long> result = new HashMap<>();
+        jdbcTemplate.query("""
+                select alerts.alert_id, previous.id
+                from (values %s) as alerts(alert_id, latest_id)
+                cross join lateral (
+                    select execution.id
+                    from core.alert_executions execution
+                    where execution.alert_id = alerts.alert_id
+                      and execution.status in ('WARN', 'ERROR')
+                      and execution.id <> alerts.latest_id
+                      and execution.started_at >= ?
+                    order by execution.started_at desc, execution.id desc
+                    limit 1
+                ) previous
+                """.formatted(valueRows(latestExecutionIds.size(), 2)),
+                resultSet -> {
+                    result.put(resultSet.getLong("alert_id"), resultSet.getLong("id"));
+                },
+                parameters.toArray());
+        return result;
+    }
+
+    /**
      * Look-back summary of each alert that ran at least once. The window covers
      * executions started since {@code since}, always including the latest one
      * so an alert that has been idle for longer still gets a summary.
@@ -131,7 +169,12 @@ public class DashboardExecutionQuery {
     }
 
     private static String valueRows(int count) {
-        return String.join(", ", Collections.nCopies(count, "(?)"));
+        return valueRows(count, 1);
+    }
+
+    private static String valueRows(int count, int columns) {
+        String row = "(" + String.join(", ", Collections.nCopies(columns, "?")) + ")";
+        return String.join(", ", Collections.nCopies(count, row));
     }
 
     private static SqlParameterValue timestamp(Instant value) {

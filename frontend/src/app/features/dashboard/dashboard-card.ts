@@ -24,6 +24,8 @@ export interface DashboardHistorySummary {
 export interface DashboardAlertCard {
   readonly alert: Alert;
   readonly lastExecution: AlertExecution | null;
+  /** Most recent WARN or ERROR execution before `lastExecution` inside the look-back window, if any. */
+  readonly previousIssue: AlertExecution | null;
   readonly history: DashboardHistorySummary | null;
   /** Start of an execution currently in progress on a worker, if any. */
   readonly runningSince: string | null;

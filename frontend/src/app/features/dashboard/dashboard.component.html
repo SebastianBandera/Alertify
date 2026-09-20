@@ -253,6 +253,33 @@
           }
         </section>
 
+        @if (card.lastExecution) {
+          <section class="detail-section">
+            <h3>{{ localization.translate('dashboard.detail.previousIssue') }}</h3>
+            @if (card.previousIssue; as issue) {
+              <dl class="detail-list">
+                <dt>{{ localization.translate('dashboard.detail.finishedAt') }}</dt>
+                <dd>
+                  <span [class]="'badge badge--' + historyState(issue.status)">{{ localization.translate(statusKey(issue.status)) }}</span>
+                  <small>{{ issue.finishedAt | date:'medium' }} · {{ relativeTime(issue.finishedAt) }}</small>
+                </dd>
+                <dt>{{ localization.translate('dashboard.detail.trigger') }}</dt>
+                <dd>{{ triggerLabel(issue) }}@if (issue.triggeredBy) { · {{ issue.triggeredBy }}}</dd>
+                <dt>{{ localization.translate('dashboard.detail.executionId') }}</dt>
+                <dd><code>{{ issue.executionId }}</code></dd>
+              </dl>
+              <h4>{{ localization.translate(issue.status === 'ERROR' ? 'dashboard.detail.error' : 'dashboard.detail.message') }}</h4>
+              @if (fullMessage(issue); as message) {
+                <pre class="detail-message" [class.detail-message--error]="issue.status === 'ERROR'">{{ message }}</pre>
+              } @else {
+                <p class="detail-empty">{{ localization.translate('dashboard.card.noMessage') }}</p>
+              }
+            } @else {
+              <p class="detail-empty">{{ noPreviousIssueLabel() }}</p>
+            }
+          </section>
+        }
+
         @if (card.history; as history) {
           <section class="detail-section">
             <h3>{{ historyTitle() }}</h3>

@@ -83,6 +83,8 @@ export const ES_UY_TRANSLATIONS = {
   'dashboard.detail.history': 'Últimos {days} días',
   'dashboard.detail.worstStatus': 'Peor resultado',
   'dashboard.detail.currentSince': 'En el estado actual desde',
+  'dashboard.detail.previousIssue': 'Último problema anterior',
+  'dashboard.detail.noPreviousIssue': 'Sin advertencias ni errores previos en los últimos {days} días',
   'status.title': 'Estado de la aplicación',
   'status.description': 'Disponibilidad, capacidades, carga y ejecuciones de alertas de los workers en tiempo real.',
   'status.summary': 'Resumen del estado de los workers',

@@ -47,7 +47,7 @@ class DashboardEventPublisherTest {
     @Test
     void executionFinishedClearsTheMarkerAndPublishesTheTile() {
         AlertExecutionRunningRegistry registry = new AlertExecutionRunningRegistry();
-        DashboardCardResponse card = new DashboardCardResponse(null, null, null, null);
+        DashboardCardResponse card = new DashboardCardResponse(null, null, null, null, null);
         UUID executionId = UUID.randomUUID();
         when(eventPublisher.hasAuthenticatedSessions()).thenReturn(true);
         when(cardService.card(1L)).thenReturn(Optional.of(card));

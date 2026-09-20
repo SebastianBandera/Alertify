@@ -284,6 +284,10 @@ export class DashboardComponent {
     return this.localization.translate('dashboard.detail.history').replace('{days}', String(this.historyWindowDays));
   }
 
+  protected noPreviousIssueLabel(): string {
+    return this.localization.translate('dashboard.detail.noPreviousIssue').replace('{days}', String(this.historyWindowDays));
+  }
+
   /**
    * Reacts to a store change before the DOM caught up with it. A card whose
    * result status changed fades to its new colour and pulses in place first;

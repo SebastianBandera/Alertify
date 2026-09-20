@@ -190,6 +190,8 @@ export type TranslationKey =
   | 'dashboard.detail.history'
   | 'dashboard.detail.worstStatus'
   | 'dashboard.detail.currentSince'
+  | 'dashboard.detail.previousIssue'
+  | 'dashboard.detail.noPreviousIssue'
   | 'status.title'
   | 'status.description'
   | 'status.summary'

@@ -2,9 +2,11 @@ package app.alertify.dashboard;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.springframework.data.domain.Page;
@@ -15,12 +17,13 @@ import org.springframework.transaction.annotation.Transactional;
 
 import app.alertify.alerts.api.AlertExecutionResponse;
 import app.alertify.alerts.model.Alert;
+import app.alertify.alerts.model.AlertExecution;
 import app.alertify.alerts.service.AlertMapper;
 import app.alertify.jpa.repository.AlertExecutionRepository;
 import app.alertify.jpa.repository.AlertParameterValueRepository;
 import app.alertify.jpa.repository.AlertRepository;
 
-/** Assembles dashboard tiles: alert, latest execution, look-back summary and in-progress marker. */
+/** Assembles dashboard tiles: alert, latest execution, previous issue, look-back summary and in-progress marker. */
 @Service
 @Transactional(readOnly = true)
 public class DashboardCardService {
@@ -57,14 +60,19 @@ public class DashboardCardService {
 
     private List<DashboardCardResponse> cards(List<Alert> alerts) {
         List<Long> alertIds = alerts.stream().map(Alert::getId).toList();
+        Instant since = Instant.now().minus(HISTORY_WINDOW);
         Map<Long, Long> latestExecutionIds = executionQuery.latestExecutionIds(alertIds);
-        Map<Long, AlertExecutionResponse> latestExecutions = executionRepository.findAllById(latestExecutionIds.values()).stream()
-                .collect(Collectors.toMap(execution -> execution.getAlert().getId(), AlertMapper::toExecution));
-        Map<Long, DashboardHistorySummaryResponse> summaries = executionQuery.historySummaries(latestExecutionIds.keySet(), Instant.now().minus(HISTORY_WINDOW));
+        Map<Long, Long> previousIssueIds = executionQuery.previousIssueExecutionIds(latestExecutionIds, since);
+        Set<Long> executionIds = new HashSet<>(latestExecutionIds.values());
+        executionIds.addAll(previousIssueIds.values());
+        Map<Long, AlertExecutionResponse> executions = executionRepository.findAllById(executionIds).stream()
+                .collect(Collectors.toMap(AlertExecution::getId, AlertMapper::toExecution));
+        Map<Long, DashboardHistorySummaryResponse> summaries = executionQuery.historySummaries(latestExecutionIds.keySet(), since);
         return alerts.stream()
                 .map(alert -> new DashboardCardResponse(
                         AlertMapper.toAlert(alert, parameterValueRepository.findAllByAlertIdOrdered(alert.getId())),
-                        latestExecutions.get(alert.getId()),
+                        executions.get(latestExecutionIds.get(alert.getId())),
+                        executions.get(previousIssueIds.get(alert.getId())),
                         summaries.get(alert.getId()),
                         runningRegistry.runningSince(alert.getId()).orElse(null)
                 ))

@@ -83,6 +83,8 @@ export const EN_TRANSLATIONS = {
   'dashboard.detail.history': 'Last {days} days',
   'dashboard.detail.worstStatus': 'Worst result',
   'dashboard.detail.currentSince': 'In the current status since',
+  'dashboard.detail.previousIssue': 'Previous issue',
+  'dashboard.detail.noPreviousIssue': 'No earlier warnings or errors in the last {days} days',
   'status.title': 'Application status',
   'status.description': 'Live worker availability, capabilities, load, and alert execution activity.',
   'status.summary': 'Worker status summary',
