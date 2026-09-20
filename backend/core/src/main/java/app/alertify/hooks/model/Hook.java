@@ -136,4 +136,6 @@ public class Hook {
     public void clearTargets() { targets.clear(); }
 
     public void rotatePublicId() { publicId = UUID.randomUUID(); }
+
+    public void restorePublicId(UUID value) { publicId = Objects.requireNonNull(value); }
 }

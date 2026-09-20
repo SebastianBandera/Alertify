@@ -102,6 +102,21 @@ export interface HookDeletionImpact {
   readonly targetResultCount: number;
 }
 
+export interface HookImportError {
+  readonly row: number;
+  readonly name: string;
+  readonly message: string;
+}
+
+export interface HookImportResult {
+  readonly total: number;
+  readonly created: number;
+  readonly updated: number;
+  readonly unchanged: number;
+  readonly skipped: number;
+  readonly errors: readonly HookImportError[];
+}
+
 interface ApiErrorResponse {
   readonly code?: string;
   readonly message?: string;
@@ -145,6 +160,26 @@ export class HookApiService {
   history(hookId: number, page = 0, size = 20): Promise<PageResponse<HookInvocation>> {
     const params = new URLSearchParams({ page: String(page), size: String(size), sort: 'acceptedAt,desc' });
     return this.request(`/api/hooks/${hookId}/invocations?${params}`);
+  }
+
+  async exportCsv(): Promise<Blob> {
+    const token = await this.auth.getAccessToken();
+    const response = await fetch(`${this.apiBaseUrl}/api/hooks/export`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) throw await this.responseError(response);
+    return response.blob();
+  }
+
+  async importCsv(file: File): Promise<HookImportResult> {
+    const token = await this.auth.getAccessToken();
+    const body = new FormData();
+    body.append('file', file);
+    const response = await fetch(`${this.apiBaseUrl}/api/hooks/import`, {
+      method: 'POST', headers: { Authorization: `Bearer ${token}` }, body,
+    });
+    if (!response.ok) throw await this.responseError(response);
+    return response.json();
   }
 
   invocationUrl(publicId: string): string {

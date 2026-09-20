@@ -74,6 +74,11 @@ public class ApiExceptionHandler {
         return response(HttpStatus.BAD_REQUEST, "INVALID_PROCEDURE_IMPORT", exception.getMessage(), Map.of(), exception, request);
     }
 
+    @ExceptionHandler(InvalidHookImportException.class)
+    ResponseEntity<ApiError> handleInvalidHookImport(InvalidHookImportException exception, HttpServletRequest request) {
+        return response(HttpStatus.BAD_REQUEST, "INVALID_HOOK_IMPORT", exception.getMessage(), Map.of(), exception, request);
+    }
+
     @ExceptionHandler(InvalidTotpQrException.class)
     ResponseEntity<ApiError> handleInvalidTotpQr(InvalidTotpQrException exception, HttpServletRequest request) {
         return response(HttpStatus.BAD_REQUEST, "INVALID_TOTP_QR", exception.getMessage(), Map.of(), exception, request);

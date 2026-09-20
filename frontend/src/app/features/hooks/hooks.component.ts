@@ -1,5 +1,5 @@
 import { DatePipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, OnDestroy, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 
@@ -7,6 +7,7 @@ import { ApiRequestError } from '../../core/api/configuration-api.service';
 import {
   Hook,
   HookApiService,
+  HookImportError,
   HookInvocation,
   HookMode,
   HookOption,
@@ -60,6 +61,7 @@ export class HooksComponent implements OnInit, OnDestroy {
   protected readonly localization = inject(LocalizationService);
   private readonly api = inject(HookApiService);
   private readonly secretApi = inject(SecretApiService);
+  private readonly elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
 
   protected readonly activeTab = signal<HookTab>('hooks');
   protected readonly hooks = signal<readonly Hook[]>([]);
@@ -70,6 +72,7 @@ export class HooksComponent implements OnInit, OnDestroy {
   protected readonly saving = signal(false);
   protected readonly error = signal<string | null>(null);
   protected readonly notice = signal<string | null>(null);
+  protected readonly importErrors = signal<readonly HookImportError[]>([]);
   protected readonly search = signal('');
   protected readonly pageIndex = signal(0);
   protected readonly totalPages = signal(0);
@@ -381,6 +384,47 @@ export class HooksComponent implements OnInit, OnDestroy {
     } catch {
       this.error.set(this.dynamic('hooks.copyFailed'));
     }
+  }
+
+  protected async exportCsv(): Promise<void> {
+    try {
+      const blob = await this.api.exportCsv();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = 'alertify-hooks.csv';
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      this.error.set(this.errorMessage(error));
+    }
+  }
+
+  protected selectImport(): void {
+    this.elementRef.nativeElement.querySelector<HTMLInputElement>('#hook-import')?.click();
+  }
+
+  protected async importCsv(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file || !window.confirm(this.dynamic('hooks.importConfirm'))) return;
+    this.importErrors.set([]);
+    try {
+      const result = await this.api.importCsv(file);
+      this.notice.set(this.dynamic('hooks.importSuccess')
+        .replace('{created}', String(result.created)).replace('{updated}', String(result.updated))
+        .replace('{unchanged}', String(result.unchanged)).replace('{skipped}', String(result.skipped)));
+      this.importErrors.set(result.errors);
+      await this.loadAll(false);
+    } catch (error) {
+      this.error.set(this.errorMessage(error));
+    }
+  }
+
+  protected importErrorMessage(error: HookImportError): string {
+    return this.dynamic('hooks.importError')
+      .replace('{row}', String(error.row)).replace('{name}', error.name).replace('{message}', error.message);
   }
 
   private async loadAll(showLoading = true): Promise<void> {

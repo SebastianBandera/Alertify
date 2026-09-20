@@ -6,6 +6,8 @@ h2 { font-size: 20px; }
 h3 { font-size: 15px; }
 .page-header { min-height: 102px; display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 24px 26px; border-bottom: 1px solid var(--border); }
 .page-header p { margin-top: 6px; color: var(--text-muted); font-size: 13px; }
+.page-header__actions { display: flex; gap: 9px; }
+.file-input { display: none; }
 .tabs { display: flex; gap: 4px; padding: 0 26px; border-bottom: 1px solid var(--border); background: #fcfcfd; }
 .tabs button { display: flex; align-items: center; gap: 8px; padding: 15px 14px 12px; border: 0; border-bottom: 3px solid transparent; background: transparent; color: #667085; cursor: pointer; font: inherit; font-size: 13px; font-weight: 700; }
 .tabs button.active { border-bottom-color: var(--primary); color: var(--primary-strong); }
@@ -28,6 +30,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--primary); box-sh
 .state { padding: 48px 26px; color: var(--text-muted); text-align: center; }
 .state--error, .form-error { color: #b42318; background: #fffbfa; }
 .state--error { padding: 12px 26px; border-bottom: 1px solid #fecdca; }
+.import-errors { text-align: left; }
+.import-errors ul { margin: 6px 0 0; padding-left: 18px; }
 .state--success { padding: 12px 26px; border-bottom: 1px solid #a6f4c5; color: #027a48; background: #f6fef9; text-align: left; }
 .table-shell { min-height: 280px; overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-size: 12px; }
@@ -84,7 +88,7 @@ code, .url { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospa
 .modal form > footer { position: sticky; bottom: 0; display: flex; justify-content: flex-end; gap: 9px; margin: 22px -24px 0; padding: 16px 24px; border-top: 1px solid var(--border); background: white; }
 .token-generate { align-self: flex-start; }
 @media (max-width: 720px) {
-  .page-header, .toolbar { align-items: stretch; flex-direction: column; }
+  .page-header, .toolbar, .page-header__actions { align-items: stretch; flex-direction: column; }
   .tabs { padding: 0 10px; }
   .modal-backdrop { padding: 0; }
   .modal { max-height: 100vh; min-height: 100vh; border-radius: 0; }
