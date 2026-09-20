@@ -323,10 +323,10 @@ public final class WebRequestAlertTemplate implements AlertEvaluator {
 
         List<Header> headers = new ArrayList<>();
         for (JsonNode item : root) {
-            if (!item.isTextual())
+            if (!item.isString())
                 throw new IllegalArgumentException("headersJson must contain only strings");
 
-            String header = item.textValue();
+            String header = item.stringValue();
             int separator = header.indexOf(':');
             if (separator <= 0)
                 throw new IllegalArgumentException("Each header must use the format 'Name: value'");
@@ -570,11 +570,11 @@ public final class WebRequestAlertTemplate implements AlertEvaluator {
                 }
                 return false;
             }
-            return node.isTextual() && node.textValue().contains(value);
+            return node.isString() && node.stringValue().contains(value);
         }
 
         private static String canonicalText(JsonNode node) {
-            return node.isTextual() ? node.textValue() : node.toString();
+            return node.isString() ? node.stringValue() : node.toString();
         }
 
         private static boolean isContainer(JsonNode node) {
