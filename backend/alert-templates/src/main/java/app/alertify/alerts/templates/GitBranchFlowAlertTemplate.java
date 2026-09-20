@@ -77,8 +77,7 @@ public final class GitBranchFlowAlertTemplate implements AlertEvaluator {
     @AlertParameter(
         labelKey = "alerts.template.gitBranchFlow.repository",
         descriptionKey = "alerts.template.gitBranchFlow.repositoryDescription",
-        order = 2,
-        allowedSources = { AlertParameterSource.TEXT, AlertParameterSource.CONFIGURATION }
+        order = 2
     )
     private final String repository;
 
@@ -87,8 +86,7 @@ public final class GitBranchFlowAlertTemplate implements AlertEvaluator {
         descriptionKey = "alerts.template.gitBranchFlow.branchFlowJsonDescription",
         defaultValue = "[\"develop\", \"preprod\", \"main\"]",
         multiline = true,
-        order = 3,
-        allowedSources = { AlertParameterSource.TEXT, AlertParameterSource.CONFIGURATION }
+        order = 3
     )
     private final String branchFlowJson;
 
@@ -97,8 +95,7 @@ public final class GitBranchFlowAlertTemplate implements AlertEvaluator {
         descriptionKey = "alerts.template.gitBranchFlow.staleDaysThresholdDescription",
         options = { "1", "3", "7", "14", "30" },
         defaultValue = "3",
-        order = 4,
-        allowedSources = { AlertParameterSource.TEXT, AlertParameterSource.CONFIGURATION }
+        order = 4
     )
     private final int staleDaysThreshold;
 
@@ -107,8 +104,7 @@ public final class GitBranchFlowAlertTemplate implements AlertEvaluator {
         descriptionKey = "alerts.template.gitBranchFlow.timeoutDescription",
         options = { "30", "60", "120", "300" },
         defaultValue = "60",
-        order = 5,
-        allowedSources = { AlertParameterSource.TEXT, AlertParameterSource.CONFIGURATION }
+        order = 5
     )
     private final int timeoutSeconds;
 

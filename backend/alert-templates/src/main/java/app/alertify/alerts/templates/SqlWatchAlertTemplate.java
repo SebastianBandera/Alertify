@@ -93,8 +93,7 @@ public final class SqlWatchAlertTemplate implements AlertEvaluator {
         labelKey = "alerts.template.sqlWatch.keyColumnsJson",
         descriptionKey = "alerts.template.sqlWatch.keyColumnsJsonDescription",
         multiline = true,
-        order = 4,
-        allowedSources = { AlertParameterSource.TEXT, AlertParameterSource.CONFIGURATION }
+        order = 4
     )
     private final String keyColumnsJson;
 
@@ -114,8 +113,7 @@ public final class SqlWatchAlertTemplate implements AlertEvaluator {
         descriptionKey = "alerts.template.sqlWatch.maxReportedRowsDescription",
         options = { "0", "5", "10", "20", "50", "100" },
         defaultValue = "20",
-        order = 6,
-        allowedSources = { AlertParameterSource.TEXT, AlertParameterSource.CONFIGURATION }
+        order = 6
     )
     private final int maxReportedRows;
 
@@ -133,8 +131,7 @@ public final class SqlWatchAlertTemplate implements AlertEvaluator {
         descriptionKey = "alerts.template.sqlWatch.timeoutDescription",
         options = { "1", "3", "5", "10", "30", "300", "3600", "86400", "604800" },
         defaultValue = "10",
-        order = 8,
-        allowedSources = { AlertParameterSource.TEXT, AlertParameterSource.CONFIGURATION }
+        order = 8
     )
     private final int timeoutSeconds;
 

@@ -69,7 +69,6 @@ public final class TotpProcedureTemplate implements ProcedureEvaluator {
         labelKey = "procedures.template.totp.periodSeconds",
         descriptionKey = "procedures.template.totp.periodSecondsDescription",
         defaultValue = "30",
-        allowedSources = { AlertParameterSource.TEXT, AlertParameterSource.CONFIGURATION },
         order = 4
     )
     private final Integer periodSeconds;

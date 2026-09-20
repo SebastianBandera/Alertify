@@ -37,6 +37,7 @@ import app.alertify.alerts.AlertEvaluator;
 import app.alertify.alerts.AlertExecutionContext;
 import app.alertify.alerts.AlertResult;
 import app.alertify.alerts.template.annotation.AlertParameter;
+import app.alertify.alerts.template.annotation.AlertParameterSource;
 import app.alertify.alerts.template.annotation.AlertTemplate;
 import app.alertify.alerts.template.annotation.AlertTemplateTag;
 
@@ -65,7 +66,8 @@ public final class HttpsCertificateExpiryAlertTemplate implements AlertEvaluator
         labelKey = "alerts.template.httpsCertificate.endpoint",
         descriptionKey = "alerts.template.httpsCertificate.endpointDescription",
         bindingAllowed = true,
-        order = 1
+        order = 1,
+        allowedSources = { AlertParameterSource.TEXT, AlertParameterSource.CONFIGURATION }
     )
     private final String endpoint;
 

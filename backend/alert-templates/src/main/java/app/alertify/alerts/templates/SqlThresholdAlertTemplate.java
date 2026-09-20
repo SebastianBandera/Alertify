@@ -78,8 +78,7 @@ public final class SqlThresholdAlertTemplate implements AlertEvaluator {
     @AlertParameter(
         labelKey = "alerts.template.sqlThreshold.numericColumnName",
         descriptionKey = "alerts.template.sqlThreshold.numericColumnNameDescription",
-        order = 4,
-        allowedSources = { AlertParameterSource.TEXT, AlertParameterSource.CONFIGURATION }
+        order = 4
     )
     private final String numericColumnName;
 
@@ -87,16 +86,14 @@ public final class SqlThresholdAlertTemplate implements AlertEvaluator {
         labelKey = "alerts.template.sqlThreshold.detailColumnName",
         descriptionKey = "alerts.template.sqlThreshold.detailColumnNameDescription",
         required = false,
-        order = 5,
-        allowedSources = { AlertParameterSource.TEXT, AlertParameterSource.CONFIGURATION }
+        order = 5
     )
     private final String detailColumnName;
 
     @AlertParameter(
         labelKey = "alerts.template.sqlThreshold.threshold",
         descriptionKey = "alerts.template.sqlThreshold.thresholdDescription",
-        order = 6,
-        allowedSources = { AlertParameterSource.TEXT, AlertParameterSource.CONFIGURATION }
+        order = 6
     )
     private final long threshold;
 
@@ -124,8 +121,7 @@ public final class SqlThresholdAlertTemplate implements AlertEvaluator {
         descriptionKey = "alerts.template.sqlThreshold.timeoutDescription",
         options = { "1", "3", "5", "10", "30", "300", "3600", "86400", "604800" },
         defaultValue = "10",
-        order = 9,
-        allowedSources = { AlertParameterSource.TEXT, AlertParameterSource.CONFIGURATION }
+        order = 9
     )
     private final int timeoutSeconds;
 
