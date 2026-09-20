@@ -44,10 +44,12 @@ import tools.jackson.databind.json.JsonMapper;
  * production) in a remote Git repository and warns when the last branch lags
  * behind the previous one for too long, when promoting the previous branch
  * would conflict, or when the last branch carries commits that never went
- * through the earlier branches. The repository is fetched into a disposable
- * bare workspace that is removed after every evaluation; the token is only
- * handed to JGit's credentials provider and never appears in URLs, state or
- * status messages.
+ * through the earlier branches. Each of the three checks can be switched off
+ * individually; a disabled check is skipped entirely and contributes nothing
+ * to the status message or the state. The repository is fetched into a
+ * disposable bare workspace that is removed after every evaluation; the token
+ * is only handed to JGit's credentials provider and never appears in URLs,
+ * state or status messages.
  */
 @AlertTemplate(
     nameKey = "alerts.template.gitBranchFlow.name",
@@ -91,26 +93,56 @@ public final class GitBranchFlowAlertTemplate implements AlertEvaluator {
     private final String branchFlowJson;
 
     @AlertParameter(
+        labelKey = "alerts.template.gitBranchFlow.checkDeploymentDelay",
+        descriptionKey = "alerts.template.gitBranchFlow.checkDeploymentDelayDescription",
+        options = { "false", "true" },
+        bindingAllowed = false,
+        defaultValue = "true",
+        order = 4
+    )
+    private final boolean checkDeploymentDelay;
+
+    @AlertParameter(
         labelKey = "alerts.template.gitBranchFlow.staleDaysThreshold",
         descriptionKey = "alerts.template.gitBranchFlow.staleDaysThresholdDescription",
         options = { "1", "3", "7", "14", "30" },
         defaultValue = "3",
-        order = 4
+        order = 5
     )
     private final int staleDaysThreshold;
+
+    @AlertParameter(
+        labelKey = "alerts.template.gitBranchFlow.checkMergeConflict",
+        descriptionKey = "alerts.template.gitBranchFlow.checkMergeConflictDescription",
+        options = { "false", "true" },
+        bindingAllowed = false,
+        defaultValue = "true",
+        order = 6
+    )
+    private final boolean checkMergeConflict;
+
+    @AlertParameter(
+        labelKey = "alerts.template.gitBranchFlow.checkCommitsOutsideFlow",
+        descriptionKey = "alerts.template.gitBranchFlow.checkCommitsOutsideFlowDescription",
+        options = { "false", "true" },
+        bindingAllowed = false,
+        defaultValue = "true",
+        order = 7
+    )
+    private final boolean checkCommitsOutsideFlow;
 
     @AlertParameter(
         labelKey = "alerts.template.gitBranchFlow.timeout",
         descriptionKey = "alerts.template.gitBranchFlow.timeoutDescription",
         options = { "30", "60", "120", "300" },
         defaultValue = "60",
-        order = 5
+        order = 8
     )
     private final int timeoutSeconds;
 
     private final List<String> branchFlow;
 
-    public GitBranchFlowAlertTemplate(GitCredentials credentials, String repository, String branchFlowJson, int staleDaysThreshold, int timeoutSeconds) {
+    public GitBranchFlowAlertTemplate(GitCredentials credentials, String repository, String branchFlowJson, boolean checkDeploymentDelay, int staleDaysThreshold, boolean checkMergeConflict, boolean checkCommitsOutsideFlow, int timeoutSeconds) {
         if (credentials == null)
             throw new IllegalArgumentException("credentials must not be null");
 
@@ -124,7 +156,10 @@ public final class GitBranchFlowAlertTemplate implements AlertEvaluator {
         this.repository = validateRepository(repository);
         this.branchFlowJson = requireText(branchFlowJson, "branchFlowJson");
         this.branchFlow = parseBranchFlow(this.branchFlowJson);
+        this.checkDeploymentDelay = checkDeploymentDelay;
         this.staleDaysThreshold = staleDaysThreshold;
+        this.checkMergeConflict = checkMergeConflict;
+        this.checkCommitsOutsideFlow = checkCommitsOutsideFlow;
         this.timeoutSeconds = timeoutSeconds;
     }
 
@@ -156,38 +191,51 @@ public final class GitBranchFlowAlertTemplate implements AlertEvaluator {
             Repository repo = git.getRepository();
             List<RevCommit> heads = resolveHeads(repo);
             List<String> warnings = new ArrayList<>();
+            List<String> stateSegments = new ArrayList<>();
 
-            List<Map<String, Object>> transitions = new ArrayList<>();
-            boolean delayed = false;
-            for (int index = 0; index < heads.size() - 1; index++) {
-                boolean last = index == heads.size() - 2;
-                Map<String, Object> transition = describeTransition(repo, index, heads.get(index), heads.get(index + 1), checkedAt, last);
-                if (last && Boolean.TRUE.equals(transition.get("delayed")))
-                    delayed = true;
+            if (checkDeploymentDelay) {
+                List<Map<String, Object>> transitions = new ArrayList<>();
+                boolean delayed = false;
+                for (int index = 0; index < heads.size() - 1; index++) {
+                    boolean last = index == heads.size() - 2;
+                    Map<String, Object> transition = describeTransition(repo, index, heads.get(index), heads.get(index + 1), checkedAt, last);
+                    if (last && Boolean.TRUE.equals(transition.get("delayed")))
+                        delayed = true;
 
-                transitions.add(transition);
+                    transitions.add(transition);
+                }
+                statusMessage.put("transitions", transitions);
+                if (delayed)
+                    warnings.add("deployment_delayed");
+
+                stateSegments.add("delayed=" + delayed);
             }
-            statusMessage.put("transitions", transitions);
-            if (delayed)
-                warnings.add("deployment_delayed");
 
-            RevCommit previous = heads.get(heads.size() - 2);
-            RevCommit target = heads.get(heads.size() - 1);
-            Map<String, Object> merge = describeMerge(repo, previous, target);
-            statusMessage.put("merge", merge);
-            boolean conflict = Boolean.TRUE.equals(merge.get("conflict"));
-            if (conflict)
-                warnings.add("merge_conflict");
+            if (checkMergeConflict) {
+                RevCommit previous = heads.get(heads.size() - 2);
+                RevCommit target = heads.get(heads.size() - 1);
+                Map<String, Object> merge = describeMerge(repo, previous, target);
+                statusMessage.put("merge", merge);
+                boolean conflict = Boolean.TRUE.equals(merge.get("conflict"));
+                if (conflict)
+                    warnings.add("merge_conflict");
 
-            List<Map<String, Object>> outsideFlow = describeCommitsOutsideFlow(repo, heads);
-            statusMessage.put("commitsOutsideFlow", outsideFlow);
-            int outsideFlowCount = outsideFlow.stream().mapToInt(entry -> (Integer) entry.get("count")).sum();
-            if (outsideFlowCount > 0)
-                warnings.add("commits_outside_flow");
+                stateSegments.add("conflict=" + conflict);
+            }
+
+            if (checkCommitsOutsideFlow) {
+                List<Map<String, Object>> outsideFlow = describeCommitsOutsideFlow(repo, heads);
+                statusMessage.put("commitsOutsideFlow", outsideFlow);
+                int outsideFlowCount = outsideFlow.stream().mapToInt(entry -> (Integer) entry.get("count")).sum();
+                if (outsideFlowCount > 0)
+                    warnings.add("commits_outside_flow");
+
+                stateSegments.add("commitsOutsideFlow=" + outsideFlowCount);
+            }
 
             statusMessage.put("warnings", warnings);
             statusMessage.put("totalMs", elapsedMillis(startedNanos));
-            context.setState(state("delayed=" + delayed + ";conflict=" + conflict + ";commitsOutsideFlow=" + outsideFlowCount));
+            context.setState(state(String.join(";", stateSegments)));
             return warnings.isEmpty() ? AlertResult.success(statusMessage) : AlertResult.warn(statusMessage);
         } finally {
             deleteWorkspace(workspace);
@@ -305,14 +353,18 @@ public final class GitBranchFlowAlertTemplate implements AlertEvaluator {
         statusMessage.put("host", credentials.host());
         statusMessage.put("repository", repository);
         statusMessage.put("branchFlow", branchFlow);
+        statusMessage.put("checkDeploymentDelay", checkDeploymentDelay);
         statusMessage.put("staleDaysThreshold", staleDaysThreshold);
+        statusMessage.put("checkMergeConflict", checkMergeConflict);
+        statusMessage.put("checkCommitsOutsideFlow", checkCommitsOutsideFlow);
         statusMessage.put("timeoutSeconds", timeoutSeconds);
         statusMessage.put("checkedAt", checkedAt.toString());
         return statusMessage;
     }
 
     private String state(String suffix) {
-        return "repository=" + repository + ";flow=" + String.join(">", branchFlow) + ";" + suffix;
+        String base = "repository=" + repository + ";flow=" + String.join(">", branchFlow);
+        return suffix.isEmpty() ? base : base + ";" + suffix;
     }
 
     private String cloneUrl() {

@@ -46,29 +46,40 @@ class GitBranchFlowAlertTemplateTest {
         assertEquals(2, parameter("repository").order());
         assertTrue(parameter("branchFlowJson").multiline());
         assertEquals("3", parameter("staleDaysThreshold").defaultValue());
+        assertEquals(5, parameter("staleDaysThreshold").order());
         assertEquals("60", parameter("timeoutSeconds").defaultValue());
+        assertEquals(8, parameter("timeoutSeconds").order());
+        for (String check : List.of("checkDeploymentDelay", "checkMergeConflict", "checkCommitsOutsideFlow")) {
+            assertEquals(boolean.class, GitBranchFlowAlertTemplate.class.getDeclaredField(check).getType());
+            assertEquals("true", parameter(check).defaultValue());
+            assertEquals(List.of("false", "true"), List.of(parameter(check).options()));
+            assertFalse(parameter(check).bindingAllowed());
+        }
+        assertEquals(4, parameter("checkDeploymentDelay").order());
+        assertEquals(6, parameter("checkMergeConflict").order());
+        assertEquals(7, parameter("checkCommitsOutsideFlow").order());
     }
 
     @Test
     void rejectsInvalidConstructorArguments() {
         GitCredentials credentials = credentials(GitProvider.GITHUB);
 
-        assertThrows(IllegalArgumentException.class, () -> new GitBranchFlowAlertTemplate(null, "o/r", FLOW, 3, 60));
-        assertThrows(IllegalArgumentException.class, () -> new GitBranchFlowAlertTemplate(credentials, " ", FLOW, 3, 60));
-        assertThrows(IllegalArgumentException.class, () -> new GitBranchFlowAlertTemplate(credentials, "no-slash", FLOW, 3, 60));
-        assertThrows(IllegalArgumentException.class, () -> new GitBranchFlowAlertTemplate(credentials, "o/r", "[\"main\"]", 3, 60));
-        assertThrows(IllegalArgumentException.class, () -> new GitBranchFlowAlertTemplate(credentials, "o/r", "[\"a\",\"a\"]", 3, 60));
-        assertThrows(IllegalArgumentException.class, () -> new GitBranchFlowAlertTemplate(credentials, "o/r", "{\"a\":1}", 3, 60));
-        assertThrows(IllegalArgumentException.class, () -> new GitBranchFlowAlertTemplate(credentials, "o/r", "[\"a\",\"bad name\"]", 3, 60));
-        assertThrows(IllegalArgumentException.class, () -> new GitBranchFlowAlertTemplate(credentials, "o/r", FLOW, -1, 60));
-        assertThrows(IllegalArgumentException.class, () -> new GitBranchFlowAlertTemplate(credentials, "o/r", FLOW, 3, 0));
+        assertThrows(IllegalArgumentException.class, () -> new GitBranchFlowAlertTemplate(null, "o/r", FLOW, true, 3, true, true, 60));
+        assertThrows(IllegalArgumentException.class, () -> new GitBranchFlowAlertTemplate(credentials, " ", FLOW, true, 3, true, true, 60));
+        assertThrows(IllegalArgumentException.class, () -> new GitBranchFlowAlertTemplate(credentials, "no-slash", FLOW, true, 3, true, true, 60));
+        assertThrows(IllegalArgumentException.class, () -> new GitBranchFlowAlertTemplate(credentials, "o/r", "[\"main\"]", true, 3, true, true, 60));
+        assertThrows(IllegalArgumentException.class, () -> new GitBranchFlowAlertTemplate(credentials, "o/r", "[\"a\",\"a\"]", true, 3, true, true, 60));
+        assertThrows(IllegalArgumentException.class, () -> new GitBranchFlowAlertTemplate(credentials, "o/r", "{\"a\":1}", true, 3, true, true, 60));
+        assertThrows(IllegalArgumentException.class, () -> new GitBranchFlowAlertTemplate(credentials, "o/r", "[\"a\",\"bad name\"]", true, 3, true, true, 60));
+        assertThrows(IllegalArgumentException.class, () -> new GitBranchFlowAlertTemplate(credentials, "o/r", FLOW, true, -1, true, true, 60));
+        assertThrows(IllegalArgumentException.class, () -> new GitBranchFlowAlertTemplate(credentials, "o/r", FLOW, true, 3, true, true, 0));
     }
 
     @Test
     void warnsForUnsupportedProviderWithoutFetching() throws Exception {
         AlertExecutionContext context = new AlertExecutionContext();
 
-        AlertResult result = new GitBranchFlowAlertTemplate(credentials(GitProvider.OTHER), "o/r", FLOW, 3, 60).evaluate(context);
+        AlertResult result = new GitBranchFlowAlertTemplate(credentials(GitProvider.OTHER), "o/r", FLOW, true, 3, true, true, 60).evaluate(context);
 
         assertEquals(AlertExecutionStatus.WARN, result.status());
         assertEquals("unsupported_provider", result.statusMessage().get("failureReason"));
@@ -214,6 +225,118 @@ class GitBranchFlowAlertTemplateTest {
     }
 
     @Test
+    void skipsTheDeploymentDelayCheckWhenDisabled() throws Exception {
+        try (Git git = Git.init().setInitialBranch("develop").setDirectory(remote.toFile()).call()) {
+            commit(git, "app.txt", "v1", "initial", daysAgo(30));
+            git.branchCreate().setName("main").call();
+            git.branchCreate().setName("preprod").call();
+            git.checkout().setName("preprod").call();
+            commit(git, "app.txt", "v2", "feature ready for production", daysAgo(10));
+            git.checkout().setName("develop").call();
+            git.merge().include(git.getRepository().resolve("preprod")).call();
+        }
+        AlertExecutionContext context = new AlertExecutionContext();
+
+        AlertResult result = template(false, true, true).evaluate(context);
+
+        assertEquals(AlertExecutionStatus.SUCCESS, result.status());
+        assertEquals(List.of(), result.statusMessage().get("warnings"));
+        assertEquals(false, result.statusMessage().get("checkDeploymentDelay"));
+        assertFalse(result.statusMessage().containsKey("transitions"));
+        assertEquals(false, merge(result).get("conflict"));
+        assertFalse(context.getState().contains("delayed="));
+        assertTrue(context.getState().contains(";conflict=false;commitsOutsideFlow=0"));
+    }
+
+    @Test
+    void skipsTheMergeConflictCheckWhenDisabled() throws Exception {
+        try (Git git = Git.init().setInitialBranch("develop").setDirectory(remote.toFile()).call()) {
+            commit(git, "app.txt", "line\n", "initial", daysAgo(30));
+            git.branchCreate().setName("main").call();
+            git.branchCreate().setName("preprod").call();
+            git.checkout().setName("preprod").call();
+            commit(git, "app.txt", "preprod line\n", "preprod change", daysAgo(1));
+            git.checkout().setName("develop").call();
+            git.merge().include(git.getRepository().resolve("preprod")).call();
+            git.checkout().setName("main").call();
+            commit(git, "app.txt", "main line\n", "hotfix straight to main", daysAgo(1));
+        }
+        AlertExecutionContext context = new AlertExecutionContext();
+
+        AlertResult result = template(true, false, true).evaluate(context);
+
+        assertEquals(AlertExecutionStatus.WARN, result.status());
+        assertEquals(List.of("commits_outside_flow"), result.statusMessage().get("warnings"));
+        assertEquals(false, result.statusMessage().get("checkMergeConflict"));
+        assertFalse(result.statusMessage().containsKey("merge"));
+        assertFalse(context.getState().contains("conflict="));
+        assertTrue(context.getState().contains(";delayed=false;commitsOutsideFlow=2"));
+    }
+
+    @Test
+    void skipsTheCommitsOutsideFlowCheckWhenDisabled() throws Exception {
+        try (Git git = Git.init().setInitialBranch("develop").setDirectory(remote.toFile()).call()) {
+            commit(git, "app.txt", "v1", "initial", daysAgo(30));
+            git.branchCreate().setName("preprod").call();
+            git.branchCreate().setName("main").call();
+            git.checkout().setName("main").call();
+            commit(git, "hotfix.txt", "patch", "hotfix straight to main", daysAgo(2));
+            git.checkout().setName("preprod").call();
+            git.merge().include(git.getRepository().resolve("main")).call();
+        }
+        AlertExecutionContext context = new AlertExecutionContext();
+
+        AlertResult result = template(true, true, false).evaluate(context);
+
+        assertEquals(AlertExecutionStatus.SUCCESS, result.status());
+        assertEquals(List.of(), result.statusMessage().get("warnings"));
+        assertEquals(false, result.statusMessage().get("checkCommitsOutsideFlow"));
+        assertFalse(result.statusMessage().containsKey("commitsOutsideFlow"));
+        assertFalse(context.getState().contains("commitsOutsideFlow="));
+        assertTrue(context.getState().endsWith(";delayed=false;conflict=false"));
+    }
+
+    @Test
+    void onlyFetchesWhenEveryCheckIsDisabled() throws Exception {
+        try (Git git = Git.init().setInitialBranch("develop").setDirectory(remote.toFile()).call()) {
+            commit(git, "app.txt", "line\n", "initial", daysAgo(30));
+            git.branchCreate().setName("main").call();
+            git.branchCreate().setName("preprod").call();
+            git.checkout().setName("preprod").call();
+            commit(git, "app.txt", "preprod line\n", "preprod change", daysAgo(10));
+            git.checkout().setName("develop").call();
+            git.merge().include(git.getRepository().resolve("preprod")).call();
+            git.checkout().setName("main").call();
+            commit(git, "app.txt", "main line\n", "hotfix straight to main", daysAgo(1));
+        }
+        AlertExecutionContext context = new AlertExecutionContext();
+
+        AlertResult result = template(false, false, false).evaluate(context);
+
+        assertEquals(AlertExecutionStatus.SUCCESS, result.status());
+        assertEquals(List.of(), result.statusMessage().get("warnings"));
+        assertFalse(result.statusMessage().containsKey("transitions"));
+        assertFalse(result.statusMessage().containsKey("merge"));
+        assertFalse(result.statusMessage().containsKey("commitsOutsideFlow"));
+        assertNotNull(result.statusMessage().get("fetchMs"));
+        assertNotNull(result.statusMessage().get("totalMs"));
+        assertTrue(context.getState().endsWith(";flow=develop>preprod>main"));
+        assertNoTokenLeak(result, context);
+    }
+
+    @Test
+    void stillWarnsForMissingBranchesWhenEveryCheckIsDisabled() throws Exception {
+        try (Git git = Git.init().setInitialBranch("develop").setDirectory(remote.toFile()).call()) {
+            commit(git, "app.txt", "v1", "initial", daysAgo(1));
+        }
+
+        AlertResult result = template(false, false, false).evaluate(new AlertExecutionContext());
+
+        assertEquals(AlertExecutionStatus.WARN, result.status());
+        assertEquals("branch_not_found", result.statusMessage().get("failureReason"));
+    }
+
+    @Test
     void warnsWhenAFlowBranchDoesNotExistInTheRemote() throws Exception {
         try (Git git = Git.init().setInitialBranch("develop").setDirectory(remote.toFile()).call()) {
             commit(git, "app.txt", "v1", "initial", daysAgo(1));
@@ -233,7 +356,7 @@ class GitBranchFlowAlertTemplateTest {
         GitCredentials credentials = new GitCredentials(GitProvider.GITLAB, "127.0.0.1:1", null, TOKEN, null);
         AlertExecutionContext context = new AlertExecutionContext();
 
-        AlertResult result = new GitBranchFlowAlertTemplate(credentials, "group/project", FLOW, 3, 5).evaluate(context);
+        AlertResult result = new GitBranchFlowAlertTemplate(credentials, "group/project", FLOW, true, 3, true, true, 5).evaluate(context);
 
         assertEquals(AlertExecutionStatus.WARN, result.status());
         assertNotNull(result.statusMessage().get("failureReason"));
@@ -257,7 +380,11 @@ class GitBranchFlowAlertTemplateTest {
     }
 
     private GitBranchFlowAlertTemplate template() {
-        return new GitBranchFlowAlertTemplate(credentials(GitProvider.GITHUB), remote.toUri().toString(), FLOW, 3, 60);
+        return template(true, true, true);
+    }
+
+    private GitBranchFlowAlertTemplate template(boolean checkDeploymentDelay, boolean checkMergeConflict, boolean checkCommitsOutsideFlow) {
+        return new GitBranchFlowAlertTemplate(credentials(GitProvider.GITHUB), remote.toUri().toString(), FLOW, checkDeploymentDelay, 3, checkMergeConflict, checkCommitsOutsideFlow, 60);
     }
 
     private static GitCredentials credentials(GitProvider provider) {
