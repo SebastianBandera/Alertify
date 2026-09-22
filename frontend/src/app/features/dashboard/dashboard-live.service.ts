@@ -8,6 +8,7 @@ import { PageResponse } from '../../core/api/configuration-api.service';
 import { BrowserNotificationService } from '../../core/notifications/browser-notification.service';
 import { AdminEventChannelService } from '../../core/realtime/admin-event-channel.service';
 import { DashboardAlertCard } from './dashboard-card';
+import { hasVisibleTag, readStoredViewSettings } from './dashboard-view-settings';
 
 const PAGE_SIZE = 12;
 const PAGE_REQUEST = 'DASHBOARD_PAGE';
@@ -135,8 +136,13 @@ export class DashboardLiveService {
     return Date.now() - Date.parse(execution.finishedAt) < RECENT_RESULT_MILLIS;
   }
 
-  /* The board itself already pulses the changed tile, so only notify when it is not in front of the user. */
+  /*
+   * The board itself already pulses the changed tile, so only notify when it is not in front of the user.
+   * An alert the board hides because all its tags are hidden stays quiet too; the stored settings are read
+   * each time so the latest ribbon choice applies, even one made in another tab.
+   */
   private notify(card: DashboardAlertCard): void {
+    if (!hasVisibleTag(card, readStoredViewSettings().hiddenTagIds)) return;
     const boardVisible = this.document.visibilityState === 'visible' && this.router.url.startsWith('/dashboard');
     if (!boardVisible) this.notifications.notifyAlert(card);
   }

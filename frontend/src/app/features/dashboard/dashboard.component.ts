@@ -28,7 +28,7 @@ import {
   stateChangedAt,
 } from './dashboard-card';
 import { DashboardChange, DashboardLiveService } from './dashboard-live.service';
-import { CardState, readStoredViewSettings, storeViewSettings } from './dashboard-view-settings';
+import { CardState, hasVisibleTag, readStoredViewSettings, storeViewSettings } from './dashboard-view-settings';
 import { DashboardRibbonComponent } from './ribbon/dashboard-ribbon.component';
 
 type StabilityState = 'stable' | 'warn' | 'error';
@@ -127,10 +127,7 @@ export class DashboardComponent {
   });
   protected readonly visibleCards = computed(() => {
     const { hiddenStates, hiddenTagIds } = this.settings();
-    const hiddenTags = new Set(hiddenTagIds);
-    return this.sortedCards().filter((card) =>
-      !hiddenStates.includes(this.cardState(card))
-        && (card.alert.tags.length === 0 || card.alert.tags.some((tag) => !hiddenTags.has(tag.id))));
+    return this.sortedCards().filter((card) => !hiddenStates.includes(this.cardState(card)) && hasVisibleTag(card, hiddenTagIds));
   });
   /* Greens are dealt as a deck unless ungrouped: worse states first, the deck row, then never-executed. */
   protected readonly deckCards = computed(() =>

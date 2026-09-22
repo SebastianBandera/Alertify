@@ -1,3 +1,5 @@
+import { DashboardAlertCard } from './dashboard-card';
+
 /** Visual state of a tile, derived from the last execution result. */
 export type CardState = 'error' | 'warn' | 'success' | 'none';
 
@@ -35,6 +37,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function booleanOr(value: unknown, fallback: boolean): boolean {
   return typeof value === 'boolean' ? value : fallback;
+}
+
+/** An alert without tags always shows; one with tags shows while any of them is visible. */
+export function hasVisibleTag(card: DashboardAlertCard, hiddenTagIds: readonly number[]): boolean {
+  return card.alert.tags.length === 0 || card.alert.tags.some((tag) => !hiddenTagIds.includes(tag.id));
 }
 
 export function readStoredViewSettings(): DashboardViewSettings {
