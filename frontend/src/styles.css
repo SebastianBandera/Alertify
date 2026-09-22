@@ -93,6 +93,18 @@ a {
   animation: spin 800ms linear infinite;
 }
 
+/* Placeholder for tab counters while the first page load is in flight; sized like the number it replaces. */
+.tab-count-spinner {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 2px solid #d0d5dd;
+  border-top-color: #475467;
+  border-radius: 50%;
+  vertical-align: -1px;
+  animation: spin 800ms linear infinite;
+}
+
 .bootstrap-screen--error .bootstrap-mark {
   background: #d92d20;
   box-shadow: 0 10px 24px rgb(217 45 32 / 24%);

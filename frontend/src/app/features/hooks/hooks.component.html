@@ -14,7 +14,7 @@
 
   <nav class="tabs" [attr.aria-label]="dynamic('hooks.tabs.label')">
     <button type="button" [class.active]="activeTab() === 'hooks'" (click)="changeTab('hooks')">
-      {{ dynamic('hooks.tabs.hooks') }} <span>{{ totalElements() }}</span>
+      {{ dynamic('hooks.tabs.hooks') }} <span>@if (countsLoaded()) { {{ totalElements() }} } @else { <i class="tab-count-spinner" aria-hidden="true"></i> }</span>
     </button>
     <button type="button" [class.active]="activeTab() === 'history'" (click)="changeTab('history')">
       {{ dynamic('hooks.tabs.history') }}

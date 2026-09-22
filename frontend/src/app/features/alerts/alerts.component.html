@@ -42,15 +42,15 @@
   <nav class="tabs" [attr.aria-label]="localization.translate('alerts.tabs.label')">
     <button type="button" [class.active]="activeTab() === 'alerts'" (click)="selectTab('alerts')">
       {{ localization.translate('alerts.tabs.alerts') }}
-      <span>{{ alertTotalElements() }}</span>
+      <span>@if (countsLoaded()) { {{ alertTotalElements() }} } @else { <i class="tab-count-spinner" aria-hidden="true"></i> }</span>
     </button>
     <button type="button" [class.active]="activeTab() === 'templates'" (click)="selectTab('templates')">
       {{ localization.translate('alerts.tabs.templates') }}
-      <span>{{ templates().length }}</span>
+      <span>@if (countsLoaded()) { {{ templates().length }} } @else { <i class="tab-count-spinner" aria-hidden="true"></i> }</span>
     </button>
     <button type="button" [class.active]="activeTab() === 'history'" (click)="selectTab('history')">
       {{ localization.translate('alerts.tabs.history') }}
-      <span>{{ historyTotalElements() }}</span>
+      <span>@if (countsLoaded()) { {{ historyTotalElements() }} } @else { <i class="tab-count-spinner" aria-hidden="true"></i> }</span>
     </button>
   </nav>
 

@@ -70,6 +70,7 @@ export class PipesComponent implements OnInit, OnDestroy {
   protected readonly selectedExecution = signal<PipeExecution | null>(null);
   protected readonly executionFilter = signal<string | null>(null);
   protected readonly loading = signal(true);
+  protected readonly countsLoaded = signal(false);
   protected readonly saving = signal(false);
   protected readonly runningId = signal<number | null>(null);
   protected readonly exporting = signal(false);
@@ -97,7 +98,11 @@ export class PipesComponent implements OnInit, OnDestroy {
     const executionId = this.route.snapshot.queryParamMap.get('executionId');
     if (tab === 'history' || executionId) this.activeTab.set('history');
     this.executionFilter.set(executionId);
-    await this.loadAll();
+    try {
+      await this.loadAll();
+    } finally {
+      this.countsLoaded.set(true);
+    }
     if (this.activeTab() === 'history') this.startRefresh();
   }
 

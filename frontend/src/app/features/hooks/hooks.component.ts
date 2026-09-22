@@ -77,6 +77,7 @@ export class HooksComponent implements OnInit, OnDestroy {
   protected readonly options = signal<HookOptions>(EMPTY_OPTIONS);
   protected readonly invocations = signal<readonly HookInvocation[]>([]);
   protected readonly loading = signal(true);
+  protected readonly countsLoaded = signal(false);
   protected readonly saving = signal(false);
   protected readonly error = signal<string | null>(null);
   protected readonly notice = signal<string | null>(null);
@@ -121,7 +122,11 @@ export class HooksComponent implements OnInit, OnDestroy {
         replaceUrl: true,
       });
     }
-    await this.loadAll();
+    try {
+      await this.loadAll();
+    } finally {
+      this.countsLoaded.set(true);
+    }
     if (this.activeTab() === 'history') this.startRefresh();
   }
 

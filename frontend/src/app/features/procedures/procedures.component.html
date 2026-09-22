@@ -26,18 +26,18 @@
   <nav class="tabs" [attr.aria-label]="localization.translate('procedures.tabs.label')">
     <button type="button" [class.active]="activeTab() === 'procedures'" (click)="changeTab('procedures')">
       {{ localization.translate('procedures.tabs.procedures') }}
-      <span>{{ procedures().length }}</span>
+      <span>@if (countsLoaded()) { {{ procedures().length }} } @else { <i class="tab-count-spinner" aria-hidden="true"></i> }</span>
     </button>
     <button type="button" [class.active]="activeTab() === 'templates'" (click)="changeTab('templates')">
       {{ localization.translate('procedures.tabs.templates') }}
-      <span>{{ templates().length }}</span>
+      <span>@if (countsLoaded()) { {{ templates().length }} } @else { <i class="tab-count-spinner" aria-hidden="true"></i> }</span>
     </button>
     <button type="button" [class.active]="activeTab() === 'wizards'" (click)="changeTab('wizards')">
       {{ localization.translate('procedures.tabs.wizards') }}
     </button>
     <button type="button" [class.active]="activeTab() === 'history'" (click)="changeTab('history')">
       {{ localization.translate('procedures.tabs.history') }}
-      <span>{{ executions().length }}</span>
+      <span>@if (countsLoaded()) { {{ executions().length }} } @else { <i class="tab-count-spinner" aria-hidden="true"></i> }</span>
     </button>
   </nav>
 

@@ -95,6 +95,7 @@ export class AlertsComponent implements OnInit {
   protected readonly executions = signal<readonly AlertExecution[]>([]);
   protected readonly bindings = signal<AlertBindingOptions>(EMPTY_BINDINGS);
   protected readonly loading = signal(true);
+  protected readonly countsLoaded = signal(false);
   protected readonly saving = signal(false);
   protected readonly exporting = signal(false);
   protected readonly importing = signal(false);
@@ -232,7 +233,11 @@ export class AlertsComponent implements OnInit {
       });
     }
 
-    await Promise.all([this.loadAlerts(), this.loadTemplates(), this.loadTags(), this.loadBindings(), this.loadHistory()]);
+    try {
+      await Promise.all([this.loadAlerts(), this.loadTemplates(), this.loadTags(), this.loadBindings(), this.loadHistory()]);
+    } finally {
+      this.countsLoaded.set(true);
+    }
   }
 
   protected async selectTab(tab: AlertTab): Promise<void> {

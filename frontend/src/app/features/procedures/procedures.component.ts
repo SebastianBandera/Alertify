@@ -91,6 +91,7 @@ export class ProceduresComponent implements OnInit {
   protected readonly executions = signal<readonly ProcedureExecution[]>([]);
   protected readonly bindings = signal<ProcedureBindingOptions>(EMPTY_BINDINGS);
   protected readonly loading = signal(true);
+  protected readonly countsLoaded = signal(false);
   protected readonly saving = signal(false);
   protected readonly runningId = signal<number | null>(null);
   protected readonly error = signal<string | null>(null);
@@ -140,7 +141,11 @@ export class ProceduresComponent implements OnInit {
         replaceUrl: true,
       });
     }
-    await this.loadAll();
+    try {
+      await this.loadAll();
+    } finally {
+      this.countsLoaded.set(true);
+    }
   }
 
   protected dynamic(key: string): string {
