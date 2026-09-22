@@ -4,6 +4,7 @@ public enum HookTargetStatus {
     PENDING,
     WAITING_ALERT,
     WAITING_PROCEDURE,
+    WAITING_PIPE,
     RUNNING,
     SUCCESS,
     WARN,
@@ -12,5 +13,6 @@ public enum HookTargetStatus {
     SKIPPED_MAINTENANCE,
     SKIPPED_SEQUENCE,
     ALERT_BUSY_TIMEOUT,
-    PROCEDURE_BUSY_TIMEOUT
+    PROCEDURE_BUSY_TIMEOUT,
+    PIPE_BUSY_TIMEOUT
 }

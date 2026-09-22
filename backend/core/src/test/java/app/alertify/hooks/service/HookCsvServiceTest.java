@@ -43,6 +43,7 @@ import app.alertify.jpa.entity.SecretValueType;
 import app.alertify.jpa.repository.AlertRepository;
 import app.alertify.jpa.repository.ApplicationSecretRepository;
 import app.alertify.jpa.repository.HookRepository;
+import app.alertify.jpa.repository.PipeRepository;
 import app.alertify.jpa.repository.ProcedureRepository;
 import app.alertify.logging.ApplicationEventLogger;
 import app.alertify.worker.contract.WorkerCapability;
@@ -58,6 +59,7 @@ class HookCsvServiceTest {
     @Mock private HookRepository hookRepository;
     @Mock private AlertRepository alertRepository;
     @Mock private ProcedureRepository procedureRepository;
+    @Mock private PipeRepository pipeRepository;
     @Mock private ApplicationSecretRepository secretRepository;
     @Mock private HookManagementService managementService;
     @Mock private ApplicationEventLogger eventLogger;
@@ -167,13 +169,14 @@ class HookCsvServiceTest {
     }
 
     private HookCsvService service() {
-        return new HookCsvService(hookRepository, alertRepository, procedureRepository, secretRepository,
+        return new HookCsvService(hookRepository, alertRepository, procedureRepository, pipeRepository, secretRepository,
                 managementService, new HookCsvCodec(JsonMapper.builder().build()), eventLogger);
     }
 
     private void stubCatalog(List<Hook> hooks) {
         when(alertRepository.findAll()).thenReturn(List.of(alert));
         when(procedureRepository.findAll()).thenReturn(List.of());
+        when(pipeRepository.findAll()).thenReturn(List.of());
         when(secretRepository.findAll()).thenReturn(List.of());
         when(hookRepository.findAll(any(Sort.class))).thenReturn(hooks);
     }

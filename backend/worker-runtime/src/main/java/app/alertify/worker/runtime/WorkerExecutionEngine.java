@@ -151,6 +151,8 @@ class WorkerExecutionEngine implements AutoCloseable {
             case ALERT_PARAMETER_VALUE_SOURCE_CONFIGURATION -> AlertParameterSource.CONFIGURATION;
             case ALERT_PARAMETER_VALUE_SOURCE_SECRET -> AlertParameterSource.SECRET;
             case ALERT_PARAMETER_VALUE_SOURCE_PROCEDURE -> AlertParameterSource.PROCEDURE;
+            case ALERT_PARAMETER_VALUE_SOURCE_PIPE -> AlertParameterSource.PIPE;
+            case ALERT_PARAMETER_VALUE_SOURCE_PIPE_OUTPUT -> AlertParameterSource.PIPE_OUTPUT;
             case ALERT_PARAMETER_VALUE_SOURCE_UNSPECIFIED, UNRECOGNIZED ->
                     throw new IllegalArgumentException("Alert parameter source must be specified");
         };

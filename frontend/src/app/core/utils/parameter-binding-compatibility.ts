@@ -1,4 +1,5 @@
 const BYTE_ARRAY_JAVA_TYPE = '[B';
+const ARTIFACT_INPUT_JAVA_TYPE = 'app.alertify.procedures.artifact.ProcedureArtifactInput';
 const DATABASE_CREDENTIALS_JAVA_TYPE = 'app.alertify.worker.contract.DatabaseCredentials';
 
 /**
@@ -13,7 +14,7 @@ export function isCompatibleConfigurationValueType(
   allowedConfigurationValueTypes: readonly string[],
   valueType: string | null
 ): boolean {
-  const binaryRequired = javaType === BYTE_ARRAY_JAVA_TYPE;
+  const binaryRequired = javaType === BYTE_ARRAY_JAVA_TYPE || javaType === ARTIFACT_INPUT_JAVA_TYPE;
   if (binaryRequired !== (valueType === 'BINARY')) return false;
   if (allowedConfigurationValueTypes.length === 0) return true;
   return valueType !== null && allowedConfigurationValueTypes.includes(valueType);
@@ -24,7 +25,7 @@ export function isCompatibleSecretValueType(
   allowedSecretValueTypes: readonly string[],
   valueType: string | null
 ): boolean {
-  const binaryRequired = javaType === BYTE_ARRAY_JAVA_TYPE;
+  const binaryRequired = javaType === BYTE_ARRAY_JAVA_TYPE || javaType === ARTIFACT_INPUT_JAVA_TYPE;
   const dbSecretRequired = javaType === DATABASE_CREDENTIALS_JAVA_TYPE;
   if (binaryRequired !== (valueType === 'BINARY')) return false;
   if (dbSecretRequired !== (valueType === 'DB_SECRET')) return false;

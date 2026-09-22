@@ -30,10 +30,11 @@ public class HookMapper {
 
     public HookTargetResponse toResponse(HookTarget target) {
         boolean alert = target.getTargetType() == HookTargetType.ALERT;
+        boolean procedure = target.getTargetType() == HookTargetType.PROCEDURE;
         return new HookTargetResponse(
-                target.getId(), target.getTargetType(), alert ? target.getAlert().getId() : target.getProcedure().getId(),
-                alert ? target.getAlert().getName() : target.getProcedure().getName(),
-                alert ? target.getAlert().isEnabled() : target.getProcedure().isEnabled(), target.getPosition(),
+                target.getId(), target.getTargetType(), alert ? target.getAlert().getId() : procedure ? target.getProcedure().getId() : target.getPipe().getId(),
+                alert ? target.getAlert().getName() : procedure ? target.getProcedure().getName() : target.getPipe().getName(),
+                alert ? target.getAlert().isEnabled() : procedure ? target.getProcedure().isEnabled() : target.getPipe().isEnabled(), target.getPosition(),
                 target.getContinueOn().stream().map(HookOutcome::valueOf).collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new)),
                 Duration.ofMillis(target.getBusyWaitTimeoutMillis())
         );

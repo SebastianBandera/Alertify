@@ -16,6 +16,8 @@ public record ProcedureParameterValueResponse(
     String secretName,
     Long procedureId,
     String procedureName,
+    Long pipeId,
+    String pipeName,
     Instant createdAt,
     Instant updatedAt
 ) {

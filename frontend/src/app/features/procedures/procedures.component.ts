@@ -1,5 +1,6 @@
 import { DatePipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, ElementRef, OnInit, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, OnInit, computed, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 
@@ -47,6 +48,7 @@ interface ParameterForm {
   configurationId: number | null;
   secretId: number | null;
   procedureId: number | null;
+  pipeId: number | null;
 }
 
 interface ProcedureForm {
@@ -60,7 +62,12 @@ interface ProcedureForm {
   parameters: Readonly<Record<string, ParameterForm>>;
 }
 
-const EMPTY_BINDINGS: ProcedureBindingOptions = { configurations: [], secrets: [], procedures: [] };
+const EMPTY_BINDINGS: ProcedureBindingOptions = { configurations: [], secrets: [], procedures: [], pipes: [] };
+
+function procedureTab(value: string | null): ProcedureTab {
+  if (value === 'templates' || value === 'wizards' || value === 'history') return value;
+  return 'procedures';
+}
 
 @Component({
   selector: 'app-procedures',
@@ -75,6 +82,7 @@ export class ProceduresComponent implements OnInit {
   private readonly elementRef: ElementRef<HTMLElement> = inject(ElementRef);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+  private readonly destroyRef = inject(DestroyRef);
 
   protected readonly activeTab = signal<ProcedureTab>('procedures');
   protected readonly procedures = signal<readonly Procedure[]>([]);
@@ -111,9 +119,27 @@ export class ProceduresComponent implements OnInit {
   protected readonly tagError = signal<string | null>(null);
 
   async ngOnInit(): Promise<void> {
+    const requestedTab = this.route.snapshot.queryParamMap.get('tab');
     const executionId = this.route.snapshot.queryParamMap.get('executionId');
     this.historyExecutionId.set(executionId);
-    if (executionId) this.activeTab.set('history');
+    this.activeTab.set(executionId ? 'history' : procedureTab(requestedTab));
+    this.route.queryParamMap
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((parameters) => {
+        const tab = procedureTab(parameters.get('tab'));
+        if (tab === this.activeTab()) return;
+
+        this.activeTab.set(tab);
+        void this.loadTab(tab);
+      });
+    if (requestedTab !== this.activeTab()) {
+      void this.router.navigate([], {
+        relativeTo: this.route,
+        queryParams: { tab: this.activeTab() },
+        queryParamsHandling: 'merge',
+        replaceUrl: true,
+      });
+    }
     await this.loadAll();
   }
 
@@ -125,6 +151,17 @@ export class ProceduresComponent implements OnInit {
 
   protected async changeTab(tab: ProcedureTab): Promise<void> {
     this.activeTab.set(tab);
+    await Promise.all([
+      this.router.navigate([], {
+        relativeTo: this.route,
+        queryParams: { tab },
+        queryParamsHandling: 'merge',
+      }),
+      this.loadTab(tab),
+    ]);
+  }
+
+  private async loadTab(tab: ProcedureTab): Promise<void> {
     if (tab === 'procedures') await this.loadProcedures();
     if (tab === 'history') await this.loadHistory();
     if (tab === 'wizards') this.backToWizardSelector();
@@ -222,6 +259,7 @@ export class ProceduresComponent implements OnInit {
         configurationId: value.configurationId,
         secretId: value.secretId,
         procedureId: value.procedureId,
+        pipeId: value.pipeId,
       };
     }
     this.editing.set(procedure);
@@ -280,6 +318,7 @@ export class ProceduresComponent implements OnInit {
       case 'CONFIGURATION': return value.configurationId == null;
       case 'SECRET': return value.secretId == null;
       case 'PROCEDURE': return value.procedureId == null;
+      case 'PIPE': return value.pipeId == null;
       default: return false;
     }
   }
@@ -298,6 +337,14 @@ export class ProceduresComponent implements OnInit {
     return this.bindings().secrets.filter((option) =>
       isCompatibleSecretValueType(parameter.javaType, parameter.allowedSecretValueTypes, option.valueType)
     );
+  }
+
+  protected manualSources(parameter: ProcedureTemplateParameter): readonly AlertParameterSource[] {
+    return parameter.allowedSources.filter((source) => source !== 'PIPE_OUTPUT');
+  }
+
+  protected isArtifactInput(parameter: ProcedureTemplateParameter): boolean {
+    return parameter.javaType === 'app.alertify.procedures.artifact.ProcedureArtifactInput';
   }
 
   protected toggleTag(tagId: number, checked: boolean): void {
@@ -340,6 +387,7 @@ export class ProceduresComponent implements OnInit {
         configurationId: source === 'CONFIGURATION' ? value.configurationId : null,
         secretId: source === 'SECRET' ? value.secretId : null,
         procedureId: source === 'PROCEDURE' ? value.procedureId : null,
+        pipeId: source === 'PIPE' ? value.pipeId : null,
       });
     }
     this.saving.set(true);
@@ -535,7 +583,9 @@ export class ProceduresComponent implements OnInit {
   }
 
   private defaultParameter(parameter: ProcedureTemplateParameter): ParameterForm {
-    const source: ParameterSource = parameter.options.length ? 'OPTION' : '';
+    const source: ParameterSource = parameter.javaType === 'app.alertify.pipes.Pipe'
+      ? 'PIPE'
+      : parameter.options.length ? 'OPTION' : '';
     return {
       configured: parameter.required || parameter.defaultValue !== null,
       source,
@@ -543,6 +593,7 @@ export class ProceduresComponent implements OnInit {
       configurationId: null,
       secretId: null,
       procedureId: null,
+      pipeId: null,
     };
   }
 

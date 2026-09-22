@@ -16,6 +16,7 @@ public record ProcedureTemplateResponse(
     List<ProcedureTemplateTagResponse> tags,
     long procedureCount,
     List<ProcedureTemplateParameterResponse> parameters,
+    List<ProcedureTemplateOutputResponse> outputs,
     Instant createdAt,
     Instant updatedAt
 ) {

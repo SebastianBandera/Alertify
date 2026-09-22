@@ -80,8 +80,16 @@ public class HookInvocationTarget {
     public HookInvocationTarget(HookInvocation invocation, HookTarget target) {
         this.invocation = Objects.requireNonNull(invocation);
         targetType = target.getTargetType();
-        resourceId = targetType == HookTargetType.ALERT ? target.getAlert().getId() : target.getProcedure().getId();
-        resourceName = targetType == HookTargetType.ALERT ? target.getAlert().getName() : target.getProcedure().getName();
+        resourceId = switch (targetType) {
+            case ALERT -> target.getAlert().getId();
+            case PROCEDURE -> target.getProcedure().getId();
+            case PIPE -> target.getPipe().getId();
+        };
+        resourceName = switch (targetType) {
+            case ALERT -> target.getAlert().getName();
+            case PROCEDURE -> target.getProcedure().getName();
+            case PIPE -> target.getPipe().getName();
+        };
         position = target.getPosition();
         continueOn.addAll(target.getContinueOn());
         busyWaitTimeoutMillis = target.getBusyWaitTimeoutMillis();
@@ -105,7 +113,8 @@ public class HookInvocationTarget {
     public void transition(HookTargetStatus value) {
         status = Objects.requireNonNull(value);
         if (startedAt == null && (value == HookTargetStatus.WAITING_ALERT
-                || value == HookTargetStatus.WAITING_PROCEDURE || value == HookTargetStatus.RUNNING))
+                || value == HookTargetStatus.WAITING_PROCEDURE || value == HookTargetStatus.WAITING_PIPE
+                || value == HookTargetStatus.RUNNING))
             startedAt = Instant.now();
     }
 

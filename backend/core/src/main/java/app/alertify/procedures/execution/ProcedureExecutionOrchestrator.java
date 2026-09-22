@@ -5,6 +5,12 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.List;
+import java.util.ArrayList;
+import java.util.HexFormat;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.io.ByteArrayInputStream;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutorService;
@@ -27,6 +33,11 @@ import app.alertify.system.SystemStatusEventPublisher;
 import app.alertify.procedures.ProcedureBusyException;
 import app.alertify.procedures.ProcedureDisabledException;
 import app.alertify.procedures.ProcedureExecutionException;
+import app.alertify.pipes.execution.PipeInvocationTokenService;
+import app.alertify.pipes.execution.PipeExecutionOrchestrator;
+import app.alertify.pipes.PipeExecutionException;
+import app.alertify.worker.grpc.InvokePipeResponse;
+import org.springframework.beans.factory.ObjectProvider;
 import app.alertify.worker.grpc.AlertParameter;
 import app.alertify.worker.grpc.AlertParameterValueSource;
 import app.alertify.worker.grpc.ExecuteProcedureRequest;
@@ -39,6 +50,9 @@ import app.alertify.worker.grpc.ProcedureInvocationResult;
 import app.alertify.worker.grpc.ProcedureParentKind;
 import app.alertify.worker.grpc.SynchronizeTemplateRequest;
 import app.alertify.worker.grpc.TemplateKind;
+import app.alertify.worker.grpc.ArtifactDescriptor;
+import app.alertify.procedures.artifact.ProcedureArtifactInput;
+import app.alertify.worker.contract.BinaryPayloadCodec;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -63,6 +77,8 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
     private final ProcedureExecutionPreparationService preparationService;
     private final ProcedureExecutionPersistenceService persistenceService;
     private final ProcedureInvocationTokenService tokenService;
+    private final PipeInvocationTokenService pipeTokenService;
+    private final ObjectProvider<PipeExecutionOrchestrator> pipeOrchestrator;
     private final ProcedureInvocationRegistry invocationRegistry;
     private final WorkerStatusService workerStatusService;
     private final AlertWorkerClient workerClient;
@@ -74,10 +90,12 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
     private final ConcurrentMap<Long, ProcedureGate> procedureGates = new ConcurrentHashMap<>();
 
-    public ProcedureExecutionOrchestrator(ProcedureExecutionPreparationService preparationService, ProcedureExecutionPersistenceService persistenceService, ProcedureInvocationTokenService tokenService, ProcedureInvocationRegistry invocationRegistry, WorkerStatusService workerStatusService, AlertWorkerClient workerClient, WorkerGrpcProperties properties, ApplicationEventLogger eventLogger, JsonMapper jsonMapper, MaintenanceModeService maintenanceModeService, SystemStatusEventPublisher statusEventPublisher) {
+    public ProcedureExecutionOrchestrator(ProcedureExecutionPreparationService preparationService, ProcedureExecutionPersistenceService persistenceService, ProcedureInvocationTokenService tokenService, PipeInvocationTokenService pipeTokenService, ObjectProvider<PipeExecutionOrchestrator> pipeOrchestrator, ProcedureInvocationRegistry invocationRegistry, WorkerStatusService workerStatusService, AlertWorkerClient workerClient, WorkerGrpcProperties properties, ApplicationEventLogger eventLogger, JsonMapper jsonMapper, MaintenanceModeService maintenanceModeService, SystemStatusEventPublisher statusEventPublisher) {
         this.preparationService = preparationService;
         this.persistenceService = persistenceService;
         this.tokenService = tokenService;
+        this.pipeTokenService = pipeTokenService;
+        this.pipeOrchestrator = pipeOrchestrator;
         this.invocationRegistry = invocationRegistry;
         this.workerStatusService = workerStatusService;
         this.workerClient = workerClient;
@@ -178,7 +196,7 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
         UUID parentAlert = trigger == ProcedureExecutionTrigger.ALERT ? claims.parentExecutionId() : null;
         UUID parentProcedure = trigger == ProcedureExecutionTrigger.PROCEDURE ? claims.parentExecutionId() : null;
         try {
-            PreparedProcedureExecution prepared = preparationService.prepare(claims.procedureId(), false);
+            PreparedProcedureExecution prepared = preparationService.prepare(claims.procedureId(), false, true);
             if (!enter(claims.procedureId(), prepared.allowConcurrentExecutions())) {
                 ProcedureBusyException exception = busy(prepared.procedureName());
                 eventLogger.failure(PROCEDURE_EXECUTION_REJECTED, rejectionData(claims.procedureId(), prepared.procedureName(), trigger, null));
@@ -212,14 +230,131 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
         }
     }
 
+    public ProcedurePipeExecution executePipeStep(long procedureId, UUID rootExecutionId, UUID parentPipeExecutionId, int depth, Instant deadline, UUID preferredWorkerInstanceId, Map<String, ArtifactLocation> artifactInputs) {
+        UUID executionId = UUID.randomUUID();
+        Instant startedAt = Instant.now();
+        boolean entered = false;
+        boolean started = false;
+        List<ArtifactLocation> createdArtifacts = new ArrayList<>();
+        try {
+            PreparedProcedureExecution prepared = preparationService.prepare(procedureId, false, true);
+            if (!enter(procedureId, prepared.allowConcurrentExecutions()))
+                throw busy(prepared.procedureName());
+
+            entered = true;
+            persistenceService.start(executionId, prepared, ProcedureExecutionTrigger.PIPE, rootExecutionId,
+                    null, null, parentPipeExecutionId, depth, startedAt, "pipe:" + parentPipeExecutionId);
+            started = true;
+            invocationRegistry.register(executionId, deadline);
+            try (WorkerReservation reservation = workerStatusService.reserve(prepared.requiredCapability(), preferredWorkerInstanceId)) {
+                SelectedWorker worker = reservation.worker();
+                WorkerEndpoint endpoint = worker.endpoint();
+                UUID workerInstanceId = UUID.fromString(worker.status().getWorkerInstanceId());
+                Map<String, ArtifactDescriptor> descriptors = new LinkedHashMap<>();
+                for (ResolvedProcedureParameter parameter : prepared.parameters()) {
+                    if (!parameter.javaType().equals(ProcedureArtifactInput.class.getName()))
+                        continue;
+
+                    ArtifactLocation supplied = artifactInputs.get(parameter.name());
+                    if (supplied != null) {
+                        ArtifactLocation located = supplied;
+                        if (!workerInstanceId.equals(supplied.workerInstanceId())) {
+                            ArtifactDescriptor transferred = workerClient.transferArtifact(supplied.endpoint(), endpoint,
+                                    supplied.descriptor(), deadline.plus(Duration.ofMinutes(15)), remaining(deadline));
+                            located = new ArtifactLocation(transferred, endpoint, workerInstanceId);
+                            createdArtifacts.add(located);
+                        }
+                        descriptors.put(parameter.name(), located.descriptor());
+                        continue;
+                    }
+                    if (parameter.binaryZip() == null)
+                        throw new app.alertify.procedures.MissingArtifactInputException("MISSING_ARTIFACT_INPUT: Parameter '" + parameter.name() + "' has no Pipe output or BINARY fallback");
+
+                    byte[] bytes = BinaryPayloadCodec.decompress(parameter.binaryZip(), binaryMaximumBytes());
+                    ArtifactDescriptor uploaded = workerClient.uploadArtifact(endpoint, parameter.name(),
+                            parameter.binaryFileName(), parameter.binaryMediaType(), bytes.length, sha256(bytes),
+                            new ByteArrayInputStream(bytes), deadline.plus(Duration.ofMinutes(15)), remaining(deadline));
+                    ArtifactLocation located = new ArtifactLocation(uploaded, endpoint, workerInstanceId);
+                    descriptors.put(parameter.name(), uploaded);
+                    createdArtifacts.add(located);
+                }
+                ExecuteProcedureRequest request = request(executionId, rootExecutionId, null, null, depth, deadline,
+                        prepared, descriptors);
+                SynchronizeTemplateRequest source = SynchronizeTemplateRequest.newBuilder()
+                        .setTemplateClassName(prepared.templateClassName()).setSourceChecksum(prepared.sourceChecksum())
+                        .setSource(prepared.source()).setTemplateKind(TemplateKind.TEMPLATE_KIND_PROCEDURE).build();
+                ProcedureExecutionResult result = workerClient.executeProcedure(endpoint, request, source,
+                        remaining(deadline), this::invokeToken, this::invokePipeToken);
+                if (!result.getSuccessful())
+                    result = result.toBuilder().setError(sanitize(result.getError(), prepared)).build();
+
+                JsonNode value = persistenceService.complete(executionId, endpoint, result, prepared.sensitiveResult());
+                if (!result.getSuccessful())
+                    throw new ProcedureExecutionException(executionId, message(result.getError()));
+
+                List<ArtifactLocation> outputs = result.getArtifactsList().stream()
+                        .map(descriptor -> new ArtifactLocation(descriptor, endpoint, workerInstanceId)).toList();
+                return new ProcedurePipeExecution(executionId, value, workerInstanceId, endpoint, outputs,
+                        List.copyOf(createdArtifacts));
+            }
+        } catch (RuntimeException exception) {
+            if (started)
+                persistenceService.failLocal(executionId, exception);
+            cleanupArtifacts(createdArtifacts);
+            if (exception instanceof ProcedureExecutionException procedureException)
+                throw procedureException;
+
+            throw new ProcedureExecutionException(started ? executionId : null,
+                    exception.getMessage() == null ? exception.getClass().getSimpleName() : exception.getMessage(), exception);
+        } finally {
+            invocationRegistry.unregister(executionId);
+            if (entered)
+                leave(procedureId);
+            statusEventPublisher.publish();
+        }
+    }
+
+    public void deleteArtifacts(List<ArtifactLocation> artifacts) { cleanupArtifacts(artifacts); }
+
+    private void cleanupArtifacts(List<ArtifactLocation> artifacts) {
+        for (ArtifactLocation artifact : artifacts) {
+            try {
+                workerClient.deleteArtifact(artifact.endpoint(), artifact.descriptor().getArtifactId(), properties.discovery().healthTimeout());
+            } catch (RuntimeException ignored) {
+                // The worker sweeper removes content left by an unavailable worker.
+            }
+        }
+    }
+
+    private static int binaryMaximumBytes() {
+        String configured = System.getenv("BINARY_VALUE_MAX_BYTES");
+        if (configured == null || configured.isBlank())
+            return BinaryPayloadCodec.DEFAULT_MAX_VALUE_BYTES;
+
+        return Integer.parseInt(configured);
+    }
+
+    private static byte[] sha256(byte[] value) {
+        try {
+            return MessageDigest.getInstance("SHA-256").digest(value);
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 is unavailable", exception);
+        }
+    }
+
+    public record ArtifactLocation(ArtifactDescriptor descriptor, WorkerEndpoint endpoint, UUID workerInstanceId) { }
+    public record ProcedurePipeExecution(UUID executionId, JsonNode result, UUID workerInstanceId,
+            WorkerEndpoint endpoint, List<ArtifactLocation> outputs, List<ArtifactLocation> temporaryArtifacts) { }
+
     private JsonNode execute(long procedureId, UUID executionId, UUID rootExecutionId, UUID parentAlertExecutionId, UUID parentProcedureExecutionId, int depth, ProcedureExecutionTrigger trigger, String triggeredBy, Instant deadline, boolean includeDisabled, PreparedProcedureExecution preparedExecution) {
         Instant startedAt = Instant.now();
         boolean started = false;
         WorkerEndpoint endpoint = null;
+        List<ArtifactLocation> directArtifacts = new ArrayList<>();
         try {
             PreparedProcedureExecution prepared;
             try {
-                prepared = preparedExecution == null ? preparationService.prepare(procedureId, includeDisabled) : preparedExecution;
+                prepared = preparedExecution == null ? preparationService.prepare(procedureId, includeDisabled, true) : preparedExecution;
             } catch (ProcedureDisabledException exception) {
                 eventLogger.failure(PROCEDURE_EXECUTION_REJECTED, Map.of("procedureId", procedureId, "reason", "DISABLED", "parentExecutionId", parentAlertExecutionId != null ? parentAlertExecutionId : parentProcedureExecutionId));
                 throw exception;
@@ -228,6 +363,10 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
                     parentAlertExecutionId, parentProcedureExecutionId, depth, startedAt, triggeredBy);
             started = true;
             invocationRegistry.register(executionId, deadline);
+            for (ResolvedProcedureParameter parameter : prepared.parameters()) {
+                if (parameter.javaType().equals(ProcedureArtifactInput.class.getName()) && parameter.binaryZip() == null)
+                    throw new app.alertify.procedures.MissingArtifactInputException(executionId, "MISSING_ARTIFACT_INPUT: Parameter '" + parameter.name() + "' has no BINARY fallback");
+            }
             try (WorkerReservation reservation = workerStatusService.reserve(prepared.requiredCapability())) {
                 SelectedWorker worker = reservation.worker();
                 endpoint = worker.endpoint();
@@ -236,11 +375,27 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
                 startedData.put("depth", depth);
                 eventLogger.success("PROCEDURE_EXECUTION_STARTED", startedData);
                 statusEventPublisher.publish();
-                ExecuteProcedureRequest request = request(executionId, rootExecutionId, parentAlertExecutionId, parentProcedureExecutionId, depth, deadline, prepared);
+                UUID workerInstanceId = UUID.fromString(worker.status().getWorkerInstanceId());
+                Map<String, ArtifactDescriptor> descriptors = new LinkedHashMap<>();
+                for (ResolvedProcedureParameter parameter : prepared.parameters()) {
+                    if (!parameter.javaType().equals(ProcedureArtifactInput.class.getName()))
+                        continue;
+
+                    if (parameter.binaryZip() == null)
+                        throw new app.alertify.procedures.MissingArtifactInputException(executionId, "MISSING_ARTIFACT_INPUT: Parameter '" + parameter.name() + "' has no BINARY fallback");
+
+                    byte[] bytes = BinaryPayloadCodec.decompress(parameter.binaryZip(), binaryMaximumBytes());
+                    ArtifactDescriptor uploaded = workerClient.uploadArtifact(endpoint, parameter.name(),
+                            parameter.binaryFileName(), parameter.binaryMediaType(), bytes.length, sha256(bytes),
+                            new ByteArrayInputStream(bytes), deadline.plus(Duration.ofMinutes(15)), remaining(deadline));
+                    descriptors.put(parameter.name(), uploaded);
+                    directArtifacts.add(new ArtifactLocation(uploaded, endpoint, workerInstanceId));
+                }
+                ExecuteProcedureRequest request = request(executionId, rootExecutionId, parentAlertExecutionId, parentProcedureExecutionId, depth, deadline, prepared, descriptors);
                 SynchronizeTemplateRequest source = SynchronizeTemplateRequest.newBuilder().setTemplateClassName(prepared.templateClassName()).setSourceChecksum(prepared.sourceChecksum()).setSource(prepared.source()).setTemplateKind(TemplateKind.TEMPLATE_KIND_PROCEDURE).build();
                 ProcedureExecutionResult result;
                 try {
-                    result = workerClient.executeProcedure(endpoint, request, source, remaining(deadline), this::invokeToken);
+                    result = workerClient.executeProcedure(endpoint, request, source, remaining(deadline), this::invokeToken, this::invokePipeToken);
                 } catch (WorkerTemplateSynchronizationException exception) {
                     ExecutionError sanitized = sanitize(exception.error(), prepared);
                     Instant finishedAt = Instant.now();
@@ -250,6 +405,9 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
                 if (!result.getSuccessful()) {
                     result = result.toBuilder().setError(sanitize(result.getError(), prepared)).build();
                 }
+                for (ArtifactDescriptor descriptor : result.getArtifactsList())
+                    directArtifacts.add(new ArtifactLocation(descriptor, endpoint, workerInstanceId));
+
                 JsonNode value = persistenceService.complete(executionId, endpoint, result, prepared.sensitiveResult());
                 if (!result.getSuccessful())
                     throw new ProcedureExecutionException(executionId, message(result.getError()));
@@ -277,12 +435,18 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
                     exception.getMessage() == null ? exception.getClass().getSimpleName() : exception.getMessage(), exception);
         } finally {
             invocationRegistry.unregister(executionId);
+            cleanupArtifacts(directArtifacts);
             leave(procedureId);
             statusEventPublisher.publish();
         }
     }
 
     private ExecuteProcedureRequest request(UUID executionId, UUID rootExecutionId, UUID parentAlertExecutionId, UUID parentProcedureExecutionId, int depth, Instant deadline, PreparedProcedureExecution prepared) {
+        return request(executionId, rootExecutionId, parentAlertExecutionId, parentProcedureExecutionId, depth,
+                deadline, prepared, Map.of());
+    }
+
+    private ExecuteProcedureRequest request(UUID executionId, UUID rootExecutionId, UUID parentAlertExecutionId, UUID parentProcedureExecutionId, int depth, Instant deadline, PreparedProcedureExecution prepared, Map<String, ArtifactDescriptor> artifacts) {
         ExecuteProcedureRequest.Builder request = ExecuteProcedureRequest.newBuilder()
                 .setExecutionId(executionId.toString())
                 .setProcedureId(prepared.procedureId())
@@ -301,22 +465,34 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
                                 ? ProcedureParentKind.PROCEDURE_PARENT_KIND_PROCEDURE
                                 : ProcedureParentKind.PROCEDURE_PARENT_KIND_UNSPECIFIED)
                 .setDepth(depth);
+        request.setArtifactExpiresAt(deadline.plus(Duration.ofMinutes(15)).toString());
         for (ResolvedProcedureParameter parameter : prepared.parameters())
             request.addParameters(parameter(parameter, rootExecutionId, executionId,
-                    ProcedureParentKind.PROCEDURE_PARENT_KIND_PROCEDURE, depth + 1, deadline));
+                    ProcedureParentKind.PROCEDURE_PARENT_KIND_PROCEDURE, depth + 1, deadline, artifacts.get(parameter.name())));
 
         return request.build();
     }
 
     public AlertParameter parameter(ResolvedProcedureParameter parameter, UUID rootExecutionId, UUID parentExecutionId, ProcedureParentKind parentKind, int childDepth, Instant deadline) {
+        return parameter(parameter, rootExecutionId, parentExecutionId, parentKind, childDepth, deadline, null);
+    }
+
+    public AlertParameter parameter(ResolvedProcedureParameter parameter, UUID rootExecutionId, UUID parentExecutionId, ProcedureParentKind parentKind, int childDepth, Instant deadline, ArtifactDescriptor artifact) {
         AlertParameter.Builder value = AlertParameter.newBuilder().setName(parameter.name())
                 .setJavaType(parameter.javaType())
-                .setNullValue(parameter.source() != AlertParameterSource.PROCEDURE && parameter.nullValue())
-                .setSource(source(parameter.source()));
+                .setNullValue(artifact == null && parameter.source() != AlertParameterSource.PROCEDURE
+                        && parameter.source() != AlertParameterSource.PIPE && parameter.nullValue())
+                .setSource(source(artifact == null ? parameter.source() : AlertParameterSource.PIPE_OUTPUT));
         if (parameter.source() == AlertParameterSource.PROCEDURE) {
             value.setProcedureId(parameter.procedureId())
                     .setInvocationToken(tokenService.issue(parameter.procedureId(), rootExecutionId,
                             parentExecutionId, parentKind, childDepth, deadline));
+        } else if (parameter.source() == AlertParameterSource.PIPE) {
+            value.setPipeId(parameter.pipeId())
+                    .setPipeInvocationToken(pipeTokenService.issue(parameter.pipeId(), rootExecutionId,
+                            parentExecutionId, childDepth, deadline));
+        } else if (artifact != null) {
+            value.setArtifact(artifact);
         } else if (!parameter.nullValue()) {
             if (parameter.binaryZip() != null) value.setBinaryValue(com.google.protobuf.ByteString.copyFrom(parameter.binaryZip()));
             else value.setValue(parameter.value());
@@ -340,7 +516,17 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
             case CONFIGURATION -> AlertParameterValueSource.ALERT_PARAMETER_VALUE_SOURCE_CONFIGURATION;
             case SECRET -> AlertParameterValueSource.ALERT_PARAMETER_VALUE_SOURCE_SECRET;
             case PROCEDURE -> AlertParameterValueSource.ALERT_PARAMETER_VALUE_SOURCE_PROCEDURE;
+            case PIPE -> AlertParameterValueSource.ALERT_PARAMETER_VALUE_SOURCE_PIPE;
+            case PIPE_OUTPUT -> AlertParameterValueSource.ALERT_PARAMETER_VALUE_SOURCE_PIPE_OUTPUT;
         };
+    }
+
+    private InvokePipeResponse invokePipeToken(String token) {
+        PipeExecutionOrchestrator orchestrator = pipeOrchestrator.getIfAvailable();
+        if (orchestrator == null)
+            throw new PipeExecutionException("Pipe execution service is unavailable");
+
+        return orchestrator.invoke(pipeTokenService.validate(token));
     }
 
     private static Duration remaining(Instant deadline) {

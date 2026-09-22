@@ -30,6 +30,8 @@ import app.alertify.services.secret.SecretAccessService;
 import app.alertify.binary.BinaryBindingService;
 import app.alertify.jpa.entity.ConfigurationValueType;
 import app.alertify.jpa.entity.SecretValueType;
+import app.alertify.procedures.MissingArtifactInputException;
+import app.alertify.procedures.artifact.ProcedureArtifactInput;
 
 /**
  * Builds the immutable snapshot a procedure execution needs before any worker
@@ -68,6 +70,11 @@ public class ProcedureExecutionPreparationService {
 
     @Transactional(readOnly = true)
     public PreparedProcedureExecution prepare(long procedureId, boolean includeDisabled) {
+        return prepare(procedureId, includeDisabled, false);
+    }
+
+    @Transactional(readOnly = true)
+    public PreparedProcedureExecution prepare(long procedureId, boolean includeDisabled, boolean allowMissingArtifactInputs) {
         Procedure procedure = procedureRepository.findById(procedureId)
                 .orElseThrow(() -> new IllegalStateException("Procedure " + procedureId + " was not found"));
         if (!procedure.isEnabled() && !includeDisabled)
@@ -84,10 +91,18 @@ public class ProcedureExecutionPreparationService {
                 .map(definition -> {
                     ProcedureParameterValue value = configured.get(definition.getId());
                     if (value == null) {
+                        if (definition.getJavaType().equals(ProcedureArtifactInput.class.getName()) && !allowMissingArtifactInputs)
+                            throw new MissingArtifactInputException("MISSING_ARTIFACT_INPUT: Parameter '" + definition.getParameterKey() + "' has no Pipe output or BINARY fallback");
+
+                        if (definition.getJavaType().equals(ProcedureArtifactInput.class.getName()))
+                            return new ResolvedProcedureParameter(definition.getParameterKey(), definition.getJavaType(),
+                                    null, null, true, AlertParameterSource.PIPE_OUTPUT,
+                                    null, null, null, null, false, null, null, null, null);
+
                         String defaultValue = definition.getDefaultValue();
                         return new ResolvedProcedureParameter(definition.getParameterKey(), definition.getJavaType(),
                                 defaultValue, null, defaultValue == null, AlertParameterSource.TEXT,
-                                null, null, null, false);
+                                null, null, null, null, false, null, null, null, null);
                     }
                     boolean binary = value.getSource() == AlertParameterSource.CONFIGURATION && value.getConfiguration().getValueType() == ConfigurationValueType.BINARY
                             || value.getSource() == AlertParameterSource.SECRET && value.getSecret().getValueType() == SecretValueType.BINARY;
@@ -97,6 +112,8 @@ public class ProcedureExecutionPreparationService {
                                 .getResolvedValueByName(value.getConfiguration().getName());
                         case SECRET -> secretAccessService.getValueByName(value.getSecret().getName());
                         case PROCEDURE -> null;
+                        case PIPE -> null;
+                        case PIPE_OUTPUT -> throw new IllegalStateException("PIPE_OUTPUT cannot be stored as a configured procedure value");
                     };
                     byte[] binaryZip = binary ? switch (value.getSource()) {
                         case CONFIGURATION -> binaryBindingService.configurationZip(value.getConfiguration().getId());
@@ -105,21 +122,29 @@ public class ProcedureExecutionPreparationService {
                     } : null;
                     validateResolvedBinding(definition, value);
                     return new ResolvedProcedureParameter(definition.getParameterKey(), definition.getJavaType(),
-                            resolved, binaryZip, resolved == null && binaryZip == null && value.getSource() != AlertParameterSource.PROCEDURE,
+                            resolved, binaryZip, resolved == null && binaryZip == null
+                                    && value.getSource() != AlertParameterSource.PROCEDURE && value.getSource() != AlertParameterSource.PIPE,
                             value.getSource(),
                             value.getConfiguration() == null ? null : value.getConfiguration().getId(),
                             value.getSecret() == null ? null : value.getSecret().getId(),
                             value.getReferencedProcedure() == null ? null : value.getReferencedProcedure().getId(),
+                            value.getReferencedPipe() == null ? null : value.getReferencedPipe().getId(),
                             switch (value.getSource()) {
                                 case CONFIGURATION -> value.getConfiguration().isWritable();
                                 case SECRET -> value.getSecret().isWritable();
-                                case TEXT, PROCEDURE -> false;
+                                case TEXT, PROCEDURE, PIPE, PIPE_OUTPUT -> false;
                             },
                             switch (value.getSource()) {
                                 case CONFIGURATION -> value.getConfiguration().getVersion();
                                 case SECRET -> value.getSecret().getVersion();
-                                case TEXT, PROCEDURE -> null;
-                            });
+                                case TEXT, PROCEDURE, PIPE, PIPE_OUTPUT -> null;
+                            },
+                            binary ? (value.getConfiguration() != null ? value.getConfiguration().getBinaryFileName()
+                                    : value.getSecret().getBinaryFileName()) : null,
+                            binary ? (value.getConfiguration() != null ? value.getConfiguration().getBinaryContentType()
+                                    : value.getSecret().getBinaryContentType()) : null,
+                            binary ? (value.getConfiguration() != null ? value.getConfiguration().getBinarySize()
+                                    : value.getSecret().getBinarySize()) : null);
                 }).toList();
         return new PreparedProcedureExecution(procedure.getId(), procedure.getVersion(), procedure.getName(),
                 procedure.isConcurrentExecutionAllowed(),
@@ -133,7 +158,8 @@ public class ProcedureExecutionPreparationService {
                     definition.getJavaType(), value.getConfiguration().getValueType());
             case SECRET -> ParameterValueTypeCompatibility.isSecretValueTypeCompatible(
                     definition.getJavaType(), value.getSecret().getValueType());
-            case TEXT, PROCEDURE -> true;
+            case TEXT, PROCEDURE, PIPE -> true;
+            case PIPE_OUTPUT -> false;
         };
         if (!compatible)
             throw new IllegalArgumentException("Parameter '" + definition.getParameterKey() + "' and its binding have incompatible value types");

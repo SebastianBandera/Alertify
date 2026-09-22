@@ -11,12 +11,14 @@ import app.alertify.procedures.api.ProcedureParameterValueResponse;
 import app.alertify.procedures.api.ProcedureResponse;
 import app.alertify.procedures.api.ProcedureTemplateParameterResponse;
 import app.alertify.procedures.api.ProcedureTemplateResponse;
+import app.alertify.procedures.api.ProcedureTemplateOutputResponse;
 import app.alertify.procedures.api.ProcedureTemplateTagResponse;
 import app.alertify.procedures.model.Procedure;
 import app.alertify.procedures.model.ProcedureExecution;
 import app.alertify.procedures.model.ProcedureParameterValue;
 import app.alertify.procedures.model.ProcedureTemplateDefinition;
 import app.alertify.procedures.model.ProcedureTemplateParameterDefinition;
+import app.alertify.procedures.model.ProcedureTemplateOutputDefinition;
 
 /** Converts procedure entities into the API responses served by the controllers. */
 final class ProcedureMapper {
@@ -24,12 +26,14 @@ final class ProcedureMapper {
     private ProcedureMapper() {
     }
 
-    static ProcedureTemplateResponse toTemplate(ProcedureTemplateDefinition template, List<ProcedureTemplateParameterDefinition> parameters, long count) {
+    static ProcedureTemplateResponse toTemplate(ProcedureTemplateDefinition template, List<ProcedureTemplateParameterDefinition> parameters, List<ProcedureTemplateOutputDefinition> outputs, long count) {
         return new ProcedureTemplateResponse(
                 template.getId(), template.getVersion(), template.getTemplateKey(), template.getNameKey(),
                 template.getDescriptionKey(), template.getRequiredCapability(), template.isSensitiveResult(),
                 template.getTags().stream().map(tag -> new ProcedureTemplateTagResponse(tag.nameKey(), tag.color())).toList(),
                 count, parameters.stream().map(ProcedureMapper::toTemplateParameter).toList(),
+                outputs.stream().map(value -> new ProcedureTemplateOutputResponse(value.getId(), value.getVersion(),
+                        value.getOutputKey(), value.getOutputOrder(), value.getCreatedAt(), value.getUpdatedAt())).toList(),
                 template.getCreatedAt(), template.getUpdatedAt()
         );
     }
@@ -88,6 +92,8 @@ final class ProcedureMapper {
                 value.getSecret() == null ? null : value.getSecret().getName(),
                 value.getReferencedProcedure() == null ? null : value.getReferencedProcedure().getId(),
                 value.getReferencedProcedure() == null ? null : value.getReferencedProcedure().getName(),
+                value.getReferencedPipe() == null ? null : value.getReferencedPipe().getId(),
+                value.getReferencedPipe() == null ? null : value.getReferencedPipe().getName(),
                 value.getCreatedAt(), value.getUpdatedAt()
         );
     }

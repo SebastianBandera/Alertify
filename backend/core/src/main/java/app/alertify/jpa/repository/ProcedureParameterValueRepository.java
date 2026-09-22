@@ -14,11 +14,13 @@ public interface ProcedureParameterValueRepository extends JpaRepository<Procedu
         left join fetch value.configuration
         left join fetch value.secret
         left join fetch value.referencedProcedure
+        left join fetch value.referencedPipe
         where value.owner.id = :procedureId
         order by value.templateParameter.parameterOrder, value.id
         """)
     List<ProcedureParameterValue> findAllByOwnerIdOrdered(Long procedureId);
 
     long countByReferencedProcedure_Id(Long procedureId);
+    long countByReferencedPipe_Id(Long pipeId);
     void deleteAllByOwner_Id(Long procedureId);
 }

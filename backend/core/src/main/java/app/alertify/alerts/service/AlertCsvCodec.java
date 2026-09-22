@@ -81,6 +81,7 @@ class AlertCsvCodec {
             case CONFIGURATION -> value.getConfiguration().getName();
             case SECRET -> value.getSecret().getName();
             case PROCEDURE -> value.getProcedure().getName();
+            case PIPE, PIPE_OUTPUT -> throw new IllegalStateException("Pipe sources cannot be exported from Alert parameters");
         };
         return new ExportParameter(
                 value.getTemplateParameter().getParameterKey(), value.getSource(),

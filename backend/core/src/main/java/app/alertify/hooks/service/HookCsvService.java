@@ -36,8 +36,10 @@ import app.alertify.jpa.repository.AlertRepository;
 import app.alertify.jpa.repository.ApplicationSecretRepository;
 import app.alertify.jpa.repository.HookRepository;
 import app.alertify.jpa.repository.ProcedureRepository;
+import app.alertify.jpa.repository.PipeRepository;
 import app.alertify.logging.ApplicationEventLogger;
 import app.alertify.procedures.model.Procedure;
+import app.alertify.pipes.model.Pipe;
 
 /**
  * CSV import/export of hooks. Alerts, procedures and token secrets must already
@@ -52,17 +54,20 @@ public class HookCsvService {
     private final HookRepository hookRepository;
     private final AlertRepository alertRepository;
     private final ProcedureRepository procedureRepository;
+    private final PipeRepository pipeRepository;
     private final ApplicationSecretRepository secretRepository;
     private final HookManagementService managementService;
     private final HookCsvCodec codec;
     private final ApplicationEventLogger eventLogger;
 
     public HookCsvService(HookRepository hookRepository, AlertRepository alertRepository,
-            ProcedureRepository procedureRepository, ApplicationSecretRepository secretRepository,
+            ProcedureRepository procedureRepository, PipeRepository pipeRepository,
+            ApplicationSecretRepository secretRepository,
             HookManagementService managementService, HookCsvCodec codec, ApplicationEventLogger eventLogger) {
         this.hookRepository = hookRepository;
         this.alertRepository = alertRepository;
         this.procedureRepository = procedureRepository;
+        this.pipeRepository = pipeRepository;
         this.secretRepository = secretRepository;
         this.managementService = managementService;
         this.codec = codec;
@@ -89,6 +94,7 @@ public class HookCsvService {
 
         Map<String, Alert> alerts = byName(alertRepository.findAll(), Alert::getName);
         Map<String, Procedure> procedures = byName(procedureRepository.findAll(), Procedure::getName);
+        Map<String, Pipe> pipes = byName(pipeRepository.findAll(), Pipe::getName);
         Map<String, ApplicationSecret> secrets = byName(secretRepository.findAll(), ApplicationSecret::getName);
         List<Hook> existing = hookRepository.findAll(Sort.by("name"));
         Map<String, Hook> hooks = byName(existing, Hook::getName);
@@ -100,7 +106,7 @@ public class HookCsvService {
         List<Resolved> resolved = new ArrayList<>();
         for (HookCsvCodec.ImportRow row : read.rows()) {
             try {
-                resolved.add(resolve(row, hooks.get(key(row.name())), alerts, procedures, secrets, publicIds));
+                resolved.add(resolve(row, hooks.get(key(row.name())), alerts, procedures, pipes, secrets, publicIds));
             } catch (HookCsvCodec.RowException exception) {
                 errors.add(new HookImportError(row.rowNumber(), row.name(), exception.getMessage()));
             }
@@ -137,7 +143,8 @@ public class HookCsvService {
     }
 
     private Resolved resolve(HookCsvCodec.ImportRow row, Hook existing, Map<String, Alert> alerts,
-            Map<String, Procedure> procedures, Map<String, ApplicationSecret> secrets, Set<UUID> publicIds) {
+            Map<String, Procedure> procedures, Map<String, Pipe> pipes,
+            Map<String, ApplicationSecret> secrets, Set<UUID> publicIds) {
         Long tokenSecretId = null;
         if (row.tokenSecret() != null) {
             ApplicationSecret secret = secrets.get(key(row.tokenSecret()));
@@ -157,17 +164,26 @@ public class HookCsvService {
         List<HookTargetRequest> targets = new ArrayList<>();
         for (HookCsvCodec.ImportTarget target : row.targets()) {
             Long resourceId;
-            if (target.type() == HookTargetType.ALERT) {
-                Alert alert = alerts.get(key(target.name()));
-                if (alert == null) throw new HookCsvCodec.RowException("alert '" + target.name() + NOT_FOUND_SUFFIX);
+            resourceId = switch (target.type()) {
+                case ALERT -> {
+                    Alert alert = alerts.get(key(target.name()));
+                    if (alert == null) throw new HookCsvCodec.RowException("alert '" + target.name() + NOT_FOUND_SUFFIX);
 
-                resourceId = alert.getId();
-            } else {
-                Procedure procedure = procedures.get(key(target.name()));
-                if (procedure == null) throw new HookCsvCodec.RowException("procedure '" + target.name() + NOT_FOUND_SUFFIX);
+                    yield alert.getId();
+                }
+                case PROCEDURE -> {
+                    Procedure procedure = procedures.get(key(target.name()));
+                    if (procedure == null) throw new HookCsvCodec.RowException("procedure '" + target.name() + NOT_FOUND_SUFFIX);
 
-                resourceId = procedure.getId();
-            }
+                    yield procedure.getId();
+                }
+                case PIPE -> {
+                    Pipe pipe = pipes.get(key(target.name()));
+                    if (pipe == null) throw new HookCsvCodec.RowException("Pipe '" + target.name() + NOT_FOUND_SUFFIX);
+
+                    yield pipe.getId();
+                }
+            };
             targets.add(new HookTargetRequest(target.type(), resourceId, target.continueOn(), Duration.ofMillis(target.busyWaitTimeoutMillis())));
         }
         if (existing == null && row.publicId() != null) publicIds.add(row.publicId());
@@ -199,8 +215,11 @@ public class HookCsvService {
     }
 
     private static String fingerprint(HookTarget target) {
-        boolean alert = target.getTargetType() == HookTargetType.ALERT;
-        Long resourceId = alert ? target.getAlert().getId() : target.getProcedure().getId();
+        Long resourceId = switch (target.getTargetType()) {
+            case ALERT -> target.getAlert().getId();
+            case PROCEDURE -> target.getProcedure().getId();
+            case PIPE -> target.getPipe().getId();
+        };
         return target.getTargetType() + " " + resourceId + " " + new TreeSet<>(target.getContinueOn()) + " " + target.getBusyWaitTimeoutMillis();
     }
 

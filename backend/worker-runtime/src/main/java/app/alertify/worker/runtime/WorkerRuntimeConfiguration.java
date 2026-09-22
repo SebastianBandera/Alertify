@@ -12,6 +12,7 @@ import org.springframework.context.annotation.Import;
     WorkerExecutionTracker.class,
     WorkerResourceMonitor.class,
     BinaryExecutionGuard.class,
+    WorkerArtifactStore.class,
     WorkerExecutionEngine.class,
     ProcedureExecutionEngine.class,
     AlertWorkerGrpcService.class,

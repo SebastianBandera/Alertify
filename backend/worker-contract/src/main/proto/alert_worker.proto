@@ -12,6 +12,9 @@ import "google/protobuf/timestamp.proto";
 service AlertWorkerService {
   rpc Execute(stream ExecutionClientMessage) returns (stream ExecutionWorkerMessage);
   rpc GetStatus(google.protobuf.Empty) returns (WorkerStatusResponse);
+  rpc ReadArtifact(ArtifactRequest) returns (stream ArtifactChunk);
+  rpc WriteArtifact(stream ArtifactWriteRequest) returns (ArtifactDescriptor);
+  rpc DeleteArtifact(ArtifactRequest) returns (google.protobuf.Empty);
 }
 
 message ExecutionClientMessage {
@@ -20,6 +23,7 @@ message ExecutionClientMessage {
     ExecuteProcedureRequest start_procedure = 2;
     SynchronizeTemplateRequest template_source = 3;
     ProcedureInvocationReply procedure_reply = 4;
+    PipeInvocationReply pipe_reply = 5;
   }
 }
 
@@ -30,6 +34,7 @@ message ExecutionWorkerMessage {
     ProcedureInvocationCall procedure_call = 3;
     AlertExecutionResult alert_result = 4;
     ProcedureExecutionResult procedure_result = 5;
+    PipeInvocationCall pipe_call = 6;
   }
 }
 
@@ -56,6 +61,9 @@ message AlertParameter {
   string invocation_token = 10;
   bytes binary_value = 11;
   optional int64 binding_version = 12;
+  int64 pipe_id = 13;
+  string pipe_invocation_token = 14;
+  ArtifactDescriptor artifact = 15;
 }
 
 enum AlertParameterValueSource {
@@ -64,6 +72,8 @@ enum AlertParameterValueSource {
   ALERT_PARAMETER_VALUE_SOURCE_CONFIGURATION = 2;
   ALERT_PARAMETER_VALUE_SOURCE_SECRET = 3;
   ALERT_PARAMETER_VALUE_SOURCE_PROCEDURE = 4;
+  ALERT_PARAMETER_VALUE_SOURCE_PIPE = 5;
+  ALERT_PARAMETER_VALUE_SOURCE_PIPE_OUTPUT = 6;
 }
 
 message ExecuteProcedureRequest {
@@ -78,6 +88,7 @@ message ExecuteProcedureRequest {
   string parent_execution_id = 9;
   ProcedureParentKind parent_kind = 10;
   int32 depth = 11;
+  string artifact_expires_at = 12;
 }
 
 message ProcedureInvocationCall {
@@ -91,6 +102,46 @@ message ProcedureInvocationReply {
     ProcedureInvocationResult result = 2;
     ProcedureInvocationFailure failure = 3;
   }
+}
+
+message PipeInvocationCall {
+  string invocation_id = 1;
+  string invocation_token = 2;
+}
+
+message PipeInvocationReply {
+  string invocation_id = 1;
+  oneof outcome {
+    PipeInvocationResult result = 2;
+    PipeInvocationFailure failure = 3;
+  }
+}
+
+message InvokePipeResponse {
+  oneof outcome {
+    PipeInvocationResult result = 1;
+    PipeInvocationFailure failure = 2;
+  }
+}
+
+message PipeInvocationResult {
+  string execution_id = 1;
+  string result_json = 2;
+}
+
+enum PipeInvocationFailureKind {
+  PIPE_INVOCATION_FAILURE_KIND_UNSPECIFIED = 0;
+  PIPE_INVOCATION_FAILURE_KIND_DISABLED = 1;
+  PIPE_INVOCATION_FAILURE_KIND_DEPTH_EXCEEDED = 2;
+  PIPE_INVOCATION_FAILURE_KIND_ERROR = 3;
+  PIPE_INVOCATION_FAILURE_KIND_BUSY = 4;
+}
+
+message PipeInvocationFailure {
+  PipeInvocationFailureKind kind = 1;
+  string execution_id = 2;
+  string message = 3;
+  ExecutionError error = 4;
 }
 
 message InvokeProcedureResponse {
@@ -181,6 +232,40 @@ message ProcedureExecutionResult {
   string worker_instance_id = 8;
   repeated WritableConfigurationValue writable_configuration_values = 9;
   repeated WritableSecretValue writable_secret_values = 10;
+  repeated ArtifactDescriptor artifacts = 11;
+}
+
+message ArtifactDescriptor {
+  string output_key = 1;
+  string artifact_id = 2;
+  string file_name = 3;
+  string media_type = 4;
+  int64 size = 5;
+  bytes sha256 = 6;
+}
+
+message ArtifactRequest {
+  string artifact_id = 1;
+}
+
+message ArtifactChunk {
+  bytes data = 1;
+}
+
+message ArtifactWriteHeader {
+  string output_key = 1;
+  string file_name = 2;
+  string media_type = 3;
+  int64 expected_size = 4;
+  bytes expected_sha256 = 5;
+  string expires_at = 6;
+}
+
+message ArtifactWriteRequest {
+  oneof payload {
+    ArtifactWriteHeader header = 1;
+    ArtifactChunk chunk = 2;
+  }
 }
 
 message WritableConfigurationValue {

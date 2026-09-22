@@ -9,5 +9,7 @@ public enum AlertParameterSource {
     TEXT,
     CONFIGURATION,
     SECRET,
-    PROCEDURE
+    PROCEDURE,
+    PIPE,
+    PIPE_OUTPUT
 }

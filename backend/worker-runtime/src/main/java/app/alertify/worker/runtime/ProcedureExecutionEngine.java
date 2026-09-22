@@ -37,20 +37,22 @@ class ProcedureExecutionEngine implements AutoCloseable {
     private final WorkerRuntimeProperties properties;
     private final WorkerInstanceIdentity identity;
     private final BinaryExecutionGuard binaryExecutionGuard;
+    private final WorkerArtifactStore artifactStore;
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
     private final JsonMapper jsonMapper = JsonMapper.builder().build();
 
     ProcedureExecutionEngine(AlertTemplateCompiler compiler, WorkerExecutionTracker tracker, WorkerRuntimeProperties properties, WorkerInstanceIdentity identity) {
-        this(compiler, tracker, properties, identity, new BinaryExecutionGuard());
+        this(compiler, tracker, properties, identity, new BinaryExecutionGuard(), new WorkerArtifactStore(properties));
     }
 
     @Autowired
-    ProcedureExecutionEngine(AlertTemplateCompiler compiler, WorkerExecutionTracker tracker, WorkerRuntimeProperties properties, WorkerInstanceIdentity identity, BinaryExecutionGuard binaryExecutionGuard) {
+    ProcedureExecutionEngine(AlertTemplateCompiler compiler, WorkerExecutionTracker tracker, WorkerRuntimeProperties properties, WorkerInstanceIdentity identity, BinaryExecutionGuard binaryExecutionGuard, WorkerArtifactStore artifactStore) {
         this.compiler = compiler;
         this.tracker = tracker;
         this.properties = properties;
         this.identity = identity;
         this.binaryExecutionGuard = binaryExecutionGuard;
+        this.artifactStore = artifactStore;
     }
 
     void execute(ExecuteProcedureRequest request, StreamObserver<ProcedureExecutionResult> observer, Deadline deadline, ProcedureHandleFactory handles) {
@@ -59,6 +61,7 @@ class ProcedureExecutionEngine implements AutoCloseable {
     }
 
     private void run(ExecuteProcedureRequest request, StreamObserver<ProcedureExecutionResult> observer, Instant startedAt, Deadline deadline, ProcedureHandleFactory handles) {
+        CompiledProcedureTemplate.Instance instance = null;
         try (WorkerExecutionTracker.ProcedurePermit permit = tracker.startProcedure(request, Instant.now());
                 BinaryExecutionGuard.Lease ignored = binaryExecutionGuard.acquire(request)) {
             Map<String, AlertParameterSource> sources = request.getParametersList().stream()
@@ -66,7 +69,11 @@ class ProcedureExecutionEngine implements AutoCloseable {
                             parameter -> source(parameter.getSource())));
             ProcedureExecutionContext context = new ProcedureExecutionContext(permit.workStartedAt(), sources);
             CompiledProcedureTemplate template = compiler.getProcedure(request.getTemplateClassName(), request.getSourceChecksum());
-            ProcedureEvaluator evaluator = template.newInstance(request.getParametersList(), handles, deadline);
+            Instant expiresAt = request.getArtifactExpiresAt().isBlank()
+                    ? Instant.now().plusSeconds(15 * 60) : Instant.parse(request.getArtifactExpiresAt());
+            instance = template.newInstance(request.getParametersList(), handles,
+                    new PipeHandleFactory(handles.pipeInvoker()), deadline, artifactStore, expiresAt);
+            ProcedureEvaluator evaluator = instance.evaluator();
             JsonNode result = evaluator.execute(context);
             if (result == null)
                 throw new IllegalStateException("Procedure template returned Java null; a JsonNode is required");
@@ -82,9 +89,13 @@ class ProcedureExecutionEngine implements AutoCloseable {
                     .setWorkerInstanceId(identity.id())
                     .addAllWritableConfigurationValues(writable.configurationValues())
                     .addAllWritableSecretValues(writable.secretValues())
+                    .addAllArtifacts(instance.finishOutputs())
                     .build());
             observer.onCompleted();
         } catch (Throwable exception) {
+            if (instance != null)
+                instance.abortOutputs();
+
             if (exception instanceof InterruptedException)
                 Thread.currentThread().interrupt();
 
@@ -110,6 +121,8 @@ class ProcedureExecutionEngine implements AutoCloseable {
             case ALERT_PARAMETER_VALUE_SOURCE_CONFIGURATION -> AlertParameterSource.CONFIGURATION;
             case ALERT_PARAMETER_VALUE_SOURCE_SECRET -> AlertParameterSource.SECRET;
             case ALERT_PARAMETER_VALUE_SOURCE_PROCEDURE -> AlertParameterSource.PROCEDURE;
+            case ALERT_PARAMETER_VALUE_SOURCE_PIPE -> AlertParameterSource.PIPE;
+            case ALERT_PARAMETER_VALUE_SOURCE_PIPE_OUTPUT -> AlertParameterSource.PIPE_OUTPUT;
             case ALERT_PARAMETER_VALUE_SOURCE_UNSPECIFIED, UNRECOGNIZED ->
                     throw new IllegalArgumentException("Procedure parameter source must be specified");
         };
@@ -117,4 +130,6 @@ class ProcedureExecutionEngine implements AutoCloseable {
 
     @Override
     public void close() { executor.close(); }
+
+    WorkerArtifactStore artifactStore() { return artifactStore; }
 }

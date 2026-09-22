@@ -46,6 +46,16 @@ export interface ProcedureTemplate {
   readonly tags: readonly { nameKey: string; color: string | null }[];
   readonly procedureCount: number;
   readonly parameters: readonly ProcedureTemplateParameter[];
+  readonly outputs: readonly ProcedureTemplateOutput[];
+}
+
+export interface ProcedureTemplateOutput {
+  readonly id: number;
+  readonly version: number;
+  readonly key: string;
+  readonly order: number;
+  readonly createdAt: string;
+  readonly updatedAt: string;
 }
 
 export interface ProcedureParameterValue {
@@ -60,6 +70,8 @@ export interface ProcedureParameterValue {
   readonly secretName: string | null;
   readonly procedureId: number | null;
   readonly procedureName: string | null;
+  readonly pipeId: number | null;
+  readonly pipeName: string | null;
 }
 
 export interface Procedure {
@@ -86,6 +98,7 @@ export interface ProcedureParameterWriteRequest {
   readonly configurationId: number | null;
   readonly secretId: number | null;
   readonly procedureId: number | null;
+  readonly pipeId: number | null;
 }
 
 export interface ProcedureWriteRequest {
@@ -112,6 +125,7 @@ export interface ProcedureBindingOptions {
   readonly configurations: readonly ProcedureBindingOption[];
   readonly secrets: readonly ProcedureBindingOption[];
   readonly procedures: readonly ProcedureBindingOption[];
+  readonly pipes: readonly ProcedureBindingOption[];
 }
 
 export interface ProcedureExecution {
@@ -121,7 +135,7 @@ export interface ProcedureExecution {
   readonly procedureName: string;
   readonly procedureVersion: number;
   readonly status: ProcedureExecutionStatus;
-  readonly trigger: 'CRON' | 'MANUAL' | 'ALERT' | 'PROCEDURE' | 'HOOK';
+  readonly trigger: 'CRON' | 'MANUAL' | 'ALERT' | 'PROCEDURE' | 'PIPE' | 'HOOK';
   readonly rootExecutionId: string;
   readonly parentAlertExecutionId: string | null;
   readonly parentProcedureExecutionId: string | null;

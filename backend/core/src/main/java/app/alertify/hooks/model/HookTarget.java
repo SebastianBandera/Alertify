@@ -16,6 +16,7 @@ import org.hibernate.type.SqlTypes;
 
 import app.alertify.alerts.model.Alert;
 import app.alertify.procedures.model.Procedure;
+import app.alertify.pipes.model.Pipe;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -62,6 +63,10 @@ public class HookTarget {
     @JoinColumn(name = "procedure_id")
     private Procedure procedure;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "pipe_id")
+    private Pipe pipe;
+
     @Column(nullable = false)
     private int position;
 
@@ -85,28 +90,34 @@ public class HookTarget {
     protected HookTarget() {
     }
 
-    private HookTarget(Hook hook, HookTargetType targetType, Alert alert, Procedure procedure, int position, List<String> continueOn, long busyWaitTimeoutMillis) {
+    private HookTarget(Hook hook, HookTargetType targetType, Alert alert, Procedure procedure, Pipe pipe, int position, List<String> continueOn, long busyWaitTimeoutMillis) {
         this.hook = Objects.requireNonNull(hook);
         this.targetType = Objects.requireNonNull(targetType);
         this.alert = alert;
         this.procedure = procedure;
+        this.pipe = pipe;
         this.position = position;
         this.continueOn.addAll(continueOn);
         this.busyWaitTimeoutMillis = busyWaitTimeoutMillis;
     }
 
     public static HookTarget alert(Hook hook, Alert alert, int position, List<String> continueOn, long busyWaitTimeoutMillis) {
-        return new HookTarget(hook, HookTargetType.ALERT, Objects.requireNonNull(alert), null, position, continueOn, busyWaitTimeoutMillis);
+        return new HookTarget(hook, HookTargetType.ALERT, Objects.requireNonNull(alert), null, null, position, continueOn, busyWaitTimeoutMillis);
     }
 
     public static HookTarget procedure(Hook hook, Procedure procedure, int position, List<String> continueOn, long busyWaitTimeoutMillis) {
-        return new HookTarget(hook, HookTargetType.PROCEDURE, null, Objects.requireNonNull(procedure), position, continueOn, busyWaitTimeoutMillis);
+        return new HookTarget(hook, HookTargetType.PROCEDURE, null, Objects.requireNonNull(procedure), null, position, continueOn, busyWaitTimeoutMillis);
+    }
+
+    public static HookTarget pipe(Hook hook, Pipe pipe, int position, List<String> continueOn, long busyWaitTimeoutMillis) {
+        return new HookTarget(hook, HookTargetType.PIPE, null, null, Objects.requireNonNull(pipe), position, continueOn, busyWaitTimeoutMillis);
     }
 
     public Long getId() { return id; }
     public HookTargetType getTargetType() { return targetType; }
     public Alert getAlert() { return alert; }
     public Procedure getProcedure() { return procedure; }
+    public Pipe getPipe() { return pipe; }
     public int getPosition() { return position; }
     public List<String> getContinueOn() { return Collections.unmodifiableList(continueOn); }
     public long getBusyWaitTimeoutMillis() { return busyWaitTimeoutMillis; }

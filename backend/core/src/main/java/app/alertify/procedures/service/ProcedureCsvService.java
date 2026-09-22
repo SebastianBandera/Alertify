@@ -29,6 +29,7 @@ import app.alertify.jpa.repository.ApplicationSecretRepository;
 import app.alertify.jpa.repository.ProcedureParameterValueRepository;
 import app.alertify.jpa.repository.ProcedureRepository;
 import app.alertify.jpa.repository.ProcedureTemplateDefinitionRepository;
+import app.alertify.jpa.repository.PipeRepository;
 import app.alertify.jpa.repository.TagRepository;
 import app.alertify.logging.ApplicationEventLogger;
 import app.alertify.procedures.api.ProcedureImportResult;
@@ -37,6 +38,7 @@ import app.alertify.procedures.api.ProcedureUpdateRequest;
 import app.alertify.procedures.model.Procedure;
 import app.alertify.procedures.model.ProcedureParameterValue;
 import app.alertify.procedures.model.ProcedureTemplateDefinition;
+import app.alertify.pipes.model.Pipe;
 
 /** Atomic CSV import/export. A shell pass permits mutually recursive procedure references. */
 @Service
@@ -49,6 +51,7 @@ public class ProcedureCsvService {
     private final ProcedureTemplateDefinitionRepository templateRepository;
     private final ApplicationConfigurationRepository configurationRepository;
     private final ApplicationSecretRepository secretRepository;
+    private final PipeRepository pipeRepository;
     private final TagRepository tagRepository;
     private final ProcedureManagementService managementService;
     private final ProcedureCsvCodec codec;
@@ -58,7 +61,8 @@ public class ProcedureCsvService {
             ProcedureParameterValueRepository parameterRepository,
             ProcedureTemplateDefinitionRepository templateRepository,
             ApplicationConfigurationRepository configurationRepository,
-            ApplicationSecretRepository secretRepository, TagRepository tagRepository,
+            ApplicationSecretRepository secretRepository, PipeRepository pipeRepository,
+            TagRepository tagRepository,
             ProcedureManagementService managementService, ProcedureCsvCodec codec,
             ApplicationEventLogger eventLogger) {
         this.procedureRepository = procedureRepository;
@@ -66,6 +70,7 @@ public class ProcedureCsvService {
         this.templateRepository = templateRepository;
         this.configurationRepository = configurationRepository;
         this.secretRepository = secretRepository;
+        this.pipeRepository = pipeRepository;
         this.tagRepository = tagRepository;
         this.managementService = managementService;
         this.codec = codec;
@@ -101,6 +106,7 @@ public class ProcedureCsvService {
         Map<String, ApplicationConfiguration> configurations = byName(configurationRepository.findAll(),
                 ApplicationConfiguration::getName);
         Map<String, ApplicationSecret> secrets = byName(secretRepository.findAll(), ApplicationSecret::getName);
+        Map<String, Pipe> pipes = byName(pipeRepository.findAll(), Pipe::getName);
         Set<Long> createdIds = new LinkedHashSet<>();
         int tagsCreated = 0;
 
@@ -140,7 +146,7 @@ public class ProcedureCsvService {
             Set<Long> tagIds = resolveTagIds(row, tags);
             List<ProcedureParameterValueRequest> parameters = new ArrayList<>();
             for (ProcedureCsvCodec.ImportParameter parameter : row.parameters())
-                parameters.add(parameter(row, parameter, configurations, secrets, procedures));
+                parameters.add(parameter(row, parameter, configurations, secrets, procedures, pipes));
 
             if (!createdIds.contains(procedure.getId()) && unchanged(procedure, row, tagIds, parameters)) {
                 unchanged++;
@@ -155,29 +161,36 @@ public class ProcedureCsvService {
         return new ProcedureImportResult(rows.size(), createdIds.size(), updated, unchanged, tagsCreated);
     }
 
-    private ProcedureParameterValueRequest parameter(ProcedureCsvCodec.ImportRow row, ProcedureCsvCodec.ImportParameter imported, Map<String, ApplicationConfiguration> configurations, Map<String, ApplicationSecret> secrets, Map<String, Procedure> procedures) {
+    private ProcedureParameterValueRequest parameter(ProcedureCsvCodec.ImportRow row, ProcedureCsvCodec.ImportParameter imported, Map<String, ApplicationConfiguration> configurations, Map<String, ApplicationSecret> secrets, Map<String, Procedure> procedures, Map<String, Pipe> pipes) {
         String reference = key(imported.value());
         return switch (imported.source()) {
             case TEXT -> new ProcedureParameterValueRequest(imported.key(), AlertParameterSource.TEXT,
-                    imported.value(), null, null, null);
+                    imported.value(), null, null, null, null);
             case CONFIGURATION -> {
                 ApplicationConfiguration value = configurations.get(reference);
                 if (value == null) throw error(row, "configuration '" + imported.value() + NOT_FOUND_SUFFIX);
 
-                yield new ProcedureParameterValueRequest(imported.key(), imported.source(), null, value.getId(), null, null);
+                yield new ProcedureParameterValueRequest(imported.key(), imported.source(), null, value.getId(), null, null, null);
             }
             case SECRET -> {
                 ApplicationSecret value = secrets.get(reference);
                 if (value == null) throw error(row, "secret '" + imported.value() + NOT_FOUND_SUFFIX);
 
-                yield new ProcedureParameterValueRequest(imported.key(), imported.source(), null, null, value.getId(), null);
+                yield new ProcedureParameterValueRequest(imported.key(), imported.source(), null, null, value.getId(), null, null);
             }
             case PROCEDURE -> {
                 Procedure value = procedures.get(reference);
                 if (value == null) throw error(row, "procedure '" + imported.value() + NOT_FOUND_SUFFIX);
 
-                yield new ProcedureParameterValueRequest(imported.key(), imported.source(), null, null, null, value.getId());
+                yield new ProcedureParameterValueRequest(imported.key(), imported.source(), null, null, null, value.getId(), null);
             }
+            case PIPE -> {
+                Pipe value = pipes.get(reference);
+                if (value == null) throw error(row, "Pipe '" + imported.value() + NOT_FOUND_SUFFIX);
+
+                yield new ProcedureParameterValueRequest(imported.key(), imported.source(), null, null, null, null, value.getId());
+            }
+            case PIPE_OUTPUT -> throw error(row, "PIPE_OUTPUT is contextual and cannot be imported as a Procedure value");
         };
     }
 
@@ -213,6 +226,8 @@ public class ProcedureCsvService {
             case CONFIGURATION -> value.getConfiguration().getId();
             case SECRET -> value.getSecret().getId();
             case PROCEDURE -> value.getReferencedProcedure().getId();
+            case PIPE -> value.getReferencedPipe().getId();
+            case PIPE_OUTPUT -> throw new IllegalStateException("PIPE_OUTPUT cannot be persisted as a Procedure value");
         };
         return value.getSource() + " " + reference;
     }
@@ -223,6 +238,8 @@ public class ProcedureCsvService {
             case CONFIGURATION -> value.configurationId();
             case SECRET -> value.secretId();
             case PROCEDURE -> value.procedureId();
+            case PIPE -> value.pipeId();
+            case PIPE_OUTPUT -> throw new IllegalStateException("PIPE_OUTPUT cannot be requested as a Procedure value");
         };
         return value.source() + " " + reference;
     }

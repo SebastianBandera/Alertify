@@ -16,9 +16,11 @@ import app.alertify.configuration.service.WritableConfigurationService;
 import app.alertify.grpc.discovery.WorkerEndpoint;
 import app.alertify.jpa.repository.ProcedureExecutionRepository;
 import app.alertify.jpa.repository.ProcedureRepository;
+import app.alertify.jpa.repository.ProcedureArtifactMetadataRepository;
 import app.alertify.logging.ApplicationEventLogger;
 import app.alertify.procedures.model.Procedure;
 import app.alertify.procedures.model.ProcedureExecution;
+import app.alertify.procedures.model.ProcedureArtifactMetadata;
 import app.alertify.services.secret.WritableSecretService;
 import app.alertify.worker.grpc.ExecutionError;
 import app.alertify.worker.grpc.ProcedureExecutionResult;
@@ -46,27 +48,35 @@ public class ProcedureExecutionPersistenceService {
     private final WritableSecretService writableSecretService;
     private final ApplicationEventLogger eventLogger;
     private final JsonMapper jsonMapper;
+    private final ProcedureArtifactMetadataRepository artifactRepository;
 
     public ProcedureExecutionPersistenceService(ProcedureRepository procedureRepository,
             ProcedureExecutionRepository executionRepository,
             WritableConfigurationService writableConfigurationService,
             WritableSecretService writableSecretService, ApplicationEventLogger eventLogger,
-            JsonMapper jsonMapper) {
+            JsonMapper jsonMapper, ProcedureArtifactMetadataRepository artifactRepository) {
         this.procedureRepository = procedureRepository;
         this.executionRepository = executionRepository;
         this.writableConfigurationService = writableConfigurationService;
         this.writableSecretService = writableSecretService;
         this.eventLogger = eventLogger;
         this.jsonMapper = jsonMapper;
+        this.artifactRepository = artifactRepository;
     }
 
     @Transactional
     public void start(UUID executionId, PreparedProcedureExecution prepared, ProcedureExecutionTrigger trigger, UUID rootExecutionId, UUID parentAlertExecutionId, UUID parentProcedureExecutionId, int depth, Instant startedAt, String triggeredBy) {
+        start(executionId, prepared, trigger, rootExecutionId, parentAlertExecutionId, parentProcedureExecutionId,
+                null, depth, startedAt, triggeredBy);
+    }
+
+    @Transactional
+    public void start(UUID executionId, PreparedProcedureExecution prepared, ProcedureExecutionTrigger trigger, UUID rootExecutionId, UUID parentAlertExecutionId, UUID parentProcedureExecutionId, UUID parentPipeExecutionId, int depth, Instant startedAt, String triggeredBy) {
         Procedure procedure = procedureRepository.findById(prepared.procedureId())
                 .orElseThrow(() -> new IllegalStateException("Procedure " + prepared.procedureId() + " was not found"));
         executionRepository.saveAndFlush(ProcedureExecution.running(executionId, procedure,
                 prepared.procedureVersion(), trigger, rootExecutionId, parentAlertExecutionId,
-                parentProcedureExecutionId, depth, startedAt, triggeredBy));
+                parentProcedureExecutionId, parentPipeExecutionId, depth, startedAt, triggeredBy));
     }
 
     @Transactional
@@ -84,6 +94,10 @@ public class ProcedureExecutionPersistenceService {
         JsonNode value = parse(result.getResultJson());
         execution.complete(worker, instant(result.getWorkStartedAt()), instant(result.getFinishedAt()),
                 value, sensitiveResult);
+        for (var artifact : result.getArtifactsList())
+            artifactRepository.save(new ProcedureArtifactMetadata(execution, artifact.getOutputKey(),
+                    artifact.getFileName(), artifact.getMediaType(), artifact.getSize(), artifact.getSha256().toByteArray()));
+
         executionRepository.flush();
         writableConfigurationService.applyProcedure(execution.getProcedure().getId(),
                 execution.getProcedure().getName(), executionId, result.getWritableConfigurationValuesList());

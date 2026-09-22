@@ -55,8 +55,12 @@ class HookCsvCodec {
     }
 
     private static ExportTarget exportTarget(HookTarget target) {
-        boolean alert = target.getTargetType() == HookTargetType.ALERT;
-        return new ExportTarget(target.getTargetType(), alert ? target.getAlert().getName() : target.getProcedure().getName(),
+        String resourceName = switch (target.getTargetType()) {
+            case ALERT -> target.getAlert().getName();
+            case PROCEDURE -> target.getProcedure().getName();
+            case PIPE -> target.getPipe().getName();
+        };
+        return new ExportTarget(target.getTargetType(), resourceName,
                 target.getContinueOn(), target.getBusyWaitTimeoutMillis());
     }
 

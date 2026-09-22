@@ -1,7 +1,8 @@
 import { DatePipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, ElementRef, OnDestroy, OnInit, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, OnDestroy, OnInit, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 
 import { ApiRequestError } from '../../core/api/configuration-api.service';
 import {
@@ -50,6 +51,10 @@ interface TokenSecretForm {
 const EMPTY_OPTIONS: HookOptions = { targets: [], secrets: [] };
 const ALL_OUTCOMES: readonly HookOutcome[] = ['SUCCESS', 'WARN', 'ERROR'];
 
+function hookTab(value: string | null): HookTab {
+  return value === 'history' ? 'history' : 'hooks';
+}
+
 @Component({
   selector: 'app-hooks',
   imports: [DatePipe, FormsModule, RouterLink],
@@ -62,6 +67,9 @@ export class HooksComponent implements OnInit, OnDestroy {
   private readonly api = inject(HookApiService);
   private readonly secretApi = inject(SecretApiService);
   private readonly elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
+  private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
+  private readonly destroyRef = inject(DestroyRef);
 
   protected readonly activeTab = signal<HookTab>('hooks');
   protected readonly hooks = signal<readonly Hook[]>([]);
@@ -94,7 +102,27 @@ export class HooksComponent implements OnInit, OnDestroy {
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
 
   async ngOnInit(): Promise<void> {
+    const requestedTab = this.route.snapshot.queryParamMap.get('tab');
+    this.activeTab.set(hookTab(requestedTab));
+    this.route.queryParamMap
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((parameters) => {
+        const tab = hookTab(parameters.get('tab'));
+        if (tab === this.activeTab()) return;
+
+        this.activeTab.set(tab);
+        void this.loadTab(tab);
+      });
+    if (requestedTab !== this.activeTab()) {
+      void this.router.navigate([], {
+        relativeTo: this.route,
+        queryParams: { tab: this.activeTab() },
+        queryParamsHandling: 'merge',
+        replaceUrl: true,
+      });
+    }
     await this.loadAll();
+    if (this.activeTab() === 'history') this.startRefresh();
   }
 
   ngOnDestroy(): void {
@@ -105,6 +133,17 @@ export class HooksComponent implements OnInit, OnDestroy {
 
   protected async changeTab(tab: HookTab): Promise<void> {
     this.activeTab.set(tab);
+    await Promise.all([
+      this.router.navigate([], {
+        relativeTo: this.route,
+        queryParams: { tab },
+        queryParamsHandling: 'merge',
+      }),
+      this.loadTab(tab),
+    ]);
+  }
+
+  private async loadTab(tab: HookTab): Promise<void> {
     if (tab === 'history') {
       await this.loadHistory();
       this.startRefresh();

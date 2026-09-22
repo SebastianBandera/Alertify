@@ -124,6 +124,16 @@ public class ApiExceptionHandler {
         return response(HttpStatus.BAD_REQUEST, "INVALID_HOOK_REQUEST", exception.getMessage(), Map.of(), exception, request);
     }
 
+    @ExceptionHandler(InvalidPipeRequestException.class)
+    ResponseEntity<ApiError> handleInvalidPipeRequest(InvalidPipeRequestException exception, HttpServletRequest request) {
+        return response(HttpStatus.BAD_REQUEST, "INVALID_PIPE_REQUEST", exception.getMessage(), Map.of(), exception, request);
+    }
+
+    @ExceptionHandler(InvalidPipeImportException.class)
+    ResponseEntity<ApiError> handleInvalidPipeImport(InvalidPipeImportException exception, HttpServletRequest request) {
+        return response(HttpStatus.BAD_REQUEST, "INVALID_PIPE_IMPORT", exception.getMessage(), Map.of(), exception, request);
+    }
+
     @ExceptionHandler(HookInvocationRejectedException.class)
     ResponseEntity<ApiError> handleHookInvocationRejected(HookInvocationRejectedException exception, HttpServletRequest request) {
         return response(exception.getStatus(), exception.getCode(), exception.getMessage(), Map.of(), exception, request);

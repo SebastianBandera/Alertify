@@ -14,6 +14,8 @@ import app.alertify.jpa.repository.ApplicationSecretRepository;
 import app.alertify.jpa.repository.ProcedureRepository;
 import app.alertify.jpa.repository.ProcedureTemplateDefinitionRepository;
 import app.alertify.jpa.repository.ProcedureTemplateParameterDefinitionRepository;
+import app.alertify.jpa.repository.ProcedureTemplateOutputDefinitionRepository;
+import app.alertify.jpa.repository.PipeRepository;
 import app.alertify.logging.ApplicationEventLogger;
 import app.alertify.procedures.api.ProcedureBindingOptionResponse;
 import app.alertify.procedures.api.ProcedureBindingOptionsResponse;
@@ -31,19 +33,23 @@ public class ProcedureCatalogService {
     private final ProcedureTemplateDefinitionRepository templateRepository;
     private final ProcedureTemplateParameterDefinitionRepository parameterRepository;
     private final ProcedureRepository procedureRepository;
+    private final ProcedureTemplateOutputDefinitionRepository outputRepository;
     private final ApplicationConfigurationRepository configurationRepository;
     private final ApplicationSecretRepository secretRepository;
+    private final PipeRepository pipeRepository;
     private final ApplicationEventLogger eventLogger;
 
     public ProcedureCatalogService(ProcedureTemplateDefinitionRepository templateRepository,
             ProcedureTemplateParameterDefinitionRepository parameterRepository,
-            ProcedureRepository procedureRepository, ApplicationConfigurationRepository configurationRepository,
-            ApplicationSecretRepository secretRepository, ApplicationEventLogger eventLogger) {
+            ProcedureTemplateOutputDefinitionRepository outputRepository, ProcedureRepository procedureRepository, ApplicationConfigurationRepository configurationRepository,
+            ApplicationSecretRepository secretRepository, PipeRepository pipeRepository, ApplicationEventLogger eventLogger) {
         this.templateRepository = templateRepository;
         this.parameterRepository = parameterRepository;
         this.procedureRepository = procedureRepository;
+        this.outputRepository = outputRepository;
         this.configurationRepository = configurationRepository;
         this.secretRepository = secretRepository;
+        this.pipeRepository = pipeRepository;
         this.eventLogger = eventLogger;
     }
 
@@ -55,6 +61,7 @@ public class ProcedureCatalogService {
         List<ProcedureTemplateResponse> result = templateRepository.findAll(Sort.by("templateKey")).stream()
                 .map(template -> ProcedureMapper.toTemplate(template,
                         parameterRepository.findAllByTemplate_IdOrderByParameterOrderAscIdAsc(template.getId()),
+                        outputRepository.findAllByTemplate_IdOrderByOutputOrderAscIdAsc(template.getId()),
                         counts.getOrDefault(template.getId(), 0L)))
                 .toList();
         eventLogger.success("PROCEDURE_TEMPLATE_CATALOG_VIEWED", Map.of("templateCount", result.size()));
@@ -72,11 +79,15 @@ public class ProcedureCatalogService {
         var procedures = procedureRepository.findAll(Sort.by("name")).stream()
                 .map(value -> new ProcedureBindingOptionResponse(value.getId(), value.getName(), value.getDescription(), value.isEnabled()))
                 .toList();
+        var pipes = pipeRepository.findAll(Sort.by("name")).stream()
+                .map(value -> new ProcedureBindingOptionResponse(value.getId(), value.getName(), value.getDescription(), value.isEnabled()))
+                .toList();
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("configurationCount", configurations.size());
         data.put("secretCount", secrets.size());
         data.put("procedureCount", procedures.size());
+        data.put("pipeCount", pipes.size());
         eventLogger.success("PROCEDURE_BINDING_CATALOG_ACCESSED", data);
-        return new ProcedureBindingOptionsResponse(configurations, secrets, procedures);
+        return new ProcedureBindingOptionsResponse(configurations, secrets, procedures, pipes);
     }
 }

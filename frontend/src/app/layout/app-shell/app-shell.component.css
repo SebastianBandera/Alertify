@@ -266,6 +266,11 @@
   -webkit-mask-image: url('../../../../public/icons/procedures.svg');
 }
 
+.navigation__icon--pipes {
+  mask-image: url('../../../../public/icons/pipes.svg');
+  -webkit-mask-image: url('../../../../public/icons/pipes.svg');
+}
+
 .navigation__icon--hooks {
   mask-image: url('../../../../public/icons/hooks.svg');
   -webkit-mask-image: url('../../../../public/icons/hooks.svg');

@@ -36,7 +36,8 @@ COPY --chown=application:application start-worker-playwright.sh /application/sta
 
 RUN chmod 0755 /application/start-worker-playwright.sh \
     && mkdir -p /application/compiled-alerts \
-    && chown application:application /application/compiled-alerts
+    && mkdir -p /application/artifacts \
+    && chown application:application /application/compiled-alerts /application/artifacts
 
 USER application
 

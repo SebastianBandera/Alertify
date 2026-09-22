@@ -43,6 +43,7 @@ import app.alertify.jpa.repository.ProcedureRepository;
 import app.alertify.jpa.repository.ProcedureTemplateDefinitionRepository;
 import app.alertify.jpa.repository.ProcedureTemplateParameterDefinitionRepository;
 import app.alertify.jpa.repository.TagRepository;
+import app.alertify.jpa.repository.PipeRepository;
 import app.alertify.jpa.specification.ProcedureSpecifications;
 import app.alertify.logging.ApplicationEventLogger;
 import app.alertify.procedures.api.ProcedureCreateRequest;
@@ -57,6 +58,7 @@ import app.alertify.procedures.model.Procedure;
 import app.alertify.procedures.model.ProcedureParameterValue;
 import app.alertify.procedures.model.ProcedureTemplateDefinition;
 import app.alertify.procedures.model.ProcedureTemplateParameterDefinition;
+import app.alertify.pipes.model.Pipe;
 
 /**
  * CRUD and manual runs for user-configured procedures. Updates and deletions
@@ -86,6 +88,7 @@ public class ProcedureManagementService {
     private final ApplicationConfigurationRepository configurationRepository;
     private final ApplicationSecretRepository secretRepository;
     private final TagRepository tagRepository;
+    private final PipeRepository pipeRepository;
     private final ApplicationEventLogger eventLogger;
     private final ProcedureExecutionOrchestrator orchestrator;
     private final ProcedureScheduleService scheduleService;
@@ -98,6 +101,7 @@ public class ProcedureManagementService {
             AlertParameterValueRepository alertParameterValueRepository,
             ApplicationConfigurationRepository configurationRepository,
             ApplicationSecretRepository secretRepository, TagRepository tagRepository,
+            PipeRepository pipeRepository,
             ApplicationEventLogger eventLogger, ProcedureExecutionOrchestrator orchestrator,
             ProcedureScheduleService scheduleService) {
         this.procedureRepository = procedureRepository;
@@ -109,6 +113,7 @@ public class ProcedureManagementService {
         this.configurationRepository = configurationRepository;
         this.secretRepository = secretRepository;
         this.tagRepository = tagRepository;
+        this.pipeRepository = pipeRepository;
         this.eventLogger = eventLogger;
         this.orchestrator = orchestrator;
         this.scheduleService = scheduleService;
@@ -240,7 +245,7 @@ public class ProcedureManagementService {
             ProcedureParameterValueRequest request = requests.get(definition.getParameterKey());
             if (request == null && definition.getDefaultValue() != null)
                 request = new ProcedureParameterValueRequest(definition.getParameterKey(), AlertParameterSource.TEXT,
-                        definition.getDefaultValue(), null, null, null);
+                        definition.getDefaultValue(), null, null, null, null);
 
             if (request == null) {
                 if (definition.isRequired())
@@ -277,6 +282,8 @@ public class ProcedureManagementService {
                 case CONFIGURATION -> ProcedureParameterValue.configuration(owner, definition, configuration(definition, request.configurationId()));
                 case SECRET -> ProcedureParameterValue.secret(owner, definition, secret(definition, request.secretId()));
                 case PROCEDURE -> ProcedureParameterValue.procedure(owner, definition, procedure(request.procedureId()));
+                case PIPE -> ProcedureParameterValue.pipe(owner, definition, pipe(request.pipeId()));
+                case PIPE_OUTPUT -> throw invalid("PIPE_OUTPUT is execution context and cannot be persisted");
             };
         } catch (IllegalArgumentException exception) {
             throw invalid(exception.getMessage(), exception);
@@ -290,6 +297,8 @@ public class ProcedureManagementService {
                 case CONFIGURATION -> target.replaceWithConfiguration(configuration(definition, request.configurationId()));
                 case SECRET -> target.replaceWithSecret(secret(definition, request.secretId()));
                 case PROCEDURE -> target.replaceWithProcedure(procedure(request.procedureId()));
+                case PIPE -> target.replaceWithPipe(pipe(request.pipeId()));
+                case PIPE_OUTPUT -> throw invalid("PIPE_OUTPUT is execution context and cannot be persisted");
             }
         } catch (IllegalArgumentException exception) {
             throw invalid(exception.getMessage(), exception);
@@ -328,6 +337,10 @@ public class ProcedureManagementService {
 
     private Procedure procedure(Long id) {
         return procedureRepository.findById(id).orElseThrow(() -> notFound(PROCEDURE, id));
+    }
+
+    private Pipe pipe(Long id) {
+        return pipeRepository.findById(id).orElseThrow(() -> notFound("Pipe", id));
     }
 
     private Set<Tag> resolveTags(Set<Long> ids) {

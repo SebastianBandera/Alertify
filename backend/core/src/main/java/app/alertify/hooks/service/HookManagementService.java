@@ -39,8 +39,10 @@ import app.alertify.jpa.repository.HookInvocationRepository;
 import app.alertify.jpa.repository.HookInvocationTargetRepository;
 import app.alertify.jpa.repository.HookRepository;
 import app.alertify.jpa.repository.ProcedureRepository;
+import app.alertify.jpa.repository.PipeRepository;
 import app.alertify.logging.ApplicationEventLogger;
 import app.alertify.procedures.model.Procedure;
+import app.alertify.pipes.model.Pipe;
 import app.alertify.services.secret.SecretEncryptionService;
 
 @Service
@@ -51,6 +53,7 @@ public class HookManagementService {
     private final HookRepository hookRepository;
     private final AlertRepository alertRepository;
     private final ProcedureRepository procedureRepository;
+    private final PipeRepository pipeRepository;
     private final ApplicationSecretRepository secretRepository;
     private final HookInvocationRepository invocationRepository;
     private final HookInvocationTargetRepository invocationTargetRepository;
@@ -58,10 +61,11 @@ public class HookManagementService {
     private final HookMapper mapper;
     private final ApplicationEventLogger eventLogger;
 
-    public HookManagementService(HookRepository hookRepository, AlertRepository alertRepository, ProcedureRepository procedureRepository, ApplicationSecretRepository secretRepository, HookInvocationRepository invocationRepository, HookInvocationTargetRepository invocationTargetRepository, SecretEncryptionService encryptionService, HookMapper mapper, ApplicationEventLogger eventLogger) {
+    public HookManagementService(HookRepository hookRepository, AlertRepository alertRepository, ProcedureRepository procedureRepository, PipeRepository pipeRepository, ApplicationSecretRepository secretRepository, HookInvocationRepository invocationRepository, HookInvocationTargetRepository invocationTargetRepository, SecretEncryptionService encryptionService, HookMapper mapper, ApplicationEventLogger eventLogger) {
         this.hookRepository = hookRepository;
         this.alertRepository = alertRepository;
         this.procedureRepository = procedureRepository;
+        this.pipeRepository = pipeRepository;
         this.secretRepository = secretRepository;
         this.invocationRepository = invocationRepository;
         this.invocationTargetRepository = invocationTargetRepository;
@@ -86,6 +90,7 @@ public class HookManagementService {
         List<HookOptionResponse> targets = new ArrayList<>();
         alertRepository.findAll(Sort.by("name")).forEach(value -> targets.add(new HookOptionResponse(value.getId(), value.getName(), value.isEnabled(), HookTargetType.ALERT)));
         procedureRepository.findAll(Sort.by("name")).forEach(value -> targets.add(new HookOptionResponse(value.getId(), value.getName(), value.isEnabled(), HookTargetType.PROCEDURE)));
+        pipeRepository.findAll(Sort.by("name")).forEach(value -> targets.add(new HookOptionResponse(value.getId(), value.getName(), value.isEnabled(), HookTargetType.PIPE)));
         List<HookSecretOptionResponse> secrets = secretRepository.findAll(Sort.by("name")).stream()
                 .filter(value -> value.getValueType() == SecretValueType.STRING)
                 .map(value -> new HookSecretOptionResponse(value.getId(), value.getName(), encryptionService.isRecoverable(value))).toList();
@@ -180,12 +185,19 @@ public class HookManagementService {
             if (timeout.isZero() || timeout.isNegative())
                 throw invalid("Target busy wait timeout must be positive");
 
-            if (request.type() == HookTargetType.ALERT) {
-                Alert alert = alertRepository.findById(request.resourceId()).orElseThrow(() -> new ResourceNotFoundException("Alert " + request.resourceId() + NOT_FOUND_SUFFIX));
-                result.add(HookTarget.alert(hook, alert, position, outcomes, timeout.toMillis()));
-            } else {
-                Procedure procedure = procedureRepository.findById(request.resourceId()).orElseThrow(() -> new ResourceNotFoundException("Procedure " + request.resourceId() + NOT_FOUND_SUFFIX));
-                result.add(HookTarget.procedure(hook, procedure, position, outcomes, timeout.toMillis()));
+            switch (request.type()) {
+                case ALERT -> {
+                    Alert alert = alertRepository.findById(request.resourceId()).orElseThrow(() -> new ResourceNotFoundException("Alert " + request.resourceId() + NOT_FOUND_SUFFIX));
+                    result.add(HookTarget.alert(hook, alert, position, outcomes, timeout.toMillis()));
+                }
+                case PROCEDURE -> {
+                    Procedure procedure = procedureRepository.findById(request.resourceId()).orElseThrow(() -> new ResourceNotFoundException("Procedure " + request.resourceId() + NOT_FOUND_SUFFIX));
+                    result.add(HookTarget.procedure(hook, procedure, position, outcomes, timeout.toMillis()));
+                }
+                case PIPE -> {
+                    Pipe pipe = pipeRepository.findById(request.resourceId()).orElseThrow(() -> new ResourceNotFoundException("Pipe " + request.resourceId() + NOT_FOUND_SUFFIX));
+                    result.add(HookTarget.pipe(hook, pipe, position, outcomes, timeout.toMillis()));
+                }
             }
         }
         return result;

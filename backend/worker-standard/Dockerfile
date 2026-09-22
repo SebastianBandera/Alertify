@@ -19,7 +19,8 @@ RUN --mount=type=cache,id=alertify-maven,target=/root/.m2,sharing=locked \
 
 FROM ${WORKER_RUNTIME_IMAGE}
 
-RUN addgroup -S application \
+RUN apk add --no-cache mariadb-client nfs-utils postgresql18-client su-exec util-linux \
+    && addgroup -S application \
     && adduser -S -G application application
 
 WORKDIR /application
@@ -36,9 +37,10 @@ COPY --chown=application:application start-worker-standard.sh /application/start
 
 RUN chmod 0755 /application/start-worker-standard.sh \
     && mkdir -p /application/compiled-alerts \
-    && chown application:application /application/compiled-alerts
-
-USER application
+    && mkdir -p /application/artifacts \
+    && mkdir -p /run/alertify-nfs-helper /run/alertify-nfs-mounts \
+    && chown application:application /application/compiled-alerts /application/artifacts \
+    && chmod 0711 /run/alertify-nfs-helper /run/alertify-nfs-mounts
 
 EXPOSE 9090
 

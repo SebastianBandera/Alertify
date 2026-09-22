@@ -36,6 +36,7 @@ public record AlertParameterValueRequest(
             case CONFIGURATION -> textValue == null && configurationId != null && secretId == null && procedureId == null;
             case SECRET -> textValue == null && configurationId == null && secretId != null && procedureId == null;
             case PROCEDURE -> textValue == null && configurationId == null && secretId == null && procedureId != null;
+            case PIPE, PIPE_OUTPUT -> false;
         };
     }
 }

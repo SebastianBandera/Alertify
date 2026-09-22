@@ -4,7 +4,7 @@ import { AuthService } from '../auth/auth.service';
 import { RUNTIME_CONFIG } from '../config/runtime-config';
 import { ApiRequestError, PageResponse, TagMatchMode } from './configuration-api.service';
 
-export type AlertParameterSource = 'TEXT' | 'CONFIGURATION' | 'SECRET' | 'PROCEDURE';
+export type AlertParameterSource = 'TEXT' | 'CONFIGURATION' | 'SECRET' | 'PROCEDURE' | 'PIPE' | 'PIPE_OUTPUT';
 export type AlertExecutionStatus = 'SUCCESS' | 'WARN' | 'ERROR';
 export type WorkerCapability = 'STANDARD' | 'PLAYWRIGHT';
 

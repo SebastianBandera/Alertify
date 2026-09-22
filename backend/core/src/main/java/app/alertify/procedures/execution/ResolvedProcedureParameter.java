@@ -22,12 +22,20 @@ public record ResolvedProcedureParameter(
     Long configurationId,
     Long secretId,
     Long procedureId,
+    Long pipeId,
     boolean writable,
-    Long bindingVersion
+    Long bindingVersion,
+    String binaryFileName,
+    String binaryMediaType,
+    Long binarySize
 ) {
 
     public ResolvedProcedureParameter(String name, String javaType, String value, byte[] binaryZip, boolean nullValue, AlertParameterSource source, Long configurationId, Long secretId, Long procedureId, boolean writable) {
-        this(name, javaType, value, binaryZip, nullValue, source, configurationId, secretId, procedureId, writable, null);
+        this(name, javaType, value, binaryZip, nullValue, source, configurationId, secretId, procedureId, null, writable, null, null, null, null);
+    }
+
+    public ResolvedProcedureParameter(String name, String javaType, String value, byte[] binaryZip, boolean nullValue, AlertParameterSource source, Long configurationId, Long secretId, Long procedureId, boolean writable, Long bindingVersion) {
+        this(name, javaType, value, binaryZip, nullValue, source, configurationId, secretId, procedureId, null, writable, bindingVersion, null, null, null);
     }
 
     @Override
@@ -45,8 +53,12 @@ public record ResolvedProcedureParameter(
                 var otherConfigurationId,
                 var otherSecretId,
                 var otherProcedureId,
+                var otherPipeId,
                 var otherWritable,
-                var otherBindingVersion)))
+                var otherBindingVersion,
+                var otherBinaryFileName,
+                var otherBinaryMediaType,
+                var otherBinarySize)))
             return false;
 
         return nullValue == otherNullValue
@@ -58,14 +70,19 @@ public record ResolvedProcedureParameter(
                 && Objects.equals(configurationId, otherConfigurationId)
                 && Objects.equals(secretId, otherSecretId)
                 && Objects.equals(procedureId, otherProcedureId)
+                && Objects.equals(pipeId, otherPipeId)
                 && Objects.equals(bindingVersion, otherBindingVersion)
+                && Objects.equals(binaryFileName, otherBinaryFileName)
+                && Objects.equals(binaryMediaType, otherBinaryMediaType)
+                && Objects.equals(binarySize, otherBinarySize)
                 && Arrays.equals(binaryZip, otherBinaryZip);
     }
 
     @Override
     public int hashCode() {
         int result = Objects.hash(
-            name, javaType, value, nullValue, source, configurationId, secretId, procedureId, writable, bindingVersion
+            name, javaType, value, nullValue, source, configurationId, secretId, procedureId, pipeId, writable, bindingVersion,
+            binaryFileName, binaryMediaType, binarySize
         );
         return 31 * result + Arrays.hashCode(binaryZip);
     }
@@ -82,8 +99,12 @@ public record ResolvedProcedureParameter(
                 + ", configurationId=" + configurationId
                 + ", secretId=" + secretId
                 + ", procedureId=" + procedureId
+                + ", pipeId=" + pipeId
                 + ", writable=" + writable
                 + ", bindingVersion=" + bindingVersion
+                + ", binaryFileName=" + binaryFileName
+                + ", binaryMediaType=" + binaryMediaType
+                + ", binarySize=" + binarySize
                 + "]";
     }
 }

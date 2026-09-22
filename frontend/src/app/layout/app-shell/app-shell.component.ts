@@ -27,7 +27,7 @@ import { AdminStatusBarComponent } from '../admin-status-bar/admin-status-bar.co
 interface NavigationItem {
   readonly labelKey: TranslationKey;
   readonly path: string;
-  readonly icon: 'dashboard' | 'alerts' | 'procedures' | 'hooks' | 'status' | 'configs' | 'system-configs' | 'secrets' | 'logs';
+  readonly icon: 'dashboard' | 'alerts' | 'procedures' | 'pipes' | 'hooks' | 'status' | 'configs' | 'system-configs' | 'secrets' | 'logs';
 }
 
 @Component({
@@ -61,16 +61,19 @@ export class AppShellComponent {
       ? [{ labelKey: 'navigation.hooks' as const, path: '/hooks', icon: 'hooks' as const }]
       : []),
     ...(this.authService.isAdmin
+      ? [{ labelKey: 'navigation.pipes' as const, path: '/pipes', icon: 'pipes' as const }]
+      : []),
+    ...(this.authService.isAdmin
       ? [{ labelKey: 'navigation.status' as const, path: '/status', icon: 'status' as const }]
       : []),
     ...(this.authService.isAdmin
       ? [{ labelKey: 'navigation.configs' as const, path: '/configs', icon: 'configs' as const }]
       : []),
     ...(this.authService.isAdmin
-      ? [{ labelKey: 'navigation.systemConfigs' as const, path: '/system-configs', icon: 'system-configs' as const }]
+      ? [{ labelKey: 'navigation.secrets' as const, path: '/secrets', icon: 'secrets' as const }]
       : []),
     ...(this.authService.isAdmin
-      ? [{ labelKey: 'navigation.secrets' as const, path: '/secrets', icon: 'secrets' as const }]
+      ? [{ labelKey: 'navigation.systemConfigs' as const, path: '/system-configs', icon: 'system-configs' as const }]
       : []),
     ...(this.authService.isAdmin
       ? [{ labelKey: 'navigation.logs' as const, path: '/logs', icon: 'logs' as const }]
@@ -203,6 +206,9 @@ export class AppShellComponent {
     }
     if (url.startsWith('/procedures')) {
       return 'navigation.procedures';
+    }
+    if (url.startsWith('/pipes')) {
+      return 'navigation.pipes';
     }
     if (url.startsWith('/hooks')) {
       return 'navigation.hooks';

@@ -26,11 +26,19 @@ import tools.jackson.databind.json.JsonMapper;
  */
 class ProcedureHandleFactory {
     private final ProcedureInvoker invoker;
+    private final PipeInvoker pipeInvoker;
     private final JsonMapper jsonMapper = JsonMapper.builder().build();
 
     ProcedureHandleFactory(ProcedureInvoker invoker) {
-        this.invoker = invoker;
+        this(invoker, (_, _) -> { throw new ProcedureExecutionException("Pipe invocation requires an execution stream"); });
     }
+
+    ProcedureHandleFactory(ProcedureInvoker invoker, PipeInvoker pipeInvoker) {
+        this.invoker = invoker;
+        this.pipeInvoker = pipeInvoker;
+    }
+
+    PipeInvoker pipeInvoker() { return pipeInvoker; }
 
     Procedure create(AlertParameter parameter, Deadline deadline) {
         if (parameter.getInvocationToken().isBlank() || parameter.getProcedureId() <= 0)

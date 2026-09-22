@@ -15,6 +15,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.UUID;
 
 import org.springframework.stereotype.Service;
 
@@ -57,6 +58,10 @@ public class WorkerStatusService implements AutoCloseable {
     }
 
     public synchronized WorkerReservation reserve(WorkerCapability capability) {
+        return reserve(capability, null);
+    }
+
+    public synchronized WorkerReservation reserve(WorkerCapability capability, UUID preferredWorkerInstanceId) {
         List<SelectedWorker> workers = statusFor(availabilityService.availableWorkersWith(capability)).stream()
                 .filter(WorkerStatusResult::available)
                 .map(result -> new SelectedWorker(result.endpoint(), result.status()))
@@ -64,6 +69,16 @@ public class WorkerStatusService implements AutoCloseable {
                 .toList();
         if (workers.isEmpty())
             throw new IllegalStateException("No available worker supports capability " + capability);
+
+        if (preferredWorkerInstanceId != null) {
+            for (SelectedWorker worker : workers) {
+                if (preferredWorkerInstanceId.toString().equals(worker.status().getWorkerInstanceId())) {
+                    reservations.computeIfAbsent(worker.endpoint(), key -> new AtomicInteger()).incrementAndGet();
+                    lastSelectedWorkers.put(capability, worker.endpoint());
+                    return new WorkerReservation(worker, () -> release(worker.endpoint()));
+                }
+            }
+        }
 
         int lowestLoad = effectiveLoad(workers.getFirst());
         List<SelectedWorker> leastLoadedWorkers = workers.stream()

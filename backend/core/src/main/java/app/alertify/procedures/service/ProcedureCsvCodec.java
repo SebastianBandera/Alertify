@@ -57,6 +57,8 @@ class ProcedureCsvCodec {
             case CONFIGURATION -> value.getConfiguration().getName();
             case SECRET -> value.getSecret().getName();
             case PROCEDURE -> value.getReferencedProcedure().getName();
+            case PIPE -> value.getReferencedPipe().getName();
+            case PIPE_OUTPUT -> throw new IllegalStateException("PIPE_OUTPUT cannot be exported as a Procedure value");
         };
         return new ExportParameter(value.getTemplateParameter().getParameterKey(), value.getSource(), exported);
     }

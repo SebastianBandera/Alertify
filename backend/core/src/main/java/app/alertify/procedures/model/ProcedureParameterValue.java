@@ -12,6 +12,7 @@ import org.hibernate.envers.NotAudited;
 import app.alertify.alerts.template.annotation.AlertParameterSource;
 import app.alertify.jpa.entity.ApplicationConfiguration;
 import app.alertify.jpa.entity.ApplicationSecret;
+import app.alertify.pipes.model.Pipe;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -75,6 +76,10 @@ public class ProcedureParameterValue {
     @JoinColumn(name = "referenced_procedure_id")
     private Procedure referencedProcedure;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "referenced_pipe_id")
+    private Pipe referencedPipe;
+
     @CreationTimestamp
     @NotAudited
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -119,35 +124,47 @@ public class ProcedureParameterValue {
         return result;
     }
 
+    public static ProcedureParameterValue pipe(Procedure owner, ProcedureTemplateParameterDefinition parameter, Pipe value) {
+        ProcedureParameterValue result = new ProcedureParameterValue(owner, parameter);
+        result.replaceWithPipe(value);
+        return result;
+    }
+
     public void replaceWithText(String value) {
         requireSource(AlertParameterSource.TEXT);
         if (!templateParameter.isBindingAllowed() && !templateParameter.getOptions().contains(value))
             throw new IllegalArgumentException("value must be one of the declared options");
 
-        set(AlertParameterSource.TEXT, Objects.requireNonNull(value, "value must not be null"), null, null, null);
+        set(AlertParameterSource.TEXT, Objects.requireNonNull(value, "value must not be null"), null, null, null, null);
     }
 
     public void replaceWithConfiguration(ApplicationConfiguration value) {
         requireBindingAndSource(AlertParameterSource.CONFIGURATION);
-        set(AlertParameterSource.CONFIGURATION, null, Objects.requireNonNull(value), null, null);
+        set(AlertParameterSource.CONFIGURATION, null, Objects.requireNonNull(value), null, null, null);
     }
 
     public void replaceWithSecret(ApplicationSecret value) {
         requireBindingAndSource(AlertParameterSource.SECRET);
-        set(AlertParameterSource.SECRET, null, null, Objects.requireNonNull(value), null);
+        set(AlertParameterSource.SECRET, null, null, Objects.requireNonNull(value), null, null);
     }
 
     public void replaceWithProcedure(Procedure value) {
         requireBindingAndSource(AlertParameterSource.PROCEDURE);
-        set(AlertParameterSource.PROCEDURE, null, null, null, Objects.requireNonNull(value));
+        set(AlertParameterSource.PROCEDURE, null, null, null, Objects.requireNonNull(value), null);
     }
 
-    private void set(AlertParameterSource source, String text, ApplicationConfiguration configuration, ApplicationSecret secret, Procedure procedure) {
+    public void replaceWithPipe(Pipe value) {
+        requireBindingAndSource(AlertParameterSource.PIPE);
+        set(AlertParameterSource.PIPE, null, null, null, null, Objects.requireNonNull(value));
+    }
+
+    private void set(AlertParameterSource source, String text, ApplicationConfiguration configuration, ApplicationSecret secret, Procedure procedure, Pipe pipe) {
         this.source = source;
         this.textValue = text;
         this.configuration = configuration;
         this.secret = secret;
         this.referencedProcedure = procedure;
+        this.referencedPipe = pipe;
     }
 
     private void requireBindingAndSource(AlertParameterSource value) {
@@ -171,6 +188,7 @@ public class ProcedureParameterValue {
     public ApplicationConfiguration getConfiguration() { return configuration; }
     public ApplicationSecret getSecret() { return secret; }
     public Procedure getReferencedProcedure() { return referencedProcedure; }
+    public Pipe getReferencedPipe() { return referencedPipe; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
 }

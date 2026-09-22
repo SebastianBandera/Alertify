@@ -8,6 +8,10 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
+import java.io.InputStream;
+import java.io.IOException;
+import java.time.Instant;
+import java.util.Iterator;
 
 import org.springframework.stereotype.Component;
 
@@ -15,12 +19,22 @@ import com.google.protobuf.Empty;
 
 import app.alertify.grpc.discovery.WorkerEndpoint;
 import app.alertify.worker.grpc.AlertExecutionResult;
+import app.alertify.worker.grpc.ArtifactChunk;
+import app.alertify.worker.grpc.ArtifactDescriptor;
+import app.alertify.worker.grpc.ArtifactRequest;
+import app.alertify.worker.grpc.ArtifactWriteHeader;
+import app.alertify.worker.grpc.ArtifactWriteRequest;
 import app.alertify.worker.grpc.AlertWorkerServiceGrpc;
 import app.alertify.worker.grpc.ExecuteAlertRequest;
 import app.alertify.worker.grpc.ExecuteProcedureRequest;
 import app.alertify.worker.grpc.ExecutionClientMessage;
 import app.alertify.worker.grpc.ExecutionWorkerMessage;
 import app.alertify.worker.grpc.InvokeProcedureResponse;
+import app.alertify.worker.grpc.InvokePipeResponse;
+import app.alertify.worker.grpc.PipeInvocationCall;
+import app.alertify.worker.grpc.PipeInvocationFailure;
+import app.alertify.worker.grpc.PipeInvocationFailureKind;
+import app.alertify.worker.grpc.PipeInvocationReply;
 import app.alertify.worker.grpc.ProcedureExecutionResult;
 import app.alertify.worker.grpc.ProcedureInvocationCall;
 import app.alertify.worker.grpc.ProcedureInvocationFailure;
@@ -29,6 +43,8 @@ import app.alertify.worker.grpc.ProcedureInvocationReply;
 import app.alertify.worker.grpc.SynchronizeTemplateRequest;
 import app.alertify.worker.grpc.WorkerStatusResponse;
 import io.grpc.ManagedChannel;
+import io.grpc.stub.ClientCallStreamObserver;
+import io.grpc.stub.ClientResponseObserver;
 import io.grpc.stub.StreamObserver;
 
 /**
@@ -68,7 +84,14 @@ public class AlertWorkerClient implements AutoCloseable {
     }
 
     public ProcedureExecutionResult executeProcedure(WorkerEndpoint endpoint, ExecuteProcedureRequest request, SynchronizeTemplateRequest templateSource, Duration timeout, Function<String, InvokeProcedureResponse> procedureInvoker) {
-        TerminalResult result = execute(endpoint, ExecutionClientMessage.newBuilder().setStartProcedure(request).build(), templateSource, timeout, procedureInvoker);
+        return executeProcedure(endpoint, request, templateSource, timeout, procedureInvoker,
+                _ -> InvokePipeResponse.newBuilder().setFailure(PipeInvocationFailure.newBuilder()
+                        .setKind(PipeInvocationFailureKind.PIPE_INVOCATION_FAILURE_KIND_ERROR)
+                        .setMessage("Pipe invocation is unavailable")).build());
+    }
+
+    public ProcedureExecutionResult executeProcedure(WorkerEndpoint endpoint, ExecuteProcedureRequest request, SynchronizeTemplateRequest templateSource, Duration timeout, Function<String, InvokeProcedureResponse> procedureInvoker, Function<String, InvokePipeResponse> pipeInvoker) {
+        TerminalResult result = execute(endpoint, ExecutionClientMessage.newBuilder().setStartProcedure(request).build(), templateSource, timeout, procedureInvoker, pipeInvoker);
         if (result.procedureResult() == null)
             throw new IllegalStateException("Worker returned an alert result for a procedure execution");
 
@@ -76,13 +99,20 @@ public class AlertWorkerClient implements AutoCloseable {
     }
 
     private TerminalResult execute(WorkerEndpoint endpoint, ExecutionClientMessage start, SynchronizeTemplateRequest templateSource, Duration timeout, Function<String, InvokeProcedureResponse> procedureInvoker) {
+        return execute(endpoint, start, templateSource, timeout, procedureInvoker,
+                _ -> InvokePipeResponse.newBuilder().setFailure(PipeInvocationFailure.newBuilder()
+                        .setKind(PipeInvocationFailureKind.PIPE_INVOCATION_FAILURE_KIND_ERROR)
+                        .setMessage("Pipe invocation is unavailable")).build());
+    }
+
+    private TerminalResult execute(WorkerEndpoint endpoint, ExecutionClientMessage start, SynchronizeTemplateRequest templateSource, Duration timeout, Function<String, InvokeProcedureResponse> procedureInvoker, Function<String, InvokePipeResponse> pipeInvoker) {
         requirePositive(timeout);
         ManagedChannel channel = channelFactory.create(endpoint);
         CompletableFuture<TerminalResult> terminal = new CompletableFuture<>();
         StreamWriter writer = new StreamWriter();
         try {
             AlertWorkerServiceGrpc.AlertWorkerServiceStub stub = AlertWorkerServiceGrpc.newStub(channel).withDeadlineAfter(timeout.toMillis(), TimeUnit.MILLISECONDS);
-            writer.attach(stub.execute(responses(writer, templateSource, procedureInvoker, terminal)));
+            writer.attach(stub.execute(responses(writer, templateSource, procedureInvoker, pipeInvoker, terminal)));
             writer.send(start);
             try {
                 return terminal.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
@@ -104,7 +134,7 @@ public class AlertWorkerClient implements AutoCloseable {
         }
     }
 
-    private StreamObserver<ExecutionWorkerMessage> responses(StreamWriter writer, SynchronizeTemplateRequest templateSource, Function<String, InvokeProcedureResponse> procedureInvoker, CompletableFuture<TerminalResult> terminal) {
+    private StreamObserver<ExecutionWorkerMessage> responses(StreamWriter writer, SynchronizeTemplateRequest templateSource, Function<String, InvokeProcedureResponse> procedureInvoker, Function<String, InvokePipeResponse> pipeInvoker, CompletableFuture<TerminalResult> terminal) {
         return new StreamObserver<>() {
             @Override
             public void onNext(ExecutionWorkerMessage message) {
@@ -115,6 +145,7 @@ public class AlertWorkerClient implements AutoCloseable {
                             terminal.completeExceptionally(new WorkerTemplateSynchronizationException(message.getTemplateSynchronization().getError()));
                     }
                     case PROCEDURE_CALL -> callbacks.submit(() -> invokeProcedure(message.getProcedureCall(), writer, procedureInvoker));
+                    case PIPE_CALL -> callbacks.submit(() -> invokePipe(message.getPipeCall(), writer, pipeInvoker));
                     case ALERT_RESULT -> terminal.complete(new TerminalResult(message.getAlertResult(), null));
                     case PROCEDURE_RESULT -> terminal.complete(new TerminalResult(null, message.getProcedureResult()));
                     case PAYLOAD_NOT_SET -> terminal.completeExceptionally(new IllegalStateException("Worker sent an empty execution message"));
@@ -132,6 +163,103 @@ public class AlertWorkerClient implements AutoCloseable {
                     terminal.completeExceptionally(new IllegalStateException("Worker closed the stream without an execution result"));
             }
         };
+    }
+
+    private static void invokePipe(PipeInvocationCall call, StreamWriter writer, Function<String, InvokePipeResponse> pipeInvoker) {
+        InvokePipeResponse response;
+        try {
+            response = pipeInvoker.apply(call.getInvocationToken());
+        } catch (RuntimeException exception) {
+            response = InvokePipeResponse.newBuilder().setFailure(PipeInvocationFailure.newBuilder()
+                    .setKind(PipeInvocationFailureKind.PIPE_INVOCATION_FAILURE_KIND_ERROR)
+                    .setMessage(exception.getMessage() == null ? exception.getClass().getSimpleName() : exception.getMessage())).build();
+        }
+        PipeInvocationReply.Builder reply = PipeInvocationReply.newBuilder().setInvocationId(call.getInvocationId());
+        if (response.hasResult())
+            reply.setResult(response.getResult());
+        else if (response.hasFailure())
+            reply.setFailure(response.getFailure());
+        else
+            reply.setFailure(PipeInvocationFailure.newBuilder().setKind(PipeInvocationFailureKind.PIPE_INVOCATION_FAILURE_KIND_ERROR).setMessage("Pipe invocation returned no outcome"));
+
+        writer.send(ExecutionClientMessage.newBuilder().setPipeReply(reply).build());
+    }
+
+    public ArtifactDescriptor transferArtifact(WorkerEndpoint source, WorkerEndpoint destination, ArtifactDescriptor descriptor, Instant expiresAt, Duration timeout) {
+        requirePositive(timeout);
+        ManagedChannel sourceChannel = channelFactory.create(source);
+        ManagedChannel destinationChannel = channelFactory.create(destination);
+        ArtifactUpload upload = new ArtifactUpload(timeout, "Artifact transfer");
+        try {
+            Iterator<ArtifactChunk> chunks = AlertWorkerServiceGrpc.newBlockingStub(sourceChannel)
+                    .withDeadlineAfter(timeout.toMillis(), TimeUnit.MILLISECONDS)
+                    .readArtifact(ArtifactRequest.newBuilder().setArtifactId(descriptor.getArtifactId()).build());
+            AlertWorkerServiceGrpc.newStub(destinationChannel).withDeadlineAfter(timeout.toMillis(), TimeUnit.MILLISECONDS).writeArtifact(upload);
+            upload.send(ArtifactWriteRequest.newBuilder().setHeader(writeHeader(descriptor, expiresAt)).build());
+            while (chunks.hasNext())
+                upload.send(ArtifactWriteRequest.newBuilder().setChunk(chunks.next()).build());
+            upload.complete();
+            return upload.await();
+        } catch (RuntimeException exception) {
+            throw exception;
+        } finally {
+            shutdown(sourceChannel);
+            shutdown(destinationChannel);
+        }
+    }
+
+    public ArtifactDescriptor uploadArtifact(WorkerEndpoint destination, String outputKey, String fileName, String mediaType, long size, byte[] sha256, InputStream input, Instant expiresAt, Duration timeout) {
+        requirePositive(timeout);
+        ArtifactDescriptor expected = ArtifactDescriptor.newBuilder().setOutputKey(outputKey).setFileName(fileName)
+                .setMediaType(mediaType).setSize(size).setSha256(com.google.protobuf.ByteString.copyFrom(sha256)).build();
+        ManagedChannel channel = channelFactory.create(destination);
+        ArtifactUpload upload = new ArtifactUpload(timeout, "Artifact upload");
+        try (input) {
+            AlertWorkerServiceGrpc.newStub(channel).withDeadlineAfter(timeout.toMillis(), TimeUnit.MILLISECONDS).writeArtifact(upload);
+            upload.send(ArtifactWriteRequest.newBuilder().setHeader(writeHeader(expected, expiresAt)).build());
+            byte[] buffer = new byte[64 * 1024];
+            int read;
+            while ((read = input.read(buffer)) >= 0) {
+                if (read > 0)
+                    upload.send(ArtifactWriteRequest.newBuilder().setChunk(ArtifactChunk.newBuilder()
+                            .setData(com.google.protobuf.ByteString.copyFrom(buffer, 0, read))).build());
+            }
+            upload.complete();
+            return upload.await();
+        } catch (IOException exception) {
+            throw new IllegalStateException("Artifact upload failed", exception);
+        } finally {
+            shutdown(channel);
+        }
+    }
+
+    public void deleteArtifact(WorkerEndpoint endpoint, String artifactId, Duration timeout) {
+        ManagedChannel channel = channelFactory.create(endpoint);
+        try {
+            AlertWorkerServiceGrpc.newBlockingStub(channel).withDeadlineAfter(timeout.toMillis(), TimeUnit.MILLISECONDS)
+                    .deleteArtifact(ArtifactRequest.newBuilder().setArtifactId(artifactId).build());
+        } finally {
+            shutdown(channel);
+        }
+    }
+
+    private static ArtifactWriteHeader writeHeader(ArtifactDescriptor descriptor, Instant expiresAt) {
+        return ArtifactWriteHeader.newBuilder().setOutputKey(descriptor.getOutputKey()).setFileName(descriptor.getFileName())
+                .setMediaType(descriptor.getMediaType()).setExpectedSize(descriptor.getSize())
+                .setExpectedSha256(descriptor.getSha256()).setExpiresAt(expiresAt.toString()).build();
+    }
+
+    private static <T> T await(CompletableFuture<T> result, Duration timeout, String operation) {
+        try {
+            return result.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(operation + " was interrupted", exception);
+        } catch (ExecutionException exception) {
+            throw new IllegalStateException(operation + " failed", exception.getCause());
+        } catch (TimeoutException exception) {
+            throw new IllegalStateException(operation + " timed out", exception);
+        }
     }
 
     private static void synchronize(ExecutionWorkerMessage message, StreamWriter writer, SynchronizeTemplateRequest templateSource, CompletableFuture<TerminalResult> terminal) {
@@ -215,6 +343,106 @@ public class AlertWorkerClient implements AutoCloseable {
 
             closed = true;
             observer.onCompleted();
+        }
+    }
+
+    /** Client-streaming writer that propagates gRPC flow control to the source reader. */
+    private static final class ArtifactUpload implements ClientResponseObserver<ArtifactWriteRequest, ArtifactDescriptor> {
+        private final CompletableFuture<ArtifactDescriptor> result = new CompletableFuture<>();
+        private final long deadlineNanos;
+        private final String operation;
+        private final Object readiness = new Object();
+        private ClientCallStreamObserver<ArtifactWriteRequest> request;
+
+        private ArtifactUpload(Duration timeout, String operation) {
+            deadlineNanos = System.nanoTime() + timeout.toNanos();
+            this.operation = operation;
+        }
+
+        @Override
+        public void beforeStart(ClientCallStreamObserver<ArtifactWriteRequest> requestStream) {
+            synchronized (readiness) {
+                request = requestStream;
+                requestStream.setOnReadyHandler(() -> {
+                    synchronized (readiness) {
+                        readiness.notifyAll();
+                    }
+                });
+                readiness.notifyAll();
+            }
+        }
+
+        void send(ArtifactWriteRequest message) {
+            ClientCallStreamObserver<ArtifactWriteRequest> stream = readyStream();
+            stream.onNext(message);
+        }
+
+        void complete() {
+            ClientCallStreamObserver<ArtifactWriteRequest> stream;
+            synchronized (readiness) {
+                stream = request;
+            }
+            if (stream == null)
+                throw new IllegalStateException(operation + " stream did not start");
+
+            stream.onCompleted();
+        }
+
+        ArtifactDescriptor await() {
+            long remaining = deadlineNanos - System.nanoTime();
+            if (remaining <= 0)
+                throw new IllegalStateException(operation + " timed out");
+
+            return AlertWorkerClient.await(result, Duration.ofNanos(remaining), operation);
+        }
+
+        private ClientCallStreamObserver<ArtifactWriteRequest> readyStream() {
+            synchronized (readiness) {
+                while ((request == null || !request.isReady()) && !result.isDone()) {
+                    long remaining = deadlineNanos - System.nanoTime();
+                    if (remaining <= 0)
+                        throw new IllegalStateException(operation + " timed out waiting for stream capacity");
+
+                    try {
+                        TimeUnit.NANOSECONDS.timedWait(readiness, remaining);
+                    } catch (InterruptedException exception) {
+                        Thread.currentThread().interrupt();
+                        throw new IllegalStateException(operation + " was interrupted", exception);
+                    }
+                }
+                if (result.isDone()) {
+                    long remaining = Math.max(1, deadlineNanos - System.nanoTime());
+                    AlertWorkerClient.await(result, Duration.ofNanos(remaining), operation);
+                    throw new IllegalStateException(operation + " stream closed before all content was sent");
+                }
+
+                return request;
+            }
+        }
+
+        @Override
+        public void onNext(ArtifactDescriptor value) {
+            result.complete(value);
+            signal();
+        }
+
+        @Override
+        public void onError(Throwable throwable) {
+            result.completeExceptionally(throwable);
+            signal();
+        }
+
+        @Override
+        public void onCompleted() {
+            if (!result.isDone())
+                result.completeExceptionally(new IllegalStateException("Worker closed artifact write without a descriptor"));
+            signal();
+        }
+
+        private void signal() {
+            synchronized (readiness) {
+                readiness.notifyAll();
+            }
         }
     }
 }

@@ -9,5 +9,6 @@ public enum ProcedureExecutionTrigger {
     MANUAL,
     ALERT,
     PROCEDURE,
+    PIPE,
     HOOK
 }

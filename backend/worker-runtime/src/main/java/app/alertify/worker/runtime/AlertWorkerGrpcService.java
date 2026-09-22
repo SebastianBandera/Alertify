@@ -5,10 +5,16 @@ import java.util.concurrent.Executors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import com.google.protobuf.Empty;
 
 import app.alertify.procedures.ProcedureExecutionException;
+import app.alertify.worker.grpc.ArtifactChunk;
+import app.alertify.worker.grpc.ArtifactDescriptor;
+import app.alertify.worker.grpc.ArtifactRequest;
+import app.alertify.worker.grpc.ArtifactWriteHeader;
+import app.alertify.worker.grpc.ArtifactWriteRequest;
 import app.alertify.worker.grpc.AlertExecutionResult;
 import app.alertify.worker.grpc.AlertWorkerServiceGrpc;
 import app.alertify.worker.grpc.ExecuteAlertRequest;
@@ -46,9 +52,16 @@ class AlertWorkerGrpcService extends AlertWorkerServiceGrpc.AlertWorkerServiceIm
     private final ProcedureExecutionEngine procedureExecutionEngine;
     private final WorkerInstanceIdentity instanceIdentity;
     private final WorkerResourceMonitor resourceMonitor;
+    private final WorkerArtifactStore artifactStore;
     private final ExecutorService sourceSynchronizations = Executors.newVirtualThreadPerTaskExecutor();
+    private final ExecutorService artifactTransfers = Executors.newVirtualThreadPerTaskExecutor();
 
+    @Autowired
     AlertWorkerGrpcService(WorkerRuntimeProperties properties, AlertTemplateCompiler compiler, WorkerExecutionTracker tracker, WorkerExecutionEngine executionEngine, ProcedureExecutionEngine procedureExecutionEngine, WorkerInstanceIdentity instanceIdentity, WorkerResourceMonitor resourceMonitor) {
+        this(properties, compiler, tracker, executionEngine, procedureExecutionEngine, instanceIdentity, resourceMonitor, procedureExecutionEngine.artifactStore());
+    }
+
+    AlertWorkerGrpcService(WorkerRuntimeProperties properties, AlertTemplateCompiler compiler, WorkerExecutionTracker tracker, WorkerExecutionEngine executionEngine, ProcedureExecutionEngine procedureExecutionEngine, WorkerInstanceIdentity instanceIdentity, WorkerResourceMonitor resourceMonitor, WorkerArtifactStore artifactStore) {
         this.properties = properties;
         this.compiler = compiler;
         this.tracker = tracker;
@@ -56,6 +69,7 @@ class AlertWorkerGrpcService extends AlertWorkerServiceGrpc.AlertWorkerServiceIm
         this.procedureExecutionEngine = procedureExecutionEngine;
         this.instanceIdentity = instanceIdentity;
         this.resourceMonitor = resourceMonitor;
+        this.artifactStore = artifactStore;
     }
 
     @Override
@@ -91,8 +105,119 @@ class AlertWorkerGrpcService extends AlertWorkerServiceGrpc.AlertWorkerServiceIm
     }
 
     @Override
+    public void readArtifact(ArtifactRequest request, StreamObserver<ArtifactChunk> responseObserver) {
+        artifactTransfers.submit(() -> {
+            try (var input = artifactStore.open(request.getArtifactId())) {
+                byte[] buffer = new byte[64 * 1024];
+                int read;
+                while ((read = input.read(buffer)) >= 0) {
+                    if (read == 0)
+                        continue;
+
+                    if (responseObserver instanceof ServerCallStreamObserver<ArtifactChunk> serverObserver) {
+                        while (!serverObserver.isReady() && !serverObserver.isCancelled())
+                            java.util.concurrent.locks.LockSupport.parkNanos(java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(1));
+                        if (serverObserver.isCancelled())
+                            return;
+                    }
+                    responseObserver.onNext(ArtifactChunk.newBuilder().setData(com.google.protobuf.ByteString.copyFrom(buffer, 0, read)).build());
+                }
+                responseObserver.onCompleted();
+            } catch (RuntimeException | java.io.IOException exception) {
+                responseObserver.onError(Status.NOT_FOUND.withDescription("Artifact is unavailable").withCause(exception).asRuntimeException());
+            }
+        });
+    }
+
+    @Override
+    public StreamObserver<ArtifactWriteRequest> writeArtifact(StreamObserver<ArtifactDescriptor> responseObserver) {
+        return new StreamObserver<>() {
+            private ArtifactWriteHeader header;
+            private WorkerArtifactStore.Writer writer;
+            private boolean closed;
+
+            @Override
+            public void onNext(ArtifactWriteRequest request) {
+                try {
+                    if (closed)
+                        throw new IllegalArgumentException("Artifact write is already closed");
+                    if (request.hasHeader()) {
+                        if (header != null)
+                            throw new IllegalArgumentException("Artifact header must be sent exactly once");
+
+                        header = request.getHeader();
+                        writer = artifactStore.create(header.getOutputKey(), header.getFileName(), header.getMediaType(), java.time.Instant.parse(header.getExpiresAt()));
+                    } else if (request.hasChunk()) {
+                        if (writer == null)
+                            throw new IllegalArgumentException("Artifact header must precede content");
+
+                        request.getChunk().getData().writeTo(writer);
+                    } else {
+                        throw new IllegalArgumentException("Artifact write message has no payload");
+                    }
+                } catch (RuntimeException | java.io.IOException exception) {
+                    fail(exception);
+                }
+            }
+
+            @Override
+            public void onError(Throwable throwable) {
+                closed = true;
+                if (writer != null)
+                    writer.abort();
+            }
+
+            @Override
+            public void onCompleted() {
+                if (closed)
+                    return;
+
+                try {
+                    if (writer == null || header == null)
+                        throw new IllegalArgumentException("Artifact write has no header");
+
+                    writer.close();
+                    ArtifactDescriptor descriptor = writer.descriptor();
+                    if (descriptor.getSize() != header.getExpectedSize()
+                            || !descriptor.getSha256().equals(header.getExpectedSha256())) {
+                        writer.abort();
+                        throw new IllegalStateException("Transferred artifact size or SHA-256 does not match");
+                    }
+                    closed = true;
+                    responseObserver.onNext(descriptor);
+                    responseObserver.onCompleted();
+                } catch (RuntimeException | java.io.IOException exception) {
+                    fail(exception);
+                }
+            }
+
+            private void fail(Throwable exception) {
+                if (closed)
+                    return;
+
+                closed = true;
+                if (writer != null)
+                    writer.abort();
+                responseObserver.onError(Status.DATA_LOSS.withDescription(exception.getMessage()).withCause(exception).asRuntimeException());
+            }
+        };
+    }
+
+    @Override
+    public void deleteArtifact(ArtifactRequest request, StreamObserver<Empty> responseObserver) {
+        try {
+            artifactStore.delete(request.getArtifactId());
+            responseObserver.onNext(Empty.getDefaultInstance());
+            responseObserver.onCompleted();
+        } catch (RuntimeException exception) {
+            responseObserver.onError(Status.INTERNAL.withDescription("Artifact cleanup failed").withCause(exception).asRuntimeException());
+        }
+    }
+
+    @Override
     public void close() {
         sourceSynchronizations.close();
+        artifactTransfers.close();
     }
 
     /**
@@ -106,6 +231,7 @@ class AlertWorkerGrpcService extends AlertWorkerServiceGrpc.AlertWorkerServiceIm
     private final class ExecutionSession implements StreamObserver<ExecutionClientMessage> {
         private final SerializedOutput output;
         private final StreamProcedureInvoker procedureInvoker;
+        private final StreamPipeInvoker pipeInvoker;
         private final io.grpc.Deadline deadline;
         private ExecuteAlertRequest alert;
         private ExecuteProcedureRequest procedure;
@@ -117,6 +243,7 @@ class AlertWorkerGrpcService extends AlertWorkerServiceGrpc.AlertWorkerServiceIm
         private ExecutionSession(StreamObserver<ExecutionWorkerMessage> responseObserver, io.grpc.Deadline deadline) {
             output = new SerializedOutput(responseObserver);
             procedureInvoker = new StreamProcedureInvoker(output::next);
+            pipeInvoker = new StreamPipeInvoker(output::next);
             this.deadline = deadline;
         }
 
@@ -128,6 +255,7 @@ class AlertWorkerGrpcService extends AlertWorkerServiceGrpc.AlertWorkerServiceIm
                     case START_PROCEDURE -> startProcedure(message.getStartProcedure());
                     case TEMPLATE_SOURCE -> synchronize(message.getTemplateSource());
                     case PROCEDURE_REPLY -> procedureReply(message);
+                    case PIPE_REPLY -> pipeReply(message);
                     case PAYLOAD_NOT_SET -> invalid("Execution message has no payload");
                 }
             } catch (RuntimeException exception) {
@@ -190,6 +318,7 @@ class AlertWorkerGrpcService extends AlertWorkerServiceGrpc.AlertWorkerServiceIm
                     terminated = true;
                 }
                 procedureInvoker.close(exception);
+                pipeInvoker.close(exception);
                 output.complete();
             }
         }
@@ -202,12 +331,20 @@ class AlertWorkerGrpcService extends AlertWorkerServiceGrpc.AlertWorkerServiceIm
                 invalid("Procedure reply has an unknown invocation id");
         }
 
+        private synchronized void pipeReply(ExecutionClientMessage message) {
+            if (terminated || !executionStarted)
+                invalid("Pipe reply is not expected before execution starts");
+
+            if (!pipeInvoker.complete(message.getPipeReply()))
+                invalid("Pipe reply has an unknown invocation id");
+        }
+
         private void startExecution() {
             if (terminated || executionStarted)
                 invalid("Execution has already started");
 
             executionStarted = true;
-            ProcedureHandleFactory handles = new ProcedureHandleFactory(procedureInvoker);
+            ProcedureHandleFactory handles = new ProcedureHandleFactory(procedureInvoker, pipeInvoker);
             if (alert != null)
                 executionEngine.execute(alert, alertObserver(), deadline, handles);
             else
@@ -231,6 +368,7 @@ class AlertWorkerGrpcService extends AlertWorkerServiceGrpc.AlertWorkerServiceIm
                 terminated = true;
             }
             procedureInvoker.close(status.asRuntimeException());
+            pipeInvoker.close(status.asRuntimeException());
             output.error(status.asRuntimeException());
         }
 
@@ -239,6 +377,7 @@ class AlertWorkerGrpcService extends AlertWorkerServiceGrpc.AlertWorkerServiceIm
                 terminated = true;
             }
             procedureInvoker.close(new ProcedureExecutionException("Execution stream was cancelled"));
+            pipeInvoker.close(new ProcedureExecutionException("Execution stream was cancelled"));
         }
 
         @Override
@@ -247,6 +386,7 @@ class AlertWorkerGrpcService extends AlertWorkerServiceGrpc.AlertWorkerServiceIm
                 terminated = true;
             }
             procedureInvoker.close(throwable);
+            pipeInvoker.close(throwable);
         }
 
         @Override
@@ -303,6 +443,7 @@ class AlertWorkerGrpcService extends AlertWorkerServiceGrpc.AlertWorkerServiceIm
                 terminated = true;
             }
             procedureInvoker.close();
+            pipeInvoker.close();
             output.complete();
         }
     }

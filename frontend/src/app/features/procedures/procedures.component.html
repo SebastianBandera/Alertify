@@ -171,6 +171,16 @@
                       }
                     </div>
                   </details>
+                  @if (template.outputs.length) {
+                    <details>
+                      <summary>{{ template.outputs.length }} {{ dynamic('procedures.templates.outputs') }}</summary>
+                      <div class="parameter-summary">
+                        @for (output of template.outputs; track output.id) {
+                          <div><strong>{{ output.key }}</strong><small>ProcedureArtifactOutput</small></div>
+                        }
+                      </div>
+                    </details>
+                  }
                 </td>
                 <td>
                   @if (template.procedureCount > 0) {
@@ -392,7 +402,7 @@
                         @if (parameter.options.length) {
                           <option value="OPTION">{{ localization.translate('procedures.source.option') }}</option>
                         }
-                        @for (source of parameter.allowedSources; track source) {
+                        @for (source of manualSources(parameter); track source) {
                           <option [value]="source">{{ localization.translateDynamic('procedures.source.' + source.toLowerCase()) }}</option>
                         }
                       </select>
@@ -407,6 +417,11 @@
                       <label><span>{{ localization.translate('procedures.source.secret') }}</span><select [name]="'secret-' + parameter.id" [ngModel]="parameterForm(parameter.key).secretId" (ngModelChange)="patchParameter(parameter.key, { secretId: $event })"><option [ngValue]="null" disabled>—</option>@for (option of compatibleSecretBindings(parameter); track option.id) { <option [ngValue]="option.id">{{ option.name }}</option> }</select></label>
                     } @else if (parameterForm(parameter.key).source === 'PROCEDURE') {
                       <label><span>{{ localization.translate('procedures.source.procedure') }}</span><select [name]="'procedure-' + parameter.id" [ngModel]="parameterForm(parameter.key).procedureId" (ngModelChange)="patchParameter(parameter.key, { procedureId: $event })"><option [ngValue]="null" disabled>—</option>@for (option of bindings().procedures; track option.id) { <option [ngValue]="option.id">{{ option.name }}{{ option.enabled ? '' : ' (' + localization.translate('procedures.disabled') + ')' }}</option> }</select></label>
+                    } @else if (parameterForm(parameter.key).source === 'PIPE') {
+                      <label><span>{{ dynamic('procedures.source.pipe') }}</span><select [name]="'pipe-' + parameter.id" [ngModel]="parameterForm(parameter.key).pipeId" (ngModelChange)="patchParameter(parameter.key, { pipeId: $event })"><option [ngValue]="null" disabled>—</option>@for (option of bindings().pipes; track option.id) { <option [ngValue]="option.id">{{ option.name }}{{ option.enabled ? '' : ' (' + localization.translate('procedures.disabled') + ')' }}</option> }</select></label>
+                    }
+                    @if (isArtifactInput(parameter)) {
+                      <small class="full">{{ dynamic('procedures.form.artifactFallbackHelp') }}</small>
                     }
                   </div>
                 }

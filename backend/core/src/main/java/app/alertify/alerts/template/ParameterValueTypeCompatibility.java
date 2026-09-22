@@ -12,6 +12,7 @@ import app.alertify.jpa.entity.SecretValueType;
 import app.alertify.worker.contract.DatabaseCredentials;
 import app.alertify.worker.contract.GitCredentials;
 import app.alertify.worker.contract.OidcTokenSet;
+import app.alertify.procedures.artifact.ProcedureArtifactInput;
 
 /**
  * Single source of truth for how a template parameter's java type constrains
@@ -30,16 +31,18 @@ public final class ParameterValueTypeCompatibility {
     private static final String DATABASE_CREDENTIALS_JAVA_TYPE = DatabaseCredentials.class.getName();
     private static final String GIT_CREDENTIALS_JAVA_TYPE = GitCredentials.class.getName();
     private static final String OIDC_TOKEN_SET_JAVA_TYPE = OidcTokenSet.class.getName();
+    private static final String ARTIFACT_INPUT_JAVA_TYPE = ProcedureArtifactInput.class.getName();
 
     private ParameterValueTypeCompatibility() {
     }
 
     public static Optional<ConfigurationValueType> requiredConfigurationValueType(String javaType) {
-        return BYTE_ARRAY_JAVA_TYPE.equals(javaType) ? Optional.of(ConfigurationValueType.BINARY) : Optional.empty();
+        return BYTE_ARRAY_JAVA_TYPE.equals(javaType) || ARTIFACT_INPUT_JAVA_TYPE.equals(javaType)
+                ? Optional.of(ConfigurationValueType.BINARY) : Optional.empty();
     }
 
     public static Optional<SecretValueType> requiredSecretValueType(String javaType) {
-        if (BYTE_ARRAY_JAVA_TYPE.equals(javaType))
+        if (BYTE_ARRAY_JAVA_TYPE.equals(javaType) || ARTIFACT_INPUT_JAVA_TYPE.equals(javaType))
             return Optional.of(SecretValueType.BINARY);
 
         if (DATABASE_CREDENTIALS_JAVA_TYPE.equals(javaType))
@@ -55,7 +58,8 @@ public final class ParameterValueTypeCompatibility {
     }
 
     public static boolean isConfigurationValueTypeCompatible(String javaType, ConfigurationValueType valueType) {
-        if (requiredSecretValueType(javaType).isPresent() && !BYTE_ARRAY_JAVA_TYPE.equals(javaType))
+        if (requiredSecretValueType(javaType).isPresent() && !BYTE_ARRAY_JAVA_TYPE.equals(javaType)
+                && !ARTIFACT_INPUT_JAVA_TYPE.equals(javaType))
             return false;
 
         return requiredConfigurationValueType(javaType)
@@ -91,7 +95,7 @@ public final class ParameterValueTypeCompatibility {
         }
         if (names.contains(ConfigurationValueType.BINARY.name())) {
             throw new IllegalStateException(
-                "allowedConfigurationValueTypes must not include BINARY unless the java type is byte[]: " + description
+                "allowedConfigurationValueTypes must not include BINARY unless the java type is byte[] or ProcedureArtifactInput: " + description
             );
         }
         return names;
@@ -140,7 +144,7 @@ public final class ParameterValueTypeCompatibility {
             );
         }
         boolean requiresSecretOnlyType = requiredSecretValueType(javaType).isPresent()
-                && !BYTE_ARRAY_JAVA_TYPE.equals(javaType);
+                && !BYTE_ARRAY_JAVA_TYPE.equals(javaType) && !ARTIFACT_INPUT_JAVA_TYPE.equals(javaType);
         if (requiresSecretOnlyType && allowedSources.contains(AlertParameterSource.CONFIGURATION)) {
             throw new IllegalStateException(
                     "allowedSources must not include CONFIGURATION for java type " + javaType

@@ -291,6 +291,7 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
             case CONFIGURATION -> AlertParameterValueSource.ALERT_PARAMETER_VALUE_SOURCE_CONFIGURATION;
             case SECRET -> AlertParameterValueSource.ALERT_PARAMETER_VALUE_SOURCE_SECRET;
             case PROCEDURE -> AlertParameterValueSource.ALERT_PARAMETER_VALUE_SOURCE_PROCEDURE;
+            case PIPE, PIPE_OUTPUT -> throw new IllegalArgumentException("Pipe sources are not valid for Alert parameters");
         };
     }
 

@@ -27,11 +27,17 @@ import app.alertify.alerts.template.ParameterValueTypeCompatibility;
 import app.alertify.alerts.template.annotation.AlertParameterSource;
 import app.alertify.jpa.repository.ProcedureTemplateDefinitionRepository;
 import app.alertify.jpa.repository.ProcedureTemplateParameterDefinitionRepository;
+import app.alertify.jpa.repository.ProcedureTemplateOutputDefinitionRepository;
 import app.alertify.procedures.Procedure;
+import app.alertify.pipes.Pipe;
+import app.alertify.procedures.artifact.ProcedureArtifactInput;
 import app.alertify.procedures.ProcedureEvaluator;
 import app.alertify.procedures.model.ProcedureTemplateDefinition;
 import app.alertify.procedures.model.ProcedureTemplateParameterDefinition;
 import app.alertify.procedures.model.ProcedureTemplateTagDefinition;
+import app.alertify.procedures.model.ProcedureTemplateOutputDefinition;
+import app.alertify.procedures.artifact.ProcedureArtifactOutput;
+import app.alertify.procedures.template.annotation.OutputParam;
 import app.alertify.procedures.template.annotation.ProcedureParameter;
 import app.alertify.procedures.template.annotation.ProcedureTemplate;
 import app.alertify.procedures.template.annotation.ProcedureTemplateKey;
@@ -46,12 +52,15 @@ public class ProcedureTemplateRegistrationService {
 
     private final ProcedureTemplateDefinitionRepository templateRepository;
     private final ProcedureTemplateParameterDefinitionRepository parameterRepository;
+    private final ProcedureTemplateOutputDefinitionRepository outputRepository;
     private final ResourceLoader resourceLoader;
 
     public ProcedureTemplateRegistrationService(ProcedureTemplateDefinitionRepository templateRepository,
-            ProcedureTemplateParameterDefinitionRepository parameterRepository, ResourceLoader resourceLoader) {
+            ProcedureTemplateParameterDefinitionRepository parameterRepository,
+            ProcedureTemplateOutputDefinitionRepository outputRepository, ResourceLoader resourceLoader) {
         this.templateRepository = templateRepository;
         this.parameterRepository = parameterRepository;
+        this.outputRepository = outputRepository;
         this.resourceLoader = resourceLoader;
     }
 
@@ -130,6 +139,19 @@ public class ProcedureTemplateRegistrationService {
             }
             parameterRepository.save(definition);
         }
+        Map<String, ProcedureTemplateOutputDefinition> existingOutputs = new LinkedHashMap<>();
+        for (ProcedureTemplateOutputDefinition value : outputRepository.findAllByTemplate_TemplateKeyOrderByOutputOrderAscIdAsc(templateKey))
+            existingOutputs.put(value.getOutputKey(), value);
+        for (Field field : outputFields(templateClass)) {
+            OutputParam output = field.getAnnotation(OutputParam.class);
+            ProcedureTemplateOutputDefinition definition = existingOutputs.get(output.value());
+            if (definition == null)
+                definition = new ProcedureTemplateOutputDefinition(template, output.value(), output.order());
+            else
+                definition.synchronize(output.order());
+
+            outputRepository.save(definition);
+        }
         return fields.size();
     }
 
@@ -168,6 +190,20 @@ public class ProcedureTemplateRegistrationService {
 
         for (Field field : fields)
             validateParameter(templateClass, field);
+
+        Set<String> outputKeys = new HashSet<>();
+        for (Field field : outputFields(templateClass)) {
+            OutputParam output = field.getAnnotation(OutputParam.class);
+            if (Modifier.isStatic(field.getModifiers()) || Modifier.isFinal(field.getModifiers()))
+                throw new IllegalStateException("Procedure output must be a mutable instance field: " + templateClass.getName() + "." + field.getName());
+            if (field.getType() != ProcedureArtifactOutput.class)
+                throw new IllegalStateException("Procedure output field must use ProcedureArtifactOutput: " + templateClass.getName() + "." + field.getName());
+            requireText(output.value(), "output key", templateClass);
+            if (!outputKeys.add(output.value()))
+                throw new IllegalStateException("Procedure output keys must be unique: " + templateClass.getName());
+            if (output.order() < 0)
+                throw new IllegalStateException("Procedure output order must not be negative: " + field.getName());
+        }
     }
 
     private static void validateParameter(Class<?> templateClass, Field field) {
@@ -189,12 +225,27 @@ public class ProcedureTemplateRegistrationService {
 
         Set<AlertParameterSource> sources = Set.of(parameter.allowedSources());
         boolean procedureField = field.getType() == Procedure.class;
+        boolean pipeField = field.getType() == Pipe.class;
+        boolean artifactField = field.getType() == ProcedureArtifactInput.class;
         if (procedureField && (!sources.equals(Set.of(AlertParameterSource.PROCEDURE))
                 || !parameter.defaultValue().isEmpty() || !parameter.bindingAllowed()))
             throw new IllegalStateException("Procedure handle parameters must allow only PROCEDURE binding: " + field.getName());
 
         if (!procedureField && sources.contains(AlertParameterSource.PROCEDURE))
             throw new IllegalStateException("Only Procedure fields may allow PROCEDURE source: " + field.getName());
+
+        if (pipeField && (!sources.equals(Set.of(AlertParameterSource.PIPE))
+                || !parameter.defaultValue().isEmpty() || !parameter.bindingAllowed()))
+            throw new IllegalStateException("Pipe handle parameters must allow only PIPE binding: " + field.getName());
+
+        if (!pipeField && sources.contains(AlertParameterSource.PIPE))
+            throw new IllegalStateException("Only Pipe fields may allow PIPE source: " + field.getName());
+
+        if (!artifactField && sources.contains(AlertParameterSource.PIPE_OUTPUT))
+            throw new IllegalStateException("Only ProcedureArtifactInput fields may allow PIPE_OUTPUT source: " + field.getName());
+
+        if (artifactField && !sources.contains(AlertParameterSource.PIPE_OUTPUT))
+            throw new IllegalStateException("ProcedureArtifactInput must allow PIPE_OUTPUT source: " + field.getName());
 
         ParameterValueTypeCompatibility.validateAllowedSourcesForRequiredTypes(
                 field.getType().getName(), sources, templateClass.getName() + "." + field.getName());
@@ -209,6 +260,14 @@ public class ProcedureTemplateRegistrationService {
         fields.sort(Comparator.comparingInt((Field field) -> field.getAnnotation(ProcedureParameter.class).order())
                 .thenComparing(Field::getName));
         return fields;
+    }
+
+    private static List<Field> outputFields(Class<?> templateClass) {
+        return Arrays.stream(templateClass.getDeclaredFields())
+                .filter(field -> field.isAnnotationPresent(OutputParam.class))
+                .sorted(Comparator.comparingInt((Field field) -> field.getAnnotation(OutputParam.class).order())
+                        .thenComparing(Field::getName))
+                .toList();
     }
 
     private static void requireText(String value, String name, Class<?> type) {

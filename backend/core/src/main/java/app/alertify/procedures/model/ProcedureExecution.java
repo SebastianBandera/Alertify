@@ -69,6 +69,9 @@ public class ProcedureExecution {
     @Column(name = "parent_procedure_execution_id", updatable = false)
     private UUID parentProcedureExecutionId;
 
+    @Column(name = "parent_pipe_execution_id", updatable = false)
+    private UUID parentPipeExecutionId;
+
     @Column(nullable = false, updatable = false)
     private int depth;
 
@@ -116,6 +119,11 @@ public class ProcedureExecution {
     }
 
     public static ProcedureExecution running(UUID executionId, Procedure procedure, long procedureVersion, ProcedureExecutionTrigger trigger, UUID rootExecutionId, UUID parentAlertExecutionId, UUID parentProcedureExecutionId, int depth, Instant startedAt, String triggeredBy) {
+        return running(executionId, procedure, procedureVersion, trigger, rootExecutionId, parentAlertExecutionId,
+                parentProcedureExecutionId, null, depth, startedAt, triggeredBy);
+    }
+
+    public static ProcedureExecution running(UUID executionId, Procedure procedure, long procedureVersion, ProcedureExecutionTrigger trigger, UUID rootExecutionId, UUID parentAlertExecutionId, UUID parentProcedureExecutionId, UUID parentPipeExecutionId, int depth, Instant startedAt, String triggeredBy) {
         ProcedureExecution result = new ProcedureExecution();
         result.executionId = Objects.requireNonNull(executionId);
         result.procedure = Objects.requireNonNull(procedure);
@@ -125,6 +133,7 @@ public class ProcedureExecution {
         result.rootExecutionId = Objects.requireNonNull(rootExecutionId);
         result.parentAlertExecutionId = parentAlertExecutionId;
         result.parentProcedureExecutionId = parentProcedureExecutionId;
+        result.parentPipeExecutionId = parentPipeExecutionId;
         result.depth = depth;
         result.startedAt = Objects.requireNonNull(startedAt);
         result.triggeredBy = triggeredBy;
@@ -181,6 +190,7 @@ public class ProcedureExecution {
     public UUID getRootExecutionId() { return rootExecutionId; }
     public UUID getParentAlertExecutionId() { return parentAlertExecutionId; }
     public UUID getParentProcedureExecutionId() { return parentProcedureExecutionId; }
+    public UUID getParentPipeExecutionId() { return parentPipeExecutionId; }
     public int getDepth() { return depth; }
     public Instant getStartedAt() { return startedAt; }
     public Instant getWorkStartedAt() { return workStartedAt; }

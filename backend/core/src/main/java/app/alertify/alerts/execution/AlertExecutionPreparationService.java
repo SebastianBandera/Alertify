@@ -114,6 +114,7 @@ public class AlertExecutionPreparationService {
             case CONFIGURATION -> configurationExpressionService.getResolvedValueByName(configured.getConfiguration().getName());
             case SECRET -> secretAccessService.getValueByName(configured.getSecret().getName());
             case PROCEDURE -> null;
+            case PIPE, PIPE_OUTPUT -> throw new IllegalArgumentException("Pipe sources are not valid for Alert parameters");
         };
         byte[] binaryZip = binary ? switch (configured.getSource()) {
             case CONFIGURATION -> binaryBindingService.configurationZip(configured.getConfiguration().getId());
@@ -137,12 +138,12 @@ public class AlertExecutionPreparationService {
                 switch (configured.getSource()) {
                     case CONFIGURATION -> configured.getConfiguration().isWritable();
                     case SECRET -> configured.getSecret().isWritable();
-                    case TEXT, PROCEDURE -> false;
+                    case TEXT, PROCEDURE, PIPE, PIPE_OUTPUT -> false;
                 },
                 switch (configured.getSource()) {
                     case CONFIGURATION -> configured.getConfiguration().getVersion();
                     case SECRET -> configured.getSecret().getVersion();
-                    case TEXT, PROCEDURE -> null;
+                    case TEXT, PROCEDURE, PIPE, PIPE_OUTPUT -> null;
                 }
         );
     }
@@ -151,7 +152,7 @@ public class AlertExecutionPreparationService {
         boolean writable = switch (configured.getSource()) {
             case CONFIGURATION -> configured.getConfiguration().isWritable();
             case SECRET -> configured.getSecret().isWritable();
-            case TEXT, PROCEDURE -> false;
+            case TEXT, PROCEDURE, PIPE, PIPE_OUTPUT -> false;
         };
         if (definition.isWritableBindingRequired() && !writable)
             throw new IllegalArgumentException("Parameter '" + definition.getParameterKey() + "' requires a writable binding");
@@ -162,6 +163,7 @@ public class AlertExecutionPreparationService {
             case SECRET -> ParameterValueTypeCompatibility.isSecretValueTypeCompatible(
                     definition.getJavaType(), configured.getSecret().getValueType());
             case TEXT, PROCEDURE -> true;
+            case PIPE, PIPE_OUTPUT -> false;
         };
         if (!compatible)
             throw new IllegalArgumentException("Parameter '" + definition.getParameterKey() + "' and its binding have incompatible value types");

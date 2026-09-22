@@ -1,0 +1,238 @@
+<section class="pipes-page">
+  <header class="page-header">
+    <div>
+      <h1>{{ dynamic('pipes.title') }}</h1>
+      <p>{{ dynamic('pipes.description') }}</p>
+    </div>
+    <div class="page-header__actions">
+      <input id="pipe-import-file" class="file-input" type="file" accept=".csv,text/csv" (change)="importCsv($event)">
+      <button class="button button--secondary" type="button" [disabled]="exporting()" (click)="exportCsv()">
+        {{ dynamic(exporting() ? 'pipes.exporting' : 'pipes.export') }}
+      </button>
+      <button class="button button--secondary" type="button" [disabled]="importing()" (click)="openImportPicker()">
+        {{ dynamic(importing() ? 'pipes.importing' : 'pipes.import') }}
+      </button>
+      <button class="button button--primary" type="button" (click)="openCreate()">{{ dynamic('pipes.create') }}</button>
+    </div>
+  </header>
+
+  <nav class="tabs" [attr.aria-label]="dynamic('pipes.tabs.label')">
+    <button type="button" [class.active]="activeTab() === 'pipes'" (click)="changeTab('pipes')">
+      {{ dynamic('pipes.tabs.pipes') }} <span>{{ totalElements() }}</span>
+    </button>
+    <button type="button" [class.active]="activeTab() === 'history'" (click)="changeTab('history')">{{ dynamic('pipes.tabs.history') }}</button>
+  </nav>
+
+  @if (error()) { <p class="state state--error" role="alert">{{ error() }}</p> }
+  @if (notice()) { <p class="state state--success" role="status">{{ notice() }}</p> }
+
+  @if (activeTab() === 'pipes') {
+    <form class="toolbar" (ngSubmit)="applySearch()">
+      <label class="search-field">
+        <span>{{ dynamic('pipes.search') }}</span>
+        <input type="search" name="search" [ngModel]="search()" (ngModelChange)="search.set($event)" [placeholder]="dynamic('pipes.searchPlaceholder')">
+      </label>
+      <button class="button button--secondary" type="submit">{{ dynamic('pipes.searchAction') }}</button>
+    </form>
+
+    @if (loading()) {
+      <p class="state">{{ dynamic('pipes.loading') }}</p>
+    } @else if (!pipes().length) {
+      <p class="state">{{ dynamic('pipes.empty') }}</p>
+    } @else {
+      <div class="table-shell">
+        <table>
+          <thead><tr>
+            <th>{{ dynamic('pipes.column.name') }}</th>
+            <th>{{ dynamic('pipes.column.steps') }}</th>
+            <th>{{ dynamic('pipes.column.concurrent') }}</th>
+            <th>{{ dynamic('pipes.column.status') }}</th>
+            <th>{{ dynamic('pipes.column.updatedAt') }}</th>
+            <th>{{ dynamic('pipes.column.actions') }}</th>
+          </tr></thead>
+          <tbody>
+            @for (pipe of pipes(); track pipe.id) {
+              <tr>
+                <td><strong>{{ pipe.name }}</strong><small>{{ pipe.description || '—' }}</small></td>
+                <td>
+                  <ol class="compact-list">
+                    @for (step of pipe.steps; track step.id) {
+                      <li><code>{{ step.key }}</code> <span class="type">{{ step.type }}</span> {{ step.resourceName }}</li>
+                    }
+                  </ol>
+                </td>
+                <td>{{ dynamic(pipe.allowConcurrentExecutions ? 'pipes.yes' : 'pipes.no') }}</td>
+                <td><span class="badge" [class.badge--disabled]="!pipe.enabled">{{ dynamic(pipe.enabled ? 'pipes.enabled' : 'pipes.disabled') }}</span></td>
+                <td>{{ pipe.updatedAt | date:'medium' }}</td>
+                <td class="actions">
+                  <div class="actions__group">
+                    <button
+                      class="actions__run"
+                      type="button"
+                      (click)="run(pipe)"
+                      [disabled]="runningId() !== null"
+                    >
+                      <span class="actions__run-icon" aria-hidden="true"></span>
+                      {{ dynamic(runningId() === pipe.id ? 'pipes.runStarting' : 'pipes.run') }}
+                    </button>
+                    <span class="actions__divider" aria-hidden="true"></span>
+                    <button type="button" (click)="openEdit(pipe)">{{ dynamic('pipes.edit') }}</button>
+                    <button class="danger" type="button" (click)="remove(pipe)">{{ dynamic('pipes.delete') }}</button>
+                  </div>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      <footer class="pagination">
+        <span>{{ totalElements() }} {{ dynamic('pipes.records') }}</span>
+        <div>
+          <button type="button" [disabled]="pageIndex() <= 0" (click)="goToPage(pageIndex() - 1)">‹</button>
+          <span>{{ dynamic('pipes.page') }} {{ totalPages() ? pageIndex() + 1 : 0 }} / {{ totalPages() }}</span>
+          <button type="button" [disabled]="pageIndex() + 1 >= totalPages()" (click)="goToPage(pageIndex() + 1)">›</button>
+        </div>
+      </footer>
+    }
+  } @else {
+    @if (executionFilter()) {
+      <div class="execution-filter"><code>{{ executionFilter() }}</code><button type="button" (click)="clearExecutionFilter()">{{ dynamic('pipes.history.clearExecution') }}</button></div>
+    }
+    <div class="toolbar history-filters">
+      <label>
+        <span>{{ dynamic('pipes.history.pipe') }}</span>
+        <select [ngModel]="historyPipeId()" (ngModelChange)="selectHistoryPipe($event)" [ngModelOptions]="{ standalone: true }" [disabled]="!!executionFilter()">
+          <option [ngValue]="null">{{ dynamic('pipes.history.all') }}</option>
+          @for (pipe of pipeChoices(); track pipe.id) { <option [ngValue]="pipe.id">{{ pipe.name }}</option> }
+        </select>
+      </label>
+      <button class="button button--secondary" type="button" (click)="loadHistory()">{{ dynamic('pipes.history.refresh') }}</button>
+    </div>
+
+    @if (loading()) {
+      <p class="state">{{ dynamic('pipes.loading') }}</p>
+    } @else if (!executions().length) {
+      <p class="state">{{ dynamic('pipes.history.empty') }}</p>
+    } @else {
+      <div class="execution-list">
+        @for (execution of executions(); track execution.executionId) {
+          <article class="execution-card">
+            <header>
+              <div><strong>{{ execution.pipeName }}</strong><code>{{ execution.executionId }}</code></div>
+              <div class="execution-badges">
+                <span class="badge" [class.badge--running]="execution.status === 'RUNNING'" [class.badge--error]="execution.status === 'FAILED'">{{ execution.status }}</span>
+                @if (execution.outcome) { <span class="badge">{{ execution.outcome }}</span> }
+              </div>
+            </header>
+            <dl class="execution-meta">
+              <div><dt>{{ dynamic('pipes.history.trigger') }}</dt><dd>{{ execution.trigger }}</dd></div>
+              <div><dt>{{ dynamic('pipes.history.startedAt') }}</dt><dd>{{ execution.startedAt | date:'medium' }}</dd></div>
+              <div><dt>{{ dynamic('pipes.history.duration') }}</dt><dd>{{ execution.durationMillis === null ? '—' : execution.durationMillis + ' ms' }}</dd></div>
+              @if (execution.depth > 1) {
+                <div><dt>{{ dynamic('pipes.history.depth') }}</dt><dd>{{ execution.depth }}</dd></div>
+              }
+            </dl>
+            @if (execution.errorCode) { <p class="state state--error"><code>{{ execution.errorCode }}</code></p> }
+            <div class="table-shell table-shell--steps">
+              <table>
+                <thead><tr><th>#</th><th>{{ dynamic('pipes.history.step') }}</th><th>{{ dynamic('pipes.history.resource') }}</th><th>{{ dynamic('pipes.history.status') }}</th><th>{{ dynamic('pipes.history.execution') }}</th><th>{{ dynamic('pipes.history.error') }}</th></tr></thead>
+                <tbody>
+                  @for (step of execution.steps; track step.position) {
+                    <tr>
+                      <td>{{ step.position + 1 }}</td>
+                      <td><code>{{ step.key }}</code></td>
+                      <td><span class="type">{{ step.type }}</span> {{ step.resourceName }}</td>
+                      <td>{{ step.status }}@if (step.outcome && step.outcome !== step.status) { · {{ step.outcome }} }</td>
+                      <td><code>{{ step.resourceExecutionId || '—' }}</code></td>
+                      <td><code>{{ step.errorCode || '—' }}</code></td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          </article>
+        }
+      </div>
+      @if (!executionFilter()) {
+        <footer class="pagination">
+          <span></span>
+          <div>
+            <button type="button" [disabled]="historyPageIndex() <= 0" (click)="goToHistoryPage(historyPageIndex() - 1)">‹</button>
+            <span>{{ dynamic('pipes.page') }} {{ historyTotalPages() ? historyPageIndex() + 1 : 0 }} / {{ historyTotalPages() }}</span>
+            <button type="button" [disabled]="historyPageIndex() + 1 >= historyTotalPages()" (click)="goToHistoryPage(historyPageIndex() + 1)">›</button>
+          </div>
+        </footer>
+      }
+    }
+  }
+</section>
+
+@if (editorOpen()) {
+  <div class="modal-backdrop" (mousedown)="closeEditor()">
+    <section class="modal" role="dialog" aria-modal="true" (mousedown)="$event.stopPropagation()">
+      <header>
+        <h2>{{ dynamic(editing() ? 'pipes.form.editTitle' : 'pipes.form.createTitle') }}</h2>
+        <button class="close" type="button" (click)="closeEditor()">×</button>
+      </header>
+      <form (ngSubmit)="save()">
+        <div class="form-grid">
+          <label><span>{{ dynamic('pipes.form.name') }}</span><input name="name" required maxlength="255" [ngModel]="form().name" (ngModelChange)="patchForm('name', $event)"></label>
+          <div class="pipe-options">
+            <label class="checkbox checkbox--with-help"><input name="enabled" type="checkbox" [ngModel]="form().enabled" (ngModelChange)="patchForm('enabled', $event)"><span>{{ dynamic('pipes.form.enabled') }}<small>{{ dynamic('pipes.form.enabledHelp') }}</small></span></label>
+            <label class="checkbox checkbox--with-help"><input name="concurrent" type="checkbox" [ngModel]="form().allowConcurrentExecutions" (ngModelChange)="patchForm('allowConcurrentExecutions', $event)"><span>{{ dynamic('pipes.form.concurrent') }}<small>{{ dynamic('pipes.form.concurrentHelp') }}</small></span></label>
+          </div>
+          <label class="full"><span>{{ dynamic('pipes.form.description') }}</span><textarea name="description" rows="2" maxlength="4000" [ngModel]="form().description" (ngModelChange)="patchForm('description', $event)"></textarea></label>
+        </div>
+
+        <section class="step-editor">
+          <h3>{{ dynamic('pipes.form.steps') }}</h3>
+          <p>{{ dynamic('pipes.form.stepsHelp') }}</p>
+          <div class="step-adder">
+            <label><span>{{ dynamic('pipes.form.type') }}</span><select name="newStepType" [ngModel]="newStepType()" (ngModelChange)="changeNewStepType($event)"><option value="ALERT">Alert</option><option value="PROCEDURE">Procedure</option></select></label>
+            <label><span>{{ dynamic('pipes.form.resource') }}</span><select name="newStepResource" [ngModel]="newStepResourceId()" (ngModelChange)="newStepResourceId.set($event)"><option [ngValue]="null">{{ dynamic('pipes.form.selectResource') }}</option>@for (option of resourceOptions(); track option.type + '-' + option.id) { <option [ngValue]="option.id">{{ option.name }}{{ option.enabled ? '' : ' (' + dynamic('pipes.disabled') + ')' }}</option> }</select></label>
+            <button class="button button--secondary" type="button" [disabled]="newStepResourceId() === null" (click)="addStep()">{{ dynamic('pipes.form.addStep') }}</button>
+          </div>
+
+          @for (step of form().steps; track $index; let index = $index) {
+            <article class="step-card">
+              <header>
+                <div><span class="order">{{ index + 1 }}</span><strong>{{ step.resourceName }}</strong><span class="type">{{ step.type }}</span>@if (!step.resourceEnabled) { <span class="warning">{{ dynamic('pipes.form.currentlyDisabled') }}</span> }</div>
+                <div class="order-actions"><button type="button" [disabled]="$first" (click)="moveStep(index, -1)">↑</button><button type="button" [disabled]="$last" (click)="moveStep(index, 1)">↓</button><button class="danger" type="button" (click)="removeStep(index)">{{ dynamic('pipes.form.remove') }}</button></div>
+              </header>
+              <div class="step-fields">
+                <label><span>{{ dynamic('pipes.form.key') }}</span><input [name]="'key-' + index" required maxlength="255" [ngModel]="step.key" (ngModelChange)="patchStep(index, 'key', $event)"></label>
+                <label><span>{{ dynamic('pipes.form.timeout') }}</span><input type="number" [name]="'timeout-' + index" min="1" [ngModel]="step.timeoutMinutes" (ngModelChange)="patchStep(index, 'timeoutMinutes', $event)"></label>
+                <fieldset>
+                  <legend>{{ dynamic('pipes.form.continueOn') }}</legend>
+                  @for (outcome of outcomes; track outcome) {
+                    <label class="checkbox"><input type="checkbox" [name]="'continue-' + index + '-' + outcome" [ngModel]="step.continueOn.includes(outcome)" (ngModelChange)="toggleOutcome(index, outcome, $event)"><span>{{ outcome }}</span></label>
+                  }
+                </fieldset>
+              </div>
+
+              @if (step.type === 'PROCEDURE' && artifactInputs(index).length) {
+                <section class="binding-editor">
+                  <h4>{{ dynamic('pipes.form.bindings') }}</h4>
+                  <p>{{ dynamic('pipes.form.bindingsHelp') }}</p>
+                  <div class="binding-adder">
+                    <label><span>{{ dynamic('pipes.form.targetInput') }}</span><select [name]="'binding-target-' + index" [ngModel]="step.bindingTarget" (ngModelChange)="patchStep(index, 'bindingTarget', $event)"><option value="">—</option>@for (input of artifactInputs(index); track input) { <option [value]="input">{{ input }}</option> }</select></label>
+                    <label><span>{{ dynamic('pipes.form.sourceOutput') }}</span><select [name]="'binding-source-' + index" [ngModel]="step.bindingSource" (ngModelChange)="patchStep(index, 'bindingSource', $event)"><option value="">—</option>@for (source of bindingSources(index); track source.value) { <option [value]="source.value">{{ source.label }}</option> }</select></label>
+                    <button class="button button--secondary" type="button" [disabled]="!step.bindingTarget || !step.bindingSource" (click)="addBinding(index)">{{ dynamic('pipes.form.addBinding') }}</button>
+                  </div>
+                  <ul class="binding-list">
+                    @for (binding of step.bindings; track binding.targetParameterKey; let bindingIndex = $index) {
+                      <li><code>{{ binding.targetParameterKey }}</code><span>←</span><code>{{ binding.sourceStepKey }} / {{ binding.sourceOutputKey }}</code><button class="danger" type="button" (click)="removeBinding(index, bindingIndex)">×</button></li>
+                    } @empty { <li class="muted">{{ dynamic('pipes.form.noBindings') }}</li> }
+                  </ul>
+                </section>
+              }
+            </article>
+          } @empty { <p class="step-empty">{{ dynamic('pipes.form.noSteps') }}</p> }
+        </section>
+
+        @if (formError()) { <p class="form-error" role="alert">{{ formError() }}</p> }
+        <footer><button class="button button--secondary" type="button" (click)="closeEditor()">{{ dynamic('pipes.cancel') }}</button><button class="button button--primary" type="submit" [disabled]="saving()">{{ dynamic('pipes.save') }}</button></footer>
+      </form>
+    </section>
+  </div>
+}

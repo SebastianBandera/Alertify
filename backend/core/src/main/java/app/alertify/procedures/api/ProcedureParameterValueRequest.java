@@ -13,7 +13,8 @@ public record ProcedureParameterValueRequest(
     @Size(max = 1048576) String textValue,
     @Positive Long configurationId,
     @Positive Long secretId,
-    @Positive Long procedureId
+    @Positive Long procedureId,
+    @Positive Long pipeId
 ) {
     @AssertTrue(message = "exactly one value matching source must be provided")
     public boolean isSourceSelectionValid() {
@@ -21,10 +22,12 @@ public record ProcedureParameterValueRequest(
             return true;
 
         return switch (source) {
-            case TEXT -> textValue != null && configurationId == null && secretId == null && procedureId == null;
-            case CONFIGURATION -> textValue == null && configurationId != null && secretId == null && procedureId == null;
-            case SECRET -> textValue == null && configurationId == null && secretId != null && procedureId == null;
-            case PROCEDURE -> textValue == null && configurationId == null && secretId == null && procedureId != null;
+            case TEXT -> textValue != null && configurationId == null && secretId == null && procedureId == null && pipeId == null;
+            case CONFIGURATION -> textValue == null && configurationId != null && secretId == null && procedureId == null && pipeId == null;
+            case SECRET -> textValue == null && configurationId == null && secretId != null && procedureId == null && pipeId == null;
+            case PROCEDURE -> textValue == null && configurationId == null && secretId == null && procedureId != null && pipeId == null;
+            case PIPE -> textValue == null && configurationId == null && secretId == null && procedureId == null && pipeId != null;
+            case PIPE_OUTPUT -> false;
         };
     }
 }

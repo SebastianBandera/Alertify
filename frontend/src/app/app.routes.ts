@@ -35,6 +35,15 @@ export const routes: Routes = [
           ),
       },
       {
+        path: 'pipes',
+        title: 'Pipes | Alertify',
+        canActivate: [adminGuard],
+        loadComponent: () =>
+          import('./features/pipes/pipes.component').then(
+            (component) => component.PipesComponent,
+          ),
+      },
+      {
         path: 'hooks',
         title: 'Hooks | Alertify',
         canActivate: [adminGuard],

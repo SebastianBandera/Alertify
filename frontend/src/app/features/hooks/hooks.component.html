@@ -128,7 +128,7 @@
                     <td>{{ dynamic('hooks.targetStatus.' + target.status) }}</td>
                     <td>
                       @if (target.executionId) {
-                        <a [routerLink]="target.type === 'ALERT' ? '/alerts' : '/procedures'" [queryParams]="{ tab: 'history', executionId: target.executionId }">{{ target.executionId }}</a>
+                        <a [routerLink]="target.type === 'ALERT' ? '/alerts' : target.type === 'PROCEDURE' ? '/procedures' : '/pipes'" [queryParams]="{ tab: 'history', executionId: target.executionId }">{{ target.executionId }}</a>
                       } @else { — }
                     </td>
                   </tr>
@@ -198,7 +198,7 @@
           <h3>{{ dynamic('hooks.form.targets') }}</h3>
           <p>{{ dynamic('hooks.form.targetsHelp') }}</p>
           <div class="target-adder">
-            <label><span>{{ dynamic('hooks.form.type') }}</span><select name="newTargetType" [ngModel]="newTargetType()" (ngModelChange)="changeNewTargetType($event)"><option value="ALERT">{{ dynamic('hooks.type.ALERT') }}</option><option value="PROCEDURE">{{ dynamic('hooks.type.PROCEDURE') }}</option></select></label>
+            <label><span>{{ dynamic('hooks.form.type') }}</span><select name="newTargetType" [ngModel]="newTargetType()" (ngModelChange)="changeNewTargetType($event)"><option value="ALERT">{{ dynamic('hooks.type.ALERT') }}</option><option value="PROCEDURE">{{ dynamic('hooks.type.PROCEDURE') }}</option><option value="PIPE">{{ dynamic('hooks.type.PIPE') }}</option></select></label>
             <label><span>{{ dynamic('hooks.form.resource') }}</span><select name="newTarget" [ngModel]="newTargetId()" (ngModelChange)="newTargetId.set($event)"><option [ngValue]="null">{{ dynamic('hooks.form.selectResource') }}</option>@for (option of targetOptions(); track option.id) { <option [ngValue]="option.id">{{ option.name }}{{ option.enabled ? '' : ' (' + dynamic('hooks.disabled') + ')' }}</option> }</select></label>
             <button class="button button--secondary" type="button" [disabled]="newTargetId() === null" (click)="addTarget()">{{ dynamic('hooks.form.addTarget') }}</button>
           </div>

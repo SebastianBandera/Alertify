@@ -7,6 +7,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Set;
+import java.util.UUID;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -92,6 +93,30 @@ class WorkerStatusServiceTest {
     }
 
     @Test
+    void prefersTheRequestedWorkerInstanceEvenWhenAnotherCompatibleWorkerHasLessLoad() {
+        UUID preferred = UUID.fromString("9b499a37-841d-46bf-8d80-b215759be723");
+        when(client.status(FIRST, TIMEOUT)).thenReturn(status(preferred, 3, 2));
+        when(client.status(SECOND, TIMEOUT)).thenReturn(status(UUID.fromString("db68c2fa-170d-4017-a05e-69d79d98ab37"), 0, 0));
+
+        try (WorkerReservation reservation = service.reserve(WorkerCapability.STANDARD, preferred)) {
+            assertThat(reservation.worker().endpoint()).isEqualTo(FIRST);
+        }
+    }
+
+    @Test
+    void neverUsesAPreferredInstanceOutsideTheRequiredCapability() {
+        UUID playwrightInstance = UUID.fromString("724e79b2-556b-4835-bc8b-39286290642e");
+        WorkerEndpoint playwright = new WorkerEndpoint("10.0.0.4", 9090);
+        availabilityService.markAvailable(playwright, Set.of(WorkerCapability.PLAYWRIGHT));
+        when(client.status(FIRST, TIMEOUT)).thenReturn(status(UUID.fromString("9b499a37-841d-46bf-8d80-b215759be723"), 0, 0));
+        when(client.status(SECOND, TIMEOUT)).thenReturn(status(UUID.fromString("db68c2fa-170d-4017-a05e-69d79d98ab37"), 0, 0));
+
+        try (WorkerReservation reservation = service.reserve(WorkerCapability.STANDARD, playwrightInstance)) {
+            assertThat(reservation.worker().endpoint()).isIn(FIRST, SECOND);
+        }
+    }
+
+    @Test
     void exposesTheWorkerParallelCapacityInItsStatus() {
         when(client.status(FIRST, TIMEOUT)).thenReturn(status(2, 1));
         when(client.status(SECOND, TIMEOUT)).thenReturn(status(0, 0));
@@ -129,9 +154,13 @@ class WorkerStatusServiceTest {
     }
 
     private static WorkerStatusResponse status(int running, int waiting) {
+        return status(UUID.fromString("15d5376a-e386-48fe-a089-3d8e597bc29a"), running, waiting);
+    }
+
+    private static WorkerStatusResponse status(UUID instanceId, int running, int waiting) {
         return WorkerStatusResponse.newBuilder()
                 .setWorkerName("worker")
-                .setWorkerInstanceId("15d5376a-e386-48fe-a089-3d8e597bc29a")
+                .setWorkerInstanceId(instanceId.toString())
                 .setWorkerStartedAt(Timestamp.newBuilder()
                         .setSeconds(WORKER_STARTED_AT.getEpochSecond())
                         .setNanos(WORKER_STARTED_AT.getNano()))

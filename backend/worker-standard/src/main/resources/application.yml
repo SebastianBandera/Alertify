@@ -17,6 +17,11 @@ alertify:
     max-concurrent-alerts: ${WORKER_STANDARD_MAX_CONCURRENT_ALERTS:8}
     compiler-output-directory: /application/compiled-alerts
     compiler-classpath-directory: /application/compiler-classpath
+    artifact-storage:
+      directory: /application/artifacts
+      max-artifact-bytes: ${WORKER_ARTIFACT_MAX_BYTES:10737418240}
+      max-total-bytes: ${WORKER_ARTIFACT_TOTAL_MAX_BYTES:21474836480}
+      sweep-interval: ${WORKER_ARTIFACT_SWEEP_INTERVAL:5m}
     tls:
       enabled: ${WORKER_GRPC_TLS_ENABLED:true}
       certificate-chain: /run/alertify-grpc-tls/current/worker-server.crt

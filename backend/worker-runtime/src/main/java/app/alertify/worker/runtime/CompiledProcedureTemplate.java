@@ -3,10 +3,16 @@ package app.alertify.worker.runtime;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
+import java.time.Instant;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 
 import app.alertify.procedures.Procedure;
+import app.alertify.pipes.Pipe;
+import app.alertify.procedures.artifact.ProcedureArtifactInput;
+import app.alertify.procedures.artifact.ProcedureArtifactOutput;
+import app.alertify.procedures.template.annotation.OutputParam;
 import app.alertify.procedures.ProcedureEvaluator;
 import app.alertify.worker.grpc.AlertParameter;
 import app.alertify.worker.grpc.WritableConfigurationValue;
@@ -23,7 +29,7 @@ import io.grpc.Deadline;
  */
 record CompiledProcedureTemplate(String checksum, Class<? extends ProcedureEvaluator> templateClass) {
 
-    ProcedureEvaluator newInstance(List<AlertParameter> parameters, ProcedureHandleFactory handles, Deadline deadline) {
+    Instance newInstance(List<AlertParameter> parameters, ProcedureHandleFactory handles, PipeHandleFactory pipeHandles, Deadline deadline, WorkerArtifactStore artifacts, Instant expiresAt) {
         Constructor<?> constructor = matchingConstructor(parameters);
         Object[] values = new Object[parameters.size()];
         Class<?>[] types = constructor.getParameterTypes();
@@ -33,16 +39,47 @@ record CompiledProcedureTemplate(String checksum, Class<? extends ProcedureEvalu
                 throw new IllegalArgumentException("Parameter '" + parameter.getName() + "' expected "
                         + types[index].getName() + " but received " + parameter.getJavaType());
 
-            values[index] = types[index] == Procedure.class && !parameter.getNullValue()
-                    ? handles.create(parameter, deadline)
-                    : AlertParameterConverter.convert(parameter, types[index]);
+            values[index] = parameterValue(parameter, types[index], handles, pipeHandles, deadline, artifacts);
         }
         try {
             constructor.setAccessible(true);
-            return (ProcedureEvaluator) constructor.newInstance(values);
+            ProcedureEvaluator evaluator = (ProcedureEvaluator) constructor.newInstance(values);
+            List<RuntimeProcedureArtifactOutput> outputs = new ArrayList<>();
+            for (Field field : outputFields()) {
+                OutputParam output = field.getAnnotation(OutputParam.class);
+                RuntimeProcedureArtifactOutput runtimeOutput = new RuntimeProcedureArtifactOutput(output.value(), expiresAt, artifacts);
+                field.setAccessible(true);
+                field.set(evaluator, runtimeOutput);
+                outputs.add(runtimeOutput);
+            }
+            return new Instance(evaluator, List.copyOf(outputs));
         } catch (ReflectiveOperationException exception) {
             throw new IllegalStateException("Could not create procedure template " + templateClass.getName(), exception);
         }
+    }
+
+    private static Object parameterValue(AlertParameter parameter, Class<?> type, ProcedureHandleFactory handles, PipeHandleFactory pipeHandles, Deadline deadline, WorkerArtifactStore artifacts) {
+        if (type == Procedure.class && !parameter.getNullValue())
+            return handles.create(parameter, deadline);
+        if (type == Pipe.class && !parameter.getNullValue())
+            return pipeHandles.create(parameter, deadline);
+        if (type == ProcedureArtifactInput.class && !parameter.getNullValue()) {
+            if (!parameter.hasArtifact())
+                throw new IllegalArgumentException("Artifact parameter '" + parameter.getName() + "' has no descriptor");
+
+            var descriptor = parameter.getArtifact();
+            return new ProcedureArtifactInput(descriptor.getFileName(), descriptor.getMediaType(), descriptor.getSize(),
+                    descriptor.getSha256().toByteArray(), () -> artifacts.open(descriptor.getArtifactId()));
+        }
+        return AlertParameterConverter.convert(parameter, type);
+    }
+
+    private List<Field> outputFields() {
+        return java.util.Arrays.stream(templateClass.getDeclaredFields())
+                .filter(field -> field.isAnnotationPresent(OutputParam.class))
+                .sorted(Comparator.comparingInt((Field field) -> field.getAnnotation(OutputParam.class).order())
+                        .thenComparing(Field::getName))
+                .toList();
     }
 
     WritableValues writableValues(ProcedureEvaluator evaluator, List<AlertParameter> parameters) {
@@ -122,4 +159,14 @@ record CompiledProcedureTemplate(String checksum, Class<? extends ProcedureEvalu
 
     record WritableValues(List<WritableConfigurationValue> configurationValues,
             List<WritableSecretValue> secretValues) { }
+
+    record Instance(ProcedureEvaluator evaluator, List<RuntimeProcedureArtifactOutput> outputs) {
+        List<app.alertify.worker.grpc.ArtifactDescriptor> finishOutputs() {
+            return outputs.stream().map(RuntimeProcedureArtifactOutput::finish).toList();
+        }
+
+        void abortOutputs() {
+            outputs.forEach(RuntimeProcedureArtifactOutput::abort);
+        }
+    }
 }

@@ -305,6 +305,7 @@ public class AlertManagementService {
                 case CONFIGURATION -> AlertParameterValue.configuration(alert, definition, configuration(definition, request.configurationId()));
                 case SECRET -> AlertParameterValue.secret(alert, definition, secret(definition, request.secretId()));
                 case PROCEDURE -> AlertParameterValue.procedure(alert, definition, procedure(request.procedureId()));
+                case PIPE, PIPE_OUTPUT -> throw new IllegalArgumentException("Pipe sources are not valid for Alert parameters");
             };
         } catch (IllegalArgumentException exception) {
             throw invalid(exception.getMessage(), exception);
@@ -318,6 +319,7 @@ public class AlertManagementService {
                 case CONFIGURATION -> target.replaceWithConfiguration(configuration(definition, request.configurationId()));
                 case SECRET -> target.replaceWithSecret(secret(definition, request.secretId()));
                 case PROCEDURE -> target.replaceWithProcedure(procedure(request.procedureId()));
+                case PIPE, PIPE_OUTPUT -> throw new IllegalArgumentException("Pipe sources are not valid for Alert parameters");
             }
         } catch (IllegalArgumentException exception) {
             throw invalid(exception.getMessage(), exception);

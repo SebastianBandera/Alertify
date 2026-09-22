@@ -5,11 +5,12 @@ import { RUNTIME_CONFIG } from '../config/runtime-config';
 import { ApiRequestError, PageResponse } from './configuration-api.service';
 
 export type HookMode = 'PARALLEL' | 'SEQUENTIAL';
-export type HookTargetType = 'ALERT' | 'PROCEDURE';
+export type HookTargetType = 'ALERT' | 'PROCEDURE' | 'PIPE';
 export type HookOutcome = 'SUCCESS' | 'WARN' | 'ERROR';
 export type HookInvocationStatus = 'RUNNING' | 'COMPLETED' | 'PARTIAL' | 'FAILED';
-export type HookTargetStatus = 'PENDING' | 'WAITING_ALERT' | 'WAITING_PROCEDURE' | 'RUNNING' | HookOutcome
-  | 'SKIPPED_DISABLED' | 'SKIPPED_SEQUENCE' | 'ALERT_BUSY_TIMEOUT' | 'PROCEDURE_BUSY_TIMEOUT';
+export type HookTargetStatus = 'PENDING' | 'WAITING_ALERT' | 'WAITING_PROCEDURE' | 'WAITING_PIPE' | 'RUNNING' | HookOutcome
+  | 'SKIPPED_DISABLED' | 'SKIPPED_MAINTENANCE' | 'SKIPPED_SEQUENCE' | 'ALERT_BUSY_TIMEOUT'
+  | 'PROCEDURE_BUSY_TIMEOUT' | 'PIPE_BUSY_TIMEOUT';
 
 export interface HookTarget {
   readonly id: number;

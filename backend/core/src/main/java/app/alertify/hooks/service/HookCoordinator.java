@@ -27,7 +27,11 @@ import app.alertify.hooks.model.HookTargetStatus;
 import app.alertify.hooks.model.HookTargetType;
 import app.alertify.jpa.repository.AlertRepository;
 import app.alertify.jpa.repository.ProcedureRepository;
+import app.alertify.jpa.repository.PipeRepository;
 import app.alertify.logging.ApplicationEventLogger;
+import app.alertify.pipes.execution.PipeExecutionOrchestrator;
+import app.alertify.pipes.model.Pipe;
+import app.alertify.pipes.model.PipeOutcome;
 import app.alertify.procedures.execution.ProcedureExecutionOrchestrator;
 import app.alertify.procedures.model.Procedure;
 
@@ -38,19 +42,23 @@ public class HookCoordinator implements AutoCloseable {
     private final HookAdmissionService admission;
     private final AlertRepository alertRepository;
     private final ProcedureRepository procedureRepository;
+    private final PipeRepository pipeRepository;
     private final AlertExecutionOrchestrator alertOrchestrator;
     private final ProcedureExecutionOrchestrator procedureOrchestrator;
+    private final PipeExecutionOrchestrator pipeOrchestrator;
     private final ApplicationEventLogger eventLogger;
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
     private final ScheduledExecutorService leaseExecutor = Executors.newSingleThreadScheduledExecutor(Thread.ofPlatform().name("hook-lease-renewal").factory());
 
-    public HookCoordinator(HookInvocationPersistenceService persistence, HookAdmissionService admission, AlertRepository alertRepository, ProcedureRepository procedureRepository, AlertExecutionOrchestrator alertOrchestrator, ProcedureExecutionOrchestrator procedureOrchestrator, ApplicationEventLogger eventLogger) {
+    public HookCoordinator(HookInvocationPersistenceService persistence, HookAdmissionService admission, AlertRepository alertRepository, ProcedureRepository procedureRepository, PipeRepository pipeRepository, AlertExecutionOrchestrator alertOrchestrator, ProcedureExecutionOrchestrator procedureOrchestrator, PipeExecutionOrchestrator pipeOrchestrator, ApplicationEventLogger eventLogger) {
         this.persistence = persistence;
         this.admission = admission;
         this.alertRepository = alertRepository;
         this.procedureRepository = procedureRepository;
+        this.pipeRepository = pipeRepository;
         this.alertOrchestrator = alertOrchestrator;
         this.procedureOrchestrator = procedureOrchestrator;
+        this.pipeOrchestrator = pipeOrchestrator;
         this.eventLogger = eventLogger;
     }
 
@@ -163,6 +171,39 @@ public class HookCoordinator implements AutoCloseable {
             };
             HookTargetStatus status = HookTargetStatus.valueOf(outcome.name());
             persistence.completeTarget(target.getId(), status, outcome, execution.executionId(), null);
+            return new TargetResult(outcome, false);
+        }
+
+        if (target.getTargetType() == HookTargetType.PIPE) {
+            Pipe pipe = pipeRepository.findById(target.getResourceId()).orElse(null);
+            if (pipe == null || !pipe.isEnabled()) {
+                persistence.completeTarget(target.getId(), HookTargetStatus.SKIPPED_DISABLED, null, null, null);
+                return new TargetResult(null, true);
+            }
+
+            PipeExecutionOrchestrator.PipeHookExecution execution = pipeOrchestrator.executeHook(
+                    pipe.getId(), Duration.ofMillis(target.getBusyWaitTimeoutMillis()), actor,
+                    () -> persistence.transitionTarget(target.getId(), HookTargetStatus.WAITING_PIPE),
+                    () -> persistence.transitionTarget(target.getId(), HookTargetStatus.RUNNING));
+            if (execution.busyTimeout()) {
+                persistence.completeTarget(target.getId(), HookTargetStatus.PIPE_BUSY_TIMEOUT, HookOutcome.ERROR, null, "PIPE_BUSY_TIMEOUT");
+                return new TargetResult(HookOutcome.ERROR, false);
+            }
+            if (execution.maintenance()) {
+                persistence.completeTarget(target.getId(), HookTargetStatus.SKIPPED_MAINTENANCE, null, null, null);
+                return new TargetResult(null, true);
+            }
+            if (execution.disabled()) {
+                persistence.completeTarget(target.getId(), HookTargetStatus.SKIPPED_DISABLED, null, null, null);
+                return new TargetResult(null, true);
+            }
+
+            HookOutcome outcome = switch (execution.outcome()) {
+                case SUCCESS -> HookOutcome.SUCCESS;
+                case WARN -> HookOutcome.WARN;
+                case ERROR -> HookOutcome.ERROR;
+            };
+            persistence.completeTarget(target.getId(), HookTargetStatus.valueOf(outcome.name()), outcome, execution.executionId(), null);
             return new TargetResult(outcome, false);
         }
 

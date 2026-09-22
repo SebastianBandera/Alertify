@@ -212,6 +212,7 @@ public class AlertCsvService {
                         parameter.key(), AlertParameterSource.PROCEDURE, null, null, null, procedure.getId()
                 );
             }
+            case PIPE, PIPE_OUTPUT -> throw rowError(row, "Pipe sources are not valid for Alert parameters");
         };
     }
 
@@ -259,6 +260,7 @@ public class AlertCsvService {
             case CONFIGURATION -> String.valueOf(value.getConfiguration().getId());
             case SECRET -> String.valueOf(value.getSecret().getId());
             case PROCEDURE -> String.valueOf(value.getProcedure().getId());
+            case PIPE, PIPE_OUTPUT -> throw new IllegalStateException("Pipe sources cannot be persisted on Alert parameters");
         };
         return value.getSource() + " " + reference;
     }
@@ -269,6 +271,7 @@ public class AlertCsvService {
             case CONFIGURATION -> String.valueOf(request.configurationId());
             case SECRET -> String.valueOf(request.secretId());
             case PROCEDURE -> String.valueOf(request.procedureId());
+            case PIPE, PIPE_OUTPUT -> throw new IllegalStateException("Pipe sources cannot be requested on Alert parameters");
         };
         return request.source() + " " + reference;
     }
