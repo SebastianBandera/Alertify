@@ -27,7 +27,6 @@ export const ES_UY_TRANSLATIONS = {
   'language.label': 'Idioma',
   'dashboard.empty': 'Todavía no hay alertas',
   'dashboard.emptyDescription': 'Creá una alerta en la sección Alertas y su tarjeta va a aparecer acá.',
-  'dashboard.adminOnly': 'El tablero está disponible solo para administradores.',
   'dashboard.notification.WARN': 'Advertencia',
   'dashboard.notification.ERROR': 'Error',
   'dashboard.notification.noMessage': 'Sin mensaje',

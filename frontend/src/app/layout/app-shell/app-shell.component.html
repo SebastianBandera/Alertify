@@ -1,5 +1,9 @@
-<div class="app-shell" [class.app-shell--sidebar-collapsed]="sidebarCollapsed()">
-  <aside class="sidebar" [attr.aria-label]="localization.translate('navigation.primary')">
+<div
+  class="app-shell"
+  [class.app-shell--sidebar-collapsed]="authService.isAdmin && sidebarCollapsed()"
+  [class.app-shell--viewer]="!authService.isAdmin">
+  @if (authService.isAdmin) {
+    <aside class="sidebar" [attr.aria-label]="localization.translate('navigation.primary')">
     <div class="sidebar__brand-row">
       <a
         class="brand"
@@ -115,27 +119,28 @@
         </span>
       </div>
     </div>
-  </aside>
+    </aside>
+  }
 
   <main class="workspace">
-    <header class="workspace__header">
-      @if (authService.isAdmin) {
+    @if (authService.isAdmin) {
+      <header class="workspace__header">
         <app-admin-status-bar />
-      }
-      <div class="workspace__actions">
-        <label class="language-selector">
-          <span>{{ localization.translate('language.label') }}</span>
-          <select
-            [ngModel]="localization.locale()"
-            (ngModelChange)="updateLocale($event)"
-          >
-            @for (localeOption of localization.localeOptions; track localeOption.value) {
-              <option [value]="localeOption.value">{{ localeOption.label }}</option>
-            }
-          </select>
-        </label>
-      </div>
-    </header>
+        <div class="workspace__actions">
+          <label class="language-selector">
+            <span>{{ localization.translate('language.label') }}</span>
+            <select
+              [ngModel]="localization.locale()"
+              (ngModelChange)="updateLocale($event)"
+            >
+              @for (localeOption of localization.localeOptions; track localeOption.value) {
+                <option [value]="localeOption.value">{{ localeOption.label }}</option>
+              }
+            </select>
+          </label>
+        </div>
+      </header>
+    }
 
     <section class="workspace__content">
       <router-outlet />

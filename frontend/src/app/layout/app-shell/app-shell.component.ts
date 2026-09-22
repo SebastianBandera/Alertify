@@ -16,10 +16,10 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { filter } from 'rxjs';
 
 import { AuthService } from '../../core/auth/auth.service';
-import { LogApiService } from '../../core/api/log-api.service';
 import { LocalizationService } from '../../core/i18n/localization.service';
 import { BrowserNotificationService } from '../../core/notifications/browser-notification.service';
 import { AdminEventChannelService } from '../../core/realtime/admin-event-channel.service';
+import { SessionActionsService } from '../../core/auth/session-actions.service';
 import { TranslationKey } from '../../core/i18n/localization.types';
 import { DashboardLiveService } from '../../features/dashboard/dashboard-live.service';
 import { AdminStatusBarComponent } from '../admin-status-bar/admin-status-bar.component';
@@ -46,7 +46,7 @@ export class AppShellComponent {
   private readonly adminEventChannel = inject(AdminEventChannelService);
   private readonly dashboardLive = inject(DashboardLiveService);
   private readonly browserNotifications = inject(BrowserNotificationService);
-  private readonly logApi = inject(LogApiService);
+  private readonly sessionActions = inject(SessionActionsService);
   private readonly router = inject(Router);
   private readonly title = inject(Title);
   protected readonly navigationItems: readonly NavigationItem[] = [
@@ -96,10 +96,9 @@ export class AppShellComponent {
 
   constructor() {
     afterNextRender(() => {
-      if (!this.authService.isAdmin) return;
       /* The board store starts with the channel so results and notifications arrive from any section. */
       this.dashboardLive.start();
-      this.adminEventChannel.start();
+      if (this.authService.isAdmin) this.adminEventChannel.start();
       this.browserNotifications.ensurePermission();
     });
 
@@ -192,12 +191,7 @@ export class AppShellComponent {
   }
 
   protected async logout(): Promise<void> {
-    try {
-      await this.logApi.recordLogout();
-    } catch (error) {
-      console.warn('Unable to record the logout event.', error);
-    }
-    await this.authService.logout();
+    await this.sessionActions.logout();
   }
 
   private titleKeyForUrl(url: string): TranslationKey {

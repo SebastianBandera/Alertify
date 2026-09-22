@@ -27,7 +27,6 @@ export const EN_TRANSLATIONS = {
   'language.label': 'Language',
   'dashboard.empty': 'No alerts yet',
   'dashboard.emptyDescription': 'Create an alert in the Alerts section and its tile will show up here.',
-  'dashboard.adminOnly': 'The board is available to administrators only.',
   'dashboard.notification.WARN': 'Warning',
   'dashboard.notification.ERROR': 'Error',
   'dashboard.notification.noMessage': 'No message',

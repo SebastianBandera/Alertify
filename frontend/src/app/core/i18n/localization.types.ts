@@ -222,7 +222,6 @@ export type TranslationKey =
   | 'language.label'
   | 'dashboard.empty'
   | 'dashboard.emptyDescription'
-  | 'dashboard.adminOnly'
   | 'dashboard.notification.WARN'
   | 'dashboard.notification.ERROR'
   | 'dashboard.notification.noMessage'

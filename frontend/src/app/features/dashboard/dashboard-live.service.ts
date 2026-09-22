@@ -1,12 +1,14 @@
 import { DOCUMENT } from '@angular/common';
-import { computed, DestroyRef, effect, inject, Injectable, Injector, signal } from '@angular/core';
+import { computed, DestroyRef, effect, inject, Injectable, Injector, Signal, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
-import { Subject } from 'rxjs';
+import { Observable, Subject } from 'rxjs';
 
 import { PageResponse } from '../../core/api/configuration-api.service';
 import { BrowserNotificationService } from '../../core/notifications/browser-notification.service';
+import { AuthService } from '../../core/auth/auth.service';
 import { AdminEventChannelService } from '../../core/realtime/admin-event-channel.service';
+import { ViewerEventChannelService } from '../../core/realtime/viewer-event-channel.service';
 import { DashboardAlertCard } from './dashboard-card';
 import { hasVisibleTag, readStoredViewSettings } from './dashboard-view-settings';
 
@@ -14,6 +16,19 @@ const PAGE_SIZE = 12;
 const PAGE_REQUEST = 'DASHBOARD_PAGE';
 /* A result older than this is not news, only an alert we are seeing for the first time. */
 const RECENT_RESULT_MILLIS = 2 * 60_000;
+
+type DashboardEventName = 'DASHBOARD_ALERT' | 'DASHBOARD_ALERT_REMOVED';
+interface DashboardEventPayloads {
+  readonly DASHBOARD_ALERT: DashboardAlertCard;
+  readonly DASHBOARD_ALERT_REMOVED: { readonly alertId: number };
+}
+
+interface DashboardEventChannel {
+  readonly connectionState: Signal<'idle' | 'connecting' | 'connected' | 'reconnecting'>;
+  start(): void;
+  on<Name extends DashboardEventName>(name: Name): Observable<DashboardEventPayloads[Name]>;
+  request<Response>(name: string, payload: unknown): Promise<Response>;
+}
 
 export interface DashboardChange {
   readonly kind: 'page' | 'update' | 'removal';
@@ -27,14 +42,17 @@ function resultStatus(card: DashboardAlertCard | undefined): string {
 }
 
 /**
- * Live copy of the board, fed by the administrative event channel: a paged
- * snapshot on every (re)connection plus one full tile per change afterwards.
+ * Live copy of the board, fed by the event channel for the current role: a
+ * paged snapshot on every (re)connection plus one full tile per change afterwards.
  * It lives at the root so tiles keep arriving while the user is elsewhere,
  * and WARN/ERROR results still raise a browser notification.
  */
 @Injectable({ providedIn: 'root' })
 export class DashboardLiveService {
-  private readonly channel = inject(AdminEventChannelService);
+  private readonly authService = inject(AuthService);
+  private readonly adminChannel = inject(AdminEventChannelService);
+  private readonly viewerChannel = inject(ViewerEventChannelService);
+  private readonly channel: DashboardEventChannel = this.authService.isAdmin ? this.adminChannel : this.viewerChannel;
   private readonly notifications = inject(BrowserNotificationService);
   private readonly router = inject(Router);
   private readonly document = inject(DOCUMENT);
@@ -45,6 +63,7 @@ export class DashboardLiveService {
   readonly loading = signal(false);
   readonly totalCards = signal<number | null>(null);
   readonly loadedFromPages = signal(0);
+  readonly connectionState = this.channel.connectionState;
   /** Emitted right after the state changed, before the DOM re-rendered, so views can capture layout first. */
   readonly changes$ = new Subject<DashboardChange>();
   /* Position of each card inside the page it arrived with, for the staggered entrance. */
@@ -62,6 +81,7 @@ export class DashboardLiveService {
     }, { injector: this.injector });
     this.channel.on('DASHBOARD_ALERT').pipe(takeUntilDestroyed(this.destroyRef)).subscribe((card) => this.applyEvent(card));
     this.channel.on('DASHBOARD_ALERT_REMOVED').pipe(takeUntilDestroyed(this.destroyRef)).subscribe(({ alertId }) => this.remove(alertId));
+    this.channel.start();
   }
 
   arrivalOffset(alertId: number): number {

@@ -10,6 +10,10 @@
   transition: grid-template-columns 200ms ease;
 }
 
+.app-shell--viewer {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .sidebar {
   position: sticky;
   top: 0;
@@ -475,6 +479,10 @@
 
 .workspace__content {
   padding: 34px;
+}
+
+.app-shell--viewer .workspace__content {
+  padding: 0;
 }
 
 .visually-hidden {

@@ -13,13 +13,14 @@ import {
   viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 
 import { AlertExecution, AlertExecutionStatus, AlertTag } from '../../core/api/alert-api.service';
 import { AuthService } from '../../core/auth/auth.service';
+import { SessionActionsService } from '../../core/auth/session-actions.service';
 import { LocalizationService } from '../../core/i18n/localization.service';
 import { TranslationKey } from '../../core/i18n/localization.types';
-import { AdminEventChannelService } from '../../core/realtime/admin-event-channel.service';
 import { DragScrollDirective } from '../../shared/drag-scroll/drag-scroll.directive';
 import {
   compareDashboardCards,
@@ -100,7 +101,7 @@ const TRIGGER_LABEL_KEYS: Readonly<Record<ExecutionTrigger, TranslationKey>> = {
 
 @Component({
   selector: 'app-dashboard',
-  imports: [DatePipe, NgTemplateOutlet, DragScrollDirective, DashboardRibbonComponent],
+  imports: [DatePipe, FormsModule, NgTemplateOutlet, DragScrollDirective, DashboardRibbonComponent],
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -113,8 +114,9 @@ export class DashboardComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly live = inject(DashboardLiveService);
-  private readonly channel = inject(AdminEventChannelService);
-  protected readonly isAdmin = inject(AuthService).isAdmin;
+  private readonly authService = inject(AuthService);
+  private readonly sessionActions = inject(SessionActionsService);
+  protected readonly isAdmin = this.authService.isAdmin;
   protected readonly cards = this.live.cards;
   /* Cards whose state just changed, while their highlight animation plays. */
   protected readonly changedIds = signal<ReadonlySet<number>>(new Set());
@@ -156,7 +158,7 @@ export class DashboardComponent {
     const total = this.totalCards();
     let pending = 0;
     if (this.loading()) pending = total === null ? INITIAL_SKELETONS : total - this.live.loadedFromPages();
-    else if (this.isAdmin && this.cards().length === 0 && this.channel.connectionState() !== 'connected') pending = INITIAL_SKELETONS;
+    else if (this.cards().length === 0 && this.live.connectionState() !== 'connected') pending = INITIAL_SKELETONS;
     return Array.from({ length: Math.max(0, pending) }, (_, index) => index);
   });
   protected readonly historyWindowDays = DASHBOARD_HISTORY_WINDOW_DAYS;
@@ -254,6 +256,14 @@ export class DashboardComponent {
 
   protected closeCard(): void {
     this.selectedCard.set(null);
+  }
+
+  protected updateLocale(locale: string): void {
+    this.localization.setLocale(locale);
+  }
+
+  protected async logout(): Promise<void> {
+    await this.sessionActions.logout();
   }
 
   protected openLabel(card: DashboardAlertCard): string {

@@ -12,9 +12,10 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import app.alertify.realtime.AdminEventPublisher;
+import app.alertify.realtime.ViewerEventPublisher;
 
 /**
- * Publishes dashboard tiles through the administrative event channel whenever
+ * Publishes dashboard tiles through the role-specific event channels whenever
  * an alert or its execution state changes. Each event carries the complete
  * tile, so clients merge it by alert id regardless of what they already hold.
  */
@@ -26,12 +27,14 @@ public class DashboardEventPublisher implements AutoCloseable {
     private static final Logger LOGGER = LoggerFactory.getLogger(DashboardEventPublisher.class);
 
     private final AdminEventPublisher eventPublisher;
+    private final ViewerEventPublisher viewerEventPublisher;
     private final DashboardCardService cardService;
     private final AlertExecutionRunningRegistry runningRegistry;
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
 
-    public DashboardEventPublisher(AdminEventPublisher eventPublisher, DashboardCardService cardService, AlertExecutionRunningRegistry runningRegistry) {
+    public DashboardEventPublisher(AdminEventPublisher eventPublisher, ViewerEventPublisher viewerEventPublisher, DashboardCardService cardService, AlertExecutionRunningRegistry runningRegistry) {
         this.eventPublisher = eventPublisher;
+        this.viewerEventPublisher = viewerEventPublisher;
         this.cardService = cardService;
         this.runningRegistry = runningRegistry;
     }
@@ -56,12 +59,12 @@ public class DashboardEventPublisher implements AutoCloseable {
     }
 
     private void publishCard(long alertId) {
-        if (!eventPublisher.hasAuthenticatedSessions())
+        if (!hasAuthenticatedSessions())
             return;
 
         executor.submit(() -> {
             try {
-                cardService.card(alertId).ifPresent(card -> eventPublisher.publish(ALERT_EVENT, card));
+                cardService.card(alertId).ifPresent(card -> publish(ALERT_EVENT, card));
             } catch (RuntimeException exception) {
                 LOGGER.warn("Dashboard tile publication failed: alertId={}", alertId, exception);
             }
@@ -71,6 +74,13 @@ public class DashboardEventPublisher implements AutoCloseable {
     private void publish(String eventName, Object payload) {
         if (eventPublisher.hasAuthenticatedSessions())
             eventPublisher.publish(eventName, payload);
+
+        if (viewerEventPublisher.hasAuthenticatedSessions())
+            viewerEventPublisher.publish(eventName, payload);
+    }
+
+    private boolean hasAuthenticatedSessions() {
+        return eventPublisher.hasAuthenticatedSessions() || viewerEventPublisher.hasAuthenticatedSessions();
     }
 
     private static void afterCommit(Runnable action) {

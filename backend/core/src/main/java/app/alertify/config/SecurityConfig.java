@@ -70,6 +70,8 @@ public class SecurityConfig {
                                 .permitAll()
                                 .requestMatchers(HttpMethod.GET, "/api/admin/events")
                                 .permitAll()
+                                .requestMatchers(HttpMethod.GET, "/api/viewer/events")
+                                .permitAll()
                                 .anyRequest()
                                 .authenticated()
                 )

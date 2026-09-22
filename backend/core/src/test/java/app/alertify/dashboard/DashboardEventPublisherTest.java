@@ -18,11 +18,13 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import app.alertify.realtime.AdminEventPublisher;
+import app.alertify.realtime.ViewerEventPublisher;
 
 @ExtendWith(MockitoExtension.class)
 class DashboardEventPublisherTest {
 
     @Mock private AdminEventPublisher eventPublisher;
+    @Mock private ViewerEventPublisher viewerEventPublisher;
     @Mock private DashboardCardService cardService;
 
     @Test
@@ -50,38 +52,42 @@ class DashboardEventPublisherTest {
         DashboardCardResponse card = new DashboardCardResponse(null, null, null, null, null);
         UUID executionId = UUID.randomUUID();
         when(eventPublisher.hasAuthenticatedSessions()).thenReturn(true);
+        when(viewerEventPublisher.hasAuthenticatedSessions()).thenReturn(true);
         when(cardService.card(1L)).thenReturn(Optional.of(card));
 
-        try (DashboardEventPublisher publisher = new DashboardEventPublisher(eventPublisher, cardService, registry)) {
+        try (DashboardEventPublisher publisher = new DashboardEventPublisher(eventPublisher, viewerEventPublisher, cardService, registry)) {
             publisher.executionStarted(1L, executionId, Instant.now());
             publisher.executionFinished(1L, executionId);
         }
 
         assertThat(registry.runningSince(1L)).isEmpty();
         verify(eventPublisher, timeout(2_000).times(2)).publish(DashboardEventPublisher.ALERT_EVENT, card);
+        verify(viewerEventPublisher, timeout(2_000).times(2)).publish(DashboardEventPublisher.ALERT_EVENT, card);
     }
 
     @Test
     void nothingIsPublishedWithoutAuthenticatedSessions() {
         when(eventPublisher.hasAuthenticatedSessions()).thenReturn(false);
+        when(viewerEventPublisher.hasAuthenticatedSessions()).thenReturn(false);
 
-        try (DashboardEventPublisher publisher = new DashboardEventPublisher(eventPublisher, cardService, new AlertExecutionRunningRegistry())) {
+        try (DashboardEventPublisher publisher = new DashboardEventPublisher(eventPublisher, viewerEventPublisher, cardService, new AlertExecutionRunningRegistry())) {
             publisher.executionStarted(1L, UUID.randomUUID(), Instant.now());
             publisher.alertRemovedAfterCommit(1L);
         }
 
         verify(cardService, never()).card(1L);
         verify(eventPublisher, never()).publish(anyString(), any());
+        verify(viewerEventPublisher, never()).publish(anyString(), any());
     }
 
     @Test
     void alertRemovalIsPublishedImmediatelyOutsideATransaction() {
-        when(eventPublisher.hasAuthenticatedSessions()).thenReturn(true);
+        when(viewerEventPublisher.hasAuthenticatedSessions()).thenReturn(true);
 
-        try (DashboardEventPublisher publisher = new DashboardEventPublisher(eventPublisher, cardService, new AlertExecutionRunningRegistry())) {
+        try (DashboardEventPublisher publisher = new DashboardEventPublisher(eventPublisher, viewerEventPublisher, cardService, new AlertExecutionRunningRegistry())) {
             publisher.alertRemovedAfterCommit(4L);
         }
 
-        verify(eventPublisher).publish(DashboardEventPublisher.ALERT_REMOVED_EVENT, new DashboardEventPublisher.AlertRemovedPayload(4L));
+        verify(viewerEventPublisher).publish(DashboardEventPublisher.ALERT_REMOVED_EVENT, new DashboardEventPublisher.AlertRemovedPayload(4L));
     }
 }

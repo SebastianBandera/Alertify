@@ -84,7 +84,28 @@
     </div>
   }
 
-  <app-dashboard-ribbon [(settings)]="settings" [tags]="availableTags()" />
+  <app-dashboard-ribbon [(settings)]="settings" [tags]="availableTags()">
+    @if (!isAdmin) {
+      <div dashboardRibbonActions class="viewer-session-controls">
+        <label class="viewer-language-selector">
+          <span>{{ localization.translate('language.label') }}</span>
+          <select [ngModel]="localization.locale()" (ngModelChange)="updateLocale($event)">
+            @for (localeOption of localization.localeOptions; track localeOption.value) {
+              <option [value]="localeOption.value">{{ localeOption.label }}</option>
+            }
+          </select>
+        </label>
+        <button
+          class="viewer-logout-button"
+          type="button"
+          (click)="logout()"
+          [attr.aria-label]="localization.translate('action.signOut')"
+          [attr.title]="localization.translate('action.signOut')">
+          <span aria-hidden="true">&#8594;</span>
+        </button>
+      </div>
+    }
+  </app-dashboard-ribbon>
 
   <section
     #grid
@@ -147,9 +168,7 @@
         <span class="dashboard__empty-icon" aria-hidden="true">
           <span></span><span></span><span></span><span></span>
         </span>
-        @if (!isAdmin) {
-          <strong>{{ localization.translate('dashboard.adminOnly') }}</strong>
-        } @else if (cards().length === 0) {
+        @if (cards().length === 0) {
           <strong>{{ localization.translate('dashboard.empty') }}</strong>
           <p>{{ localization.translate('dashboard.emptyDescription') }}</p>
         } @else {
