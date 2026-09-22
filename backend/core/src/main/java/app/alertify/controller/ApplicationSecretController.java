@@ -23,6 +23,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
+import app.alertify.secret.api.DatabaseSecretTestRequest;
+import app.alertify.secret.api.DatabaseSecretTestResponse;
 import app.alertify.secret.api.SecretCreateRequest;
 import app.alertify.secret.api.SecretExpressionSuggestionsResponse;
 import app.alertify.secret.api.SecretExpressionValidationRequest;
@@ -31,6 +33,7 @@ import app.alertify.secret.api.SecretUpdateRequest;
 import app.alertify.secret.api.BinarySecretCreateRequest;
 import app.alertify.secret.api.BinarySecretUpdateRequest;
 import app.alertify.services.secret.ApplicationSecretService;
+import app.alertify.services.secret.DatabaseSecretProbeService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.PositiveOrZero;
 
@@ -45,9 +48,11 @@ import jakarta.validation.constraints.PositiveOrZero;
 public class ApplicationSecretController {
 
     private final ApplicationSecretService service;
+    private final DatabaseSecretProbeService databaseProbeService;
 
-    public ApplicationSecretController(ApplicationSecretService service) {
+    public ApplicationSecretController(ApplicationSecretService service, DatabaseSecretProbeService databaseProbeService) {
         this.service = service;
+        this.databaseProbeService = databaseProbeService;
     }
 
     @GetMapping
@@ -64,6 +69,19 @@ public class ApplicationSecretController {
     public ResponseEntity<Void> validateExpression(@Valid @RequestBody SecretExpressionValidationRequest request) {
         service.validateExpression(request);
         return ResponseEntity.noContent().build();
+    }
+
+    /** Opens a connection with unsaved DB_SECRET credentials from a worker; nothing is stored. */
+    @PostMapping("/test-database")
+    public DatabaseSecretTestResponse testDatabase(@Valid @RequestBody DatabaseSecretTestRequest request) {
+        return databaseProbeService.test(service.parseDatabaseCredentials(request.value()));
+    }
+
+    /** Opens a connection with the credentials of a stored DB_SECRET from a worker. */
+    @PostMapping("/{id}/test-database")
+    public DatabaseSecretTestResponse testStoredDatabase(@PathVariable Long id) {
+        ApplicationSecretService.StoredDatabaseCredentials stored = service.databaseCredentials(id);
+        return databaseProbeService.test(stored.credentials(), stored.id(), stored.name());
     }
 
     @GetMapping("/{id}")

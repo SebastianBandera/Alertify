@@ -755,6 +755,8 @@ export const EN_TRANSLATIONS = {
   'procedures.template.devtools.simulatedLongRunning.randomInitialDelayMinSecondsDescription': 'Minimum random initial delay in seconds.',
   'procedures.template.devtools.simulatedLongRunning.randomInitialDelayMaxSeconds': 'Maximum initial delay',
   'procedures.template.devtools.simulatedLongRunning.randomInitialDelayMaxSecondsDescription': 'Maximum random initial delay in seconds, inclusive.',
+  'procedures.template.devtools.simulatedLongRunningPlaywright.name': 'Simulated long-running Playwright procedure',
+  'procedures.template.devtools.simulatedLongRunningPlaywright.description': 'Simulates a procedure on a Playwright-capable worker without using Playwright, with a fixed duration and an optional random initial delay.',
   'procedures.template.totp.name': 'TOTP code',
   'procedures.template.totp.description': 'Generates a current RFC 6238 two-factor authentication code.',
   'procedures.template.totp.secret': 'TOTP secret',

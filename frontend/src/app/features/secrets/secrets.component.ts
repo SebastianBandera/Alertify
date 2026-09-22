@@ -6,6 +6,8 @@ import {
   ApplicationSecret,
   DATABASE_ENGINES,
   DatabaseEngine,
+  DatabaseSecretTestResult,
+  DatabaseSecretValue,
   GIT_PROVIDERS,
   GitProvider,
   SECRET_VALUE_TYPES,
@@ -115,6 +117,10 @@ export class SecretsComponent implements OnInit {
   protected readonly expressionUtilityFunctions = signal<readonly string[]>([]);
   protected readonly validatingExpression = signal(false);
   protected readonly expressionValid = signal(false);
+  protected readonly testingDatabase = signal(false);
+  protected readonly databaseTestResult = signal<DatabaseSecretTestResult | null>(null);
+  protected readonly testingSecretId = signal<number | null>(null);
+  protected readonly storedTestResults = signal<Readonly<Record<number, DatabaseSecretTestResult>>>({});
   private readonly api = inject(SecretApiService);
 
   protected readonly secrets = signal<readonly ApplicationSecret[]>([]);
@@ -271,6 +277,7 @@ export class SecretsComponent implements OnInit {
     this.secretForm.update((form) => ({ ...form, ...patch }));
     this.formError.set(null);
     this.expressionValid.set(false);
+    this.databaseTestResult.set(null);
   }
 
   protected async validateExpression(): Promise<void> {
@@ -303,6 +310,69 @@ export class SecretsComponent implements OnInit {
       return;
     }
     this.patchSecretForm({ binaryFile: file });
+  }
+
+  protected async testDatabaseConnection(): Promise<void> {
+    const form = this.secretForm();
+    if (this.testingDatabase() || form.valueType !== 'DB_SECRET') return;
+
+    let value: DatabaseSecretValue;
+    try {
+      value = this.parseValue(form) as DatabaseSecretValue;
+    } catch (error) {
+      this.formError.set(this.errorMessage(error));
+      return;
+    }
+    this.testingDatabase.set(true);
+    this.databaseTestResult.set(null);
+    this.formError.set(null);
+    try {
+      this.databaseTestResult.set(await this.api.testDatabase(value));
+    } catch (error) {
+      this.formError.set(this.errorMessage(error));
+    } finally {
+      this.testingDatabase.set(false);
+    }
+  }
+
+  protected async testStoredConnection(secret: ApplicationSecret): Promise<void> {
+    if (this.testingSecretId() !== null) return;
+
+    this.testingSecretId.set(secret.id);
+    this.storedTestResults.update((results) => { const next = { ...results }; delete next[secret.id]; return next; });
+    this.error.set(null);
+    try {
+      const result = await this.api.testStoredDatabase(secret.id);
+      this.storedTestResults.update((results) => ({ ...results, [secret.id]: result }));
+    } catch (error) {
+      this.error.set(this.errorMessage(error));
+    } finally {
+      this.testingSecretId.set(null);
+    }
+  }
+
+  /** Drivers report banners like "Oracle AI Database 26ai Free Release 23.26.3.0.0 - ..."; keep only the version number. */
+  private databaseVersion(result: DatabaseSecretTestResult): string | null {
+    const raw = result.productVersion?.split('\n')[0]?.trim();
+    if (!raw) return null;
+    const numeric = /\d+(?:\.\d+)+/.exec(raw)?.[0];
+    if (numeric) return numeric;
+    const product = result.productName?.trim();
+    return product && raw.toLowerCase().startsWith(product.toLowerCase()) ? raw.slice(product.length).trim() || null : raw;
+  }
+
+  protected databaseTestSummary(result: DatabaseSecretTestResult): string {
+    if (result.connected) {
+      const product = [result.productName, this.databaseVersion(result)].filter((part) => !!part).join(' ');
+      return this.localization.translate('secrets.dbTest.success')
+        .replace('{product}', product || result.driverName || '—')
+        .replace('{ms}', String(result.totalLatencyMs ?? '—'));
+    }
+    const reasonKey = `secrets.dbTest.reason.${result.failureReason ?? 'unknown'}`;
+    const reason = this.localization.translateDynamic(reasonKey);
+    const detail = result.failureMessage ? ` — ${result.failureMessage.split('\n')[0]}` : '';
+    return this.localization.translate('secrets.dbTest.failure')
+      .replace('{reason}', reason === reasonKey ? (result.failureReason ?? 'unknown') : reason) + detail;
   }
 
   protected patchDatabaseForm(patch: Partial<DatabaseSecretForm>): void {

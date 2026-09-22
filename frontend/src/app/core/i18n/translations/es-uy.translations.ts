@@ -735,6 +735,8 @@ export const ES_UY_TRANSLATIONS = {
   'procedures.template.devtools.simulatedLongRunning.randomInitialDelayMinSecondsDescription': 'Demora inicial aleatoria mínima en segundos.',
   'procedures.template.devtools.simulatedLongRunning.randomInitialDelayMaxSeconds': 'Demora inicial máxima',
   'procedures.template.devtools.simulatedLongRunning.randomInitialDelayMaxSecondsDescription': 'Demora inicial aleatoria máxima en segundos, inclusive.',
+  'procedures.template.devtools.simulatedLongRunningPlaywright.name': 'Procedimiento largo simulado de Playwright',
+  'procedures.template.devtools.simulatedLongRunningPlaywright.description': 'Simula un procedimiento en un worker con capacidad Playwright sin usar Playwright, con una duración fija y una demora inicial aleatoria opcional.',
   'procedures.template.totp.name': 'Código TOTP',
   'procedures.template.totp.description': 'Genera el código actual de doble factor según RFC 6238.',
   'procedures.template.totp.secret': 'Secreto TOTP',

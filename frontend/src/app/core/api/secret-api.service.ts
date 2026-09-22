@@ -72,6 +72,19 @@ export interface SecretExpressionValidationRequest {
   readonly expression: string;
 }
 
+export interface DatabaseSecretTestResult {
+  readonly connected: boolean;
+  readonly failureReason: string | null;
+  readonly failureMessage: string | null;
+  readonly sqlState: string | null;
+  readonly productName: string | null;
+  readonly productVersion: string | null;
+  readonly driverName: string | null;
+  readonly connectMs: number | null;
+  readonly totalLatencyMs: number | null;
+  readonly workerName: string | null;
+}
+
 export interface ApplicationSecret {
   readonly id: number;
   readonly version: number;
@@ -170,6 +183,14 @@ export class SecretApiService {
   /** Resolves when the draft is valid; the evaluated value is never returned. */
   async validateExpression(request: SecretExpressionValidationRequest): Promise<void> {
     await this.request<void>('/api/secrets/validate-expression', { method: 'POST', body: JSON.stringify(request) });
+  }
+
+  async testDatabase(value: DatabaseSecretValue): Promise<DatabaseSecretTestResult> {
+    return this.request('/api/secrets/test-database', { method: 'POST', body: JSON.stringify({ value }) });
+  }
+
+  async testStoredDatabase(id: number): Promise<DatabaseSecretTestResult> {
+    return this.request(`/api/secrets/${id}/test-database`, { method: 'POST' });
   }
 
   async listTags(): Promise<readonly SecretTag[]> {

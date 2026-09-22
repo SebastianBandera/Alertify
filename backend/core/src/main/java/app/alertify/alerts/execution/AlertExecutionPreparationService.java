@@ -75,6 +75,17 @@ public class AlertExecutionPreparationService {
         return prepareInternal(alertId, includeDisabled);
     }
 
+    /**
+     * Prepares a one-off execution of {@code template} with caller-supplied parameters and no
+     * persisted alert behind it, for example to probe credentials before saving a secret.
+     * The execution carries alert id 0 and an empty state; nothing about it is persisted.
+     */
+    public PreparedAlertExecution prepareAdHoc(AlertTemplateDefinition template, String executionName, List<ResolvedAlertParameter> parameters) {
+        Source source = source(template.getSourcePath());
+        return new PreparedAlertExecution(0, executionName, template.getTemplateKey(),
+                template.getRequiredCapability(), source.checksum(), source.content(), "", List.copyOf(parameters));
+    }
+
     private Optional<PreparedAlertExecution> prepareInternal(Long alertId, boolean includeDisabled) {
         Alert alert = alertRepository.findById(alertId).orElse(null);
         if (alert == null || (!alert.isEnabled() && !includeDisabled))

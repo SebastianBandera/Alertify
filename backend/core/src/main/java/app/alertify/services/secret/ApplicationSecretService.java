@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.MultiValueMap;
 
 import app.alertify.api.error.ConflictException;
+import app.alertify.api.error.InvalidSecretValueException;
 import app.alertify.api.error.ResourceNotFoundException;
 import app.alertify.jpa.entity.ApplicationSecret;
 import app.alertify.jpa.entity.SecretValueType;
@@ -35,6 +36,8 @@ import app.alertify.jpa.specification.ApplicationSecretSpecifications;
 import app.alertify.jpa.specification.DynamicSpecification;
 import app.alertify.jpa.specification.InvalidFilterException;
 import app.alertify.logging.ApplicationEventLogger;
+import app.alertify.worker.contract.DatabaseCredentials;
+import tools.jackson.databind.JsonNode;
 import app.alertify.secret.api.SecretCreateRequest;
 import app.alertify.secret.api.SecretExpressionSuggestionsResponse;
 import app.alertify.secret.api.SecretExpressionValidationRequest;
@@ -278,6 +281,27 @@ public class ApplicationSecretService {
         String expression = valueValidator.validateAndNormalizeRaw(SecretValueType.EXPRESSION, request.expression());
         expressionService.validateDraft(request.secretId(), request.name(), expression);
     }
+
+    /** Applies the DB_SECRET validation rules to an unsaved value and returns the parsed credentials. */
+    public DatabaseCredentials parseDatabaseCredentials(JsonNode value) {
+        return DatabaseCredentials.fromJson(valueValidator.validateAndNormalize(SecretValueType.DB_SECRET, value));
+    }
+
+    /** Decrypts a stored DB_SECRET so its connection can be probed; the value never leaves the backend. */
+    @Transactional(readOnly = true)
+    public StoredDatabaseCredentials databaseCredentials(Long id) {
+        ApplicationSecret secret = find(id);
+        if (secret.getValueType() != SecretValueType.DB_SECRET)
+            throw new InvalidSecretValueException("Secret '" + secret.getName() + "' is not a DB_SECRET");
+
+        try {
+            return new StoredDatabaseCredentials(secret.getId(), secret.getName(), DatabaseCredentials.fromJson(expressionService.resolve(secret)));
+        } catch (SecretNotRecoverableException exception) {
+            throw new InvalidSecretValueException("Secret '" + secret.getName() + "' cannot be decrypted with the current key");
+        }
+    }
+
+    public record StoredDatabaseCredentials(long id, String name, DatabaseCredentials credentials) { }
 
     private ApplicationSecret find(Long id) {
         return secretRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Secret " + id + " was not found"));

@@ -30,6 +30,7 @@ import app.alertify.procedures.templates.PostgresBackupProcedureTemplate;
 import app.alertify.procedures.templates.SqlServerNativeBackupProcedureTemplate;
 import app.alertify.procedures.templates.TotpProcedureTemplate;
 import app.alertify.procedures.templates.devtools.ConsoleParameterProcedureTemplate;
+import app.alertify.procedures.templates.devtools.SimulatedLongRunningPlaywrightProcedureTemplate;
 import app.alertify.procedures.templates.devtools.SimulatedLongRunningProcedureTemplate;
 import app.alertify.procedures.templates.devtools.WritableParameterCopyProcedureTemplate;
 
@@ -48,10 +49,10 @@ class ProcedureTemplateRegistrationServiceTest {
                 templateRepository, parameterRepository, outputRepository, new DefaultResourceLoader()
         );
 
-        assertThat(service.scanAndRegister()).isEqualTo(10);
+        assertThat(service.scanAndRegister()).isEqualTo(11);
 
         ArgumentCaptor<ProcedureTemplateDefinition> template = ArgumentCaptor.captor();
-        verify(templateRepository, org.mockito.Mockito.times(10)).save(template.capture());
+        verify(templateRepository, org.mockito.Mockito.times(11)).save(template.capture());
         ProcedureTemplateDefinition totp = template.getAllValues().stream()
                 .filter(value -> value.getTemplateKey().equals(TotpProcedureTemplate.class.getName()))
                 .findFirst().orElseThrow();
@@ -63,6 +64,7 @@ class ProcedureTemplateRegistrationServiceTest {
                 .contains(ConsoleParameterProcedureTemplate.class.getName(),
                         WritableParameterCopyProcedureTemplate.class.getName(),
                         SimulatedLongRunningProcedureTemplate.class.getName(),
+                        SimulatedLongRunningPlaywrightProcedureTemplate.class.getName(),
                         ExecutePipeProcedureTemplate.class.getName(),
                         PostgresBackupProcedureTemplate.class.getName(),
                         MariaDbBackupProcedureTemplate.class.getName(),
@@ -71,7 +73,7 @@ class ProcedureTemplateRegistrationServiceTest {
                         CopyFileToNfsProcedureTemplate.class.getName());
 
         ArgumentCaptor<ProcedureTemplateParameterDefinition> parameters = ArgumentCaptor.captor();
-        verify(parameterRepository, org.mockito.Mockito.times(46)).save(parameters.capture());
+        verify(parameterRepository, org.mockito.Mockito.times(50)).save(parameters.capture());
         List<ProcedureTemplateParameterDefinition> totpParameters = parameters.getAllValues().stream()
                 .filter(value -> value.getTemplate() == totp).toList();
         assertThat(totpParameters.getFirst().getParameterKey()).isEqualTo("secret");
