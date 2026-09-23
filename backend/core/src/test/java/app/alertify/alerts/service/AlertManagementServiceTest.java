@@ -3,6 +3,7 @@ package app.alertify.alerts.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
@@ -26,6 +27,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import app.alertify.alerts.api.AlertDeletionImpactResponse;
 import app.alertify.alerts.execution.AlertExecutionOrchestrator;
+import app.alertify.alerts.execution.AlertExecutionTrigger;
 import app.alertify.alerts.execution.AlertScheduleService;
 import app.alertify.alerts.model.Alert;
 import app.alertify.alerts.model.AlertTemplateDefinition;
@@ -148,6 +150,29 @@ class AlertManagementServiceTest {
 
         assertThatThrownBy(() -> service().deletionImpact(5L))
                 .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void runsAnEnabledAlertFromTheDashboard() {
+        when(alertRepository.findById(5L)).thenReturn(Optional.of(alert("chequeo-cert")));
+        when(eventLogger.currentUsername()).thenReturn("viewer");
+        when(executionOrchestrator.trigger(5L, "chequeo-cert", false, AlertExecutionTrigger.MANUAL, "viewer")).thenReturn(true);
+
+        service().runFromDashboard(5L);
+
+        verify(executionOrchestrator).trigger(5L, "chequeo-cert", false, AlertExecutionTrigger.MANUAL, "viewer");
+    }
+
+    @Test
+    void refusesToRunADisabledAlertFromTheDashboard() {
+        Alert alert = alert("chequeo-cert");
+        ReflectionTestUtils.setField(alert, "enabled", false);
+        when(alertRepository.findById(5L)).thenReturn(Optional.of(alert));
+
+        assertThatThrownBy(() -> service().runFromDashboard(5L))
+                .isInstanceOfSatisfying(ConflictException.class, exception -> assertThat(exception.getCode()).isEqualTo("ALERT_DISABLED"));
+
+        verify(executionOrchestrator, never()).trigger(anyLong(), any(), anyBoolean(), any(), any());
     }
 
     private AlertManagementService service() {

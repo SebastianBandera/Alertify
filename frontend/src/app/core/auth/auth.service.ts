@@ -48,6 +48,13 @@ export class AuthService {
   get isAdmin(): boolean {
     return this.keycloak.hasResourceRole('ADMIN', this.rolesClientId);
   }
+
+  /** A viewer allowed to run alerts from the dashboard; administrators already run them through /alerts. */
+  get canRunFromDashboard(): boolean {
+    return !this.isAdmin
+      && this.keycloak.hasResourceRole('DASHBOARD', this.rolesClientId)
+      && this.keycloak.hasResourceRole('DASHBOARD_RUN', this.rolesClientId);
+  }
   get sessionIdentifier(): string {
     const token = this.keycloak.tokenParsed;
     const identifier = token?.['sid'] ?? token?.['session_state'];

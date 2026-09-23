@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import app.alertify.jpa.specification.InvalidFilterException;
+import app.alertify.dashboard.DashboardRunRejectedException;
 import app.alertify.hooks.HookInvocationRejectedException;
 import app.alertify.logging.ApiRequestLoggingFilter;
 import app.alertify.logging.ApiResponseLogLevelResolver;
@@ -136,6 +137,11 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(HookInvocationRejectedException.class)
     ResponseEntity<ApiError> handleHookInvocationRejected(HookInvocationRejectedException exception, HttpServletRequest request) {
+        return response(exception.getStatus(), exception.getCode(), exception.getMessage(), Map.of(), exception, request);
+    }
+
+    @ExceptionHandler(DashboardRunRejectedException.class)
+    ResponseEntity<ApiError> handleDashboardRunRejected(DashboardRunRejectedException exception, HttpServletRequest request) {
         return response(exception.getStatus(), exception.getCode(), exception.getMessage(), Map.of(), exception, request);
     }
 

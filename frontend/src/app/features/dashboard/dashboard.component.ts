@@ -139,6 +139,7 @@ export class DashboardComponent {
   private readonly alertApi = inject(AlertApiService);
   protected readonly mute = inject(DashboardMuteService);
   protected readonly isAdmin = this.authService.isAdmin;
+  protected readonly canRunFromDashboard = this.authService.canRunFromDashboard;
   protected readonly cards = this.live.cards;
   /* Cards whose state just changed, while their highlight animation plays. */
   protected readonly changedIds = signal<ReadonlySet<number>>(new Set());
@@ -345,25 +346,39 @@ export class DashboardComponent {
     this.rearrange(() => this.mute.unmute(card.alert.id));
   }
 
+  /* Administrators run any alert; a viewer with DASHBOARD_RUN only enabled ones. */
+  protected canRunCard(card: DashboardAlertCard): boolean {
+    return this.isAdmin || (this.canRunFromDashboard && card.alert.enabled);
+  }
+
   protected async runCardNow(card: DashboardAlertCard): Promise<void> {
     this.closeCardMenu(true);
-    // A disabled alert can still be run on demand, so it is confirmed first.
-    if (!card.alert.enabled && !window.confirm(this.localization.translate('alerts.runDisabledConfirm'))) return;
+    // A disabled alert can still be run on demand by an administrator, so it is confirmed first.
+    if (this.isAdmin && !card.alert.enabled && !window.confirm(this.localization.translate('alerts.runDisabledConfirm'))) return;
     if (this.runningNow()) return;
     this.runningNow.set(true);
     try {
-      await this.alertApi.runAlertNow(card.alert.id);
-      this.showNotice(this.localization.translate('alerts.runStarted').replace('{name}', card.alert.name), false);
+      if (this.isAdmin) await this.alertApi.runAlertNow(card.alert.id);
+      else await this.alertApi.runAlertFromDashboard(card.alert.id);
+      // A viewer has no access to the execution history, so the result is announced on the card instead.
+      const startedKey = this.isAdmin ? 'alerts.runStarted' : 'dashboard.run.started';
+      this.showNotice(this.localization.translate(startedKey).replace('{name}', card.alert.name), false);
     } catch (error) {
-      let message = error instanceof Error ? error.message : this.localization.translate('alerts.error');
-      if (error instanceof ApiRequestError && error.code === 'ALERT_ALREADY_RUNNING') {
-        message = this.localization.translate('alerts.runAlreadyRunning').replace('{name}', card.alert.name);
-      } else if (error instanceof ApiRequestError && error.code === 'MAINTENANCE_MODE_ACTIVE') {
-        message = this.localization.translate('alerts.runMaintenanceMode');
-      }
-      this.showNotice(message, true);
+      this.showNotice(this.runErrorMessage(error, card), true);
     } finally {
       this.runningNow.set(false);
+    }
+  }
+
+  private runErrorMessage(error: unknown, card: DashboardAlertCard): string {
+    const code = error instanceof ApiRequestError ? error.code : undefined;
+    switch (code) {
+      case 'ALERT_ALREADY_RUNNING': return this.localization.translate('alerts.runAlreadyRunning').replace('{name}', card.alert.name);
+      case 'MAINTENANCE_MODE_ACTIVE': return this.localization.translate('alerts.runMaintenanceMode');
+      case 'DASHBOARD_RUN_RATE_LIMIT': return this.localization.translate('dashboard.run.rateLimited');
+      case 'DASHBOARD_RUN_LIMIT_UNAVAILABLE': return this.localization.translate('dashboard.run.unavailable');
+      case 'ALERT_DISABLED': return this.localization.translate('dashboard.run.disabled').replace('{name}', card.alert.name);
+      default: return error instanceof Error ? error.message : this.localization.translate('alerts.error');
     }
   }
 

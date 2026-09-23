@@ -252,11 +252,15 @@
         </button>
       }
     }
-    @if (isAdmin) {
+    @if (canRunCard(card) || isAdmin) {
       <hr class="card-menu__separator" />
+    }
+    @if (canRunCard(card)) {
       <button type="button" role="menuitem" class="card-menu__item" [disabled]="runningNow()" (click)="runCardNow(card)">
         {{ localization.translate('alerts.runNow') }}
       </button>
+    }
+    @if (isAdmin) {
       <button type="button" role="menuitem" class="card-menu__item" (click)="openCardHistory(card)">
         {{ localization.translate('dashboard.menu.history') }}
       </button>

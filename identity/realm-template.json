@@ -27,6 +27,16 @@
               "${OIDC_BACKEND_AUDIENCE}": ["DASHBOARD"]
             }
           }
+        },
+        {
+          "name": "DASHBOARD_RUN",
+          "description": "Can view the live Alertify dashboard and run enabled alerts on demand from it, at most once per second; meant for non-admin users",
+          "composite": true,
+          "composites": {
+            "client": {
+              "${OIDC_BACKEND_AUDIENCE}": ["DASHBOARD"]
+            }
+          }
         }
       ]
     }
@@ -110,7 +120,7 @@
       ],
       "requiredActions": [],
       "clientRoles": {
-        "${OIDC_BACKEND_AUDIENCE}": ["DASHBOARD"],
+        "${OIDC_BACKEND_AUDIENCE}": ["DASHBOARD_RUN"],
         "account": ["view-profile"]
       }
     }

@@ -196,7 +196,28 @@ public class AlertManagementService {
      */
     @Transactional(readOnly = true)
     public void runNow(Long id) {
+        trigger(alertRepository.findById(id).orElseThrow(() -> notFound(ALERT, id)));
+    }
+
+    /**
+     * Runs one alert immediately on behalf of a dashboard viewer. Unlike
+     * {@link #runNow(Long)}, a disabled alert stays off limits: testing it
+     * before enabling is an administration task.
+     */
+    @Transactional(readOnly = true)
+    public void runFromDashboard(Long id) {
         Alert alert = alertRepository.findById(id).orElseThrow(() -> notFound(ALERT, id));
+        if (!alert.isEnabled()) {
+            throw new ConflictException(
+                    "ALERT_DISABLED",
+                    "Alert '" + alert.getName() + "' is disabled and cannot be run from the dashboard",
+                    Map.of("alertName", alert.getName())
+            );
+        }
+        trigger(alert);
+    }
+
+    private void trigger(Alert alert) {
         boolean accepted = executionOrchestrator.trigger(
                 alert.getId(), alert.getName(), alert.isConcurrentExecutionAllowed(),
                 AlertExecutionTrigger.MANUAL, eventLogger.currentUsername()

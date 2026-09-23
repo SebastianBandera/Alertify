@@ -204,8 +204,17 @@ export class AlertApiService {
 
   // Answers 202 Accepted with no body, which the shared request helper only tolerates on 204.
   async runAlertNow(id: number): Promise<void> {
+    await this.postAccepted(`/api/alerts/${id}/run`);
+  }
+
+  /** The dashboard viewer's run: enabled alerts only, one per second. */
+  async runAlertFromDashboard(id: number): Promise<void> {
+    await this.postAccepted(`/api/dashboard/alerts/${id}/run`);
+  }
+
+  private async postAccepted(path: string): Promise<void> {
     const token = await this.authService.getAccessToken();
-    const response = await fetch(`${this.apiBaseUrl}/api/alerts/${id}/run`, {
+    const response = await fetch(`${this.apiBaseUrl}${path}`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
     });
