@@ -10,16 +10,17 @@ import app.alertify.api.error.InvalidProcedureRequestException;
 class ProcedureManagementServiceCronTest {
 
     @Test
-    void acceptsDisabledAndValidCronExpressions() {
+    void acceptsDisabledBlankAndValidCronExpressions() {
         assertThat(ProcedureManagementService.validateCron(" - ")).isEqualTo("-");
+        assertThat(ProcedureManagementService.validateCron(" ")).isEqualTo("-");
         assertThat(ProcedureManagementService.validateCron(" 0 0 2 * * * ")).isEqualTo("0 0 2 * * *");
     }
 
     @Test
-    void rejectsBlankAndInvalidCronExpressions() {
-        assertThatThrownBy(() -> ProcedureManagementService.validateCron(" "))
+    void rejectsNullAndInvalidCronExpressions() {
+        assertThatThrownBy(() -> ProcedureManagementService.validateCron(null))
                 .isInstanceOf(InvalidProcedureRequestException.class)
-                .hasMessage("cronExpression must not be blank");
+                .hasMessage("cronExpression must not be null");
         assertThatThrownBy(() -> ProcedureManagementService.validateCron("not-a-cron"))
                 .isInstanceOf(InvalidProcedureRequestException.class)
                 .hasMessageStartingWith("Invalid cron expression:");

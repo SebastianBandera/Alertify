@@ -8,6 +8,7 @@ import java.util.concurrent.ScheduledFuture;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.TaskScheduler;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.scheduling.support.CronTrigger;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -69,6 +70,9 @@ public class AlertScheduleService implements AutoCloseable {
     }
 
     private void schedule(Alert alert) {
+        if (Scheduled.CRON_DISABLED.equals(alert.getCronExpression()))
+            return;
+
         ScheduledFuture<?> future = taskScheduler.schedule(
                 () -> orchestrator.trigger(
                         alert.getId(), alert.getName(),

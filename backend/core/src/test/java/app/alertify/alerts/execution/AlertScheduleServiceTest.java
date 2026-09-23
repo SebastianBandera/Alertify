@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.util.List;
@@ -69,6 +70,16 @@ class AlertScheduleServiceTest {
         service.removeAfterCommit(7L);
 
         verify(scheduledFuture).cancel(false);
+    }
+
+    @Test
+    void doesNotScheduleTheDisabledCronMarker() {
+        when(alertRepository.findAllByEnabledTrue()).thenReturn(List.of(alert));
+        when(alert.getCronExpression()).thenReturn("-");
+
+        service.scheduleAll();
+
+        verifyNoInteractions(taskScheduler);
     }
 
     @Test

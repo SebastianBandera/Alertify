@@ -609,8 +609,6 @@ export class AlertsComponent implements OnInit {
       validationErrors.template = this.localization.translate('alerts.form.templateRequired');
     if (!form.name.trim())
       validationErrors.name = this.localization.translate('alerts.form.nameRequired');
-    if (!form.cronExpression.trim())
-      validationErrors.cron = this.localization.translate('alerts.form.cronRequired');
     if (Object.keys(validationErrors).length) {
       this.showFieldErrors(validationErrors);
       return;
@@ -646,11 +644,12 @@ export class AlertsComponent implements OnInit {
     this.formError.set(null);
     this.formFieldErrors.set({});
     try {
+      const cronExpression = form.cronExpression.trim() || '-';
       const request = {
         ...(editing ? { version: editing.version } : { templateId: template.id }),
         name: form.name.trim(),
         description: form.description.trim() || null,
-        cronExpression: form.cronExpression.trim(),
+        cronExpression,
         enabled: form.enabled,
         allowConcurrentExecutions: form.allowConcurrentExecutions,
         tagIds: form.tagIds,
@@ -878,7 +877,7 @@ export class AlertsComponent implements OnInit {
       templateId: null,
       name: '',
       description: '',
-      cronExpression: '0 0 * * * *',
+      cronExpression: '-',
       enabled: true,
       allowConcurrentExecutions: false,
       tagIds: [],

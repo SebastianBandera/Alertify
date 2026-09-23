@@ -19,6 +19,7 @@ import java.util.stream.Collectors;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.scheduling.support.CronExpression;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -430,7 +431,16 @@ public class AlertManagementService {
     }
 
     static String validateCron(String value) {
-        String cron = normalizeRequired(value, "cronExpression");
+        if (value == null)
+            throw invalid("cronExpression must not be null");
+
+        String cron = value.trim();
+        if (cron.isEmpty())
+            return Scheduled.CRON_DISABLED;
+
+        if (Scheduled.CRON_DISABLED.equals(cron))
+            return cron;
+
         CronExpression expression;
         try {
             expression = CronExpression.parse(cron);

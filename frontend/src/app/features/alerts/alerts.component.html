@@ -457,7 +457,6 @@
               [class.field-invalid]="formFieldErrors().cron"
               name="cron"
               maxlength="255"
-              required
             >
             <small id="alert-cron-help">{{ localization.translate('alerts.form.cronHelp') }}</small>
             @if (formFieldErrors().cron; as cronError) {

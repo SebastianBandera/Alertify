@@ -205,7 +205,7 @@ export const EN_TRANSLATIONS = {
   'alerts.form.noTemplatesFound': 'No templates match the search.',
   'alerts.form.name': 'Name',
   'alerts.form.cron': 'Cron expression',
-  'alerts.form.cronHelp': 'Spring cron format with six fields, including seconds.',
+  'alerts.form.cronHelp': 'Use a six-field Spring cron expression, or - for no schedule.',
   'alerts.form.alertDescription': 'Description',
   'alerts.form.enabled': 'Enable this alert',
   'alerts.form.allowConcurrentExecutions': 'Allow concurrent executions',

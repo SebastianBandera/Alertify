@@ -334,7 +334,6 @@
               class="mono"
               name="cron"
               maxlength="255"
-              required
               [ngModel]="form().cronExpression"
               (ngModelChange)="patchForm({ cronExpression: $event })"
               [class.field-invalid]="formFieldErrors().cron"

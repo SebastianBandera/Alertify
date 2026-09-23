@@ -405,7 +405,12 @@ public class ProcedureManagementService {
     }
 
     static String validateCron(String value) {
-        String cron = required(value, "cronExpression");
+        if (value == null)
+            throw invalid("cronExpression must not be null");
+
+        String cron = value.trim();
+        if (cron.isEmpty())
+            return Scheduled.CRON_DISABLED;
 
         if (!Scheduled.CRON_DISABLED.equals(cron)) {
             CronExpression expression;

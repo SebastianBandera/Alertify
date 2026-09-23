@@ -366,10 +366,6 @@ export class ProceduresComponent implements OnInit {
       this.formError.set(this.localization.translate('procedures.form.required'));
       return;
     }
-    if (!form.cronExpression.trim()) {
-      this.showCronError(this.localization.translate('procedures.form.cronRequired'));
-      return;
-    }
     for (const definition of template.parameters) {
       const value = form.parameters[definition.key];
       if (value?.configured && this.isParameterIncomplete(value)) {
@@ -400,11 +396,12 @@ export class ProceduresComponent implements OnInit {
     this.formFieldErrors.set({});
     try {
       const editing = this.editing();
+      const cronExpression = form.cronExpression.trim() || '-';
       const request = {
         ...(editing ? { version: editing.version } : { templateId: template.id }),
         name: form.name.trim(),
         description: form.description.trim() || null,
-        cronExpression: form.cronExpression.trim(),
+        cronExpression,
         enabled: form.enabled,
         allowConcurrentExecutions: form.allowConcurrentExecutions,
         tagIds: form.tagIds,
