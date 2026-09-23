@@ -3,7 +3,7 @@
   "enabled": true,
   "displayName": "${APP_DISPLAY_NAME}",
   "registrationAllowed": false,
-  "resetPasswordAllowed": true,
+  "resetPasswordAllowed": false,
   "rememberMe": true,
   "loginWithEmailAllowed": false,
   "duplicateEmailsAllowed": false,
@@ -16,11 +16,11 @@
       "${OIDC_BACKEND_AUDIENCE}": [
         {
           "name": "DASHBOARD",
-          "description": "Can view the dashboard"
+          "description": "Can view the live Alertify dashboard in read-only mode"
         },
         {
           "name": "ADMIN",
-          "description": "Can administer Alertify configurations, tags, secrets and alert definitions",
+          "description": "Can administer Alertify alerts, procedures, pipes, hooks, tags, configurations, secrets and system settings, and view executions, status and logs",
           "composite": true,
           "composites": {
             "client": {
