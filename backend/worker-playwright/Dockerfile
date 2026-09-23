@@ -1,7 +1,8 @@
 # syntax=docker/dockerfile:1
 
 ARG BACKEND_BUILD_IMAGE
-ARG WORKER_RUNTIME_IMAGE
+ARG WORKER_PLAYWRIGHT_JAVA_IMAGE
+ARG WORKER_PLAYWRIGHT_RUNTIME_IMAGE
 
 FROM ${BACKEND_BUILD_IMAGE} AS builder
 
@@ -17,10 +18,17 @@ RUN --mount=type=cache,id=alertify-maven,target=/root/.m2,sharing=locked \
         dependency:copy-dependencies -DincludeScope=runtime \
         -DoutputDirectory=/build/compiler-classpath
 
-FROM ${WORKER_RUNTIME_IMAGE}
+FROM ${WORKER_PLAYWRIGHT_JAVA_IMAGE} AS java-runtime
 
-RUN addgroup -S application \
-    && adduser -S -G application application
+FROM ${WORKER_PLAYWRIGHT_RUNTIME_IMAGE}
+
+ENV JAVA_HOME=/opt/java/openjdk
+ENV PATH="${JAVA_HOME}/bin:${PATH}"
+
+COPY --from=java-runtime /opt/java/openjdk /opt/java/openjdk
+
+RUN groupadd --system application \
+    && useradd --system --gid application --create-home --home-dir /home/application application
 
 WORKDIR /application
 

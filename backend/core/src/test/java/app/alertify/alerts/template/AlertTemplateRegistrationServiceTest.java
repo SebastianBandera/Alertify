@@ -27,6 +27,7 @@ import app.alertify.alerts.model.AlertTemplateParameterDefinition;
 import app.alertify.alerts.template.annotation.AlertParameterSource;
 import app.alertify.alerts.templates.HttpsCertificateExpiryAlertTemplate;
 import app.alertify.alerts.templates.InternetConnectionAlertTemplate;
+import app.alertify.alerts.templates.PlaywrightPageAlertTemplate;
 import app.alertify.alerts.templates.SqlThresholdAlertTemplate;
 import app.alertify.alerts.templates.SqlWatchAlertTemplate;
 import app.alertify.alerts.templates.TcpConnectionAlertTemplate;
@@ -60,12 +61,12 @@ class AlertTemplateRegistrationServiceTest {
 
         AlertTemplateRegistrationSummary summary = service.scanAndRegister();
 
-        assertTrue(summary.templates() >= 6);
-        assertTrue(summary.parameters() >= 27);
+        assertTrue(summary.templates() >= 7);
+        assertTrue(summary.parameters() >= 31);
 
         ArgumentCaptor<AlertTemplateDefinition> templateCaptor =
             ArgumentCaptor.forClass(AlertTemplateDefinition.class);
-        verify(templateRepository, atLeast(6)).save(templateCaptor.capture());
+        verify(templateRepository, atLeast(7)).save(templateCaptor.capture());
         Map<String, AlertTemplateDefinition> templatesByKey = new LinkedHashMap<>();
         for (AlertTemplateDefinition template : templateCaptor.getAllValues())
             templatesByKey.put(template.getTemplateKey(), template);
@@ -107,6 +108,15 @@ class AlertTemplateRegistrationServiceTest {
             webRequestTemplate.getSourcePath()
         );
 
+        AlertTemplateDefinition playwrightPageTemplate =
+            templatesByKey.get(PlaywrightPageAlertTemplate.class.getName());
+        assertNotNull(playwrightPageTemplate);
+        assertEquals(WorkerCapability.PLAYWRIGHT, playwrightPageTemplate.getRequiredCapability());
+        assertEquals(
+            "app/alertify/alerts/templates/PlaywrightPageAlertTemplate.java",
+            playwrightPageTemplate.getSourcePath()
+        );
+
         AlertTemplateDefinition simulatedPlaywrightTemplate =
             templatesByKey.get(SimulatedLongRunningPlaywrightAlertTemplate.class.getName());
         assertNotNull(simulatedPlaywrightTemplate);
@@ -127,7 +137,7 @@ class AlertTemplateRegistrationServiceTest {
 
         ArgumentCaptor<AlertTemplateParameterDefinition> parameterCaptor =
             ArgumentCaptor.forClass(AlertTemplateParameterDefinition.class);
-        verify(parameterRepository, atLeast(27)).save(parameterCaptor.capture());
+        verify(parameterRepository, atLeast(31)).save(parameterCaptor.capture());
 
         List<AlertTemplateParameterDefinition> httpsParameters = parametersOf(parameterCaptor, httpsCertificateTemplate);
         assertEquals(4, httpsParameters.size());
@@ -175,6 +185,17 @@ class AlertTemplateRegistrationServiceTest {
         assertEquals("10000", simulatedPlaywrightParameters.get(0).getDefaultValue());
         assertEquals("randomInitialDelayEnabled", simulatedPlaywrightParameters.get(1).getParameterKey());
         assertFalse(simulatedPlaywrightParameters.get(1).isBindingAllowed());
+
+        List<AlertTemplateParameterDefinition> playwrightPageParameters = parametersOf(parameterCaptor, playwrightPageTemplate);
+        assertEquals(4, playwrightPageParameters.size());
+        assertEquals("url", playwrightPageParameters.get(0).getParameterKey());
+        assertEquals("loadTimeoutSeconds", playwrightPageParameters.get(1).getParameterKey());
+        assertEquals("10", playwrightPageParameters.get(1).getDefaultValue());
+        assertEquals("elementTimeoutSeconds", playwrightPageParameters.get(2).getParameterKey());
+        assertEquals("5", playwrightPageParameters.get(2).getDefaultValue());
+        assertEquals("steps", playwrightPageParameters.get(3).getParameterKey());
+        assertTrue(playwrightPageParameters.get(3).isMultiline());
+        assertFalse(playwrightPageParameters.get(3).isRequired());
 
         List<AlertTemplateParameterDefinition> tcpParameters = parametersOf(parameterCaptor, tcpTemplate);
         assertEquals(3, tcpParameters.size());
