@@ -14,8 +14,9 @@ RUN --mount=type=cache,id=alertify-npm,target=/root/.npm,sharing=locked \
 COPY angular.json tsconfig.json tsconfig.app.json ./
 COPY public ./public
 COPY src ./src
+COPY precompress.mjs ./
 
-RUN npm run build
+RUN npm run build     && node precompress.mjs dist/alertify-frontend/browser
 
 FROM ${FRONTEND_RUNTIME_IMAGE}
 
