@@ -133,7 +133,7 @@
             @for (alert of alerts(); track alert.id) {
               <tr>
                 <td><strong>{{ alert.name }}</strong><small>{{ alert.description || '—' }}</small></td>
-                <td><strong>{{ dynamic(alert.templateNameKey) }}</strong><small class="mono">{{ alert.templateKey }}</small></td>
+                <td class="template-cell"><strong>{{ dynamic(alert.templateNameKey) }}</strong><small class="mono" [title]="alert.templateKey">{{ alert.templateKey }}</small></td>
                 <td>
                   <div class="tag-list">
                     @for (tag of alert.tags; track tag.id) {

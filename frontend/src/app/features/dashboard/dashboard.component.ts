@@ -1,6 +1,7 @@
 import { DatePipe, NgTemplateOutlet } from '@angular/common';
 import {
   afterNextRender,
+  afterRenderEffect,
   ChangeDetectionStrategy,
   Component,
   computed,
@@ -11,12 +12,14 @@ import {
   Injector,
   signal,
   viewChild,
+  viewChildren,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 
-import { AlertExecution, AlertExecutionStatus, AlertTag } from '../../core/api/alert-api.service';
+import { AlertApiService, AlertExecution, AlertExecutionStatus, AlertTag } from '../../core/api/alert-api.service';
+import { ApiRequestError } from '../../core/api/configuration-api.service';
 import { AuthService } from '../../core/auth/auth.service';
 import { SessionActionsService } from '../../core/auth/session-actions.service';
 import { LocalizationService } from '../../core/i18n/localization.service';
@@ -28,7 +31,9 @@ import {
   DashboardAlertCard,
   stateChangedAt,
 } from './dashboard-card';
+import { DashboardDeck } from './dashboard-deck';
 import { DashboardChange, DashboardLiveService } from './dashboard-live.service';
+import { DashboardMuteService } from './dashboard-mute.service';
 import { CardState, hasVisibleTag, readStoredViewSettings, storeViewSettings } from './dashboard-view-settings';
 import { DashboardRibbonComponent } from './ribbon/dashboard-ribbon.component';
 
@@ -39,6 +44,18 @@ type SuccessAge = 'very-fresh' | 'fresh' | 'recent' | 'aging' | 'old' | 'very-ol
 interface Stability {
   readonly state: StabilityState;
   readonly label: string;
+}
+
+/** The context menu opened on a card, at the pointer (or the card corner from the keyboard). */
+interface CardMenu {
+  readonly alertId: number;
+  readonly x: number;
+  readonly y: number;
+}
+
+interface DashboardNotice {
+  readonly message: string;
+  readonly error: boolean;
 }
 
 const SEVERITY: Readonly<Record<AlertExecutionStatus, number>> = { SUCCESS: 0, WARN: 1, ERROR: 2 };
@@ -52,8 +69,11 @@ const ENTER_STAGGER_MILLIS = 90;
 const CHANGE_HIGHLIGHT_MILLIS = 1_200;
 const MOVE_DELAY_MILLIS = 700;
 const MOVE_DURATION_MILLIS = 500;
-/* Gap between deck cards when the row is wide enough for them not to overlap. */
-const DECK_GAP_PIXELS = 14;
+/* Space kept between the card menu and the viewport edges. */
+const MENU_MARGIN_PIXELS = 8;
+/* Where a keyboard-opened menu lands, measured from the card's top-left corner. */
+const MENU_KEYBOARD_OFFSET_PIXELS = 16;
+const NOTICE_MILLIS = 6_000;
 
 function startOfDay(timestamp: number): number {
   const date = new Date(timestamp);
@@ -116,6 +136,8 @@ export class DashboardComponent {
   private readonly live = inject(DashboardLiveService);
   private readonly authService = inject(AuthService);
   private readonly sessionActions = inject(SessionActionsService);
+  private readonly alertApi = inject(AlertApiService);
+  protected readonly mute = inject(DashboardMuteService);
   protected readonly isAdmin = this.authService.isAdmin;
   protected readonly cards = this.live.cards;
   /* Cards whose state just changed, while their highlight animation plays. */
@@ -131,25 +153,23 @@ export class DashboardComponent {
     const { hiddenStates, hiddenTagIds } = this.settings();
     return this.sortedCards().filter((card) => !hiddenStates.includes(this.cardState(card)) && hasVisibleTag(card, hiddenTagIds));
   });
+  /* Ignored and silenced alerts leave the regular flow and always close the board as their own deck. */
+  private readonly activeCards = computed(() => this.visibleCards().filter((card) => !this.mute.isMuted(card.alert.id)));
+  protected readonly mutedCards = computed(() => this.visibleCards().filter((card) => this.mute.isMuted(card.alert.id)));
   /* Greens are dealt as a deck unless ungrouped: worse states first, the deck row, then never-executed. */
   protected readonly deckCards = computed(() =>
-    this.settings().ungroupGreens ? [] : this.visibleCards().filter((card) => this.cardState(card) === 'success'));
+    this.settings().ungroupGreens ? [] : this.activeCards().filter((card) => this.cardState(card) === 'success'));
   protected readonly leadingCards = computed(() =>
     this.deckCards().length === 0
-      ? this.visibleCards()
-      : this.visibleCards().filter((card) => this.cardState(card) === 'error' || this.cardState(card) === 'warn'));
+      ? this.activeCards()
+      : this.activeCards().filter((card) => this.cardState(card) === 'error' || this.cardState(card) === 'warn'));
   protected readonly trailingCards = computed(() =>
-    this.deckCards().length === 0 ? [] : this.visibleCards().filter((card) => this.cardState(card) === 'none'));
-  protected readonly deckActiveIndex = signal<number | null>(null);
+    this.deckCards().length === 0 ? [] : this.activeCards().filter((card) => this.cardState(card) === 'none'));
   private readonly deckWidth = signal(0);
   private readonly deckCardWidth = signal(0);
-  protected readonly deckStep = computed(() => {
-    const count = this.deckCards().length;
-    if (count <= 1) return 0;
-    const cardWidth = this.deckCardWidth();
-    return Math.max(0, Math.min(cardWidth + DECK_GAP_PIXELS, (this.deckWidth() - cardWidth) / (count - 1)));
-  });
-  private readonly deck = viewChild<ElementRef<HTMLElement>>('deck');
+  protected readonly greenDeck = new DashboardDeck(this.deckCards, this.deckWidth, this.deckCardWidth);
+  protected readonly mutedDeck = new DashboardDeck(this.mutedCards, this.deckWidth, this.deckCardWidth);
+  private readonly decks = viewChildren<ElementRef<HTMLElement>>('deck');
   private readonly grid = viewChild.required<ElementRef<HTMLElement>>('grid');
   protected readonly totalCards = this.live.totalCards;
   protected readonly loading = this.live.loading;
@@ -164,11 +184,24 @@ export class DashboardComponent {
   protected readonly historyWindowDays = DASHBOARD_HISTORY_WINDOW_DAYS;
   protected readonly selectedCard = signal<DashboardAlertCard | null>(null);
   private readonly detailDialog = viewChild<ElementRef<HTMLElement>>('detailDialog');
+  protected readonly cardMenu = signal<CardMenu | null>(null);
+  /* The live tile behind the open menu; the menu closes by itself if the alert goes away. */
+  protected readonly menuCard = computed(() => {
+    const menu = this.cardMenu();
+    return menu === null ? null : this.cards().find((card) => card.alert.id === menu.alertId) ?? null;
+  });
+  private readonly cardMenuElement = viewChild<ElementRef<HTMLElement>>('cardMenu');
+  protected readonly runningNow = signal(false);
+  protected readonly notice = signal<DashboardNotice | null>(null);
+  private noticeTimer: number | null = null;
   private readonly highlightTimers = new Set<number>();
   private requestedAlertId: number | null = null;
 
   constructor() {
-    this.destroyRef.onDestroy(() => this.highlightTimers.forEach((timer) => clearTimeout(timer)));
+    this.destroyRef.onDestroy(() => {
+      this.highlightTimers.forEach((timer) => clearTimeout(timer));
+      this.clearNoticeTimer();
+    });
     this.live.changes$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((change) => this.animateChange(change));
     /* A notification click lands here with ?alert=<id>: open that tile as soon as it is available. */
     this.route.queryParamMap.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((parameters) => {
@@ -185,17 +218,29 @@ export class DashboardComponent {
       if (this.selectedCard()) this.detailDialog()?.nativeElement.focus();
     });
     effect(() => storeViewSettings(this.settings()));
-    /* The deck lays its cards out in pixels, so it tracks the grid's column width and its own width. */
+    /* Decks lay their cards out in pixels, so they track the grid's column width and their own width. */
     const resizeObserver = new ResizeObserver(() => this.measureDeck());
     effect(() => {
       resizeObserver.disconnect();
-      const deck = this.deck()?.nativeElement;
-      if (!deck) return;
-      resizeObserver.observe(deck);
+      const decks = this.decks();
+      if (decks.length === 0) return;
+      for (const deck of decks) resizeObserver.observe(deck.nativeElement);
       resizeObserver.observe(this.grid().nativeElement);
       this.measureDeck();
     });
     this.destroyRef.onDestroy(() => resizeObserver.disconnect());
+    /* Once rendered, the menu is kept inside the viewport and takes the focus for keyboard use. */
+    afterRenderEffect(() => {
+      const menu = this.cardMenu();
+      const element = this.cardMenuElement()?.nativeElement;
+      if (!menu || !element) return;
+      const { width, height } = element.getBoundingClientRect();
+      const left = Math.min(menu.x, window.innerWidth - width - MENU_MARGIN_PIXELS);
+      const top = Math.min(menu.y, window.innerHeight - height - MENU_MARGIN_PIXELS);
+      element.style.left = `${Math.max(MENU_MARGIN_PIXELS, left)}px`;
+      element.style.top = `${Math.max(MENU_MARGIN_PIXELS, top)}px`;
+      if (!element.contains(document.activeElement)) this.menuItems()[0]?.focus();
+    });
   }
 
   private openRequestedCard(): void {
@@ -208,41 +253,13 @@ export class DashboardComponent {
     void this.router.navigate([], { relativeTo: this.route, queryParams: { alert: null }, queryParamsHandling: 'merge', replaceUrl: true });
   }
 
+  /* Every deck spans the whole grid row, so measuring the first one sizes them all. */
   private measureDeck(): void {
-    const deck = this.deck()?.nativeElement;
+    const deck = this.decks()[0]?.nativeElement;
     if (!deck) return;
     const firstColumn = getComputedStyle(this.grid().nativeElement).gridTemplateColumns.split(' ')[0];
     this.deckWidth.set(deck.clientWidth);
     this.deckCardWidth.set(Math.min(deck.clientWidth, Number.parseFloat(firstColumn) || deck.clientWidth));
-  }
-
-  protected deckCardWidthPx(): number {
-    return this.deckCardWidth();
-  }
-
-  protected deckSlotLeft(index: number): number {
-    return index * this.deckStep();
-  }
-
-  protected deckSlotZ(index: number): number {
-    return this.deckActiveIndex() === index ? this.deckCards().length + 1 : index + 1;
-  }
-
-  /* Whichever card sits under the pointer comes to the front, like fanning a hand of cards. */
-  protected scrubDeck(event: PointerEvent): void {
-    const deck = this.deck()?.nativeElement;
-    const step = this.deckStep();
-    if (!deck || step === 0) return;
-    const x = event.clientX - deck.getBoundingClientRect().left;
-    this.deckActiveIndex.set(Math.max(0, Math.min(this.deckCards().length - 1, Math.floor(x / step))));
-  }
-
-  protected leaveDeck(): void {
-    this.deckActiveIndex.set(null);
-  }
-
-  protected focusDeckCard(index: number): void {
-    this.deckActiveIndex.set(index);
   }
 
   protected openCard(card: DashboardAlertCard): void {
@@ -256,6 +273,117 @@ export class DashboardComponent {
 
   protected closeCard(): void {
     this.selectedCard.set(null);
+  }
+
+  /* Secondary click, the context-menu key or Shift+F10; the keyboard ones report no pointer position. */
+  protected openCardMenu(event: MouseEvent, card: DashboardAlertCard): void {
+    const trigger = event.currentTarget;
+    if (!(trigger instanceof HTMLElement)) return;
+    event.preventDefault();
+    let x = event.clientX;
+    let y = event.clientY;
+    if (x === 0 && y === 0) {
+      const rect = trigger.getBoundingClientRect();
+      x = rect.left + MENU_KEYBOARD_OFFSET_PIXELS;
+      y = rect.top + MENU_KEYBOARD_OFFSET_PIXELS;
+    }
+    this.cardMenu.set({ alertId: card.alert.id, x, y });
+  }
+
+  protected closeCardMenu(restoreFocus = false): void {
+    const menu = this.cardMenu();
+    if (menu === null) return;
+    this.cardMenu.set(null);
+    /* Found again once rendered: muting moves the card to another block, which recreates its element. */
+    if (restoreFocus) afterNextRender(() => this.focusCard(menu.alertId), { injector: this.injector });
+  }
+
+  private focusCard(alertId: number): void {
+    this.host.querySelector<HTMLElement>(`.alert-card[data-alert-id="${alertId}"]`)?.focus();
+  }
+
+  /* A secondary click outside the menu only dismisses it, instead of opening the browser's own. */
+  protected dismissCardMenu(event: Event): void {
+    event.preventDefault();
+    this.closeCardMenu();
+  }
+
+  protected moveMenuFocus(event: Event, offset: number): void {
+    event.preventDefault();
+    const items = this.menuItems();
+    if (items.length === 0) return;
+    const current = items.findIndex((item) => item === document.activeElement);
+    items[(current + offset + items.length) % items.length].focus();
+  }
+
+  private menuItems(): HTMLElement[] {
+    return Array.from(this.cardMenuElement()?.nativeElement.querySelectorAll<HTMLElement>('[role="menuitem"]:not(:disabled)') ?? []);
+  }
+
+  protected menuLabel(card: DashboardAlertCard): string {
+    return this.localization.translate('dashboard.menu.label').replace('{name}', card.alert.name);
+  }
+
+  /* Silencing only makes sense while there is something to recover from. */
+  protected canSilence(card: DashboardAlertCard): boolean {
+    const state = this.cardState(card);
+    return state === 'error' || state === 'warn';
+  }
+
+  protected ignoreCard(card: DashboardAlertCard): void {
+    this.closeCardMenu(true);
+    this.rearrange(() => this.mute.ignore(card.alert.id));
+  }
+
+  protected silenceCard(card: DashboardAlertCard): void {
+    this.closeCardMenu(true);
+    this.rearrange(() => this.mute.silence(card.alert.id));
+  }
+
+  protected unmuteCard(card: DashboardAlertCard): void {
+    this.closeCardMenu(true);
+    this.rearrange(() => this.mute.unmute(card.alert.id));
+  }
+
+  protected async runCardNow(card: DashboardAlertCard): Promise<void> {
+    this.closeCardMenu(true);
+    // A disabled alert can still be run on demand, so it is confirmed first.
+    if (!card.alert.enabled && !window.confirm(this.localization.translate('alerts.runDisabledConfirm'))) return;
+    if (this.runningNow()) return;
+    this.runningNow.set(true);
+    try {
+      await this.alertApi.runAlertNow(card.alert.id);
+      this.showNotice(this.localization.translate('alerts.runStarted').replace('{name}', card.alert.name), false);
+    } catch (error) {
+      let message = error instanceof Error ? error.message : this.localization.translate('alerts.error');
+      if (error instanceof ApiRequestError && error.code === 'ALERT_ALREADY_RUNNING') {
+        message = this.localization.translate('alerts.runAlreadyRunning').replace('{name}', card.alert.name);
+      } else if (error instanceof ApiRequestError && error.code === 'MAINTENANCE_MODE_ACTIVE') {
+        message = this.localization.translate('alerts.runMaintenanceMode');
+      }
+      this.showNotice(message, true);
+    } finally {
+      this.runningNow.set(false);
+    }
+  }
+
+  protected openCardHistory(card: DashboardAlertCard): void {
+    this.closeCardMenu();
+    void this.router.navigate(['/alerts'], { queryParams: { tab: 'history', alertId: card.alert.id } });
+  }
+
+  private showNotice(message: string, error: boolean): void {
+    this.clearNoticeTimer();
+    this.notice.set({ message, error });
+    this.noticeTimer = window.setTimeout(() => {
+      this.noticeTimer = null;
+      this.notice.set(null);
+    }, NOTICE_MILLIS);
+  }
+
+  private clearNoticeTimer(): void {
+    if (this.noticeTimer !== null) clearTimeout(this.noticeTimer);
+    this.noticeTimer = null;
   }
 
   protected updateLocale(locale: string): void {
@@ -313,6 +441,13 @@ export class DashboardComponent {
     }
     const delay = change.stateChanged ? MOVE_DELAY_MILLIS : 0;
     afterNextRender(() => this.slideToNewPositions(before, delay), { injector: this.injector });
+  }
+
+  /* A card moved by the user slides to its new place the same way a live change does. */
+  private rearrange(change: () => void): void {
+    const before = this.cardRects();
+    change();
+    afterNextRender(() => this.slideToNewPositions(before, 0), { injector: this.injector });
   }
 
   private highlight(alertId: number): void {
@@ -379,6 +514,7 @@ export class DashboardComponent {
     return `alert-card alert-card--${state}`
       + tone
       + (minified ? ' alert-card--mini' : '')
+      + (this.mute.isMuted(card.alert.id) ? ' alert-card--muted' : '')
       + (this.changedIds().has(card.alert.id) ? ' alert-card--changed' : '');
   }
 

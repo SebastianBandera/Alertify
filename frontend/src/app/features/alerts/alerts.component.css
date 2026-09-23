@@ -59,6 +59,9 @@ th, td { padding: 14px; border-bottom: 1px solid var(--border); text-align: left
 th { background: #fcfcfd; color: #667085; font-size: 10px; font-weight: 750; letter-spacing: .04em; text-transform: uppercase; }
 tbody tr:hover { background: #fcfcfd; }
 td small { display: block; max-width: 330px; margin-top: 4px; overflow: hidden; color: var(--text-muted); text-overflow: ellipsis; white-space: nowrap; }
+/* Template name and class key are the widest cell; kept narrower so the table fits a 1080p screen with the menu open. */
+.template-cell strong { display: block; max-width: 258px; }
+.template-cell small { max-width: 258px; }
 code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .template-key { max-width: 340px; display: block; overflow-wrap: anywhere; color: #344054; }
 .badge { display: inline-flex; padding: 4px 8px; border-radius: 999px; background: #ecfdf3; color: #027a48; font-size: 10px; font-weight: 750; }

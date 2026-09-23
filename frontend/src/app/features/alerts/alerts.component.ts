@@ -213,8 +213,12 @@ export class AlertsComponent implements OnInit {
     this.destroyRef.onDestroy(() => this.clearNoticeTimer());
     const requestedTab = this.route.snapshot.queryParamMap.get('tab');
     const requestedExecutionId = this.route.snapshot.queryParamMap.get('executionId');
+    /* The dashboard card menu links here with ?alertId=<id> to show that alert's history. */
+    const requestedAlertId = Number(this.route.snapshot.queryParamMap.get('alertId'));
+    const hasRequestedAlert = Number.isInteger(requestedAlertId) && requestedAlertId > 0;
+    if (hasRequestedAlert) this.historyAlertId.set(requestedAlertId);
     this.historyExecutionId.set(requestedExecutionId);
-    this.activeTab.set(requestedExecutionId ? 'history' : alertTab(requestedTab));
+    this.activeTab.set(requestedExecutionId || hasRequestedAlert ? 'history' : alertTab(requestedTab));
     this.route.queryParamMap
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((parameters) => {
@@ -224,10 +228,10 @@ export class AlertsComponent implements OnInit {
         this.activeTab.set(tab);
         void this.loadTab(tab);
       });
-    if (requestedTab !== this.activeTab()) {
+    if (requestedTab !== this.activeTab() || hasRequestedAlert) {
       void this.router.navigate([], {
         relativeTo: this.route,
-        queryParams: { tab: this.activeTab() },
+        queryParams: { tab: this.activeTab(), alertId: null },
         queryParamsHandling: 'merge',
         replaceUrl: true,
       });

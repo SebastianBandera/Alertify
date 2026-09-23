@@ -10,6 +10,7 @@ import { AuthService } from '../../core/auth/auth.service';
 import { AdminEventChannelService } from '../../core/realtime/admin-event-channel.service';
 import { ViewerEventChannelService } from '../../core/realtime/viewer-event-channel.service';
 import { DashboardAlertCard } from './dashboard-card';
+import { DashboardMuteService } from './dashboard-mute.service';
 import { hasVisibleTag, readStoredViewSettings } from './dashboard-view-settings';
 
 const PAGE_SIZE = 12;
@@ -54,6 +55,7 @@ export class DashboardLiveService {
   private readonly viewerChannel = inject(ViewerEventChannelService);
   private readonly channel: DashboardEventChannel = this.authService.isAdmin ? this.adminChannel : this.viewerChannel;
   private readonly notifications = inject(BrowserNotificationService);
+  private readonly mute = inject(DashboardMuteService);
   private readonly router = inject(Router);
   private readonly document = inject(DOCUMENT);
   private readonly destroyRef = inject(DestroyRef);
@@ -107,6 +109,7 @@ export class DashboardLiveService {
           for (const card of page.content) next.set(card.alert.id, card);
           return next;
         });
+        this.mute.releaseRecovered(page.content);
         this.totalCards.set(page.page.totalElements);
         this.loadedFromPages.update((count) => count + page.content.length);
         this.changes$.next({ kind: 'page', alertId: null, stateChanged: false });
@@ -129,6 +132,7 @@ export class DashboardLiveService {
     const previous = this.cardsById().get(alertId);
     this.snapshotIds?.add(alertId);
     this.cardsById.update((cards) => new Map(cards).set(alertId, card));
+    this.mute.releaseRecovered([card]);
     this.changes$.next({ kind: 'update', alertId, stateChanged: resultStatus(previous) !== resultStatus(card) });
     if (this.isNewResult(previous, card)) this.notify(card);
   }
@@ -159,9 +163,11 @@ export class DashboardLiveService {
   /*
    * The board itself already pulses the changed tile, so only notify when it is not in front of the user.
    * An alert the board hides because all its tags are hidden stays quiet too; the stored settings are read
-   * each time so the latest ribbon choice applies, even one made in another tab.
+   * each time so the latest ribbon choice applies, even one made in another tab. So does one ignored or
+   * silenced from its card menu.
    */
   private notify(card: DashboardAlertCard): void {
+    if (this.mute.isMuted(card.alert.id)) return;
     if (!hasVisibleTag(card, readStoredViewSettings().hiddenTagIds)) return;
     const boardVisible = this.document.visibilityState === 'visible' && this.router.url.startsWith('/dashboard');
     if (!boardVisible) this.notifications.notifyAlert(card);
