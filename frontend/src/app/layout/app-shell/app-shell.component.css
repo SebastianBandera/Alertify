@@ -214,10 +214,24 @@
   display: none;
 }
 
-/* Fades the bottom edge while more items are hidden below; the list ends crisp once fully scrolled. */
+/*
+ * Fades each edge while more items are hidden past it; an edge turns crisp once
+ * scrolled to its end. A zero fade collapses that side of the gradient to opaque.
+ */
+.navigation--more-above,
 .navigation--more-below {
-  mask-image: linear-gradient(to bottom, #000 calc(100% - 56px), transparent);
-  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 56px), transparent);
+  --navigation-fade-top: 0px;
+  --navigation-fade-bottom: 0px;
+  mask-image: linear-gradient(to bottom, transparent, #000 var(--navigation-fade-top), #000 calc(100% - var(--navigation-fade-bottom)), transparent);
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 var(--navigation-fade-top), #000 calc(100% - var(--navigation-fade-bottom)), transparent);
+}
+
+.navigation--more-above {
+  --navigation-fade-top: 88px;
+}
+
+.navigation--more-below {
+  --navigation-fade-bottom: 88px;
 }
 
 .navigation__item {

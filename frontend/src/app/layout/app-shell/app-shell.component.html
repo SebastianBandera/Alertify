@@ -59,6 +59,7 @@
     <nav
       #navigationList
       class="navigation"
+      [class.navigation--more-above]="navigationHasMoreAbove()"
       [class.navigation--more-below]="navigationHasMoreBelow()"
       [attr.aria-label]="localization.translate('navigation.sections')"
       (scroll)="updateNavigationOverflow()"

@@ -86,6 +86,7 @@ export class AppShellComponent {
   protected readonly sidebarCollapsed = signal(this.restoreSidebarCollapsed());
   protected readonly orderedNavigationItems = signal(this.restoreNavigationOrder());
   protected readonly draggedNavigationPath = signal<string | null>(null);
+  protected readonly navigationHasMoreAbove = signal(false);
   protected readonly navigationHasMoreBelow = signal(false);
   private readonly searchInput = viewChild<ElementRef<HTMLInputElement>>('navigationSearchInput');
   private readonly navigationList = viewChild<ElementRef<HTMLElement>>('navigationList');
@@ -207,7 +208,8 @@ export class AppShellComponent {
 
   protected updateNavigationOverflow(): void {
     const navigation = this.navigationList()?.nativeElement;
-    /* A pixel of slack absorbs fractional scroll offsets at the end of the list. */
+    /* A pixel of slack absorbs fractional scroll offsets at either end of the list. */
+    this.navigationHasMoreAbove.set(navigation !== undefined && navigation.scrollTop > 1);
     this.navigationHasMoreBelow.set(
       navigation !== undefined && navigation.scrollTop + navigation.clientHeight < navigation.scrollHeight - 1,
     );
