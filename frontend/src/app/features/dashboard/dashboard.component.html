@@ -289,7 +289,6 @@
       <header>
         <div class="modal__heading">
           <h2>{{ card.alert.name }}</h2>
-          <p>{{ dynamic(card.alert.templateNameKey) }}</p>
           <div class="modal__status">
             <span [class]="'badge badge--' + cardState(card)">{{ statusLabel(card) }}</span>
             @if (card.runningSince; as runningSince) {
@@ -334,8 +333,6 @@
           <dl class="detail-list">
             <dt>{{ localization.translate('dashboard.detail.schedule') }}</dt>
             <dd><code>{{ card.alert.cronExpression }}</code></dd>
-            <dt>{{ localization.translate('dashboard.detail.templateKey') }}</dt>
-            <dd><code>{{ card.alert.templateKey }}</code></dd>
             <dt>{{ localization.translate('dashboard.detail.concurrent') }}</dt>
             <dd>{{ localization.translate(card.alert.allowConcurrentExecutions ? 'dashboard.detail.yes' : 'dashboard.detail.no') }}</dd>
           </dl>
@@ -430,3 +427,6 @@
     </section>
   </div>
 }
+
+<!-- Outside the article: its overflow clipping would keep the notice from staying centered while scrolling. -->
+<app-dashboard-connection-overlay />

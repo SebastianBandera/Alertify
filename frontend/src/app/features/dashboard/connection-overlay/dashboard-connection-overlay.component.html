@@ -1,0 +1,15 @@
+<div class="connection-status" role="status" aria-live="assertive">
+  @if (visible()) {
+    <button
+      class="connection-overlay"
+      type="button"
+      [attr.aria-label]="localization.translate('dashboard.disconnected.hint')"
+      (click)="reveal()"
+    ></button>
+    <div class="connection-overlay__content">
+      <span class="connection-overlay__icon" aria-hidden="true"></span>
+      <strong>{{ localization.translate('dashboard.disconnected.title') }}</strong>
+      <small>{{ localization.translate('dashboard.disconnected.hint') }}</small>
+    </div>
+  }
+</div>

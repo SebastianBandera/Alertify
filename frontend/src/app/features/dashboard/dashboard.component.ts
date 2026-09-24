@@ -35,6 +35,7 @@ import { DashboardDeck } from './dashboard-deck';
 import { DashboardChange, DashboardLiveService } from './dashboard-live.service';
 import { DashboardMuteService } from './dashboard-mute.service';
 import { CardState, hasVisibleTag, readStoredViewSettings, storeViewSettings } from './dashboard-view-settings';
+import { DashboardConnectionOverlayComponent } from './connection-overlay/dashboard-connection-overlay.component';
 import { DashboardRibbonComponent } from './ribbon/dashboard-ribbon.component';
 
 type StabilityState = 'stable' | 'warn' | 'error';
@@ -121,7 +122,7 @@ const TRIGGER_LABEL_KEYS: Readonly<Record<ExecutionTrigger, TranslationKey>> = {
 
 @Component({
   selector: 'app-dashboard',
-  imports: [DatePipe, FormsModule, NgTemplateOutlet, DragScrollDirective, DashboardRibbonComponent],
+  imports: [DatePipe, FormsModule, NgTemplateOutlet, DragScrollDirective, DashboardRibbonComponent, DashboardConnectionOverlayComponent],
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,

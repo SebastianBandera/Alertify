@@ -1,0 +1,82 @@
+/* Spans the whole board; only the notice itself takes pointer events. */
+:host {
+  position: absolute;
+  z-index: 30;
+  inset: 0;
+  pointer-events: none;
+}
+
+.connection-status {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.connection-overlay {
+  position: absolute;
+  inset: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 16px;
+  background: rgb(244 247 251 / 55%);
+  cursor: pointer;
+  pointer-events: auto;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  animation: connection-overlay-in 220ms ease-out;
+}
+
+.connection-overlay:focus-visible {
+  outline: 3px solid rgb(109 93 252 / 45%);
+  outline-offset: -3px;
+}
+
+/* Sticky at mid-viewport, so the notice stays centered on the visible part of a board taller than the window. */
+.connection-overlay__content {
+  position: sticky;
+  z-index: 1;
+  top: 50dvh;
+  max-width: min(360px, calc(100% - 32px));
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  color: var(--text);
+  text-align: center;
+  pointer-events: none;
+  transform: translateY(-50%);
+  animation: connection-overlay-in 220ms ease-out;
+}
+
+.connection-overlay__icon {
+  width: 96px;
+  height: 96px;
+  margin-bottom: 8px;
+  background: #b42318;
+  mask: url('../../../../../public/icons/connection-off.svg') center / contain no-repeat;
+  -webkit-mask: url('../../../../../public/icons/connection-off.svg') center / contain no-repeat;
+}
+
+.connection-overlay__content strong {
+  font-size: 18px;
+  letter-spacing: -0.01em;
+}
+
+.connection-overlay__content small {
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+@keyframes connection-overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .connection-overlay,
+  .connection-overlay__content {
+    animation: none;
+  }
+}
