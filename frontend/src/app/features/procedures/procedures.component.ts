@@ -5,7 +5,7 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 
 import { AlertParameterSource } from '../../core/api/alert-api.service';
-import { ApiRequestError } from '../../core/api/configuration-api.service';
+import { ApiRequestError, TagMatchMode } from '../../core/api/configuration-api.service';
 import {
   Procedure,
   ProcedureApiService,
@@ -22,6 +22,7 @@ import { LocalizationService } from '../../core/i18n/localization.service';
 import { TranslationKey } from '../../core/i18n/localization.types';
 import { isCompatibleConfigurationValueType, isCompatibleSecretValueType } from '../../core/utils/parameter-binding-compatibility';
 import { templateClassName } from '../../core/utils/template-key';
+import { SearchableSelectComponent, SearchableSelectOption } from '../../shared/searchable-select/searchable-select.component';
 
 type ProcedureTab = 'procedures' | 'templates' | 'wizards' | 'history';
 type ParameterSource = AlertParameterSource | 'OPTION' | '';
@@ -71,7 +72,7 @@ function procedureTab(value: string | null): ProcedureTab {
 
 @Component({
   selector: 'app-procedures',
-  imports: [DatePipe, FormsModule],
+  imports: [DatePipe, FormsModule, SearchableSelectComponent],
   templateUrl: './procedures.component.html',
   styleUrl: './procedures.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -98,6 +99,9 @@ export class ProceduresComponent implements OnInit {
   protected readonly notice = signal<string | null>(null);
   protected readonly search = signal('');
   protected readonly templateFilterId = signal<number | null>(null);
+  protected readonly templateListSearch = signal('');
+  protected readonly selectedTemplateTagKeys = signal<readonly string[]>([]);
+  protected readonly templateTagMatchMode = signal<TagMatchMode>('OR');
   protected readonly historyProcedureId = signal<number | null>(null);
   protected readonly historyStatus = signal<ProcedureExecutionStatus | ''>('');
   protected readonly historyExecutionId = signal<string | null>(null);
@@ -110,6 +114,56 @@ export class ProceduresComponent implements OnInit {
   protected readonly wizardError = signal<string | null>(null);
   protected readonly selectedTemplate = computed(() =>
     this.templates().find((template) => template.id === this.form().templateId) ?? null,
+  );
+  protected readonly templateTags = computed(() => {
+    const tagsByNameKey = new Map<string, ProcedureTemplate['tags'][number]>();
+    for (const template of this.templates()) {
+      for (const tag of template.tags)
+        tagsByNameKey.set(tag.nameKey, tag);
+    }
+    return [...tagsByNameKey.values()].sort((first, second) =>
+      this.dynamic(first.nameKey).localeCompare(
+        this.dynamic(second.nameKey),
+        this.localization.locale(),
+        { sensitivity: 'base' },
+      ),
+    );
+  });
+  protected readonly selectedTemplateFilterTags = computed(() => {
+    const tagsByNameKey = new Map(this.templateTags().map((tag) => [tag.nameKey, tag]));
+    return this.selectedTemplateTagKeys().flatMap((nameKey) => {
+      const tag = tagsByNameKey.get(nameKey);
+      return tag ? [tag] : [];
+    });
+  });
+  protected readonly availableTemplateFilterTags = computed(() => {
+    const selected = new Set(this.selectedTemplateTagKeys());
+    return this.templateTags().filter((tag) => !selected.has(tag.nameKey));
+  });
+  protected readonly visibleTemplates = computed(() => {
+    const selected = this.selectedTemplateTagKeys();
+    const query = this.normalizeSearch(this.templateListSearch());
+    return this.templates().filter((template) => {
+      const templateTagKeys = new Set(template.tags.map((tag) => tag.nameKey));
+      const matchesTags = !selected.length || (this.templateTagMatchMode() === 'AND'
+        ? selected.every((nameKey) => templateTagKeys.has(nameKey))
+        : selected.some((nameKey) => templateTagKeys.has(nameKey)));
+      const matchesText = !query || this.normalizeSearch([
+        this.dynamic(template.nameKey),
+        this.dynamic(template.descriptionKey),
+        templateClassName(template.templateKey),
+        template.templateKey,
+      ].join(' ')).includes(query);
+      return matchesTags && matchesText;
+    });
+  });
+  protected readonly templateOptions = computed<readonly SearchableSelectOption[]>(() =>
+    this.templates().map((template) => ({
+      value: template.id,
+      label: this.dynamic(template.nameKey),
+      description: this.dynamic(template.descriptionKey),
+      searchText: `${templateClassName(template.templateKey)} ${template.templateKey}`,
+    })),
   );
   protected readonly formError = signal<string | null>(null);
   protected readonly formFieldErrors = signal<ProcedureFormErrors>({});
@@ -150,6 +204,30 @@ export class ProceduresComponent implements OnInit {
 
   protected dynamic(key: string): string {
     return this.localization.translateDynamic(key);
+  }
+
+  protected updateTemplateListSearch(value: string): void {
+    this.templateListSearch.set(value);
+  }
+
+  protected addTemplateTagFilter(event: Event): void {
+    const select = event.target as HTMLSelectElement;
+    const nameKey = select.value;
+    if (nameKey && !this.selectedTemplateTagKeys().includes(nameKey))
+      this.selectedTemplateTagKeys.set([...this.selectedTemplateTagKeys(), nameKey]);
+    select.value = '';
+  }
+
+  protected removeTemplateTagFilter(nameKey: string): void {
+    this.selectedTemplateTagKeys.set(this.selectedTemplateTagKeys().filter((key) => key !== nameKey));
+  }
+
+  protected updateTemplateTagMatchMode(mode: TagMatchMode): void {
+    this.templateTagMatchMode.set(mode);
+  }
+
+  private normalizeSearch(value: string): string {
+    return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase().trim();
   }
 
   protected readonly templateClassName = templateClassName;
@@ -240,6 +318,36 @@ export class ProceduresComponent implements OnInit {
     this.search.set('');
     this.templateFilterId.set(template.id);
     void this.changeTab('procedures');
+  }
+
+  protected async showProcedureByName(procedureName: string): Promise<void> {
+    this.search.set(procedureName);
+    this.templateFilterId.set(null);
+    this.historyExecutionId.set(null);
+    this.activeTab.set('procedures');
+    await Promise.all([
+      this.router.navigate([], {
+        relativeTo: this.route,
+        queryParams: { tab: 'procedures', executionId: null },
+        queryParamsHandling: 'merge',
+      }),
+      this.loadProcedures(),
+    ]);
+  }
+
+  protected async showProcedureHistory(procedure: Procedure): Promise<void> {
+    this.historyProcedureId.set(procedure.id);
+    this.historyStatus.set('');
+    this.historyExecutionId.set(null);
+    this.activeTab.set('history');
+    await Promise.all([
+      this.router.navigate([], {
+        relativeTo: this.route,
+        queryParams: { tab: 'history', executionId: null },
+        queryParamsHandling: 'merge',
+      }),
+      this.loadHistory(),
+    ]);
   }
 
   protected openCreate(template: ProcedureTemplate | null = null): void {
@@ -567,10 +675,24 @@ export class ProceduresComponent implements OnInit {
     this.executions.set(page.content);
   }
 
-  protected async clearHistoryExecutionFilter(): Promise<void> {
-    this.historyExecutionId.set(null);
-    await this.router.navigate([], { relativeTo: this.route, queryParams: { executionId: null }, queryParamsHandling: 'merge', replaceUrl: true });
-    await this.loadHistory();
+  protected applyHistoryFilters(): void {
+    if (this.historyExecutionId() !== null) {
+      this.historyExecutionId.set(null);
+      void this.router.navigate([], { relativeTo: this.route, queryParams: { executionId: null }, queryParamsHandling: 'merge', replaceUrl: true });
+    }
+    void this.loadHistory();
+  }
+
+  protected clearHistoryExecutionFilter(): void { this.applyHistoryFilters(); }
+
+  protected updateHistoryProcedureFilter(procedureId: number | null): void {
+    this.historyProcedureId.set(procedureId);
+    this.applyHistoryFilters();
+  }
+
+  protected updateHistoryStatusFilter(status: ProcedureExecutionStatus | ''): void {
+    this.historyStatus.set(status);
+    this.applyHistoryFilters();
   }
 
   private emptyForm(): ProcedureForm {

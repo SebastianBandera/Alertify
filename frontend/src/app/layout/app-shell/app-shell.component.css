@@ -21,12 +21,20 @@
   display: flex;
   flex-direction: column;
   padding: 24px 18px 18px;
-  overflow-y: auto;
+  /* Only the navigation list scrolls, so the brand, search and footer stay on screen. */
+  overflow: hidden;
   background:
     radial-gradient(circle at 0 0, rgb(109 93 252 / 24%), transparent 32%),
     var(--sidebar);
   color: white;
   transition: padding 200ms ease;
+}
+
+.sidebar__brand-row,
+.navigation-search,
+.navigation-search-toggle,
+.sidebar__footer {
+  flex-shrink: 0;
 }
 
 .sidebar__brand-row {
@@ -130,13 +138,15 @@
   width: 42px;
   height: 42px;
   margin: 0 auto 14px;
+  padding: 0;
   border-radius: 11px;
   background: rgb(255 255 255 / 7%);
 }
 
 .navigation-search-toggle .navigation-search__icon {
-  top: 13px;
-  left: 14px;
+  position: relative;
+  top: auto;
+  left: auto;
 }
 
 .navigation-search input {
@@ -186,8 +196,28 @@
 }
 
 .navigation {
+  min-height: 0;
+  flex: 1 1 auto;
   display: grid;
+  align-content: start;
   gap: 6px;
+  /* Room for the hover shift and focus ring, which the scroll container would otherwise clip. */
+  margin: -2px;
+  padding: 2px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+
+.navigation::-webkit-scrollbar {
+  display: none;
+}
+
+/* Fades the bottom edge while more items are hidden below; the list ends crisp once fully scrolled. */
+.navigation--more-below {
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 56px), transparent);
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 56px), transparent);
 }
 
 .navigation__item {
@@ -524,9 +554,11 @@
     margin: 0 0 18px;
   }
 
+  /* The hidden labels keep no width, so the gap beside them would pull the icons off center. */
   .app-shell--sidebar-collapsed .brand {
     justify-content: center;
     flex: 0 0 auto;
+    gap: 0;
   }
 
   .app-shell--sidebar-collapsed .brand__details,
@@ -543,11 +575,13 @@
   }
 
   .app-shell--sidebar-collapsed .navigation-search-toggle {
-    display: block;
+    display: grid;
+    place-items: center;
   }
 
   .app-shell--sidebar-collapsed .navigation__item {
     justify-content: center;
+    gap: 0;
     padding: 7px 0;
   }
 

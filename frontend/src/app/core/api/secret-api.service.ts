@@ -134,9 +134,10 @@ export class SecretApiService {
   private readonly authService = inject(AuthService);
   private readonly apiBaseUrl = inject(RUNTIME_CONFIG).apiBaseUrl;
 
-  async listSecrets(search: string, tagIds: readonly number[], tagMatchMode: TagMatchMode, pageNumber: number, pageSize: number): Promise<PageResponse<ApplicationSecret>> {
+  async listSecrets(search: string, valueType: SecretValueType | '', tagIds: readonly number[], tagMatchMode: TagMatchMode, pageNumber: number, pageSize: number): Promise<PageResponse<ApplicationSecret>> {
     const params = new URLSearchParams({ page: String(pageNumber), size: String(pageSize), sort: 'name,asc' });
     if (search.trim()) params.set('name', `~*${search.trim()}*`);
+    if (valueType) params.set('type', valueType);
     tagIds.forEach((tagId) => params.append('tagId', String(tagId)));
     if (tagIds.length >= 2) params.set('tagOperator', tagMatchMode);
     return this.request<PageResponse<ApplicationSecret>>(`/api/secrets?${params.toString()}`);

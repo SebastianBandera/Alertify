@@ -12,6 +12,8 @@ public record AlertExecutionResponse(
     UUID executionId,
     Long alertId,
     String alertName,
+    Long templateId,
+    String templateNameKey,
     AlertExecutionStatus status,
     AlertExecutionTrigger trigger,
     String triggeredBy,

@@ -59,6 +59,13 @@
         (keyup.enter)="applySearch()"
       />
     </label>
+    <label class="field field--type">
+      <span>{{ localization.translate('configs.filterType') }}</span>
+      <select [ngModel]="selectedValueType()" [class.filter-placeholder]="!selectedValueType()" (ngModelChange)="updateValueTypeFilter($event)">
+        <option value="">{{ localization.translate('configs.allTypes') }}</option>
+        @for (valueType of valueTypes; track valueType) { <option [value]="valueType">{{ valueType }}</option> }
+      </select>
+    </label>
     <div class="field field--filter">
       <span>{{ localization.translate('configs.filterTag') }}</span>
       <div class="tag-filter">
@@ -74,7 +81,7 @@
           </span>
         }
         <select
-          class="tag-filter__select"
+          class="tag-filter__select filter-placeholder"
           [disabled]="availableFilterTags().length === 0"
           value=""
           (change)="addTagFilter($event)"

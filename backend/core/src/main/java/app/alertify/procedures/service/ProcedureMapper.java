@@ -55,6 +55,8 @@ final class ProcedureMapper {
     }
 
     static ProcedureExecutionResponse toExecution(ProcedureExecution execution) {
+        Procedure procedure = execution.getProcedure();
+        ProcedureTemplateDefinition template = procedure.getTemplate();
         Long duration = execution.getFinishedAt() == null ? null
                 : Duration.between(execution.getStartedAt(), execution.getFinishedAt()).toMillis();
         Long idle = execution.getWorkStartedAt() == null ? null
@@ -62,8 +64,8 @@ final class ProcedureMapper {
         Long work = execution.getFinishedAt() == null || execution.getWorkStartedAt() == null ? null
                 : Duration.between(execution.getWorkStartedAt(), execution.getFinishedAt()).toMillis();
         return new ProcedureExecutionResponse(
-                execution.getId(), execution.getExecutionId(), execution.getProcedure().getId(),
-                execution.getProcedure().getName(), execution.getProcedureVersion(), execution.getStatus(),
+                execution.getId(), execution.getExecutionId(), procedure.getId(), procedure.getName(),
+                template.getId(), template.getNameKey(), execution.getProcedureVersion(), execution.getStatus(),
                 execution.getTrigger(), execution.getRootExecutionId(), execution.getParentAlertExecutionId(),
                 execution.getParentProcedureExecutionId(), execution.getDepth(), execution.getStartedAt(),
                 execution.getWorkStartedAt(), execution.getFinishedAt(), duration, idle, work,

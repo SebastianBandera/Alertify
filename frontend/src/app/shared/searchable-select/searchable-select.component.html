@@ -1,0 +1,44 @@
+<div class="searchable-select" (focusout)="onFocusOut($event)">
+  <div class="searchable-select__control">
+    <input
+      type="text"
+      autocomplete="off"
+      role="combobox"
+      [disabled]="disabled()"
+      [value]="displayValue()"
+      [placeholder]="placeholder()"
+      [attr.aria-label]="ariaLabel() || placeholder()"
+      [attr.aria-expanded]="open()"
+      [attr.aria-controls]="listboxId"
+      [attr.aria-activedescendant]="open() && activeIndex() >= 0 ? listboxId + '-option-' + activeIndex() : null"
+      (focus)="showOptions()"
+      (click)="showOptions()"
+      (input)="updateQuery($event)"
+      (keydown)="onKeydown($event)"
+    >
+    @if (value() !== null && !disabled()) {
+      <button type="button" class="searchable-select__clear" [attr.aria-label]="clearLabel()" [title]="clearLabel()" (click)="clear($event)">×</button>
+    }
+  </div>
+  @if (open()) {
+    <div class="searchable-select__options" role="listbox" [id]="listboxId">
+      @for (option of visibleOptions(); track option.value; let index = $index) {
+        <button
+          type="button"
+          role="option"
+          [id]="listboxId + '-option-' + index"
+          [attr.aria-selected]="option.value === value()"
+          [class.searchable-select__option--active]="index === activeIndex()"
+          (mouseenter)="activeIndex.set(index)"
+          (mousedown)="$event.preventDefault()"
+          (click)="select(option)"
+        >
+          <strong>{{ option.label }}</strong>
+          @if (option.description) { <small>{{ option.description }}</small> }
+        </button>
+      } @empty {
+        <p>{{ emptyLabel() }}</p>
+      }
+    </div>
+  }
+</div>

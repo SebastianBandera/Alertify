@@ -27,7 +27,7 @@ public class AlertExecutionController {
     }
 
     @GetMapping
-    public Page<AlertExecutionResponse> search(@RequestParam(required = false) Long alertId, @RequestParam(required = false) AlertExecutionStatus status, @RequestParam(required = false) UUID executionId, @PageableDefault(size = 20, sort = "startedAt", direction = org.springframework.data.domain.Sort.Direction.DESC) Pageable pageable) {
-        return service.search(alertId, status, executionId, pageable);
+    public Page<AlertExecutionResponse> search(@RequestParam(required = false) Long alertId, @RequestParam(required = false) Long templateId, @RequestParam(required = false) AlertExecutionStatus status, @RequestParam(required = false) UUID executionId, @PageableDefault(size = 20, sort = "startedAt", direction = org.springframework.data.domain.Sort.Direction.DESC) Pageable pageable) {
+        return service.search(alertId, templateId, status, executionId, pageable);
     }
 }

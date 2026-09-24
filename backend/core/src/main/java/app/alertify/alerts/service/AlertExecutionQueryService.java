@@ -30,19 +30,9 @@ public class AlertExecutionQueryService {
     }
 
     @Transactional(readOnly = true)
-    public Page<AlertExecutionResponse> search(Long alertId, AlertExecutionStatus status, UUID executionId, Pageable pageable) {
+    public Page<AlertExecutionResponse> search(Long alertId, Long templateId, AlertExecutionStatus status, UUID executionId, Pageable pageable) {
         SearchValidation.validateSort(pageable, SORT_FIELDS);
-        Page<AlertExecutionResponse> result;
-        if (executionId != null)
-            result = executionRepository.findAllByExecutionId(executionId, pageable).map(AlertMapper::toExecution);
-        else if (alertId != null && status != null)
-            result = executionRepository.findAllByAlert_IdAndStatus(alertId, status, pageable).map(AlertMapper::toExecution);
-        else if (alertId != null)
-            result = executionRepository.findAllByAlert_Id(alertId, pageable).map(AlertMapper::toExecution);
-        else if (status != null)
-            result = executionRepository.findAllByStatus(status, pageable).map(AlertMapper::toExecution);
-        else
-            result = executionRepository.findAll(pageable).map(AlertMapper::toExecution);
+        Page<AlertExecutionResponse> result = executionRepository.search(alertId, templateId, status, executionId, pageable).map(AlertMapper::toExecution);
 
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("page", result.getNumber());
@@ -50,6 +40,9 @@ public class AlertExecutionQueryService {
         data.put("totalElements", result.getTotalElements());
         if (alertId != null)
             data.put("alertId", alertId);
+
+        if (templateId != null)
+            data.put("templateId", templateId);
 
         if (status != null)
             data.put("status", status.name());

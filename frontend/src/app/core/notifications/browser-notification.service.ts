@@ -46,10 +46,12 @@ export class BrowserNotificationService {
     const window = this.document.defaultView;
     const execution = card.lastExecution;
     if (!window || !('Notification' in window) || window.Notification.permission !== 'granted') return;
-    if (execution === null || execution.status === 'SUCCESS') return;
+    if (execution === null) return;
+    const status = execution.status;
+    if (status === 'SUCCESS') return;
 
     const notification = new window.Notification(card.alert.name, {
-      body: `${this.localization.translate(STATUS_LABEL_KEYS[execution.status])} · ${this.body(card)}`,
+      body: this.body(card, status),
       tag: `alertify-alert-${card.alert.id}`,
       icon: 'icons/alertify.svg',
     });
@@ -60,12 +62,20 @@ export class BrowserNotificationService {
     };
   }
 
-  private body(card: DashboardAlertCard): string {
-    const execution = card.lastExecution;
-    let message = '';
-    if (execution?.status === 'ERROR') message = execution.errorMessage ?? execution.errorType ?? '';
-    else if (execution?.statusMessage != null) message = JSON.stringify(execution.statusMessage);
-    if (!message) return this.localization.translate('dashboard.notification.noMessage');
-    return message.length > BODY_MAX_LENGTH ? `${message.slice(0, BODY_MAX_LENGTH - 1)}…` : message;
+  private body(card: DashboardAlertCard, executionStatus: 'WARN' | 'ERROR'): string {
+    const status = this.localization.translate(STATUS_LABEL_KEYS[executionStatus]);
+    if (!card.alert.tags.length)
+      return `${status} · ${this.localization.translate('dashboard.notification.noTags')}`;
+
+    const prefix = `${status} · ${this.localization.translate('dashboard.notification.tags')}: `;
+    let body = prefix;
+    for (const tag of card.alert.tags) {
+      const separator = body === prefix ? '' : ', ';
+      if (`${body}${separator}${tag.name}`.length > BODY_MAX_LENGTH)
+        return `${body}${separator}…`;
+
+      body += `${separator}${tag.name}`;
+    }
+    return body;
   }
 }

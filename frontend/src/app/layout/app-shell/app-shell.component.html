@@ -56,7 +56,13 @@
       <span class="navigation-search__icon" aria-hidden="true"></span>
     </button>
 
-    <nav class="navigation" [attr.aria-label]="localization.translate('navigation.sections')">
+    <nav
+      #navigationList
+      class="navigation"
+      [class.navigation--more-below]="navigationHasMoreBelow()"
+      [attr.aria-label]="localization.translate('navigation.sections')"
+      (scroll)="updateNavigationOverflow()"
+    >
       @for (item of filteredNavigationItems(); track item.path) {
         <a
           class="navigation__item"

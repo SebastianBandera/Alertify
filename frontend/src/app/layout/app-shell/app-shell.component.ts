@@ -2,7 +2,9 @@ import {
   ChangeDetectionStrategy,
   Component,
   afterNextRender,
+  afterRenderEffect,
   computed,
+  DestroyRef,
   effect,
   ElementRef,
   inject,
@@ -49,6 +51,7 @@ export class AppShellComponent {
   private readonly sessionActions = inject(SessionActionsService);
   private readonly router = inject(Router);
   private readonly title = inject(Title);
+  private readonly destroyRef = inject(DestroyRef);
   protected readonly navigationItems: readonly NavigationItem[] = [
     { labelKey: 'navigation.dashboard', path: '/dashboard', icon: 'dashboard' },
     ...(this.authService.isAdmin
@@ -83,7 +86,9 @@ export class AppShellComponent {
   protected readonly sidebarCollapsed = signal(this.restoreSidebarCollapsed());
   protected readonly orderedNavigationItems = signal(this.restoreNavigationOrder());
   protected readonly draggedNavigationPath = signal<string | null>(null);
+  protected readonly navigationHasMoreBelow = signal(false);
   private readonly searchInput = viewChild<ElementRef<HTMLInputElement>>('navigationSearchInput');
+  private readonly navigationList = viewChild<ElementRef<HTMLElement>>('navigationList');
   private readonly activeTitleKey = signal<TranslationKey>(this.titleKeyForUrl(this.router.url));
   protected readonly filteredNavigationItems = computed(() => {
     const query = this.searchTerm().trim().toLowerCase();
@@ -100,6 +105,20 @@ export class AppShellComponent {
       this.dashboardLive.start();
       if (this.authService.isAdmin) this.adminEventChannel.start();
       this.browserNotifications.ensurePermission();
+
+      const navigation = this.navigationList()?.nativeElement;
+      if (navigation) {
+        const observer = new ResizeObserver(() => this.updateNavigationOverflow());
+        observer.observe(navigation);
+        this.destroyRef.onDestroy(() => observer.disconnect());
+      }
+    });
+
+    /* Filtering or collapsing changes the list height without resizing the scroll container. */
+    afterRenderEffect(() => {
+      this.filteredNavigationItems();
+      this.sidebarCollapsed();
+      this.updateNavigationOverflow();
     });
 
     this.router.events
@@ -184,6 +203,14 @@ export class AppShellComponent {
 
   protected finishNavigationDrag(): void {
     this.draggedNavigationPath.set(null);
+  }
+
+  protected updateNavigationOverflow(): void {
+    const navigation = this.navigationList()?.nativeElement;
+    /* A pixel of slack absorbs fractional scroll offsets at the end of the list. */
+    this.navigationHasMoreBelow.set(
+      navigation !== undefined && navigation.scrollTop + navigation.clientHeight < navigation.scrollHeight - 1,
+    );
   }
 
   protected updateLocale(locale: string): void {

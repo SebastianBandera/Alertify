@@ -132,6 +132,7 @@ export class SecretsComponent implements OnInit {
   protected readonly maximumBinaryBytes = signal(DEFAULT_MAXIMUM_BINARY_BYTES);
   protected readonly searchTerm = signal('');
   protected readonly appliedSearchTerm = signal('');
+  protected readonly selectedValueType = signal<SecretValueType | ''>('');
   protected readonly selectedTagIds = signal<readonly number[]>([]);
   protected readonly tagMatchMode = signal<TagMatchMode>('OR');
   protected readonly pageIndex = signal(0);
@@ -182,7 +183,7 @@ export class SecretsComponent implements OnInit {
     this.loading.set(true);
     this.error.set(null);
     try {
-      const result = await this.api.listSecrets(this.appliedSearchTerm(), this.selectedTagIds(), this.tagMatchMode(), this.pageIndex(), this.pageSize());
+      const result = await this.api.listSecrets(this.appliedSearchTerm(), this.selectedValueType(), this.selectedTagIds(), this.tagMatchMode(), this.pageIndex(), this.pageSize());
       this.secrets.set(result.content);
       this.pageIndex.set(result.page.number);
       this.totalElements.set(result.page.totalElements);
@@ -204,6 +205,12 @@ export class SecretsComponent implements OnInit {
 
   protected applySearch(): void {
     this.appliedSearchTerm.set(this.searchTerm().trim());
+    this.pageIndex.set(0);
+    void this.loadSecrets();
+  }
+
+  protected updateValueTypeFilter(valueType: SecretValueType | ''): void {
+    this.selectedValueType.set(valueType);
     this.pageIndex.set(0);
     void this.loadSecrets();
   }

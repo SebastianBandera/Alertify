@@ -133,6 +133,8 @@ export interface ProcedureExecution {
   readonly executionId: string;
   readonly procedureId: number;
   readonly procedureName: string;
+  readonly templateId: number;
+  readonly templateNameKey: string;
   readonly procedureVersion: number;
   readonly status: ProcedureExecutionStatus;
   readonly trigger: 'CRON' | 'MANUAL' | 'ALERT' | 'PROCEDURE' | 'PIPE' | 'HOOK';

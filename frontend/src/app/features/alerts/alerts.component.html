@@ -76,15 +76,18 @@
           [placeholder]="localization.translate('alerts.searchPlaceholder')"
         >
       </label>
-      <label class="template-filter">
+      <div class="template-filter">
         <span>{{ localization.translate('alerts.templateFilter') }}</span>
-        <select [ngModel]="templateFilterId()" (ngModelChange)="updateTemplateFilter($event)">
-          <option [ngValue]="null">{{ localization.translate('alerts.allTemplates') }}</option>
-          @for (template of sortedTemplates(); track template.id) {
-            <option [ngValue]="template.id">{{ dynamic(template.nameKey) }}</option>
-          }
-        </select>
-      </label>
+        <app-searchable-select
+          [options]="templateOptions()"
+          [value]="templateFilterId()"
+          [placeholder]="localization.translate('alerts.allTemplates')"
+          [emptyLabel]="localization.translate('alerts.form.noTemplatesFound')"
+          [clearLabel]="localization.translate('alerts.allTemplates')"
+          [ariaLabel]="localization.translate('alerts.templateFilter')"
+          (valueChange)="updateTemplateFilter($event)"
+        />
+      </div>
       <div class="tag-filter-field">
         <span>{{ localization.translate('alerts.filterTag') }}</span>
         <div class="tag-filter">
@@ -119,7 +122,7 @@
       <p class="state">{{ localization.translate('alerts.empty') }}</p>
     } @else {
       <div class="table-shell">
-        <table>
+        <table class="instances-table">
           <thead><tr>
             <th>{{ localization.translate('alerts.column.name') }}</th>
             <th>{{ localization.translate('alerts.column.template') }}</th>
@@ -132,8 +135,8 @@
           <tbody>
             @for (alert of alerts(); track alert.id) {
               <tr>
-                <td><strong>{{ alert.name }}</strong><small>{{ alert.description || '—' }}</small></td>
-                <td class="template-cell"><strong>{{ dynamic(alert.templateNameKey) }}</strong><small class="mono" [title]="alert.templateKey">{{ alert.templateKey }}</small></td>
+                <td><strong>{{ alert.name }}</strong><small [title]="alert.description || null">{{ alert.description || '—' }}</small></td>
+                <td class="template-cell"><strong>{{ dynamic(alert.templateNameKey) }}</strong><small class="mono" [title]="alert.templateKey">{{ templateClassName(alert.templateKey) }}</small></td>
                 <td>
                   <div class="tag-list">
                     @for (tag of alert.tags; track tag.id) {
@@ -149,20 +152,21 @@
                     {{ localization.translate(alert.enabled ? 'alerts.status.enabled' : 'alerts.status.disabled') }}
                   </span>
                 </td>
-                <td>{{ alert.updatedAt | date:'medium' }}</td>
+                <td class="updated-at" [title]="(alert.updatedAt | date:'medium') || ''"><span>{{ alert.updatedAt | date:'mediumDate' }}</span><small>{{ alert.updatedAt | date:'mediumTime' }}</small></td>
                 <td class="actions">
                   <div class="actions__group">
                     <button
                       class="actions__run"
                       type="button"
                       [disabled]="runningAlertId() !== null"
-                      [title]="localization.translate('alerts.runNowHint')"
+                      [title]="localization.translate(runningAlertId() === alert.id ? 'alerts.runStarting' : 'alerts.runNowHint')"
+                      [attr.aria-label]="localization.translate(runningAlertId() === alert.id ? 'alerts.runStarting' : 'alerts.runNowHint')"
                       (click)="runAlertNow(alert)"
                     >
                       <span class="actions__run-icon" aria-hidden="true"></span>
-                      {{ localization.translate(runningAlertId() === alert.id ? 'alerts.runStarting' : 'alerts.runNow') }}
                     </button>
                     <span class="actions__divider" aria-hidden="true"></span>
+                    <button type="button" [title]="localization.translate('alerts.historyHint')" (click)="showAlertHistory(alert)">{{ localization.translate('alerts.history') }}</button>
                     <button type="button" (click)="openEdit(alert)">{{ localization.translate('alerts.edit') }}</button>
                     <button class="danger" type="button" (click)="deleteAlert(alert)">{{ localization.translate('alerts.delete') }}</button>
                   </div>
@@ -195,6 +199,15 @@
       <p class="state">{{ localization.translate('alerts.templates.empty') }}</p>
     } @else {
       <div class="toolbar template-tag-filters">
+        <label class="search-field">
+          <span>{{ localization.translate('alerts.templates.search') }}</span>
+          <input
+            type="search"
+            [ngModel]="templateListSearch()"
+            (ngModelChange)="updateTemplateListSearch($event)"
+            [placeholder]="localization.translate('alerts.templates.searchPlaceholder')"
+          >
+        </label>
         <div class="tag-filter-field">
           <span>{{ localization.translate('alerts.filterTag') }}</span>
           <div class="tag-filter">
@@ -226,7 +239,7 @@
           <table>
             <thead><tr>
               <th>{{ localization.translate('alerts.templates.column.name') }}</th>
-              <th>{{ localization.translate('alerts.templates.column.key') }}</th>
+              <th class="template-class-cell">{{ localization.translate('alerts.templates.column.key') }}</th>
               <th>{{ localization.translate('alerts.templates.column.capability') }}</th>
               <th>{{ localization.translate('alerts.templates.column.tags') }}</th>
               <th>{{ localization.translate('alerts.templates.column.parameters') }}</th>
@@ -236,8 +249,8 @@
             <tbody>
               @for (template of pagedTemplates(); track template.id) {
                 <tr>
-                  <td><strong>{{ dynamic(template.nameKey) }}</strong><small>{{ dynamic(template.descriptionKey) }}</small></td>
-                  <td><code class="template-key" [attr.title]="template.templateKey">{{ templateClassName(template.templateKey) }}</code></td>
+                  <td><strong>{{ dynamic(template.nameKey) }}</strong><small [title]="dynamic(template.descriptionKey)">{{ dynamic(template.descriptionKey) }}</small></td>
+                  <td class="template-class-cell"><code class="template-key" [attr.title]="template.templateKey">{{ templateClassName(template.templateKey) }}</code></td>
                   <td><span class="badge badge--capability">{{ template.requiredCapability }}</span></td>
                   <td>
                     <div class="tag-list">
@@ -308,14 +321,26 @@
     <div class="toolbar history-filters">
       <label>
         <span>{{ localization.translate('alerts.history.alert') }}</span>
-        <select [ngModel]="historyAlertId()" (ngModelChange)="updateHistoryAlertFilter($event)">
+        <select [ngModel]="historyAlertId()" [class.filter-placeholder]="historyAlertId() === null" (ngModelChange)="updateHistoryAlertFilter($event)">
           <option [ngValue]="null">{{ localization.translate('alerts.history.allAlerts') }}</option>
-          @for (alert of alerts(); track alert.id) { <option [ngValue]="alert.id">{{ alert.name }}</option> }
+          @for (alert of historyAlertOptions(); track alert.id) { <option [ngValue]="alert.id">{{ alert.name }}</option> }
         </select>
       </label>
+      <div class="history-template-filter">
+        <span>{{ localization.translate('alerts.history.template') }}</span>
+        <app-searchable-select
+          [options]="templateOptions()"
+          [value]="historyTemplateId()"
+          [placeholder]="localization.translate('alerts.history.allTemplates')"
+          [emptyLabel]="localization.translate('alerts.form.noTemplatesFound')"
+          [clearLabel]="localization.translate('alerts.history.allTemplates')"
+          [ariaLabel]="localization.translate('alerts.history.template')"
+          (valueChange)="historyTemplateId.set($event)"
+        />
+      </div>
       <label>
         <span>{{ localization.translate('alerts.history.status') }}</span>
-        <select [ngModel]="historyStatus()" (ngModelChange)="updateHistoryStatusFilter($event)">
+        <select [ngModel]="historyStatus()" [class.filter-placeholder]="!historyStatus()" (ngModelChange)="updateHistoryStatusFilter($event)">
           <option value="">{{ localization.translate('alerts.history.allStatuses') }}</option>
           <option value="SUCCESS">SUCCESS</option>
           <option value="WARN">WARN</option>
@@ -332,8 +357,8 @@
       <div class="table-shell">
         <table>
           <thead><tr>
-            <th>{{ localization.translate('alerts.history.startedAt') }}</th>
-            <th>{{ localization.translate('alerts.history.alert') }}</th>
+            <th>{{ localization.translate('alerts.history.startedFinishedAt') }}</th>
+            <th>{{ localization.translate('alerts.history.name') }}</th>
             <th>{{ localization.translate('alerts.history.status') }}</th>
             <th>{{ localization.translate('alerts.history.duration') }}</th>
             <th>{{ localization.translate('alerts.history.message') }}</th>
@@ -341,8 +366,8 @@
           <tbody>
             @for (execution of executions(); track execution.id) {
               <tr>
-                <td>{{ execution.startedAt | date:'medium' }}</td>
-                <td><strong>{{ execution.alertName }}</strong><small>#{{ execution.alertId }}</small></td>
+                <td><strong>{{ execution.startedAt | date:'medium' }}</strong><small>{{ execution.finishedAt | date:'medium' }}</small></td>
+                <td><button class="history-name-link" type="button" (click)="showAlertByName(execution.alertName)">{{ execution.alertName }}</button><small>{{ dynamic(execution.templateNameKey) }}</small></td>
                 <td><span class="badge" [class.badge--warn]="execution.status === 'WARN'" [class.badge--error]="execution.status === 'ERROR'">{{ execution.status }}</span></td>
                 <td>{{ execution.durationMillis }} ms</td>
                 <td class="execution-message">{{ statusMessage(execution) }}</td>
@@ -382,50 +407,19 @@
       <form (ngSubmit)="save()">
         <div class="form-grid">
           <div class="template-field full">
-            <label for="alert-template-search">
-              <span>{{ localization.translate('alerts.form.template') }}</span>
-              <input
-                id="alert-template-search"
-                type="search"
-                autocomplete="off"
-                role="combobox"
-                aria-autocomplete="list"
-                [attr.aria-expanded]="templatePickerOpen()"
-                [attr.aria-invalid]="formFieldErrors().template ? true : null"
-                [attr.aria-describedby]="formFieldErrors().template ? 'alert-template-error' : null"
-                [class.field-invalid]="formFieldErrors().template"
-                [ngModel]="templateSearch()"
-                (ngModelChange)="updateTemplateSearch($event)"
-                (focus)="templatePickerOpen.set(!editingAlert())"
-                (blur)="templatePickerOpen.set(false)"
-                (keydown.escape)="templatePickerOpen.set(false)"
-                name="templateSearch"
-                [placeholder]="localization.translate('alerts.form.templateSearchPlaceholder')"
-                [disabled]="!!editingAlert()"
-                required
-              >
-            </label>
+            <span>{{ localization.translate('alerts.form.template') }}</span>
+            <app-searchable-select
+              [options]="templateOptions()"
+              [value]="form().templateId"
+              [placeholder]="localization.translate('alerts.form.templateSearchPlaceholder')"
+              [emptyLabel]="localization.translate('alerts.form.noTemplatesFound')"
+              [clearLabel]="localization.translate('alerts.form.templateSearchPlaceholder')"
+              [ariaLabel]="localization.translate('alerts.form.template')"
+              [disabled]="!!editingAlert()"
+              (valueChange)="selectTemplateId($event)"
+            />
             @if (formFieldErrors().template; as templateError) {
               <small class="field-error" id="alert-template-error" role="alert">{{ templateError }}</small>
-            }
-            @if (templatePickerOpen() && !editingAlert()) {
-              <div class="template-options" role="listbox">
-                @for (template of filteredTemplates(); track template.id) {
-                  <button
-                    type="button"
-                    role="option"
-                    [attr.aria-selected]="form().templateId === template.id"
-                    (mousedown)="$event.preventDefault()"
-                    (click)="selectTemplate(template)"
-                  >
-                    <strong>{{ dynamic(template.nameKey) }}</strong>
-                    <small>{{ dynamic(template.descriptionKey) }}</small>
-                    <code>{{ template.templateKey }}</code>
-                  </button>
-                } @empty {
-                  <p>{{ localization.translate('alerts.form.noTemplatesFound') }}</p>
-                }
-              </div>
             }
           </div>
           <label>

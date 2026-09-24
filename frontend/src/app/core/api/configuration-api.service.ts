@@ -128,6 +128,7 @@ export class ConfigurationApiService {
   async listConfigurations(
     search: string,
     valueSearch: string,
+    valueType: ConfigurationValueType | '',
     tagIds: readonly number[],
     tagMatchMode: TagMatchMode,
     pageNumber: number,
@@ -140,6 +141,7 @@ export class ConfigurationApiService {
     });
     if (search.trim()) params.set('name', `~*${search.trim()}*`);
     if (valueSearch.trim()) params.set('valueContains', valueSearch.trim());
+    if (valueType) params.set('type', valueType);
     tagIds.forEach((tagId) => params.append('tagId', String(tagId)));
     if (tagIds.length >= 2) params.set('tagOperator', tagMatchMode);
     return this.request<PageResponse<ApplicationConfiguration>>(

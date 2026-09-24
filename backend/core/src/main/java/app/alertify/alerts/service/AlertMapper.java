@@ -55,8 +55,10 @@ public final class AlertMapper {
     }
 
     public static AlertExecutionResponse toExecution(AlertExecution execution) {
+        Alert alert = execution.getAlert();
+        AlertTemplateDefinition template = alert.getTemplate();
         return new AlertExecutionResponse(
-                execution.getId(), execution.getExecutionId(), execution.getAlert().getId(), execution.getAlert().getName(),
+                execution.getId(), execution.getExecutionId(), alert.getId(), alert.getName(), template.getId(), template.getNameKey(),
                 execution.getStatus(), execution.getTrigger(), execution.getTriggeredBy(), execution.getStartedAt(), execution.getWorkStartedAt(),
                 execution.getFinishedAt(),
                 Duration.between(execution.getStartedAt(), execution.getFinishedAt()).toMillis(),

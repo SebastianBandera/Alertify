@@ -12,6 +12,8 @@ public record ProcedureExecutionResponse(
     UUID executionId,
     Long procedureId,
     String procedureName,
+    Long templateId,
+    String templateNameKey,
     long procedureVersion,
     ProcedureExecutionStatus status,
     ProcedureExecutionTrigger trigger,

@@ -138,6 +138,8 @@ export interface AlertExecution {
   readonly executionId: string;
   readonly alertId: number;
   readonly alertName: string;
+  readonly templateId: number;
+  readonly templateNameKey: string;
   readonly status: AlertExecutionStatus;
   readonly trigger: 'CRON' | 'MANUAL' | 'HOOK' | null;
   readonly triggeredBy: string | null;
@@ -270,6 +272,7 @@ export class AlertApiService {
 
   async listExecutions(
     alertId: number | null,
+    templateId: number | null,
     status: AlertExecutionStatus | '',
     page: number,
     size: number,
@@ -277,6 +280,7 @@ export class AlertApiService {
   ): Promise<PageResponse<AlertExecution>> {
     const params = new URLSearchParams({ page: String(page), size: String(size), sort: 'startedAt,desc' });
     if (alertId !== null) params.set('alertId', String(alertId));
+    if (templateId !== null) params.set('templateId', String(templateId));
     if (status) params.set('status', status);
     if (executionId) params.set('executionId', executionId);
     return this.request(`/api/alert-executions?${params.toString()}`);

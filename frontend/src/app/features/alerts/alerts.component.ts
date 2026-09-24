@@ -22,6 +22,7 @@ import { ApiRequestError, TagMatchMode } from '../../core/api/configuration-api.
 import { LocalizationService } from '../../core/i18n/localization.service';
 import { isCompatibleConfigurationValueType, isCompatibleSecretValueType } from '../../core/utils/parameter-binding-compatibility';
 import { templateClassName } from '../../core/utils/template-key';
+import { SearchableSelectComponent, SearchableSelectOption } from '../../shared/searchable-select/searchable-select.component';
 
 type AlertTab = 'alerts' | 'templates' | 'history';
 type AlertFormField = 'template' | 'name' | 'cron';
@@ -74,7 +75,7 @@ function alertTab(value: string | null): AlertTab {
 
 @Component({
   selector: 'app-alerts',
-  imports: [DatePipe, FormsModule],
+  imports: [DatePipe, FormsModule, SearchableSelectComponent],
   templateUrl: './alerts.component.html',
   styleUrl: './alerts.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -118,6 +119,7 @@ export class AlertsComponent implements OnInit {
   protected readonly historyTotalPages = signal(0);
   protected readonly historyTotalElements = signal(0);
   protected readonly templatePage = signal(0);
+  protected readonly templateListSearch = signal('');
   protected readonly selectedTemplateTagKeys = signal<readonly string[]>([]);
   protected readonly templateTagMatchMode = signal<TagMatchMode>('OR');
   protected readonly sortedTemplates = computed(() =>
@@ -157,13 +159,19 @@ export class AlertsComponent implements OnInit {
   });
   protected readonly visibleTemplates = computed(() => {
     const selected = this.selectedTemplateTagKeys();
-    if (!selected.length) return this.sortedTemplates();
-
+    const query = this.normalizeSearch(this.templateListSearch());
     return this.sortedTemplates().filter((template) => {
       const templateTagKeys = new Set(template.tags.map((tag) => tag.nameKey));
-      return this.templateTagMatchMode() === 'AND'
+      const matchesTags = !selected.length || (this.templateTagMatchMode() === 'AND'
         ? selected.every((nameKey) => templateTagKeys.has(nameKey))
-        : selected.some((nameKey) => templateTagKeys.has(nameKey));
+        : selected.some((nameKey) => templateTagKeys.has(nameKey)));
+      const matchesText = !query || this.normalizeSearch([
+        this.dynamic(template.nameKey),
+        this.dynamic(template.descriptionKey),
+        templateClassName(template.templateKey),
+        template.templateKey,
+      ].join(' ')).includes(query);
+      return matchesTags && matchesText;
     });
   });
   protected readonly templateTotalPages = computed(() =>
@@ -174,25 +182,31 @@ export class AlertsComponent implements OnInit {
     return this.visibleTemplates().slice(start, start + this.pageSize());
   });
   protected readonly historyAlertId = signal<number | null>(null);
+  protected readonly historyTemplateId = signal<number | null>(null);
   protected readonly historyStatus = signal<AlertExecutionStatus | ''>('');
   protected readonly historyExecutionId = signal<string | null>(null);
+  /* The alert filter lists the loaded page of alerts, so an alert filtered from elsewhere may be missing from it. */
+  protected readonly historyAlertOptions = computed(() => {
+    const alertId = this.historyAlertId();
+    const alerts = this.alerts().map(({ id, name }) => ({ id, name }));
+    if (alertId === null || alerts.some((alert) => alert.id === alertId)) return alerts;
+    const name = this.executions().find((execution) => execution.alertId === alertId)?.alertName ?? `#${alertId}`;
+    return [{ id: alertId, name }, ...alerts];
+  });
   protected readonly editorOpen = signal(false);
   protected readonly editingAlert = signal<Alert | null>(null);
   protected readonly form = signal<AlertForm>(this.emptyForm());
-  protected readonly templateSearch = signal('');
-  protected readonly templatePickerOpen = signal(false);
   protected readonly selectedTemplate = computed(() =>
     this.templates().find((template) => template.id === this.form().templateId) ?? null,
   );
-  protected readonly filteredTemplates = computed(() => {
-    const query = this.templateSearch().trim().toLocaleLowerCase();
-    if (!query) return this.sortedTemplates();
-    return this.sortedTemplates().filter((template) =>
-      this.dynamic(template.nameKey).toLocaleLowerCase().includes(query)
-      || this.dynamic(template.descriptionKey).toLocaleLowerCase().includes(query)
-      || template.templateKey.toLocaleLowerCase().includes(query),
-    );
-  });
+  protected readonly templateOptions = computed<readonly SearchableSelectOption[]>(() =>
+    this.sortedTemplates().map((template) => ({
+      value: template.id,
+      label: this.dynamic(template.nameKey),
+      description: this.dynamic(template.descriptionKey),
+      searchText: `${templateClassName(template.templateKey)} ${template.templateKey}`,
+    })),
+  );
   protected readonly selectedFilterTags = computed(() => {
     const tagsById = new Map(this.tags().map((tag) => [tag.id, tag]));
     return this.selectedTagIds().flatMap((id) => {
@@ -377,7 +391,7 @@ export class AlertsComponent implements OnInit {
     this.error.set(null);
     try {
       const page = await this.api.listExecutions(
-        this.historyAlertId(), this.historyStatus(), this.historyPage(), this.pageSize(), this.historyExecutionId(),
+        this.historyAlertId(), this.historyTemplateId(), this.historyStatus(), this.historyPage(), this.pageSize(), this.historyExecutionId(),
       );
       this.executions.set(page.content);
       this.historyPage.set(page.page.number);
@@ -444,11 +458,51 @@ export class AlertsComponent implements OnInit {
     this.templatePage.set(0);
   }
 
+  protected updateTemplateListSearch(value: string): void {
+    this.templateListSearch.set(value);
+    this.templatePage.set(0);
+  }
+
   protected showTemplateAlerts(template: AlertTemplate): void {
     this.search.set('');
     this.templateFilterId.set(template.id);
     this.alertPage.set(0);
     void this.selectTab('alerts');
+  }
+
+  protected async showAlertByName(alertName: string): Promise<void> {
+    this.search.set(alertName);
+    this.templateFilterId.set(null);
+    this.selectedTagIds.set([]);
+    this.tagMatchMode.set('OR');
+    this.alertPage.set(0);
+    this.historyExecutionId.set(null);
+    this.activeTab.set('alerts');
+    await Promise.all([
+      this.router.navigate([], {
+        relativeTo: this.route,
+        queryParams: { tab: 'alerts', executionId: null },
+        queryParamsHandling: 'merge',
+      }),
+      this.loadAlerts(),
+    ]);
+  }
+
+  protected async showAlertHistory(alert: Alert): Promise<void> {
+    this.historyAlertId.set(alert.id);
+    this.historyTemplateId.set(null);
+    this.historyStatus.set('');
+    this.historyExecutionId.set(null);
+    this.historyPage.set(0);
+    this.activeTab.set('history');
+    await Promise.all([
+      this.router.navigate([], {
+        relativeTo: this.route,
+        queryParams: { tab: 'history', executionId: null },
+        queryParamsHandling: 'merge',
+      }),
+      this.loadHistory(),
+    ]);
   }
 
   protected applyHistoryFilters(): void {
@@ -464,12 +518,10 @@ export class AlertsComponent implements OnInit {
 
   protected updateHistoryAlertFilter(alertId: number | null): void {
     this.historyAlertId.set(alertId);
-    this.applyHistoryFilters();
   }
 
   protected updateHistoryStatusFilter(status: AlertExecutionStatus | ''): void {
     this.historyStatus.set(status);
-    this.applyHistoryFilters();
   }
 
   protected updatePageSize(value: string | number): void {
@@ -496,8 +548,6 @@ export class AlertsComponent implements OnInit {
       ? null
       : this.templates().find((item) => item.id === templateId) ?? null;
     this.form.set(this.formForTemplate(template));
-    this.templateSearch.set(template ? this.dynamic(template.nameKey) : '');
-    this.templatePickerOpen.set(false);
     this.formError.set(null);
     this.formFieldErrors.set({});
     this.editorOpen.set(true);
@@ -531,8 +581,6 @@ export class AlertsComponent implements OnInit {
       tagIds: alert.tags.map((tag) => tag.id),
       parameters,
     });
-    this.templateSearch.set(template ? this.dynamic(template.nameKey) : alert.templateKey);
-    this.templatePickerOpen.set(false);
     this.formError.set(null);
     this.formFieldErrors.set({});
     this.editorOpen.set(true);
@@ -541,11 +589,15 @@ export class AlertsComponent implements OnInit {
   protected closeEditor(): void {
     if (!this.saving()) {
       this.editorOpen.set(false);
-      this.templatePickerOpen.set(false);
     }
   }
 
-  protected selectTemplate(template: AlertTemplate): void {
+  protected selectTemplateId(templateId: number | null): void {
+    const template = this.templates().find((item) => item.id === templateId);
+    if (!template) {
+      this.form.update((form) => ({ ...form, templateId: null, parameters: {} }));
+      return;
+    }
     const current = this.form();
     this.form.set({
       ...this.formForTemplate(template),
@@ -556,19 +608,7 @@ export class AlertsComponent implements OnInit {
       allowConcurrentExecutions: current.allowConcurrentExecutions,
       tagIds: current.tagIds,
     });
-    this.templateSearch.set(this.dynamic(template.nameKey));
-    this.templatePickerOpen.set(false);
     this.clearFieldError('template');
-  }
-
-  protected updateTemplateSearch(value: string): void {
-    this.templateSearch.set(value);
-    this.templatePickerOpen.set(true);
-    this.clearFieldError('template');
-    const selected = this.selectedTemplate();
-    if (selected && value !== this.dynamic(selected.nameKey)) {
-      this.form.update((form) => ({ ...form, templateId: null, parameters: {} }));
-    }
   }
 
   protected patchForm(patch: Partial<Omit<AlertForm, 'parameters'>>): void {
@@ -848,6 +888,10 @@ export class AlertsComponent implements OnInit {
 
   protected dynamic(key: string): string {
     return this.localization.translateDynamic(key);
+  }
+
+  private normalizeSearch(value: string): string {
+    return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase().trim();
   }
 
   protected simpleJavaType(javaType: string): string {

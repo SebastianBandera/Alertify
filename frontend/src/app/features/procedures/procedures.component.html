@@ -56,15 +56,18 @@
           [placeholder]="localization.translate('procedures.searchPlaceholder')"
         >
       </label>
-      <label class="template-filter">
+      <div class="template-filter">
         <span>{{ localization.translate('procedures.templateFilter') }}</span>
-        <select [ngModel]="templateFilterId()" name="templateFilter" (ngModelChange)="updateTemplateFilter($event)">
-          <option [ngValue]="null">{{ localization.translate('procedures.allTemplates') }}</option>
-          @for (template of templates(); track template.id) {
-            <option [ngValue]="template.id">{{ dynamic(template.nameKey) }}</option>
-          }
-        </select>
-      </label>
+        <app-searchable-select
+          [options]="templateOptions()"
+          [value]="templateFilterId()"
+          [placeholder]="localization.translate('procedures.allTemplates')"
+          [emptyLabel]="localization.translate('procedures.form.noTemplatesFound')"
+          [clearLabel]="localization.translate('procedures.allTemplates')"
+          [ariaLabel]="localization.translate('procedures.templateFilter')"
+          (valueChange)="updateTemplateFilter($event)"
+        />
+      </div>
       <button class="button button--secondary" type="submit">
         {{ localization.translate('procedures.search') }}
       </button>
@@ -76,12 +79,12 @@
       <p class="state">{{ localization.translate('procedures.empty') }}</p>
     } @else {
       <div class="table-shell">
-        <table>
+        <table class="instances-table">
           <thead><tr>
             <th>{{ localization.translate('procedures.column.name') }}</th>
             <th>{{ localization.translate('procedures.column.template') }}</th>
-            <th>{{ localization.translate('procedures.column.cron') }}</th>
             <th>{{ localization.translate('procedures.column.tags') }}</th>
+            <th>{{ localization.translate('procedures.column.cron') }}</th>
             <th>{{ localization.translate('procedures.column.status') }}</th>
             <th>{{ localization.translate('procedures.column.updatedAt') }}</th>
             <th>{{ localization.translate('procedures.column.actions') }}</th>
@@ -89,9 +92,8 @@
           <tbody>
             @for (procedure of procedures(); track procedure.id) {
               <tr>
-                <td><strong>{{ procedure.name }}</strong><small>{{ procedure.description || '—' }}</small></td>
-                <td><strong>{{ dynamic(procedure.templateNameKey) }}</strong><small class="mono">{{ procedure.templateKey }}</small></td>
-                <td><code>{{ procedure.cronExpression }}</code></td>
+                <td><strong>{{ procedure.name }}</strong><small [title]="procedure.description || null">{{ procedure.description || '—' }}</small></td>
+                <td class="template-cell"><strong>{{ dynamic(procedure.templateNameKey) }}</strong><small class="mono" [title]="procedure.templateKey">{{ templateClassName(procedure.templateKey) }}</small></td>
                 <td>
                   <div class="tag-list">
                     @for (tag of procedure.tags; track tag.id) {
@@ -101,12 +103,13 @@
                     }
                   </div>
                 </td>
+                <td><code>{{ procedure.cronExpression }}</code></td>
                 <td>
                   <span class="badge" [class.badge--disabled]="!procedure.enabled">
                     {{ localization.translate(procedure.enabled ? 'procedures.enabled' : 'procedures.disabled') }}
                   </span>
                 </td>
-                <td>{{ procedure.updatedAt | date:'medium' }}</td>
+                <td class="updated-at" [title]="(procedure.updatedAt | date:'medium') || ''"><span>{{ procedure.updatedAt | date:'mediumDate' }}</span><small>{{ procedure.updatedAt | date:'mediumTime' }}</small></td>
                 <td class="actions">
                   <div class="actions__group">
                     <button
@@ -114,11 +117,13 @@
                       type="button"
                       (click)="run(procedure)"
                       [disabled]="runningId() !== null"
+                      [title]="localization.translate('procedures.run')"
+                      [attr.aria-label]="localization.translate('procedures.run')"
                     >
                       <span class="actions__run-icon" aria-hidden="true"></span>
-                      {{ localization.translate('procedures.run') }}
                     </button>
                     <span class="actions__divider" aria-hidden="true"></span>
+                    <button type="button" [title]="localization.translate('procedures.historyHint')" (click)="showProcedureHistory(procedure)">{{ localization.translate('procedures.history') }}</button>
                     <button type="button" (click)="openEdit(procedure)">{{ localization.translate('procedures.edit') }}</button>
                     <button class="danger" type="button" (click)="remove(procedure)">{{ localization.translate('procedures.delete') }}</button>
                   </div>
@@ -130,16 +135,54 @@
       </div>
     }
   } @else if (activeTab() === 'templates') {
+    @if (!loading() && templates().length) {
+      <div class="toolbar template-tag-filters">
+        <label class="search-field">
+          <span>{{ localization.translate('procedures.templates.search') }}</span>
+          <input
+            type="search"
+            [ngModel]="templateListSearch()"
+            (ngModelChange)="updateTemplateListSearch($event)"
+            [placeholder]="localization.translate('procedures.templates.searchPlaceholder')"
+          >
+        </label>
+        <div class="tag-filter-field">
+          <span>{{ localization.translate('procedures.templates.filterTag') }}</span>
+          <div class="tag-filter">
+            @for (tag of selectedTemplateFilterTags(); track tag.nameKey) {
+              <span class="filter-tag" [style.--tag-color]="tag.color || '#7C3AED'">
+                {{ dynamic(tag.nameKey) }}
+                <button type="button" [title]="localization.translate('procedures.templates.removeTagFilter')" (click)="removeTemplateTagFilter(tag.nameKey)">×</button>
+              </span>
+            }
+            <select value="" (change)="addTemplateTagFilter($event)">
+              <option value="">{{ localization.translate('procedures.templates.addTagFilter') }}</option>
+              @for (tag of availableTemplateFilterTags(); track tag.nameKey) {
+                <option [value]="tag.nameKey">{{ dynamic(tag.nameKey) }}</option>
+              }
+            </select>
+            @if (selectedTemplateTagKeys().length >= 2) {
+              <div class="tag-match-mode">
+                <button type="button" [class.active]="templateTagMatchMode() === 'OR'" (click)="updateTemplateTagMatchMode('OR')">OR</button>
+                <button type="button" [class.active]="templateTagMatchMode() === 'AND'" (click)="updateTemplateTagMatchMode('AND')">AND</button>
+              </div>
+            }
+          </div>
+        </div>
+      </div>
+    }
     @if (loading()) {
       <p class="state">{{ localization.translate('procedures.loading') }}</p>
     } @else if (!templates().length) {
       <p class="state">{{ localization.translate('procedures.empty') }}</p>
+    } @else if (!visibleTemplates().length) {
+      <p class="state">{{ localization.translate('procedures.templates.noMatching') }}</p>
     } @else {
       <div class="table-shell">
         <table>
           <thead><tr>
-            <th>{{ localization.translate('procedures.column.name') }}</th>
-            <th>{{ localization.translate('procedures.templates.column.key') }}</th>
+            <th class="template-name-cell">{{ localization.translate('procedures.templates.column.template') }}</th>
+            <th class="template-class-cell">{{ localization.translate('procedures.templates.column.key') }}</th>
             <th>{{ localization.translate('procedures.column.capability') }}</th>
             <th>{{ localization.translate('procedures.column.tags') }}</th>
             <th>{{ localization.translate('procedures.templates.parameters') }}</th>
@@ -148,10 +191,10 @@
             <th>{{ localization.translate('procedures.column.actions') }}</th>
           </tr></thead>
           <tbody>
-            @for (template of templates(); track template.id) {
+            @for (template of visibleTemplates(); track template.id) {
               <tr>
-                <td><strong>{{ dynamic(template.nameKey) }}</strong><small>{{ dynamic(template.descriptionKey) }}</small></td>
-                <td><code class="template-key" [attr.title]="template.templateKey">{{ templateClassName(template.templateKey) }}</code></td>
+                <td class="template-name-cell"><strong>{{ dynamic(template.nameKey) }}</strong><small [title]="dynamic(template.descriptionKey)">{{ dynamic(template.descriptionKey) }}</small></td>
+                <td class="template-class-cell"><code class="template-key" [attr.title]="template.templateKey">{{ templateClassName(template.templateKey) }}</code></td>
                 <td><span class="badge badge--capability">{{ template.requiredCapability }}</span></td>
                 <td>
                   <div class="tag-list">
@@ -242,10 +285,10 @@
     @if (historyExecutionId()) {
       <div class="execution-filter"><code>{{ historyExecutionId() }}</code><button type="button" (click)="clearHistoryExecutionFilter()">{{ localization.translate('procedures.history.clearExecution') }}</button></div>
     }
-    <form class="toolbar history-filters" (ngSubmit)="loadHistory()">
+    <form class="toolbar history-filters" (ngSubmit)="applyHistoryFilters()">
       <label>
         <span>{{ localization.translate('procedures.tabs.procedures') }}</span>
-        <select name="historyProcedure" [ngModel]="historyProcedureId()" (ngModelChange)="historyProcedureId.set($event)">
+        <select name="historyProcedure" [ngModel]="historyProcedureId()" [class.filter-placeholder]="historyProcedureId() === null" (ngModelChange)="updateHistoryProcedureFilter($event)">
           <option [ngValue]="null">{{ localization.translate('procedures.history.all') }}</option>
           @for (procedure of procedures(); track procedure.id) {
             <option [ngValue]="procedure.id">{{ procedure.name }}</option>
@@ -254,7 +297,7 @@
       </label>
       <label>
         <span>{{ localization.translate('procedures.history.status') }}</span>
-        <select name="historyStatus" [ngModel]="historyStatus()" (ngModelChange)="historyStatus.set($event)">
+        <select name="historyStatus" [ngModel]="historyStatus()" [class.filter-placeholder]="!historyStatus()" (ngModelChange)="updateHistoryStatusFilter($event)">
           <option value="">{{ localization.translate('procedures.history.allStatuses') }}</option>
           <option value="RUNNING">RUNNING</option>
           <option value="COMPLETED">COMPLETED</option>
@@ -274,20 +317,20 @@
       <div class="table-shell">
         <table>
           <thead><tr>
+            <th>{{ localization.translate('procedures.history.startedFinishedAt') }}</th>
             <th>{{ localization.translate('procedures.column.name') }}</th>
             <th>{{ localization.translate('procedures.history.trigger') }}</th>
             <th>{{ localization.translate('procedures.history.parent') }}</th>
-            <th>{{ localization.translate('procedures.history.startedAt') }}</th>
             <th>{{ localization.translate('procedures.history.status') }}</th>
             <th>{{ localization.translate('procedures.history.result') }}</th>
           </tr></thead>
           <tbody>
             @for (execution of executions(); track execution.executionId) {
               <tr>
-                <td><strong>{{ execution.procedureName }}</strong><small class="mono">{{ execution.executionId }}</small></td>
+                <td><strong>{{ execution.startedAt | date:'medium' }}</strong><small>{{ execution.finishedAt ? (execution.finishedAt | date:'medium') : '—' }}</small></td>
+                <td><button class="history-name-link" type="button" (click)="showProcedureByName(execution.procedureName)">{{ execution.procedureName }}</button><small [title]="dynamic(execution.templateNameKey)">{{ dynamic(execution.templateNameKey) }}</small></td>
                 <td><strong>{{ execution.trigger }}</strong><small>{{ localization.translate('procedures.history.depth') }} {{ execution.depth }}</small></td>
                 <td><code class="execution-parent">{{ execution.parentAlertExecutionId || execution.parentProcedureExecutionId || '—' }}</code></td>
-                <td>{{ execution.startedAt | date:'medium' }}</td>
                 <td>
                   <span class="badge" [class.badge--running]="execution.status === 'RUNNING'" [class.badge--error]="execution.status === 'ERROR'">
                     {{ execution.status }}
@@ -314,15 +357,19 @@
       </header>
       <form (ngSubmit)="save()">
         <div class="form-grid">
-          <label class="full">
+          <div class="full template-form-field">
             <span>{{ localization.translate('procedures.form.template') }}</span>
-            <select name="template" [disabled]="!!editing()" [ngModel]="form().templateId" (ngModelChange)="selectTemplateId($event)" required>
-              <option [ngValue]="null" disabled>{{ localization.translate('procedures.form.selectTemplate') }}</option>
-              @for (template of templates(); track template.id) {
-                <option [ngValue]="template.id">{{ dynamic(template.nameKey) }}</option>
-              }
-            </select>
-          </label>
+            <app-searchable-select
+              [options]="templateOptions()"
+              [value]="form().templateId"
+              [placeholder]="localization.translate('procedures.form.selectTemplate')"
+              [emptyLabel]="localization.translate('procedures.form.noTemplatesFound')"
+              [clearLabel]="localization.translate('procedures.form.selectTemplate')"
+              [ariaLabel]="localization.translate('procedures.form.template')"
+              [disabled]="!!editing()"
+              (valueChange)="selectTemplateId($event)"
+            />
+          </div>
           <label>
             <span>{{ localization.translate('procedures.form.name') }}</span>
             <input name="name" maxlength="200" required [ngModel]="form().name" (ngModelChange)="patchForm({ name: $event })">
