@@ -15,7 +15,7 @@ const STATUS_LABEL_KEYS: Readonly<Record<'WARN' | 'ERROR', TranslationKey>> = {
 
 /**
  * Native browser notifications for alert results, so an operator working in
- * another section (or another tab) still learns about a WARN/ERROR outcome.
+ * another section (or another tab) still learns when an alert turns WARN or ERROR.
  */
 @Injectable({ providedIn: 'root' })
 export class BrowserNotificationService {

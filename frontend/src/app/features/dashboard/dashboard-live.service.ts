@@ -46,7 +46,7 @@ function resultStatus(card: DashboardAlertCard | undefined): string {
  * Live copy of the board, fed by the event channel for the current role: a
  * paged snapshot on every (re)connection plus one full tile per change afterwards.
  * It lives at the root so tiles keep arriving while the user is elsewhere,
- * and WARN/ERROR results still raise a browser notification.
+ * and a result that moves an alert into WARN or ERROR still raises a browser notification.
  */
 @Injectable({ providedIn: 'root' })
 export class DashboardLiveService {
@@ -149,15 +149,30 @@ export class DashboardLiveService {
 
   /**
    * A result is news when its execution differs from the one we knew for that
-   * alert. For an alert we have not loaded yet (mid-snapshot, or just created)
+   * alert and it moved the alert into a new status, so a WARN that repeats a WARN
+   * stays quiet. For an alert we have not loaded yet (mid-snapshot, or just created)
    * only a result that finished moments ago counts, so a "started" tile that
    * merely repeats an old failure stays quiet.
    */
   private isNewResult(previous: DashboardAlertCard | undefined, card: DashboardAlertCard): boolean {
     const execution = card.lastExecution;
     if (execution === null || execution.status === 'SUCCESS') return false;
-    if (previous) return previous.lastExecution?.executionId !== execution.executionId;
-    return Date.now() - Date.parse(execution.finishedAt) < RECENT_RESULT_MILLIS;
+    const newExecution = previous
+      ? previous.lastExecution?.executionId !== execution.executionId
+      : Date.now() - Date.parse(execution.finishedAt) < RECENT_RESULT_MILLIS;
+    return newExecution && this.opensNewStatus(previous, card);
+  }
+
+  /*
+   * The backend dates the current status streak from its first execution, so the
+   * latest execution opened it when both instants match; this holds even when the
+   * previous tile was never loaded. Without a summary, fall back to the tile we held.
+   */
+  private opensNewStatus(previous: DashboardAlertCard | undefined, card: DashboardAlertCard): boolean {
+    const execution = card.lastExecution;
+    if (execution === null) return false;
+    if (card.history) return Date.parse(card.history.currentStatusSince) === Date.parse(execution.finishedAt);
+    return previous?.lastExecution?.status !== execution.status;
   }
 
   /*
