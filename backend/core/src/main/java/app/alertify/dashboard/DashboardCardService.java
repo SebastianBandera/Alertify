@@ -28,8 +28,6 @@ import app.alertify.jpa.repository.AlertRepository;
 @Transactional(readOnly = true)
 public class DashboardCardService {
 
-    /** Length of the look-back window summarized on every tile. */
-    public static final Duration HISTORY_WINDOW = Duration.ofDays(5);
     public static final int DEFAULT_PAGE_SIZE = 12;
     public static final int MAX_PAGE_SIZE = 50;
 
@@ -38,13 +36,15 @@ public class DashboardCardService {
     private final AlertExecutionRepository executionRepository;
     private final DashboardExecutionQuery executionQuery;
     private final AlertExecutionRunningRegistry runningRegistry;
+    private final DashboardHistoryWindow historyWindow;
 
-    public DashboardCardService(AlertRepository alertRepository, AlertParameterValueRepository parameterValueRepository, AlertExecutionRepository executionRepository, DashboardExecutionQuery executionQuery, AlertExecutionRunningRegistry runningRegistry) {
+    public DashboardCardService(AlertRepository alertRepository, AlertParameterValueRepository parameterValueRepository, AlertExecutionRepository executionRepository, DashboardExecutionQuery executionQuery, AlertExecutionRunningRegistry runningRegistry, DashboardHistoryWindow historyWindow) {
         this.alertRepository = alertRepository;
         this.parameterValueRepository = parameterValueRepository;
         this.executionRepository = executionRepository;
         this.executionQuery = executionQuery;
         this.runningRegistry = runningRegistry;
+        this.historyWindow = historyWindow;
     }
 
     /** Pages alerts in a stable order (by id) so a snapshot loaded page by page never skips or repeats one. */
@@ -60,7 +60,9 @@ public class DashboardCardService {
 
     private List<DashboardCardResponse> cards(List<Alert> alerts) {
         List<Long> alertIds = alerts.stream().map(Alert::getId).toList();
-        Instant since = Instant.now().minus(HISTORY_WINDOW);
+        /* Read once per batch so every tile of a page is summarized over the same window. */
+        int windowDays = historyWindow.days();
+        Instant since = Instant.now().minus(Duration.ofDays(windowDays));
         Map<Long, Long> latestExecutionIds = executionQuery.latestExecutionIds(alertIds);
         Map<Long, Long> previousIssueIds = executionQuery.previousIssueExecutionIds(latestExecutionIds, since);
         Set<Long> executionIds = new HashSet<>(latestExecutionIds.values());
@@ -74,7 +76,8 @@ public class DashboardCardService {
                         executions.get(latestExecutionIds.get(alert.getId())),
                         executions.get(previousIssueIds.get(alert.getId())),
                         summaries.get(alert.getId()),
-                        runningRegistry.runningSince(alert.getId()).orElse(null)
+                        runningRegistry.runningSince(alert.getId()).orElse(null),
+                        windowDays
                 ))
                 .toList();
     }

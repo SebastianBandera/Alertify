@@ -1,8 +1,5 @@
 import { Alert, AlertExecution, AlertExecutionStatus } from '../../core/api/alert-api.service';
 
-/** Length of the look-back window summarized on every tile (mirrors the backend). */
-export const DASHBOARD_HISTORY_WINDOW_DAYS = 5;
-
 /**
  * Aggregate of the executions inside the look-back window, enough to tell a
  * steadily green alert apart from one that recovered from a recent incident.
@@ -29,6 +26,8 @@ export interface DashboardAlertCard {
   readonly history: DashboardHistorySummary | null;
   /** Start of an execution currently in progress on a worker, if any. */
   readonly runningSince: string | null;
+  /** Length in days of the look-back window behind `previousIssue` and `history`, set by a system configuration. */
+  readonly historyWindowDays: number;
 }
 
 /* Worst status first; alerts that never ran carry no signal and close the board. */

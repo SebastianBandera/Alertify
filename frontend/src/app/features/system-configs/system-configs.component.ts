@@ -13,6 +13,11 @@ import { LocalizationService } from '../../core/i18n/localization.service';
 const KEY_PART_NAME = 'KEY_PART';
 const QUIET_HOURS_NAME = 'CRON_QUIET_HOURS';
 const MAINTENANCE_MODE_NAME = 'MAINTENANCE_MODE';
+const DASHBOARD_WINDOW_NAME = 'DASHBOARD_HISTORY_WINDOW';
+/* Mirrors the range the backend accepts for the dashboard look-back window. */
+const DASHBOARD_WINDOW_MIN_DAYS = 1;
+const DASHBOARD_WINDOW_MAX_DAYS = 365;
+const DASHBOARD_WINDOW_DEFAULT_DAYS = 10;
 
 interface KeyPartForm {
   manualEntryOpen: boolean;
@@ -38,6 +43,10 @@ interface MaintenanceModeValue {
 
 interface MaintenanceModeForm {
   enabled: boolean;
+}
+
+interface DashboardWindowForm {
+  days: number | null;
 }
 
 function emptyKeyPartForm(): KeyPartForm {
@@ -66,6 +75,15 @@ function parseMaintenanceModeValue(value: unknown): MaintenanceModeValue {
   return { enabled: raw.enabled === true };
 }
 
+function parseDashboardWindowValue(value: unknown): DashboardWindowForm {
+  const days = (value as { days?: unknown } | null)?.days;
+  return { days: typeof days === 'number' && Number.isInteger(days) ? days : DASHBOARD_WINDOW_DEFAULT_DAYS };
+}
+
+function isValidDashboardWindowDays(days: number | null): days is number {
+  return days !== null && Number.isInteger(days) && days >= DASHBOARD_WINDOW_MIN_DAYS && days <= DASHBOARD_WINDOW_MAX_DAYS;
+}
+
 @Component({
   selector: 'app-system-configs',
   imports: [FormsModule, JsonPipe],
@@ -76,6 +94,8 @@ function parseMaintenanceModeValue(value: unknown): MaintenanceModeValue {
 export class SystemConfigsComponent implements OnInit {
   protected readonly localization = inject(LocalizationService);
   protected readonly quietHoursName = QUIET_HOURS_NAME;
+  protected readonly dashboardWindowMinDays = DASHBOARD_WINDOW_MIN_DAYS;
+  protected readonly dashboardWindowMaxDays = DASHBOARD_WINDOW_MAX_DAYS;
 
   private readonly api = inject(SystemConfigurationApiService);
   private readonly statusApi = inject(SystemStatusApiService);
@@ -103,6 +123,11 @@ export class SystemConfigsComponent implements OnInit {
     return summary === null ? null : summary.activeAlertExecutions + summary.activeProcedureExecutions;
   });
 
+  protected readonly dashboardWindowConfiguration = signal<SystemConfiguration | null>(null);
+  protected readonly dashboardWindowForm = signal<DashboardWindowForm>({ days: DASHBOARD_WINDOW_DEFAULT_DAYS });
+  protected readonly dashboardWindowError = signal<string | null>(null);
+  protected readonly dashboardWindowValid = computed(() => isValidDashboardWindowDays(this.dashboardWindowForm().days));
+
   protected readonly otherConfigurations = signal<readonly SystemConfiguration[]>([]);
 
   async ngOnInit(): Promise<void> {
@@ -128,10 +153,14 @@ export class SystemConfigsComponent implements OnInit {
       this.maintenanceModeConfiguration.set(maintenanceMode);
       this.maintenanceModeForm.set(parseMaintenanceModeValue(maintenanceMode?.value));
 
+      const dashboardWindow = result.content.find((configuration) => configuration.name === DASHBOARD_WINDOW_NAME) ?? null;
+      this.dashboardWindowConfiguration.set(dashboardWindow);
+      this.dashboardWindowForm.set(parseDashboardWindowValue(dashboardWindow?.value));
+
       this.otherConfigurations.set(
         result.content.filter(
           (configuration) => configuration.name !== KEY_PART_NAME && configuration.name !== QUIET_HOURS_NAME
-            && configuration.name !== MAINTENANCE_MODE_NAME,
+            && configuration.name !== MAINTENANCE_MODE_NAME && configuration.name !== DASHBOARD_WINDOW_NAME,
         ),
       );
     } catch (error) {
@@ -262,6 +291,45 @@ export class SystemConfigsComponent implements OnInit {
     } finally {
       this.saving.set(false);
     }
+  }
+
+  // -- DASHBOARD_HISTORY_WINDOW section --
+
+  protected patchDashboardWindowForm(days: number | null): void {
+    this.dashboardWindowForm.set({ days });
+    this.dashboardWindowError.set(null);
+  }
+
+  protected async saveDashboardWindow(): Promise<void> {
+    const configuration = this.dashboardWindowConfiguration();
+    const days = this.dashboardWindowForm().days;
+    if (!configuration || this.saving()) return;
+    if (!isValidDashboardWindowDays(days)) {
+      this.dashboardWindowError.set(this.dashboardWindowRangeMessage());
+      return;
+    }
+
+    this.saving.set(true);
+    this.dashboardWindowError.set(null);
+    this.notice.set(null);
+    try {
+      await this.api.updateSystemConfiguration(configuration.id, {
+        version: configuration.version,
+        value: { days },
+      });
+      this.notice.set(this.localization.translate('systemConfigs.dashboardWindow.saved'));
+      await this.loadConfigurations();
+    } catch (error) {
+      this.dashboardWindowError.set(this.errorMessage(error));
+    } finally {
+      this.saving.set(false);
+    }
+  }
+
+  protected dashboardWindowRangeMessage(): string {
+    return this.localization.translate('systemConfigs.dashboardWindow.invalid')
+      .replace('{min}', String(DASHBOARD_WINDOW_MIN_DAYS))
+      .replace('{max}', String(DASHBOARD_WINDOW_MAX_DAYS));
   }
 
   protected formatDate(value: string): string {

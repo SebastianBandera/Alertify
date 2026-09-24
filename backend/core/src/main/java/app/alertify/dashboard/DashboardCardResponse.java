@@ -11,12 +11,14 @@ import app.alertify.alerts.api.AlertResponse;
  * {@code runningSince} means an execution is in progress on a worker.
  * {@code previousIssue} is the most recent WARN or ERROR execution before the
  * latest one inside the look-back window, or null when there was none.
+ * {@code historyWindowDays} is the length of that window, which is configurable,
+ * so clients label it without reading the system configuration themselves.
  */
-public record DashboardCardResponse(AlertResponse alert, AlertExecutionResponse lastExecution, AlertExecutionResponse previousIssue, DashboardHistorySummaryResponse history, Instant runningSince) {
+public record DashboardCardResponse(AlertResponse alert, AlertExecutionResponse lastExecution, AlertExecutionResponse previousIssue, DashboardHistorySummaryResponse history, Instant runningSince, int historyWindowDays) {
 
     /** The tile as dashboard viewers receive it: worker network addresses stay on the administrative side. */
     public DashboardCardResponse forViewer() {
-        return new DashboardCardResponse(alert, withoutWorkerAddress(lastExecution), withoutWorkerAddress(previousIssue), history, runningSince);
+        return new DashboardCardResponse(alert, withoutWorkerAddress(lastExecution), withoutWorkerAddress(previousIssue), history, runningSince, historyWindowDays);
     }
 
     private static AlertExecutionResponse withoutWorkerAddress(AlertExecutionResponse execution) {

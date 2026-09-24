@@ -127,6 +127,52 @@
         </section>
       }
 
+      <!-- DASHBOARD_HISTORY_WINDOW -->
+      @if (dashboardWindowConfiguration(); as configuration) {
+        <section class="settings-section">
+          <header class="settings-section__header">
+            <div>
+              <h2>{{ localization.translate('systemConfigs.dashboardWindow.title') }}</h2>
+              <span class="system-badge">{{ localization.translate('configs.system') }}</span>
+            </div>
+            <small>{{ localization.translate('configs.column.updatedAt') }}: {{ formatDate(configuration.updatedAt) }}</small>
+          </header>
+
+          <p class="settings-section__help">{{ localization.translate('systemConfigs.dashboardWindow.help') }}</p>
+
+          <form class="settings-section__form" (ngSubmit)="saveDashboardWindow()">
+            <div class="form-grid">
+              <label class="field">
+                <span>{{ localization.translate('systemConfigs.dashboardWindow.days') }}</span>
+                <input
+                  required
+                  type="number"
+                  inputmode="numeric"
+                  step="1"
+                  [min]="dashboardWindowMinDays"
+                  [max]="dashboardWindowMaxDays"
+                  [ngModel]="dashboardWindowForm().days"
+                  (ngModelChange)="patchDashboardWindowForm($event)"
+                  name="dashboardWindowDays"
+                />
+              </label>
+            </div>
+
+            @if (!dashboardWindowValid()) {
+              <div class="alert alert--error" role="alert">{{ dashboardWindowRangeMessage() }}</div>
+            } @else if (dashboardWindowError()) {
+              <div class="alert alert--error" role="alert">{{ dashboardWindowError() }}</div>
+            }
+
+            <div class="settings-section__actions">
+              <button class="button button--primary" type="submit" [disabled]="saving() || !dashboardWindowValid()">
+                {{ localization.translate(saving() ? 'configs.saving' : 'configs.save') }}
+              </button>
+            </div>
+          </form>
+        </section>
+      }
+
       <!-- KEY_PART -->
       @if (keyPartConfiguration(); as configuration) {
         <section class="settings-section">

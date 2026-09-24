@@ -13,10 +13,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.context.ApplicationEventPublisher;
 
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.StringNode;
 
 import app.alertify.api.error.ConflictException;
+import app.alertify.api.error.InvalidConfigurationValueException;
 import app.alertify.api.error.ResourceNotFoundException;
+import app.alertify.dashboard.DashboardHistoryWindow;
 import app.alertify.jpa.entity.SystemConfiguration;
 import app.alertify.jpa.repository.SystemConfigurationRepository;
 import app.alertify.logging.ApplicationEventLogger;
@@ -83,6 +86,7 @@ public class SystemConfigurationService {
     public SystemConfigurationResponse update(Long id, SystemConfigurationUpdateRequest request) {
         SystemConfiguration configuration = find(id);
         verifyVersion(configuration.getVersion(), request.version());
+        validateValue(configuration.getName(), request.value());
 
         Set<String> changedFields = new LinkedHashSet<>();
 
@@ -128,6 +132,16 @@ public class SystemConfigurationService {
                 Map.of(SYSTEM_CONFIGURATION_ID, id, "name", configuration.getName(), "changed", true, "changedFields", Set.of("value"))
         );
         return SystemConfigurationMapper.toResponse(configuration);
+    }
+
+    /* Entries whose readers expect a specific shape reject anything else up front. */
+    private static void validateValue(String name, JsonNode value) {
+        if (DashboardHistoryWindow.CONFIGURATION_NAME.equals(name) && !DashboardHistoryWindow.isValid(value)) {
+            throw new InvalidConfigurationValueException(
+                    name + " must be {\"days\": N} with N a whole number from "
+                            + DashboardHistoryWindow.MIN_DAYS + " to " + DashboardHistoryWindow.MAX_DAYS
+            );
+        }
     }
 
     private SystemConfiguration find(Long id) {

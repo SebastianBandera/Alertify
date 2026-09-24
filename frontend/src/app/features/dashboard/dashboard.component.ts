@@ -27,7 +27,6 @@ import { TranslationKey } from '../../core/i18n/localization.types';
 import { DragScrollDirective } from '../../shared/drag-scroll/drag-scroll.directive';
 import {
   compareDashboardCards,
-  DASHBOARD_HISTORY_WINDOW_DAYS,
   DashboardAlertCard,
   stateChangedAt,
 } from './dashboard-card';
@@ -183,7 +182,6 @@ export class DashboardComponent {
     else if (this.cards().length === 0 && this.live.connectionState() !== 'connected') pending = INITIAL_SKELETONS;
     return Array.from({ length: Math.max(0, pending) }, (_, index) => index);
   });
-  protected readonly historyWindowDays = DASHBOARD_HISTORY_WINDOW_DAYS;
   protected readonly selectedCard = signal<DashboardAlertCard | null>(null);
   private readonly detailDialog = viewChild<ElementRef<HTMLElement>>('detailDialog');
   protected readonly cardMenu = signal<CardMenu | null>(null);
@@ -431,12 +429,12 @@ export class DashboardComponent {
     return execution.statusMessage === null ? '' : JSON.stringify(execution.statusMessage, null, 2);
   }
 
-  protected historyTitle(): string {
-    return this.localization.translate('dashboard.detail.history').replace('{days}', String(this.historyWindowDays));
+  protected historyTitle(card: DashboardAlertCard): string {
+    return this.localization.translate('dashboard.detail.history').replace('{days}', String(card.historyWindowDays));
   }
 
-  protected noPreviousIssueLabel(): string {
-    return this.localization.translate('dashboard.detail.noPreviousIssue').replace('{days}', String(this.historyWindowDays));
+  protected noPreviousIssueLabel(card: DashboardAlertCard): string {
+    return this.localization.translate('dashboard.detail.noPreviousIssue').replace('{days}', String(card.historyWindowDays));
   }
 
   /**
@@ -560,8 +558,8 @@ export class DashboardComponent {
     return this.localization.translate(key);
   }
 
-  protected historyWindowTitle(): string {
-    return this.localization.translate('dashboard.card.historyWindow').replace('{days}', String(this.historyWindowDays));
+  protected historyWindowTitle(card: DashboardAlertCard): string {
+    return this.localization.translate('dashboard.card.historyWindow').replace('{days}', String(card.historyWindowDays));
   }
 
   /**
@@ -584,7 +582,7 @@ export class DashboardComponent {
     if (execution.status === 'SUCCESS') {
       return {
         state: 'stable',
-        label: this.localization.translate('dashboard.card.stable').replace('{days}', String(this.historyWindowDays)),
+        label: this.localization.translate('dashboard.card.stable').replace('{days}', String(card.historyWindowDays)),
       };
     }
     return {

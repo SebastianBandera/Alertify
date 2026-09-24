@@ -52,7 +52,7 @@ class DashboardEventPublisherTest {
     @Test
     void executionFinishedClearsTheMarkerAndPublishesTheTile() {
         AlertExecutionRunningRegistry registry = new AlertExecutionRunningRegistry();
-        DashboardCardResponse card = new DashboardCardResponse(null, null, null, null, null);
+        DashboardCardResponse card = new DashboardCardResponse(null, null, null, null, null, 10);
         UUID executionId = UUID.randomUUID();
         when(eventPublisher.hasAuthenticatedSessions()).thenReturn(true);
         when(viewerEventPublisher.hasAuthenticatedSessions()).thenReturn(true);
@@ -76,7 +76,7 @@ class DashboardEventPublisherTest {
                 AlertExecutionTrigger.CRON, null, at, at, at, 0, 0, 0, null, null, null,
                 "worker-standard-2", "172.18.0.4", 9090, UUID.randomUUID()
         );
-        DashboardCardResponse card = new DashboardCardResponse(null, execution, null, null, null);
+        DashboardCardResponse card = new DashboardCardResponse(null, execution, null, null, null, 10);
         when(eventPublisher.hasAuthenticatedSessions()).thenReturn(true);
         when(viewerEventPublisher.hasAuthenticatedSessions()).thenReturn(true);
         when(cardService.card(1L)).thenReturn(Optional.of(card));

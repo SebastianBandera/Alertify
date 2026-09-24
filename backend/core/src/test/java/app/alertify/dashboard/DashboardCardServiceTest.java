@@ -8,6 +8,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
@@ -43,6 +44,7 @@ class DashboardCardServiceTest {
     @Mock private AlertExecutionRepository executionRepository;
     @Mock private DashboardExecutionQuery executionQuery;
     @Mock private AlertExecutionRunningRegistry runningRegistry;
+    @Mock private DashboardHistoryWindow historyWindow;
 
     @Test
     void pagesAlertsByIdAndAssemblesTilesFromBatchQueries() {
@@ -62,7 +64,9 @@ class DashboardCardServiceTest {
         when(executionQuery.historySummaries(anyCollection(), any(Instant.class))).thenReturn(Map.of(5L, summary));
         when(runningRegistry.runningSince(5L)).thenReturn(Optional.of(finishedAt.plusSeconds(60)));
         when(runningRegistry.runningSince(6L)).thenReturn(Optional.empty());
+        when(historyWindow.days()).thenReturn(7);
 
+        Instant before = Instant.now();
         DashboardPageResponse page = service().page(0, 12);
 
         ArgumentCaptor<Pageable> pageable = ArgumentCaptor.forClass(Pageable.class);
@@ -71,6 +75,9 @@ class DashboardCardServiceTest {
         ArgumentCaptor<Collection<Long>> executionIds = ArgumentCaptor.captor();
         verify(executionRepository).findAllById(executionIds.capture());
         assertThat(executionIds.getValue()).containsExactlyInAnyOrder(40L, 39L);
+        ArgumentCaptor<Instant> since = ArgumentCaptor.forClass(Instant.class);
+        verify(executionQuery).historySummaries(anyCollection(), since.capture());
+        assertThat(since.getValue()).isBetween(before.minus(Duration.ofDays(7)), Instant.now().minus(Duration.ofDays(7)));
         assertThat(page.page().totalElements()).isEqualTo(2);
         assertThat(page.content()).hasSize(2);
         DashboardCardResponse first = page.content().getFirst();
@@ -80,6 +87,7 @@ class DashboardCardServiceTest {
         assertThat(first.previousIssue().errorMessage()).isEqualTo("Connection refused");
         assertThat(first.history()).isEqualTo(summary);
         assertThat(first.runningSince()).isEqualTo(finishedAt.plusSeconds(60));
+        assertThat(page.content()).allSatisfy(card -> assertThat(card.historyWindowDays()).isEqualTo(7));
         DashboardCardResponse second = page.content().get(1);
         assertThat(second.lastExecution()).isNull();
         assertThat(second.previousIssue()).isNull();
@@ -93,6 +101,7 @@ class DashboardCardServiceTest {
         when(executionQuery.latestExecutionIds(List.of())).thenReturn(Map.of());
         when(executionRepository.findAllById(anyCollection())).thenReturn(List.of());
         when(executionQuery.historySummaries(anyCollection(), any(Instant.class))).thenReturn(Map.of());
+        when(historyWindow.days()).thenReturn(DashboardHistoryWindow.DEFAULT_DAYS);
 
         service().page(3, 500);
 
@@ -110,7 +119,7 @@ class DashboardCardServiceTest {
     }
 
     private DashboardCardService service() {
-        return new DashboardCardService(alertRepository, parameterValueRepository, executionRepository, executionQuery, runningRegistry);
+        return new DashboardCardService(alertRepository, parameterValueRepository, executionRepository, executionQuery, runningRegistry, historyWindow);
     }
 
     private static Alert alert(long id, String name) {

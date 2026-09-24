@@ -62,7 +62,7 @@
 
       <footer class="alert-card__meta">
         @if (stability(card); as stability) {
-          <span [class]="'alert-card__stability alert-card__stability--' + stability.state" [title]="historyWindowTitle()">
+          <span [class]="'alert-card__stability alert-card__stability--' + stability.state" [title]="historyWindowTitle(card)">
             {{ stability.label }}
           </span>
         }
@@ -394,14 +394,14 @@
                 <p class="detail-empty">{{ localization.translate('dashboard.card.noMessage') }}</p>
               }
             } @else {
-              <p class="detail-empty">{{ noPreviousIssueLabel() }}</p>
+              <p class="detail-empty">{{ noPreviousIssueLabel(card) }}</p>
             }
           </section>
         }
 
         @if (card.history; as history) {
           <section class="detail-section">
-            <h3>{{ historyTitle() }}</h3>
+            <h3>{{ historyTitle(card) }}</h3>
             <dl class="detail-list">
               <dt>{{ localization.translate('dashboard.detail.worstStatus') }}</dt>
               <dd>
