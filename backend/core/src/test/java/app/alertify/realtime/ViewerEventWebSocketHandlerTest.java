@@ -72,7 +72,7 @@ class ViewerEventWebSocketHandlerTest {
     void handlesOnlyTheDashboardPageRequest() throws Exception {
         authenticateAs("ROLE_DASHBOARD");
         when(pageRequestHandler.requestName()).thenReturn("DASHBOARD_PAGE");
-        when(pageRequestHandler.handle(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any())).thenReturn(JsonMapper.builder().build().readTree("{\"content\":[]}"));
+        when(pageRequestHandler.handleForViewer(org.mockito.ArgumentMatchers.any())).thenReturn(JsonMapper.builder().build().readTree("{\"content\":[]}"));
         handler.handleTextMessage(session, new TextMessage("{\"type\":\"AUTH\",\"token\":\"secret-token\"}"));
 
         handler.handleTextMessage(session, new TextMessage("{\"type\":\"REQUEST\",\"requestId\":\"request-1\",\"name\":\"DASHBOARD_PAGE\",\"payload\":{}}"));
@@ -93,6 +93,7 @@ class ViewerEventWebSocketHandlerTest {
         verify(session).sendMessage(argThat(message -> message instanceof TextMessage text
                 && text.getPayload().contains("\"code\":\"UNSUPPORTED_REQUEST\"")));
         verify(pageRequestHandler, never()).handle(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+        verify(pageRequestHandler, never()).handleForViewer(org.mockito.ArgumentMatchers.any());
     }
 
     private void authenticateAs(String authority) {

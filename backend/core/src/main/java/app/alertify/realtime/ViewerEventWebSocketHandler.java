@@ -156,7 +156,7 @@ public class ViewerEventWebSocketHandler extends TextWebSocketHandler implements
         }
 
         try {
-            JsonNode response = pageRequestHandler.handle(state.authentication, frame.get("payload"));
+            JsonNode response = pageRequestHandler.handleForViewer(frame.get("payload"));
             sendJson(state, new ResponseMessage("RESPONSE", requestId, response));
         } catch (RuntimeException exception) {
             LOGGER.warn("Viewer WebSocket request failed: requestName={}", nameNode.stringValue(), exception);

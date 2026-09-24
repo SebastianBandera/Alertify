@@ -13,4 +13,13 @@ import app.alertify.alerts.api.AlertResponse;
  * latest one inside the look-back window, or null when there was none.
  */
 public record DashboardCardResponse(AlertResponse alert, AlertExecutionResponse lastExecution, AlertExecutionResponse previousIssue, DashboardHistorySummaryResponse history, Instant runningSince) {
+
+    /** The tile as dashboard viewers receive it: worker network addresses stay on the administrative side. */
+    public DashboardCardResponse forViewer() {
+        return new DashboardCardResponse(alert, withoutWorkerAddress(lastExecution), withoutWorkerAddress(previousIssue), history, runningSince);
+    }
+
+    private static AlertExecutionResponse withoutWorkerAddress(AlertExecutionResponse execution) {
+        return execution == null ? null : execution.withoutWorkerAddress();
+    }
 }

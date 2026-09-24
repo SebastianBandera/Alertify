@@ -64,7 +64,7 @@ public class DashboardEventPublisher implements AutoCloseable {
 
         executor.submit(() -> {
             try {
-                cardService.card(alertId).ifPresent(card -> publish(ALERT_EVENT, card));
+                cardService.card(alertId).ifPresent(card -> publish(ALERT_EVENT, card, card.forViewer()));
             } catch (RuntimeException exception) {
                 LOGGER.warn("Dashboard tile publication failed: alertId={}", alertId, exception);
             }
@@ -72,11 +72,16 @@ public class DashboardEventPublisher implements AutoCloseable {
     }
 
     private void publish(String eventName, Object payload) {
+        publish(eventName, payload, payload);
+    }
+
+    /* Viewers get their own payload so administrative details can be left out of it. */
+    private void publish(String eventName, Object adminPayload, Object viewerPayload) {
         if (eventPublisher.hasAuthenticatedSessions())
-            eventPublisher.publish(eventName, payload);
+            eventPublisher.publish(eventName, adminPayload);
 
         if (viewerEventPublisher.hasAuthenticatedSessions())
-            viewerEventPublisher.publish(eventName, payload);
+            viewerEventPublisher.publish(eventName, viewerPayload);
     }
 
     private boolean hasAuthenticatedSessions() {

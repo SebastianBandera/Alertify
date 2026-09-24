@@ -7,7 +7,10 @@ import app.alertify.realtime.AdminRequestHandler;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
-/** Serves the dashboard snapshot page by page over the administrative event channel. */
+/**
+ * Serves the dashboard snapshot page by page over the administrative event
+ * channel, and the viewer projection of it over the viewer channel.
+ */
 @Component
 public class DashboardPageRequestHandler implements AdminRequestHandler {
 
@@ -28,9 +31,17 @@ public class DashboardPageRequestHandler implements AdminRequestHandler {
 
     @Override
     public JsonNode handle(Authentication authentication, JsonNode payload) {
+        return jsonMapper.valueToTree(page(payload));
+    }
+
+    public JsonNode handleForViewer(JsonNode payload) {
+        return jsonMapper.valueToTree(page(payload).forViewer());
+    }
+
+    private DashboardPageResponse page(JsonNode payload) {
         int page = intField(payload, "page", 0);
         int size = intField(payload, "size", DashboardCardService.DEFAULT_PAGE_SIZE);
-        return jsonMapper.valueToTree(cardService.page(page, size));
+        return cardService.page(page, size);
     }
 
     private static int intField(JsonNode payload, String field, int fallback) {

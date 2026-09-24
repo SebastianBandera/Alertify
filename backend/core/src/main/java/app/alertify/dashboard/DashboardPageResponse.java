@@ -11,6 +11,10 @@ public record DashboardPageResponse(List<DashboardCardResponse> content, PageMet
         return new DashboardPageResponse(content, new PageMetadata(page.getSize(), page.getNumber(), page.getTotalElements(), page.getTotalPages()));
     }
 
+    public DashboardPageResponse forViewer() {
+        return new DashboardPageResponse(content.stream().map(DashboardCardResponse::forViewer).toList(), page);
+    }
+
     public record PageMetadata(int size, int number, long totalElements, int totalPages) {
     }
 }

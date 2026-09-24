@@ -17,6 +17,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import app.alertify.alerts.api.AlertExecutionResponse;
+import app.alertify.alerts.execution.AlertExecutionStatus;
+import app.alertify.alerts.execution.AlertExecutionTrigger;
 import app.alertify.realtime.AdminEventPublisher;
 import app.alertify.realtime.ViewerEventPublisher;
 
@@ -63,6 +66,30 @@ class DashboardEventPublisherTest {
         assertThat(registry.runningSince(1L)).isEmpty();
         verify(eventPublisher, timeout(2_000).times(2)).publish(DashboardEventPublisher.ALERT_EVENT, card);
         verify(viewerEventPublisher, timeout(2_000).times(2)).publish(DashboardEventPublisher.ALERT_EVENT, card);
+    }
+
+    @Test
+    void viewersReceiveTheTileWithoutTheWorkerAddress() {
+        Instant at = Instant.parse("2026-09-24T12:00:00Z");
+        AlertExecutionResponse execution = new AlertExecutionResponse(
+                1L, UUID.randomUUID(), 1L, "Alert", 2L, "template.name", AlertExecutionStatus.SUCCESS,
+                AlertExecutionTrigger.CRON, null, at, at, at, 0, 0, 0, null, null, null,
+                "worker-standard-2", "172.18.0.4", 9090, UUID.randomUUID()
+        );
+        DashboardCardResponse card = new DashboardCardResponse(null, execution, null, null, null);
+        when(eventPublisher.hasAuthenticatedSessions()).thenReturn(true);
+        when(viewerEventPublisher.hasAuthenticatedSessions()).thenReturn(true);
+        when(cardService.card(1L)).thenReturn(Optional.of(card));
+
+        try (DashboardEventPublisher publisher = new DashboardEventPublisher(eventPublisher, viewerEventPublisher, cardService, new AlertExecutionRunningRegistry())) {
+            publisher.executionFinished(1L, execution.executionId());
+        }
+
+        verify(eventPublisher, timeout(2_000)).publish(DashboardEventPublisher.ALERT_EVENT, card);
+        verify(viewerEventPublisher, timeout(2_000)).publish(DashboardEventPublisher.ALERT_EVENT, card.forViewer());
+        assertThat(card.forViewer().lastExecution().workerIpAddress()).isNull();
+        assertThat(card.forViewer().lastExecution().workerPort()).isNull();
+        assertThat(card.forViewer().lastExecution().workerName()).isEqualTo("worker-standard-2");
     }
 
     @Test
