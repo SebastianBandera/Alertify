@@ -28,6 +28,7 @@ import app.alertify.alerts.template.annotation.AlertParameterSource;
 import app.alertify.alerts.templates.HttpsCertificateExpiryAlertTemplate;
 import app.alertify.alerts.templates.InternetConnectionAlertTemplate;
 import app.alertify.alerts.templates.PlaywrightPageAlertTemplate;
+import app.alertify.alerts.templates.SqlStatusAlertTemplate;
 import app.alertify.alerts.templates.SqlThresholdAlertTemplate;
 import app.alertify.alerts.templates.SqlWatchAlertTemplate;
 import app.alertify.alerts.templates.TcpConnectionAlertTemplate;
@@ -133,6 +134,15 @@ class AlertTemplateRegistrationServiceTest {
         assertEquals(
             "app/alertify/alerts/templates/SqlThresholdAlertTemplate.java",
             sqlThresholdTemplate.getSourcePath()
+        );
+
+        AlertTemplateDefinition sqlStatusTemplate =
+            templatesByKey.get(SqlStatusAlertTemplate.class.getName());
+        assertNotNull(sqlStatusTemplate);
+        assertEquals("alerts.template.sqlStatus.name", sqlStatusTemplate.getNameKey());
+        assertEquals(
+            "app/alertify/alerts/templates/SqlStatusAlertTemplate.java",
+            sqlStatusTemplate.getSourcePath()
         );
 
         ArgumentCaptor<AlertTemplateParameterDefinition> parameterCaptor =
