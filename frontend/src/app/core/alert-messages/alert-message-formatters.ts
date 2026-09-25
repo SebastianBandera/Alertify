@@ -16,10 +16,23 @@ function join(...parts: readonly (string | null | undefined)[]): string {
 }
 
 /* A known failure code reads as a sentence; an unknown one is still shown, as is. */
-function failure(context: AlertMessageContext): string | null {
-  const reason = text(context.message['failureReason']);
+function failureMessage(context: AlertMessageContext, message: Readonly<Record<string, unknown>>): string | null {
+  const reason = text(message['failureReason']);
   if (reason === null) return null;
   return context.translate(`alertMessage.reason.${reason}`) ?? context.translate('alertMessage.failure', { reason });
+}
+
+function failure(context: AlertMessageContext): string | null {
+  return failureMessage(context, context.message);
+}
+
+function playwrightBrowser(value: unknown): string {
+  switch (text(value)) {
+    case 'chromium': return 'Chromium';
+    case 'firefox': return 'Firefox';
+    case 'webkit': return 'WebKit';
+    default: return text(value) ?? 'Playwright';
+  }
 }
 
 function endpoint(context: AlertMessageContext): string | null {
@@ -120,6 +133,42 @@ export const ALERT_MESSAGE_FORMATTERS: AlertMessageFormatters = {
 
   [`${TEMPLATES}PlaywrightPageAlertTemplate`]: (context) => {
     const message = context.message;
+    const browserResults = Array.isArray(message['browserResults'])
+      ? message['browserResults'].filter((result): result is Readonly<Record<string, unknown>> =>
+        result !== null && typeof result === 'object' && !Array.isArray(result))
+      : [];
+    if (browserResults.length > 0) {
+      const warnings = browserResults.filter((result) => result['status'] === 'WARN');
+      const successful = count(message['successfulBrowserCount']);
+      const total = count(message['browserCount']);
+      if (warnings.length === 0) {
+        return context.translate('alertMessage.playwright.browsersCompleted', {
+          successful: context.formatNumber(successful),
+          total: context.formatNumber(total),
+          commands: context.formatNumber(message['commandCount']),
+        });
+      }
+
+      const warningSummary = warnings.map((result) => {
+        const code = text(result['failureReason']);
+        const timing = code === 'loadTimeout' || code === 'reloadTimeout'
+          ? context.translate('alertMessage.playwright.timing', { expected: `${context.formatNumber(message['loadTimeoutSeconds'])} s` })
+          : null;
+        const line = result['failedLine'];
+        const detail = join(
+          failureMessage(context, result),
+          timing,
+          line === undefined || line === null ? null : context.translate('alertMessage.playwright.line', { line }),
+        );
+        return `${playwrightBrowser(result['browser'])}: ${detail}`;
+      }).join('; ');
+      return context.translate('alertMessage.playwright.browsersWarning', {
+        successful: context.formatNumber(successful),
+        total: context.formatNumber(total),
+        warnings: warningSummary,
+      });
+    }
+
     const reason = failure(context);
     if (reason !== null) {
       const line = message['failedLine'];

@@ -952,7 +952,9 @@ export class AlertsComponent implements OnInit {
       configured: parameter.required || parameter.defaultValue !== null || !parameter.bindingAllowed,
       source: parameter.javaType === 'app.alertify.procedures.Procedure'
         ? 'PROCEDURE'
-        : parameter.options.length ? 'OPTION' : '',
+        : parameter.options.length
+          ? 'OPTION'
+          : parameter.defaultValue !== null && parameter.allowedSources.includes('TEXT') ? 'TEXT' : '',
       textValue: parameter.defaultValue ?? parameter.options[0] ?? '',
       configurationId: null,
       secretId: null,
