@@ -401,7 +401,7 @@ public final class SqlWatchAlertTemplate implements AlertEvaluator {
 
             columns.add(new Column(name, normalized, metadata.getColumnType(index), metadata.getColumnTypeName(index), index));
         }
-        columns.sort(Comparator.comparing(column -> column.normalizedName()));
+        columns.sort(Comparator.comparing(Column::normalizedName));
         return columns;
     }
 

@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import app.alertify.alerts.model.Alert;
 import app.alertify.alerts.model.AlertParameterValue;
+import app.alertify.alerts.model.AlertState;
 import app.alertify.alerts.model.AlertTemplateDefinition;
 import app.alertify.alerts.model.AlertTemplateParameterDefinition;
 import app.alertify.alerts.template.ParameterValueTypeCompatibility;
@@ -102,7 +103,7 @@ public class AlertExecutionPreparationService {
                 .stream()
                 .map(definition -> resolve(definition, configuredValues.get(definition.getId())))
                 .toList();
-        String state = stateRepository.findById(alertId).map(value -> value.getState()).orElse("");
+        String state = stateRepository.findById(alertId).map(AlertState::getState).orElse("");
         return Optional.of(new PreparedAlertExecution(
                 alert.getId(), alert.getName(), template.getTemplateKey(),
                 template.getRequiredCapability(), source.checksum(), source.content(), state,

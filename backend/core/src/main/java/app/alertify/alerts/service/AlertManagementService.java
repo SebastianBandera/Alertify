@@ -35,6 +35,7 @@ import app.alertify.alerts.execution.AlertExecutionTrigger;
 import app.alertify.alerts.execution.AlertScheduleService;
 import app.alertify.alerts.model.Alert;
 import app.alertify.alerts.model.AlertParameterValue;
+import app.alertify.alerts.model.AlertState;
 import app.alertify.alerts.model.AlertTemplateDefinition;
 import app.alertify.alerts.model.AlertTemplateParameterDefinition;
 import app.alertify.alerts.template.ParameterValueTypeCompatibility;
@@ -142,7 +143,7 @@ public class AlertManagementService {
         if (!alertRepository.existsById(alertId))
             throw notFound(ALERT, alertId);
 
-        String state = stateRepository.findById(alertId).map(value -> value.getState()).orElse("");
+        String state = stateRepository.findById(alertId).map(AlertState::getState).orElse("");
         return new AlertStateResponse(alertId, state);
     }
 

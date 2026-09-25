@@ -7,6 +7,7 @@ import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.cache.concurrent.ConcurrentMapCacheManager;
+import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 class ConfigurationCacheInvalidatorTest {
@@ -38,7 +39,7 @@ class ConfigurationCacheInvalidatorTest {
         assertThat(byId.get(7L)).isNotNull();
         assertThat(byName.get("old-name")).isNotNull();
         TransactionSynchronizationManager.getSynchronizations()
-            .forEach(synchronization -> synchronization.afterCommit());
+            .forEach(TransactionSynchronization::afterCommit);
         assertThat(byId.get(7L)).isNull();
         assertThat(byName.get("old-name")).isNull();
         assertThat(byName.get("new-name")).isNull();
@@ -60,7 +61,7 @@ class ConfigurationCacheInvalidatorTest {
 
         assertThat(byId.get(7L)).isNotNull();
         TransactionSynchronizationManager.getSynchronizations()
-            .forEach(synchronization -> synchronization.afterCommit());
+            .forEach(TransactionSynchronization::afterCommit);
         assertThat(byId.get(7L)).isNull();
         assertThat(byName.get("configuration")).isNull();
     }

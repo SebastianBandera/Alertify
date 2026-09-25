@@ -93,7 +93,7 @@ public final class TcpConnectionAlertTemplate implements AlertEvaluator {
 
         long dnsResolutionMs = elapsedMillis(dnsStartedNanos);
         List<String> resolvedAddresses = Arrays.stream(addresses)
-            .map(address -> address.getHostAddress())
+            .map(InetAddress::getHostAddress)
             .distinct()
             .toList();
         if (addresses.length == 0) {

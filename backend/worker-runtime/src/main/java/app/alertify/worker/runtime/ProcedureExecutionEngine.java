@@ -13,6 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import app.alertify.alerts.template.annotation.AlertParameterSource;
 import app.alertify.procedures.ProcedureEvaluator;
 import app.alertify.procedures.ProcedureExecutionContext;
+import app.alertify.worker.grpc.AlertParameter;
 import app.alertify.worker.grpc.AlertParameterValueSource;
 import app.alertify.worker.grpc.ExecuteProcedureRequest;
 import app.alertify.worker.grpc.ProcedureExecutionResult;
@@ -65,7 +66,7 @@ class ProcedureExecutionEngine implements AutoCloseable {
         try (WorkerExecutionTracker.ProcedurePermit permit = tracker.startProcedure(request, Instant.now());
                 BinaryExecutionGuard.Lease ignored = binaryExecutionGuard.acquire(request)) {
             Map<String, AlertParameterSource> sources = request.getParametersList().stream()
-                    .collect(Collectors.toUnmodifiableMap(parameter -> parameter.getName(),
+                    .collect(Collectors.toUnmodifiableMap(AlertParameter::getName,
                             parameter -> source(parameter.getSource())));
             ProcedureExecutionContext context = new ProcedureExecutionContext(permit.workStartedAt(), sources);
             CompiledProcedureTemplate template = compiler.getProcedure(request.getTemplateClassName(), request.getSourceChecksum());

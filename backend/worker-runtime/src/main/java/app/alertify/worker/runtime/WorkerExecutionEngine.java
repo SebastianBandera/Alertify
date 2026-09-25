@@ -20,6 +20,7 @@ import app.alertify.alerts.AlertResult;
 import app.alertify.alerts.execution.AlertExecutionStatus;
 import app.alertify.alerts.template.annotation.AlertParameterSource;
 import app.alertify.worker.grpc.AlertExecutionResult;
+import app.alertify.worker.grpc.AlertParameter;
 import app.alertify.worker.grpc.AlertParameterValueSource;
 import app.alertify.worker.grpc.ExecuteAlertRequest;
 import app.alertify.worker.grpc.ExecutionError;
@@ -79,7 +80,7 @@ class WorkerExecutionEngine implements AutoCloseable {
             binaryLease = binaryExecutionGuard.acquire(request);
             Map<String, AlertParameterSource> parameterSources = request.getParametersList().stream()
                     .collect(Collectors.toUnmodifiableMap(
-                            parameter -> parameter.getName(),
+                            AlertParameter::getName,
                             parameter -> source(parameter.getSource())
                     ));
             context = new AlertExecutionContext(request.getState(), parameterSources);
