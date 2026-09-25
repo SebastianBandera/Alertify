@@ -250,6 +250,7 @@ export type TranslationKey =
   | 'dashboard.ribbon.ungroupGreens'
   | 'dashboard.ribbon.minified'
   | 'dashboard.ribbon.flatGreens'
+  | 'dashboard.ribbon.hideIgnored'
   | 'dashboard.ribbon.noTags'
   | 'dashboard.filters.empty'
   | 'dashboard.card.running'

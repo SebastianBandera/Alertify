@@ -158,7 +158,9 @@ export class DashboardComponent {
   });
   /* Ignored and silenced alerts leave the regular flow and always close the board as their own deck. */
   private readonly activeCards = computed(() => this.visibleCards().filter((card) => !this.mute.isMuted(card.alert.id)));
-  protected readonly mutedCards = computed(() => this.visibleCards().filter((card) => this.mute.isMuted(card.alert.id)));
+  /* Silenced alerts stay in the muted deck; ignored ones can be left out of the board altogether. */
+  protected readonly mutedCards = computed(() => this.visibleCards().filter((card) =>
+    this.mute.isMuted(card.alert.id) && !(this.settings().hideIgnored && this.mute.isIgnored(card.alert.id))));
   /* Greens are dealt as a deck unless ungrouped: worse states first, the deck row, then never-executed. */
   protected readonly deckCards = computed(() =>
     this.settings().ungroupGreens ? [] : this.activeCards().filter((card) => this.cardState(card) === 'success'));

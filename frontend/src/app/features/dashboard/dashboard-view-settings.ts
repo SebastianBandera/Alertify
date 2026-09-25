@@ -15,6 +15,7 @@ export interface DashboardViewSettings {
   readonly ungroupGreens: boolean;
   readonly minified: boolean;
   readonly flatGreens: boolean;
+  readonly hideIgnored: boolean;
 }
 
 export const DEFAULT_VIEW_SETTINGS: DashboardViewSettings = {
@@ -23,6 +24,7 @@ export const DEFAULT_VIEW_SETTINGS: DashboardViewSettings = {
   ungroupGreens: false,
   minified: false,
   flatGreens: false,
+  hideIgnored: false,
 };
 
 const STORAGE_KEY = 'alertify.dashboard.view';
@@ -58,6 +60,7 @@ export function readStoredViewSettings(): DashboardViewSettings {
       ungroupGreens: booleanOr(stored['ungroupGreens'], DEFAULT_VIEW_SETTINGS.ungroupGreens),
       minified: booleanOr(stored['minified'], DEFAULT_VIEW_SETTINGS.minified),
       flatGreens: booleanOr(stored['flatGreens'], DEFAULT_VIEW_SETTINGS.flatGreens),
+      hideIgnored: booleanOr(stored['hideIgnored'], DEFAULT_VIEW_SETTINGS.hideIgnored),
     };
   } catch {
     return DEFAULT_VIEW_SETTINGS;

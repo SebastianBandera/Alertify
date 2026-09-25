@@ -55,6 +55,7 @@ export const ES_UY_TRANSLATIONS = {
   'dashboard.ribbon.ungroupGreens': 'Desagrupar verdes',
   'dashboard.ribbon.minified': 'Minificado',
   'dashboard.ribbon.flatGreens': 'Verdes sin gradiente',
+  'dashboard.ribbon.hideIgnored': 'Ocultar ignoradas',
   'dashboard.ribbon.noTags': 'Sin tags definidos',
   'dashboard.filters.empty': 'Ninguna alerta coincide con los filtros de la cinta.',
   'dashboard.card.running': 'En ejecución',

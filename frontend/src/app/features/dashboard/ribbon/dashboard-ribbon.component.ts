@@ -7,7 +7,7 @@ import { DragScrollDirective } from '../../../shared/drag-scroll/drag-scroll.dir
 import { CARD_STATE_ORDER, CardState, DashboardViewSettings } from '../dashboard-view-settings';
 
 type RibbonMenu = 'states' | 'tags' | 'advanced';
-type AdvancedOption = 'ungroupGreens' | 'minified' | 'flatGreens';
+type AdvancedOption = 'ungroupGreens' | 'minified' | 'flatGreens' | 'hideIgnored';
 
 const STATE_LABEL_KEYS: Readonly<Record<CardState, TranslationKey>> = {
   error: 'dashboard.status.ERROR',
@@ -20,6 +20,7 @@ const ADVANCED_OPTIONS: readonly { readonly key: AdvancedOption; readonly labelK
   { key: 'ungroupGreens', labelKey: 'dashboard.ribbon.ungroupGreens' },
   { key: 'minified', labelKey: 'dashboard.ribbon.minified' },
   { key: 'flatGreens', labelKey: 'dashboard.ribbon.flatGreens' },
+  { key: 'hideIgnored', labelKey: 'dashboard.ribbon.hideIgnored' },
 ];
 
 /**

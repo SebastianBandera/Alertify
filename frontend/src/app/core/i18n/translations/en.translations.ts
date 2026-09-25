@@ -55,6 +55,7 @@ export const EN_TRANSLATIONS = {
   'dashboard.ribbon.ungroupGreens': 'Ungroup greens',
   'dashboard.ribbon.minified': 'Minified',
   'dashboard.ribbon.flatGreens': 'Greens without gradient',
+  'dashboard.ribbon.hideIgnored': 'Hide ignored',
   'dashboard.ribbon.noTags': 'No tags defined',
   'dashboard.filters.empty': 'No alert matches the ribbon filters.',
   'dashboard.card.running': 'Running',
