@@ -129,7 +129,27 @@
             <th>{{ localization.translate('alerts.column.tags') }}</th>
             <th>{{ localization.translate('alerts.column.schedule') }}</th>
             <th>{{ localization.translate('alerts.column.status') }}</th>
-            <th>{{ localization.translate('alerts.column.updatedAt') }}</th>
+            <th
+              class="sortable-column"
+              scope="col"
+              [attr.aria-sort]="updatedAtSort() === null ? 'none' : updatedAtSort() === 'desc' ? 'descending' : 'ascending'"
+            >
+              <button
+                class="sort-header"
+                type="button"
+                [title]="localization.translate(updatedAtSort() === null ? 'table.sort.updatedAtNewest' : updatedAtSort() === 'desc' ? 'table.sort.updatedAtOldest' : 'table.sort.updatedAtClear')"
+                [attr.aria-label]="localization.translate(updatedAtSort() === null ? 'table.sort.updatedAtNewest' : updatedAtSort() === 'desc' ? 'table.sort.updatedAtOldest' : 'table.sort.updatedAtClear')"
+                (click)="toggleUpdatedAtSort()"
+              >
+                {{ localization.translate('alerts.column.updatedAt') }}
+                <span
+                  class="sort-indicator"
+                  [class.sort-indicator--desc]="updatedAtSort() === 'desc'"
+                  [class.sort-indicator--asc]="updatedAtSort() === 'asc'"
+                  aria-hidden="true"
+                ></span>
+              </button>
+            </th>
             <th>{{ localization.translate('alerts.column.actions') }}</th>
           </tr></thead>
           <tbody>
