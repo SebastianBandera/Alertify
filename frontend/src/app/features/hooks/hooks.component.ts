@@ -50,6 +50,17 @@ interface TokenSecretForm {
 
 const EMPTY_OPTIONS: HookOptions = { targets: [], secrets: [] };
 const ALL_OUTCOMES: readonly HookOutcome[] = ['SUCCESS', 'WARN', 'ERROR'];
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100, 250, 500, 1000] as const;
+const PAGE_SIZE_STORAGE_KEY = 'alertify.hooks.page-size';
+
+function readStoredPageSize(): number {
+  try {
+    const storedValue = Number(localStorage.getItem(PAGE_SIZE_STORAGE_KEY));
+    return PAGE_SIZE_OPTIONS.some((pageSize) => pageSize === storedValue) ? storedValue : 10;
+  } catch {
+    return 10;
+  }
+}
 
 function hookTab(value: string | null): HookTab {
   return value === 'history' ? 'history' : 'hooks';
@@ -64,6 +75,7 @@ function hookTab(value: string | null): HookTab {
 })
 export class HooksComponent implements OnInit, OnDestroy {
   protected readonly localization = inject(LocalizationService);
+  protected readonly pageSizeOptions = PAGE_SIZE_OPTIONS;
   private readonly api = inject(HookApiService);
   private readonly secretApi = inject(SecretApiService);
   private readonly elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
@@ -83,12 +95,14 @@ export class HooksComponent implements OnInit, OnDestroy {
   protected readonly notice = signal<string | null>(null);
   protected readonly importErrors = signal<readonly HookImportError[]>([]);
   protected readonly search = signal('');
+  protected readonly pageSize = signal(readStoredPageSize());
   protected readonly pageIndex = signal(0);
   protected readonly totalPages = signal(0);
   protected readonly totalElements = signal(0);
   protected readonly historyHookId = signal<number | null>(null);
   protected readonly historyPageIndex = signal(0);
   protected readonly historyTotalPages = signal(0);
+  protected readonly historyTotalElements = signal(0);
   protected readonly editorOpen = signal(false);
   protected readonly editing = signal<Hook | null>(null);
   protected readonly form = signal<HookForm>(this.emptyForm());
@@ -179,6 +193,23 @@ export class HooksComponent implements OnInit, OnDestroy {
     this.historyHookId.set(id);
     this.historyPageIndex.set(0);
     await this.loadHistory();
+  }
+
+  protected updatePageSize(value: string | number): void {
+    const pageSize = Number(value);
+    if (!PAGE_SIZE_OPTIONS.some((option) => option === pageSize)) return;
+
+    this.pageSize.set(pageSize);
+    this.pageIndex.set(0);
+    this.historyPageIndex.set(0);
+    try {
+      localStorage.setItem(PAGE_SIZE_STORAGE_KEY, String(pageSize));
+    } catch {
+      // The selection still applies to this page when browser storage is unavailable.
+    }
+
+    if (this.activeTab() === 'hooks') void this.loadHooks();
+    if (this.activeTab() === 'history') void this.loadHistory();
   }
 
   protected openCreate(): void {
@@ -489,8 +520,9 @@ export class HooksComponent implements OnInit, OnDestroy {
   }
 
   private async loadHooks(): Promise<void> {
-    const result = await this.api.list(this.search(), this.pageIndex());
+    const result = await this.api.list(this.search(), this.pageIndex(), this.pageSize());
     this.hooks.set(result.content);
+    this.pageIndex.set(result.page.number);
     this.totalPages.set(result.page.totalPages);
     this.totalElements.set(result.page.totalElements);
     if (this.pageIndex() >= result.page.totalPages && result.page.totalPages > 0) {
@@ -504,12 +536,15 @@ export class HooksComponent implements OnInit, OnDestroy {
     if (hookId === null) {
       this.invocations.set([]);
       this.historyTotalPages.set(0);
+      this.historyTotalElements.set(0);
       return;
     }
     try {
-      const result = await this.api.history(hookId, this.historyPageIndex());
+      const result = await this.api.history(hookId, this.historyPageIndex(), this.pageSize());
       this.invocations.set(result.content);
+      this.historyPageIndex.set(result.page.number);
       this.historyTotalPages.set(result.page.totalPages);
+      this.historyTotalElements.set(result.page.totalElements);
       this.error.set(null);
     } catch (error) {
       this.error.set(this.errorMessage(error));

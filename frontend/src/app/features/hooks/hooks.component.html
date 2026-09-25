@@ -17,7 +17,7 @@
       {{ dynamic('hooks.tabs.hooks') }} <span>@if (countsLoaded()) { {{ totalElements() }} } @else { <i class="tab-count-spinner" aria-hidden="true"></i> }</span>
     </button>
     <button type="button" [class.active]="activeTab() === 'history'" (click)="changeTab('history')">
-      {{ dynamic('hooks.tabs.history') }}
+      {{ dynamic('hooks.tabs.history') }} <span>@if (countsLoaded()) { {{ historyTotalElements() }} } @else { <i class="tab-count-spinner" aria-hidden="true"></i> }</span>
     </button>
   </nav>
 
@@ -86,14 +86,21 @@
           </tbody>
         </table>
       </div>
-      <div class="pagination">
-        <span>{{ dynamic('hooks.pagination.page') }} {{ totalPages() ? pageIndex() + 1 : 0 }} / {{ totalPages() }}</span>
-        <div>
-          <button type="button" [disabled]="pageIndex() === 0" (click)="goToPage(pageIndex() - 1)">‹</button>
-          <button type="button" [disabled]="pageIndex() + 1 >= totalPages()" (click)="goToPage(pageIndex() + 1)">›</button>
-        </div>
-      </div>
     }
+    <footer class="pagination" [attr.aria-label]="dynamic('hooks.pagination.label')">
+      <span>{{ totalElements() }} {{ dynamic('hooks.records') }}</span>
+      <div class="pagination__controls">
+        <label>
+          <span>{{ dynamic('hooks.pagination.rowsPerPage') }}</span>
+          <select [ngModel]="pageSize()" (ngModelChange)="updatePageSize($event)">
+            @for (option of pageSizeOptions; track option) { <option [value]="option">{{ option }}</option> }
+          </select>
+        </label>
+        <span class="pagination__page">{{ dynamic('hooks.pagination.page') }} {{ totalPages() ? pageIndex() + 1 : 0 }} {{ dynamic('hooks.pagination.of') }} {{ totalPages() }}</span>
+        <button type="button" [disabled]="pageIndex() <= 0" (click)="goToPage(pageIndex() - 1)" [attr.aria-label]="dynamic('hooks.pagination.previous')" [title]="dynamic('hooks.pagination.previous')">‹</button>
+        <button type="button" [disabled]="pageIndex() + 1 >= totalPages()" (click)="goToPage(pageIndex() + 1)" [attr.aria-label]="dynamic('hooks.pagination.next')" [title]="dynamic('hooks.pagination.next')">›</button>
+      </div>
+    </footer>
   } @else {
     <div class="toolbar history-toolbar">
       <label>
@@ -138,14 +145,21 @@
           </article>
         }
       </div>
-      <div class="pagination">
-        <span>{{ dynamic('hooks.pagination.page') }} {{ historyTotalPages() ? historyPageIndex() + 1 : 0 }} / {{ historyTotalPages() }}</span>
-        <div>
-          <button type="button" [disabled]="historyPageIndex() === 0" (click)="goToHistoryPage(historyPageIndex() - 1)">‹</button>
-          <button type="button" [disabled]="historyPageIndex() + 1 >= historyTotalPages()" (click)="goToHistoryPage(historyPageIndex() + 1)">›</button>
-        </div>
-      </div>
     }
+    <footer class="pagination" [attr.aria-label]="dynamic('hooks.pagination.label')">
+      <span>{{ historyTotalElements() }} {{ dynamic('hooks.records') }}</span>
+      <div class="pagination__controls">
+        <label>
+          <span>{{ dynamic('hooks.pagination.rowsPerPage') }}</span>
+          <select [ngModel]="pageSize()" (ngModelChange)="updatePageSize($event)">
+            @for (option of pageSizeOptions; track option) { <option [value]="option">{{ option }}</option> }
+          </select>
+        </label>
+        <span class="pagination__page">{{ dynamic('hooks.pagination.page') }} {{ historyTotalPages() ? historyPageIndex() + 1 : 0 }} {{ dynamic('hooks.pagination.of') }} {{ historyTotalPages() }}</span>
+        <button type="button" [disabled]="historyPageIndex() <= 0" (click)="goToHistoryPage(historyPageIndex() - 1)" [attr.aria-label]="dynamic('hooks.pagination.previous')" [title]="dynamic('hooks.pagination.previous')">‹</button>
+        <button type="button" [disabled]="historyPageIndex() + 1 >= historyTotalPages()" (click)="goToHistoryPage(historyPageIndex() + 1)" [attr.aria-label]="dynamic('hooks.pagination.next')" [title]="dynamic('hooks.pagination.next')">›</button>
+      </div>
+    </footer>
   }
 </section>
 

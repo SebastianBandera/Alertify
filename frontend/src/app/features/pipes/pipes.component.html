@@ -20,7 +20,9 @@
     <button type="button" [class.active]="activeTab() === 'pipes'" (click)="changeTab('pipes')">
       {{ dynamic('pipes.tabs.pipes') }} <span>@if (countsLoaded()) { {{ totalElements() }} } @else { <i class="tab-count-spinner" aria-hidden="true"></i> }</span>
     </button>
-    <button type="button" [class.active]="activeTab() === 'history'" (click)="changeTab('history')">{{ dynamic('pipes.tabs.history') }}</button>
+    <button type="button" [class.active]="activeTab() === 'history'" (click)="changeTab('history')">
+      {{ dynamic('pipes.tabs.history') }} <span>@if (countsLoaded()) { {{ historyTotalElements() }} } @else { <i class="tab-count-spinner" aria-hidden="true"></i> }</span>
+    </button>
   </nav>
 
   @if (error()) { <p class="state state--error" role="alert">{{ error() }}</p> }
@@ -85,15 +87,21 @@
           </tbody>
         </table>
       </div>
-      <footer class="pagination">
-        <span>{{ totalElements() }} {{ dynamic('pipes.records') }}</span>
-        <div>
-          <button type="button" [disabled]="pageIndex() <= 0" (click)="goToPage(pageIndex() - 1)">‹</button>
-          <span>{{ dynamic('pipes.page') }} {{ totalPages() ? pageIndex() + 1 : 0 }} / {{ totalPages() }}</span>
-          <button type="button" [disabled]="pageIndex() + 1 >= totalPages()" (click)="goToPage(pageIndex() + 1)">›</button>
-        </div>
-      </footer>
     }
+    <footer class="pagination" [attr.aria-label]="dynamic('pipes.pagination.label')">
+      <span>{{ totalElements() }} {{ dynamic('pipes.records') }}</span>
+      <div class="pagination__controls">
+        <label>
+          <span>{{ dynamic('pipes.pagination.rowsPerPage') }}</span>
+          <select [ngModel]="pageSize()" (ngModelChange)="updatePageSize($event)">
+            @for (option of pageSizeOptions; track option) { <option [value]="option">{{ option }}</option> }
+          </select>
+        </label>
+        <span class="pagination__page">{{ dynamic('pipes.page') }} {{ totalPages() ? pageIndex() + 1 : 0 }} {{ dynamic('pipes.of') }} {{ totalPages() }}</span>
+        <button type="button" [disabled]="pageIndex() <= 0" (click)="goToPage(pageIndex() - 1)" [attr.aria-label]="dynamic('pipes.pagination.previous')" [title]="dynamic('pipes.pagination.previous')">‹</button>
+        <button type="button" [disabled]="pageIndex() + 1 >= totalPages()" (click)="goToPage(pageIndex() + 1)" [attr.aria-label]="dynamic('pipes.pagination.next')" [title]="dynamic('pipes.pagination.next')">›</button>
+      </div>
+    </footer>
   } @else {
     @if (executionFilter()) {
       <div class="execution-filter"><code>{{ executionFilter() }}</code><button type="button" (click)="clearExecutionFilter()">{{ dynamic('pipes.history.clearExecution') }}</button></div>
@@ -153,17 +161,21 @@
           </article>
         }
       </div>
-      @if (!executionFilter()) {
-        <footer class="pagination">
-          <span></span>
-          <div>
-            <button type="button" [disabled]="historyPageIndex() <= 0" (click)="goToHistoryPage(historyPageIndex() - 1)">‹</button>
-            <span>{{ dynamic('pipes.page') }} {{ historyTotalPages() ? historyPageIndex() + 1 : 0 }} / {{ historyTotalPages() }}</span>
-            <button type="button" [disabled]="historyPageIndex() + 1 >= historyTotalPages()" (click)="goToHistoryPage(historyPageIndex() + 1)">›</button>
-          </div>
-        </footer>
-      }
     }
+    <footer class="pagination" [attr.aria-label]="dynamic('pipes.pagination.label')">
+      <span>{{ historyTotalElements() }} {{ dynamic('pipes.records') }}</span>
+      <div class="pagination__controls">
+        <label>
+          <span>{{ dynamic('pipes.pagination.rowsPerPage') }}</span>
+          <select [ngModel]="pageSize()" (ngModelChange)="updatePageSize($event)">
+            @for (option of pageSizeOptions; track option) { <option [value]="option">{{ option }}</option> }
+          </select>
+        </label>
+        <span class="pagination__page">{{ dynamic('pipes.page') }} {{ historyTotalPages() ? historyPageIndex() + 1 : 0 }} {{ dynamic('pipes.of') }} {{ historyTotalPages() }}</span>
+        <button type="button" [disabled]="historyPageIndex() <= 0" (click)="goToHistoryPage(historyPageIndex() - 1)" [attr.aria-label]="dynamic('pipes.pagination.previous')" [title]="dynamic('pipes.pagination.previous')">‹</button>
+        <button type="button" [disabled]="historyPageIndex() + 1 >= historyTotalPages()" (click)="goToHistoryPage(historyPageIndex() + 1)" [attr.aria-label]="dynamic('pipes.pagination.next')" [title]="dynamic('pipes.pagination.next')">›</button>
+      </div>
+    </footer>
   }
 </section>
 

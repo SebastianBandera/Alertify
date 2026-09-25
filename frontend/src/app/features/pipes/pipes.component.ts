@@ -47,6 +47,17 @@ interface BindingSourceOption {
 
 const EMPTY_OPTIONS: PipeOptions = { resources: [] };
 const ALL_OUTCOMES: readonly PipeOutcome[] = ['SUCCESS', 'WARN', 'ERROR'];
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100, 250, 500, 1000] as const;
+const PAGE_SIZE_STORAGE_KEY = 'alertify.pipes.page-size';
+
+function readStoredPageSize(): number {
+  try {
+    const storedValue = Number(localStorage.getItem(PAGE_SIZE_STORAGE_KEY));
+    return PAGE_SIZE_OPTIONS.some((pageSize) => pageSize === storedValue) ? storedValue : 10;
+  } catch {
+    return 10;
+  }
+}
 
 @Component({
   selector: 'app-pipes',
@@ -57,6 +68,7 @@ const ALL_OUTCOMES: readonly PipeOutcome[] = ['SUCCESS', 'WARN', 'ERROR'];
 })
 export class PipesComponent implements OnInit, OnDestroy {
   protected readonly localization = inject(LocalizationService);
+  protected readonly pageSizeOptions = PAGE_SIZE_OPTIONS;
   private readonly api = inject(PipeApiService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
@@ -78,12 +90,14 @@ export class PipesComponent implements OnInit, OnDestroy {
   protected readonly error = signal<string | null>(null);
   protected readonly notice = signal<string | null>(null);
   protected readonly search = signal('');
+  protected readonly pageSize = signal(readStoredPageSize());
   protected readonly pageIndex = signal(0);
   protected readonly totalPages = signal(0);
   protected readonly totalElements = signal(0);
   protected readonly historyPipeId = signal<number | null>(null);
   protected readonly historyPageIndex = signal(0);
   protected readonly historyTotalPages = signal(0);
+  protected readonly historyTotalElements = signal(0);
   protected readonly editorOpen = signal(false);
   protected readonly editing = signal<Pipe | null>(null);
   protected readonly form = signal<PipeForm>(this.emptyForm());
@@ -156,8 +170,26 @@ export class PipesComponent implements OnInit, OnDestroy {
   protected async clearExecutionFilter(): Promise<void> {
     this.executionFilter.set(null);
     this.selectedExecution.set(null);
+    this.historyPageIndex.set(0);
     await this.updateHistoryQuery();
     await this.loadHistory();
+  }
+
+  protected updatePageSize(value: string | number): void {
+    const pageSize = Number(value);
+    if (!PAGE_SIZE_OPTIONS.some((option) => option === pageSize)) return;
+
+    this.pageSize.set(pageSize);
+    this.pageIndex.set(0);
+    this.historyPageIndex.set(0);
+    try {
+      localStorage.setItem(PAGE_SIZE_STORAGE_KEY, String(pageSize));
+    } catch {
+      // The selection still applies to this page when browser storage is unavailable.
+    }
+
+    if (this.activeTab() === 'pipes') void this.loadPipes();
+    if (this.activeTab() === 'history') void this.loadHistory();
   }
 
   protected openCreate(): void {
@@ -378,6 +410,7 @@ export class PipesComponent implements OnInit, OnDestroy {
       const accepted = await this.api.run(pipe.id);
       this.executionFilter.set(accepted.executionId);
       this.historyPipeId.set(pipe.id);
+      this.historyPageIndex.set(0);
       this.activeTab.set('history');
       await this.updateHistoryQuery();
       await this.loadHistory();
@@ -461,8 +494,9 @@ export class PipesComponent implements OnInit, OnDestroy {
   }
 
   private async loadPipes(): Promise<void> {
-    const page = await this.api.list(this.search(), this.pageIndex(), 20);
+    const page = await this.api.list(this.search(), this.pageIndex(), this.pageSize());
     this.pipes.set(page.content);
+    this.pageIndex.set(page.page.number);
     this.totalPages.set(page.page.totalPages);
     this.totalElements.set(page.page.totalElements);
   }
@@ -474,13 +508,18 @@ export class PipesComponent implements OnInit, OnDestroy {
         const execution = await this.api.execution(executionId);
         this.selectedExecution.set(execution);
         this.executions.set([execution]);
+        this.historyPageIndex.set(0);
+        this.historyTotalPages.set(1);
+        this.historyTotalElements.set(1);
         if (execution.status !== 'RUNNING') this.stopRefresh();
         return;
       }
-      const page = await this.api.history(this.historyPipeId(), this.historyPageIndex(), 20);
+      const page = await this.api.history(this.historyPipeId(), this.historyPageIndex(), this.pageSize());
       this.selectedExecution.set(null);
       this.executions.set(page.content);
+      this.historyPageIndex.set(page.page.number);
       this.historyTotalPages.set(page.page.totalPages);
+      this.historyTotalElements.set(page.page.totalElements);
     } catch (error) {
       this.error.set(this.errorMessage(error));
     }
