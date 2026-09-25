@@ -63,7 +63,18 @@ interface ProcedureForm {
   parameters: Readonly<Record<string, ParameterForm>>;
 }
 
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100, 250, 500, 1000] as const;
+const PAGE_SIZE_STORAGE_KEY = 'alertify.procedures.page-size';
 const EMPTY_BINDINGS: ProcedureBindingOptions = { configurations: [], secrets: [], procedures: [], pipes: [] };
+
+function readStoredPageSize(): number {
+  try {
+    const storedValue = Number(localStorage.getItem(PAGE_SIZE_STORAGE_KEY));
+    return PAGE_SIZE_OPTIONS.some((pageSize) => pageSize === storedValue) ? storedValue : 10;
+  } catch {
+    return 10;
+  }
+}
 
 function procedureTab(value: string | null): ProcedureTab {
   if (value === 'templates' || value === 'wizards' || value === 'history') return value;
@@ -79,6 +90,7 @@ function procedureTab(value: string | null): ProcedureTab {
 })
 export class ProceduresComponent implements OnInit {
   protected readonly localization = inject(LocalizationService);
+  protected readonly pageSizeOptions = PAGE_SIZE_OPTIONS;
   private readonly api = inject(ProcedureApiService);
   private readonly elementRef: ElementRef<HTMLElement> = inject(ElementRef);
   private readonly route = inject(ActivatedRoute);
@@ -100,6 +112,14 @@ export class ProceduresComponent implements OnInit {
   protected readonly search = signal('');
   protected readonly templateFilterId = signal<number | null>(null);
   protected readonly updatedAtSort = signal<SortDirection | null>(null);
+  protected readonly pageSize = signal(readStoredPageSize());
+  protected readonly procedurePage = signal(0);
+  protected readonly procedureTotalPages = signal(0);
+  protected readonly procedureTotalElements = signal(0);
+  protected readonly historyPage = signal(0);
+  protected readonly historyTotalPages = signal(0);
+  protected readonly historyTotalElements = signal(0);
+  protected readonly templatePage = signal(0);
   protected readonly templateListSearch = signal('');
   protected readonly selectedTemplateTagKeys = signal<readonly string[]>([]);
   protected readonly templateTagMatchMode = signal<TagMatchMode>('OR');
@@ -158,6 +178,13 @@ export class ProceduresComponent implements OnInit {
       return matchesTags && matchesText;
     });
   });
+  protected readonly templateTotalPages = computed(() =>
+    Math.ceil(this.visibleTemplates().length / this.pageSize()),
+  );
+  protected readonly pagedTemplates = computed(() => {
+    const start = this.templatePage() * this.pageSize();
+    return this.visibleTemplates().slice(start, start + this.pageSize());
+  });
   protected readonly templateOptions = computed<readonly SearchableSelectOption[]>(() =>
     this.templates().map((template) => ({
       value: template.id,
@@ -209,22 +236,27 @@ export class ProceduresComponent implements OnInit {
 
   protected updateTemplateListSearch(value: string): void {
     this.templateListSearch.set(value);
+    this.templatePage.set(0);
   }
 
   protected addTemplateTagFilter(event: Event): void {
     const select = event.target as HTMLSelectElement;
     const nameKey = select.value;
-    if (nameKey && !this.selectedTemplateTagKeys().includes(nameKey))
+    if (nameKey && !this.selectedTemplateTagKeys().includes(nameKey)) {
       this.selectedTemplateTagKeys.set([...this.selectedTemplateTagKeys(), nameKey]);
+      this.templatePage.set(0);
+    }
     select.value = '';
   }
 
   protected removeTemplateTagFilter(nameKey: string): void {
     this.selectedTemplateTagKeys.set(this.selectedTemplateTagKeys().filter((key) => key !== nameKey));
+    this.templatePage.set(0);
   }
 
   protected updateTemplateTagMatchMode(mode: TagMatchMode): void {
     this.templateTagMatchMode.set(mode);
+    this.templatePage.set(0);
   }
 
   private normalizeSearch(value: string): string {
@@ -307,29 +339,34 @@ export class ProceduresComponent implements OnInit {
   }
 
   protected async applySearch(): Promise<void> {
+    this.procedurePage.set(0);
     await this.loadProcedures();
   }
 
   protected toggleUpdatedAtSort(): void {
     const current = this.updatedAtSort();
     this.updatedAtSort.set(current === null ? 'desc' : current === 'desc' ? 'asc' : null);
+    this.procedurePage.set(0);
     void this.loadProcedures();
   }
 
   protected updateTemplateFilter(templateId: number | null): void {
     this.templateFilterId.set(templateId);
+    this.procedurePage.set(0);
     void this.loadProcedures();
   }
 
   protected showTemplateProcedures(template: ProcedureTemplate): void {
     this.search.set('');
     this.templateFilterId.set(template.id);
+    this.procedurePage.set(0);
     void this.changeTab('procedures');
   }
 
   protected async showProcedureByName(procedureName: string): Promise<void> {
     this.search.set(procedureName);
     this.templateFilterId.set(null);
+    this.procedurePage.set(0);
     this.historyExecutionId.set(null);
     this.activeTab.set('procedures');
     await Promise.all([
@@ -346,6 +383,7 @@ export class ProceduresComponent implements OnInit {
     this.historyProcedureId.set(procedure.id);
     this.historyStatus.set('');
     this.historyExecutionId.set(null);
+    this.historyPage.set(0);
     this.activeTab.set('history');
     await Promise.all([
       this.router.navigate([], {
@@ -661,6 +699,9 @@ export class ProceduresComponent implements OnInit {
         this.api.listTemplates(), this.api.listTags(), this.api.bindingOptions(),
       ]);
       this.templates.set(templates);
+      if (this.templatePage() >= this.templateTotalPages())
+        this.templatePage.set(Math.max(0, this.templateTotalPages() - 1));
+
       this.tags.set(tags);
       this.bindings.set(bindings);
       await Promise.all([this.loadProcedures(), this.loadHistory()]);
@@ -673,13 +714,23 @@ export class ProceduresComponent implements OnInit {
   }
 
   private async loadProcedures(): Promise<void> {
-    const page = await this.api.listProcedures(this.search(), this.templateFilterId(), [], 'OR', 0, 500, this.updatedAtSort());
+    const page = await this.api.listProcedures(
+      this.search(), this.templateFilterId(), [], 'OR', this.procedurePage(), this.pageSize(), this.updatedAtSort(),
+    );
     this.procedures.set(page.content);
+    this.procedurePage.set(page.page.number);
+    this.procedureTotalPages.set(page.page.totalPages);
+    this.procedureTotalElements.set(page.page.totalElements);
   }
 
   protected async loadHistory(): Promise<void> {
-    const page = await this.api.listExecutions(this.historyProcedureId(), this.historyStatus(), 0, 200, this.historyExecutionId());
+    const page = await this.api.listExecutions(
+      this.historyProcedureId(), this.historyStatus(), this.historyPage(), this.pageSize(), this.historyExecutionId(),
+    );
     this.executions.set(page.content);
+    this.historyPage.set(page.page.number);
+    this.historyTotalPages.set(page.page.totalPages);
+    this.historyTotalElements.set(page.page.totalElements);
   }
 
   protected applyHistoryFilters(): void {
@@ -687,6 +738,7 @@ export class ProceduresComponent implements OnInit {
       this.historyExecutionId.set(null);
       void this.router.navigate([], { relativeTo: this.route, queryParams: { executionId: null }, queryParamsHandling: 'merge', replaceUrl: true });
     }
+    this.historyPage.set(0);
     void this.loadHistory();
   }
 
@@ -700,6 +752,44 @@ export class ProceduresComponent implements OnInit {
   protected updateHistoryStatusFilter(status: ProcedureExecutionStatus | ''): void {
     this.historyStatus.set(status);
     this.applyHistoryFilters();
+  }
+
+  protected updatePageSize(value: string | number): void {
+    const pageSize = Number(value);
+    if (!PAGE_SIZE_OPTIONS.some((option) => option === pageSize)) return;
+
+    this.pageSize.set(pageSize);
+    this.procedurePage.set(0);
+    this.templatePage.set(0);
+    this.historyPage.set(0);
+    try {
+      localStorage.setItem(PAGE_SIZE_STORAGE_KEY, String(pageSize));
+    } catch {
+      // The selection still applies to this page when browser storage is unavailable.
+    }
+
+    if (this.activeTab() === 'procedures') void this.loadProcedures();
+    if (this.activeTab() === 'history') void this.loadHistory();
+  }
+
+  protected procedurePageTo(page: number): void {
+    if (page < 0 || page >= this.procedureTotalPages()) return;
+
+    this.procedurePage.set(page);
+    void this.loadProcedures();
+  }
+
+  protected templatePageTo(page: number): void {
+    if (page < 0 || page >= this.templateTotalPages() || page === this.templatePage()) return;
+
+    this.templatePage.set(page);
+  }
+
+  protected historyPageTo(page: number): void {
+    if (page < 0 || page >= this.historyTotalPages()) return;
+
+    this.historyPage.set(page);
+    void this.loadHistory();
   }
 
   private emptyForm(): ProcedureForm {
