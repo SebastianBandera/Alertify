@@ -497,6 +497,12 @@ p {
   font-style: italic;
 }
 
+/* A template formatter's summary reads as prose, unlike the raw JSON it replaces. */
+.alert-card__message--formatted {
+  font-family: inherit;
+  font-size: 12px;
+}
+
 .alert-card__meta {
   display: flex;
   align-items: center;
@@ -904,6 +910,15 @@ p {
   border-color: #fecdca;
   background: #fffbfa;
   color: #b42318;
+}
+
+/* The formatter's summary sits above the raw JSON, which stays for diagnosis. */
+.detail-summary {
+  margin: 0 0 8px;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 .detail-empty {

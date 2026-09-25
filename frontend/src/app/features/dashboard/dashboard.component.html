@@ -56,7 +56,10 @@
         }
       </div>
 
-      <p class="alert-card__message" [class.alert-card__message--empty]="!lastExecutionMessage(card)">
+      <p
+        class="alert-card__message"
+        [class.alert-card__message--empty]="!lastExecutionMessage(card)"
+        [class.alert-card__message--formatted]="card.lastExecution !== null && executionSummary(card, card.lastExecution) !== null">
         {{ lastExecutionMessage(card) || localization.translate('dashboard.card.noMessage') }}
       </p>
 
@@ -362,6 +365,9 @@
               <dd><code>{{ execution.executionId }}</code></dd>
             </dl>
             <h4>{{ localization.translate(execution.status === 'ERROR' ? 'dashboard.detail.error' : 'dashboard.detail.message') }}</h4>
+            @if (executionSummary(card, execution); as summary) {
+              <p class="detail-summary">{{ summary }}</p>
+            }
             @if (fullMessage(execution); as message) {
               <pre class="detail-message" [class.detail-message--error]="execution.status === 'ERROR'">{{ message }}</pre>
             } @else {
@@ -388,6 +394,9 @@
                 <dd><code>{{ issue.executionId }}</code></dd>
               </dl>
               <h4>{{ localization.translate(issue.status === 'ERROR' ? 'dashboard.detail.error' : 'dashboard.detail.message') }}</h4>
+              @if (executionSummary(card, issue); as summary) {
+                <p class="detail-summary">{{ summary }}</p>
+              }
               @if (fullMessage(issue); as message) {
                 <pre class="detail-message" [class.detail-message--error]="issue.status === 'ERROR'">{{ message }}</pre>
               } @else {

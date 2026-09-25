@@ -18,6 +18,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 
+import { AlertMessageService } from '../../core/alert-messages/alert-message.service';
 import { AlertApiService, AlertExecution, AlertExecutionStatus, AlertTag } from '../../core/api/alert-api.service';
 import { ApiRequestError } from '../../core/api/configuration-api.service';
 import { AuthService } from '../../core/auth/auth.service';
@@ -137,6 +138,7 @@ export class DashboardComponent {
   private readonly authService = inject(AuthService);
   private readonly sessionActions = inject(SessionActionsService);
   private readonly alertApi = inject(AlertApiService);
+  private readonly alertMessages = inject(AlertMessageService);
   protected readonly mute = inject(DashboardMuteService);
   protected readonly isAdmin = this.authService.isAdmin;
   protected readonly canRunFromDashboard = this.authService.canRunFromDashboard;
@@ -594,10 +596,12 @@ export class DashboardComponent {
 
   protected lastExecutionMessage(card: DashboardAlertCard): string {
     const execution = card.lastExecution;
-    if (execution === null) return '';
-    if (execution.status === 'ERROR') return execution.errorMessage ?? execution.errorType ?? '';
-    if (execution.statusMessage === null) return '';
-    return JSON.stringify(execution.statusMessage);
+    return execution === null ? '' : this.alertMessages.tileMessage(card.alert.templateKey, execution);
+  }
+
+  /** The template formatter's readable summary of an execution, when it has one. */
+  protected executionSummary(card: DashboardAlertCard, execution: AlertExecution): string | null {
+    return this.alertMessages.summary(card.alert.templateKey, execution);
   }
 
   protected formatDuration(milliseconds: number): string {
