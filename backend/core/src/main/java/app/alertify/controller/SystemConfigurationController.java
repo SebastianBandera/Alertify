@@ -54,4 +54,9 @@ public class SystemConfigurationController {
     public SystemConfigurationResponse regenerate(@PathVariable Long id, @Valid @RequestBody SystemConfigurationRegenerateRequest request) {
         return service.regenerate(id, request);
     }
+
+    @PostMapping("/{id}/finalize-key-rotation")
+    public SystemConfigurationResponse finalizeKeyRotation(@PathVariable Long id, @Valid @RequestBody SystemConfigurationRegenerateRequest request) {
+        return service.finalizeKeyRotation(id, request);
+    }
 }

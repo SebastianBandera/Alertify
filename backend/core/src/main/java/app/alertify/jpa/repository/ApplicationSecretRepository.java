@@ -1,6 +1,7 @@
 package app.alertify.jpa.repository;
 
 import java.util.Optional;
+import java.util.List;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
@@ -29,4 +30,7 @@ public interface ApplicationSecretRepository extends JpaRepository<ApplicationSe
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select secret from ApplicationSecret secret where secret.id = :id")
     Optional<ApplicationSecret> findByIdForUpdate(@Param("id") Long id);
+
+    @Query("select secret.id from ApplicationSecret secret order by secret.id")
+    List<Long> findAllIds();
 }

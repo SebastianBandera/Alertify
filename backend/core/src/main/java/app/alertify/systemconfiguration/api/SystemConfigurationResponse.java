@@ -17,6 +17,7 @@ public record SystemConfigurationResponse(
     String name,
     JsonNode value,
     boolean valueHidden,
+    boolean keyRotationPending,
     Instant createdAt,
     Instant updatedAt
 ) {

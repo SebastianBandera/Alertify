@@ -25,6 +25,7 @@ import app.alertify.api.error.InvalidConfigurationValueException;
 import app.alertify.jpa.entity.SystemConfiguration;
 import app.alertify.jpa.repository.SystemConfigurationRepository;
 import app.alertify.logging.ApplicationEventLogger;
+import app.alertify.services.secret.SymmetricKeyService;
 import app.alertify.systemconfiguration.api.SystemConfigurationRegenerateRequest;
 import app.alertify.systemconfiguration.api.SystemConfigurationUpdateRequest;
 
@@ -36,12 +37,13 @@ class SystemConfigurationServiceTest {
     @Mock private SystemConfigurationRepository repository;
     @Mock private ApplicationEventLogger eventLogger;
     @Mock private ApplicationEventPublisher applicationEventPublisher;
+    @Mock private SymmetricKeyService symmetricKeyService;
 
     private SystemConfigurationService service;
 
     @BeforeEach
     void setUp() {
-        service = new SystemConfigurationService(repository, eventLogger, applicationEventPublisher);
+        service = new SystemConfigurationService(repository, eventLogger, applicationEventPublisher, symmetricKeyService);
     }
 
     @Test
@@ -51,8 +53,8 @@ class SystemConfigurationServiceTest {
 
         service.regenerate(1L, new SystemConfigurationRegenerateRequest(0L));
 
-        assertThat(configuration.getValue().stringValue()).isNotEqualTo("initial");
-        assertThat(configuration.getValue().stringValue()).hasSize(64);
+        assertThat(configuration.getValue().stringValue()).startsWith("initial->");
+        assertThat(configuration.getValue().stringValue()).hasSize("initial->".length() + 64);
     }
 
     @Test
@@ -107,5 +109,36 @@ class SystemConfigurationServiceTest {
         assertThatThrownBy(() -> service.regenerate(3L, new SystemConfigurationRegenerateRequest(99L)))
                 .isInstanceOf(ConflictException.class)
                 .hasMessageContaining("modified by another request");
+    }
+
+    @Test
+    void updatePreparesAKeyTransitionInsteadOfReplacingTheActiveValue() {
+        SystemConfiguration configuration = new SystemConfiguration("KEY_PART", StringNode.valueOf("old"), true);
+        when(repository.findById(6L)).thenReturn(Optional.of(configuration));
+
+        service.update(6L, new SystemConfigurationUpdateRequest(0L, StringNode.valueOf("new")));
+
+        assertThat(configuration.getValue().stringValue()).isEqualTo("old->new");
+    }
+
+    @Test
+    void updateRejectsASecondKeyTransition() {
+        SystemConfiguration configuration = new SystemConfiguration("KEY_PART", StringNode.valueOf("old->new"), true);
+        when(repository.findById(7L)).thenReturn(Optional.of(configuration));
+
+        assertThatThrownBy(() -> service.update(7L, new SystemConfigurationUpdateRequest(0L, StringNode.valueOf("another"))))
+                .isInstanceOf(ConflictException.class)
+                .hasMessageContaining("pending transition");
+    }
+
+    @Test
+    void finalizesAKeyTransitionOnlyWhenTheTargetKeyIsActive() {
+        SystemConfiguration configuration = new SystemConfiguration("KEY_PART", StringNode.valueOf("old->new"), true);
+        when(repository.findById(8L)).thenReturn(Optional.of(configuration));
+        when(symmetricKeyService.activeKeyMatchesCurrentTarget()).thenReturn(true);
+
+        service.finalizeKeyRotation(8L, new SystemConfigurationRegenerateRequest(0L));
+
+        assertThat(configuration.getValue().stringValue()).isEqualTo("new");
     }
 }

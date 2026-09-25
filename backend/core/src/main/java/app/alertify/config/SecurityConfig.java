@@ -20,6 +20,8 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import app.alertify.logging.ApiRequestLoggingFilter;
 import app.alertify.logging.ApplicationEventLogger;
+import app.alertify.startup.BackendStartupAvailability;
+import app.alertify.startup.BackendStartupAvailabilityFilter;
 
 /**
  * Configures the stateless OAuth2 resource server, Keycloak client-role
@@ -56,7 +58,7 @@ public class SecurityConfig {
     }
 
     @Bean
-    SecurityFilterChain securityFilterChain(HttpSecurity http, JwtAuthenticationConverter jwtAuthenticationConverter, ApplicationEventLogger eventLogger) throws Exception {
+    SecurityFilterChain securityFilterChain(HttpSecurity http, JwtAuthenticationConverter jwtAuthenticationConverter, ApplicationEventLogger eventLogger, BackendStartupAvailability startupAvailability) throws Exception {
         http
                 .cors(Customizer.withDefaults())
                 .csrf(csrf -> csrf.disable())
@@ -81,6 +83,7 @@ public class SecurityConfig {
                 .oauth2ResourceServer(
                         resourceServer -> resourceServer.jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter))
                 )
+                .addFilterBefore(new BackendStartupAvailabilityFilter(startupAvailability), BearerTokenAuthenticationFilter.class)
                 .addFilterAfter(new ApiRequestLoggingFilter(eventLogger), BearerTokenAuthenticationFilter.class);
 
         return http.build();

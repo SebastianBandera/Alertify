@@ -223,6 +223,10 @@ public class ApplicationSecret {
         valueRevision++;
     }
 
+    public void rotateEncryptedValue(byte[] encryptedValue, byte[] encryptionIv, byte[] valueHash, byte[] hashSalt, short encryptionVersion) {
+        setEncryptedValue(encryptedValue, encryptionIv, valueHash, hashSalt, encryptionVersion);
+    }
+
     public void changeWritable(boolean writable) {
         this.writable = writable;
     }

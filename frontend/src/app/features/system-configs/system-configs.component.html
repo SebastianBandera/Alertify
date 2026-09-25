@@ -190,6 +190,16 @@
             <p>{{ localization.translate('systemConfigs.keyPart.warningText') }}</p>
           </div>
 
+          @if (configuration.keyRotationPending) {
+            <div class="warning" role="status">
+              <strong>{{ localization.translate('systemConfigs.keyPart.pendingTitle') }}</strong>
+              <p>{{ localization.translate('systemConfigs.keyPart.pendingText') }}</p>
+              <button class="button button--secondary" type="button" [disabled]="saving()" (click)="finalizeKeyRotation()">
+                {{ localization.translate('systemConfigs.keyPart.finalize') }}
+              </button>
+            </div>
+          }
+
           <div class="settings-section__actions">
             <label class="confirmation">
               <input
@@ -204,12 +214,12 @@
               <button
                 class="button button--primary generate-button"
                 type="button"
-                [disabled]="saving() || !keyPartForm().confirmed"
+                [disabled]="saving() || configuration.keyRotationPending || !keyPartForm().confirmed"
                 (click)="regenerateKeyPart()"
               >
                 {{ localization.translate('systemConfigs.keyPart.generate') }}
               </button>
-              <button class="button button--secondary" type="button" (click)="toggleKeyPartManualEntry()">
+              <button class="button button--secondary" type="button" [disabled]="configuration.keyRotationPending" (click)="toggleKeyPartManualEntry()">
                 {{ localization.translate(keyPartForm().manualEntryOpen ? 'systemConfigs.keyPart.manualEntryHide' : 'systemConfigs.keyPart.manualEntryShow') }}
               </button>
             </div>

@@ -3,7 +3,6 @@ package app.alertify.services.secret;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
 
-import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
@@ -21,15 +20,15 @@ class DatabaseKeyPartSourceTest {
     @Mock private SystemConfigurationRepository systemConfigurationRepository;
 
     @Test
-    void loadsAnyNonEmptyKeyPartAsUtf8Bytes() {
+    void loadsAnyNonEmptyKeyPart() {
         String keyPart = "A key part with symbols: ñ-🔐-!@#$%^&*()";
         SystemConfiguration configuration = new SystemConfiguration(
             "KEY_PART", StringNode.valueOf(keyPart), true
         );
         when(systemConfigurationRepository.findByNameIgnoreCase("KEY_PART")).thenReturn(Optional.of(configuration));
 
-        byte[] value = new DatabaseKeyPartSource(systemConfigurationRepository).read();
+        String value = new DatabaseKeyPartSource(systemConfigurationRepository).read();
 
-        assertThat(value).containsExactly(keyPart.getBytes(StandardCharsets.UTF_8));
+        assertThat(value).isEqualTo(keyPart);
     }
 }

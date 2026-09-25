@@ -13,7 +13,14 @@ final class SystemConfigurationMapper {
                 configuration.getId(), configuration.getVersion(), configuration.getName(),
                 configuration.isValueHidden() ? null : configuration.getValue().deepCopy(),
                 configuration.isValueHidden(),
+                isKeyRotationPending(configuration),
                 configuration.getCreatedAt(), configuration.getUpdatedAt()
         );
+    }
+
+    private static boolean isKeyRotationPending(SystemConfiguration configuration) {
+        return "KEY_PART".equals(configuration.getName())
+                && configuration.getValue().isString()
+                && configuration.getValue().stringValue().contains("->");
     }
 }

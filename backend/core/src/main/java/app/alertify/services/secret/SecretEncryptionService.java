@@ -8,6 +8,7 @@ import java.security.SecureRandom;
 import java.util.Arrays;
 
 import javax.crypto.Cipher;
+import javax.crypto.SecretKey;
 import javax.crypto.spec.GCMParameterSpec;
 
 import org.springframework.stereotype.Service;
@@ -52,14 +53,9 @@ public class SecretEncryptionService {
 
         byte[] iv = randomBytes(IV_LENGTH);
         byte[] hashSalt = randomBytes(HASH_SALT_LENGTH);
+        SecretKey key = symmetricKeyService.getKey();
         try {
-            Cipher cipher = Cipher.getInstance(CIPHER_TRANSFORMATION);
-            cipher.init(
-                    Cipher.ENCRYPT_MODE,
-                    symmetricKeyService.getKey(),
-                    new GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv)
-            );
-            byte[] encryptedValue = cipher.doFinal(valueBytes);
+            byte[] encryptedValue = encrypt(valueBytes, iv, key);
             byte[] valueHash = saltedHash(hashSalt, valueBytes);
             return new EncryptedSecretValue(
                     encryptedValue, iv, valueHash, hashSalt, CURRENT_ENCRYPTION_VERSION
@@ -68,6 +64,7 @@ public class SecretEncryptionService {
             throw new IllegalStateException("Secret value could not be encrypted", exception);
         } finally {
             Arrays.fill(valueBytes, (byte) 0);
+            ObfuscatedKeyMaterial.destroyRevealedKey(key);
         }
     }
 
@@ -89,7 +86,7 @@ public class SecretEncryptionService {
 
     public byte[] decryptBinary(app.alertify.jpa.entity.SecretBinaryValue value) {
         return decryptAndVerify(value.getEncryptedValue(), value.getEncryptionIv(), value.getValueHash(),
-                value.getHashSalt(), value.getEncryptionVersion(), "binary secret");
+                value.getHashSalt(), value.getEncryptionVersion(), "binary secret", symmetricKeyService.getKey());
     }
 
     public boolean isRecoverable(ApplicationSecret secret) {
@@ -107,12 +104,22 @@ public class SecretEncryptionService {
 
     private byte[] decryptAndVerify(ApplicationSecret secret) {
         return decryptAndVerify(secret.getEncryptedValue(), secret.getEncryptionIv(), secret.getValueHash(),
-                secret.getHashSalt(), secret.getEncryptionVersion(), secret.getName());
+                secret.getHashSalt(), secret.getEncryptionVersion(), secret.getName(), symmetricKeyService.getKey());
     }
 
-    private byte[] decryptAndVerify(byte[] encrypted, byte[] iv, byte[] hash, byte[] salt, short version, String name) {
-        if (version != CURRENT_ENCRYPTION_VERSION)
+    byte[] decryptAndVerify(byte[] encrypted, byte[] iv, byte[] hash, byte[] salt, short version, String name, ObfuscatedKeyMaterial keyMaterial) {
+        return decryptAndVerify(encrypted, iv, hash, salt, version, name, keyMaterial.revealKey());
+    }
+
+    EncryptedSecretValue encryptForKeyRotation(byte[] value, ObfuscatedKeyMaterial keyMaterial) {
+        return encryptBytes(value.clone(), keyMaterial.revealKey());
+    }
+
+    private byte[] decryptAndVerify(byte[] encrypted, byte[] iv, byte[] hash, byte[] salt, short version, String name, SecretKey key) {
+        if (version != CURRENT_ENCRYPTION_VERSION) {
+            ObfuscatedKeyMaterial.destroyRevealedKey(key);
             throw new SecretNotRecoverableException(name);
+        }
 
         byte[] decryptedValue = null;
         byte[] calculatedHash = null;
@@ -120,7 +127,7 @@ public class SecretEncryptionService {
             Cipher cipher = Cipher.getInstance(CIPHER_TRANSFORMATION);
             cipher.init(
                     Cipher.DECRYPT_MODE,
-                    symmetricKeyService.getKey(),
+                    key,
                     new GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv)
             );
             decryptedValue = cipher.doFinal(encrypted);
@@ -141,22 +148,33 @@ public class SecretEncryptionService {
         } finally {
             if (calculatedHash != null)
                 Arrays.fill(calculatedHash, (byte) 0);
+
+            ObfuscatedKeyMaterial.destroyRevealedKey(key);
         }
     }
 
     private EncryptedSecretValue encryptBytes(byte[] valueBytes) {
+        return encryptBytes(valueBytes, symmetricKeyService.getKey());
+    }
+
+    private EncryptedSecretValue encryptBytes(byte[] valueBytes, SecretKey key) {
         byte[] iv = randomBytes(IV_LENGTH);
         byte[] hashSalt = randomBytes(HASH_SALT_LENGTH);
         try {
-            Cipher cipher = Cipher.getInstance(CIPHER_TRANSFORMATION);
-            cipher.init(Cipher.ENCRYPT_MODE, symmetricKeyService.getKey(), new GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv));
-            return new EncryptedSecretValue(cipher.doFinal(valueBytes), iv, saltedHash(hashSalt, valueBytes), hashSalt,
+            return new EncryptedSecretValue(encrypt(valueBytes, iv, key), iv, saltedHash(hashSalt, valueBytes), hashSalt,
                     CURRENT_ENCRYPTION_VERSION);
         } catch (GeneralSecurityException exception) {
             throw new IllegalStateException("Secret value could not be encrypted", exception);
         } finally {
             Arrays.fill(valueBytes, (byte) 0);
+            ObfuscatedKeyMaterial.destroyRevealedKey(key);
         }
+    }
+
+    private static byte[] encrypt(byte[] value, byte[] iv, SecretKey key) throws GeneralSecurityException {
+        Cipher cipher = Cipher.getInstance(CIPHER_TRANSFORMATION);
+        cipher.init(Cipher.ENCRYPT_MODE, key, new GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv));
+        return cipher.doFinal(value);
     }
 
     private byte[] saltedHash(byte[] salt, byte[] value) {

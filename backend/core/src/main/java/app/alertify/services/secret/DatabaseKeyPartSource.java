@@ -1,7 +1,5 @@
 package app.alertify.services.secret;
 
-import java.nio.charset.StandardCharsets;
-
 import org.springframework.stereotype.Component;
 
 import app.alertify.jpa.entity.SystemConfiguration;
@@ -23,7 +21,7 @@ class DatabaseKeyPartSource {
         this.systemConfigurationRepository = systemConfigurationRepository;
     }
 
-    byte[] read() {
+    String read() {
         final var configuration = readConfiguration();
 
         if (!configuration.getValue().isString()) {
@@ -38,7 +36,7 @@ class DatabaseKeyPartSource {
                     "Required configuration '" + KEY_PART_NAME + "' must contain at least one character"
             );
         }
-        return keyPart.getBytes(StandardCharsets.UTF_8);
+        return keyPart;
     }
 
     private SystemConfiguration readConfiguration() {

@@ -10,6 +10,7 @@ export interface SystemConfiguration {
   readonly name: string;
   readonly value: unknown | null;
   readonly valueHidden: boolean;
+  readonly keyRotationPending: boolean;
   readonly createdAt: string;
   readonly updatedAt: string;
 }
@@ -61,6 +62,13 @@ export class SystemConfigurationApiService {
    */
   async regenerateSystemConfiguration(id: number, version: number): Promise<SystemConfiguration> {
     return this.request(`/api/system-configurations/${id}/regenerate`, {
+      method: 'POST',
+      body: JSON.stringify({ version }),
+    });
+  }
+
+  async finalizeKeyRotation(id: number, version: number): Promise<SystemConfiguration> {
+    return this.request(`/api/system-configurations/${id}/finalize-key-rotation`, {
       method: 'POST',
       body: JSON.stringify({ version }),
     });

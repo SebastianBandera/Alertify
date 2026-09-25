@@ -16,15 +16,23 @@ public class StartupComponent implements ApplicationRunner {
     private static final Logger log = LoggerFactory.getLogger(StartupComponent.class);
 
     private final StartupProcess startupProcess;
+    private final BackendStartupAvailability startupAvailability;
 
-    public StartupComponent(StartupProcess startupProcess) {
+    public StartupComponent(StartupProcess startupProcess, BackendStartupAvailability startupAvailability) {
         this.startupProcess = startupProcess;
+        this.startupAvailability = startupAvailability;
     }
 
     @Override
     public void run(ApplicationArguments args) {
         log.info("Running startup process");
-        startupProcess.run();
-        log.info("Startup process completed");
+        try {
+            startupProcess.run();
+            startupAvailability.ready();
+            log.info("Startup process completed");
+        } catch (RuntimeException | Error exception) {
+            startupAvailability.failed();
+            throw exception;
+        }
     }
 }

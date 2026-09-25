@@ -235,6 +235,24 @@ export class SystemConfigsComponent implements OnInit {
     }
   }
 
+  protected async finalizeKeyRotation(): Promise<void> {
+    const configuration = this.keyPartConfiguration();
+    if (!configuration?.keyRotationPending || this.saving()) return;
+
+    this.saving.set(true);
+    this.keyPartError.set(null);
+    this.notice.set(null);
+    try {
+      await this.api.finalizeKeyRotation(configuration.id, configuration.version);
+      this.notice.set(this.localization.translate('systemConfigs.keyPart.finalized'));
+      await this.loadConfigurations();
+    } catch (error) {
+      this.keyPartError.set(this.errorMessage(error));
+    } finally {
+      this.saving.set(false);
+    }
+  }
+
   // -- CRON_QUIET_HOURS section --
 
   protected patchQuietHoursForm(patch: Partial<QuietHoursForm>): void {
