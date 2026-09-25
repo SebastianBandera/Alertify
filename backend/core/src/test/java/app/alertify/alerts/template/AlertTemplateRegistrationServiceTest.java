@@ -197,15 +197,22 @@ class AlertTemplateRegistrationServiceTest {
         assertFalse(simulatedPlaywrightParameters.get(1).isBindingAllowed());
 
         List<AlertTemplateParameterDefinition> playwrightPageParameters = parametersOf(parameterCaptor, playwrightPageTemplate);
-        assertEquals(4, playwrightPageParameters.size());
+        assertEquals(7, playwrightPageParameters.size());
         assertEquals("url", playwrightPageParameters.get(0).getParameterKey());
-        assertEquals("loadTimeoutSeconds", playwrightPageParameters.get(1).getParameterKey());
-        assertEquals("10", playwrightPageParameters.get(1).getDefaultValue());
-        assertEquals("elementTimeoutSeconds", playwrightPageParameters.get(2).getParameterKey());
-        assertEquals("5", playwrightPageParameters.get(2).getDefaultValue());
-        assertEquals("steps", playwrightPageParameters.get(3).getParameterKey());
-        assertTrue(playwrightPageParameters.get(3).isMultiline());
-        assertFalse(playwrightPageParameters.get(3).isRequired());
+        assertEquals("chromiumEnabled", playwrightPageParameters.get(1).getParameterKey());
+        assertEquals("true", playwrightPageParameters.get(1).getDefaultValue());
+        assertFalse(playwrightPageParameters.get(1).isBindingAllowed());
+        assertEquals("firefoxEnabled", playwrightPageParameters.get(2).getParameterKey());
+        assertEquals("false", playwrightPageParameters.get(2).getDefaultValue());
+        assertEquals("webkitEnabled", playwrightPageParameters.get(3).getParameterKey());
+        assertEquals("false", playwrightPageParameters.get(3).getDefaultValue());
+        assertEquals("loadTimeoutSeconds", playwrightPageParameters.get(4).getParameterKey());
+        assertEquals("10", playwrightPageParameters.get(4).getDefaultValue());
+        assertEquals("elementTimeoutSeconds", playwrightPageParameters.get(5).getParameterKey());
+        assertEquals("5", playwrightPageParameters.get(5).getDefaultValue());
+        assertEquals("steps", playwrightPageParameters.get(6).getParameterKey());
+        assertTrue(playwrightPageParameters.get(6).isMultiline());
+        assertFalse(playwrightPageParameters.get(6).isRequired());
 
         List<AlertTemplateParameterDefinition> tcpParameters = parametersOf(parameterCaptor, tcpTemplate);
         assertEquals(3, tcpParameters.size());

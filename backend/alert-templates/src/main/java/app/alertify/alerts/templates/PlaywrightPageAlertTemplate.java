@@ -32,7 +32,8 @@ import app.alertify.alerts.template.annotation.AlertTemplateTag;
 import app.alertify.worker.contract.WorkerCapability;
 
 /**
- * Loads a page in Chromium and runs a small, fail-fast browser monitoring DSL.
+ * Loads a page in the selected Playwright browsers and runs a small, fail-fast
+ * browser monitoring DSL sequentially in Chromium, Firefox and WebKit order.
  * Command arguments are deliberately excluded from the persisted status message
  * because the multiline script may be backed by a configuration or secret.
  */
@@ -58,11 +59,41 @@ public final class PlaywrightPageAlertTemplate implements AlertEvaluator {
     private final String url;
 
     @AlertParameter(
+        labelKey = "alerts.template.playwrightPage.chromiumEnabled",
+        descriptionKey = "alerts.template.playwrightPage.chromiumEnabledDescription",
+        options = { "false", "true" },
+        bindingAllowed = false,
+        defaultValue = "true",
+        order = 2
+    )
+    private final boolean chromiumEnabled;
+
+    @AlertParameter(
+        labelKey = "alerts.template.playwrightPage.firefoxEnabled",
+        descriptionKey = "alerts.template.playwrightPage.firefoxEnabledDescription",
+        options = { "false", "true" },
+        bindingAllowed = false,
+        defaultValue = "false",
+        order = 3
+    )
+    private final boolean firefoxEnabled;
+
+    @AlertParameter(
+        labelKey = "alerts.template.playwrightPage.webkitEnabled",
+        descriptionKey = "alerts.template.playwrightPage.webkitEnabledDescription",
+        options = { "false", "true" },
+        bindingAllowed = false,
+        defaultValue = "false",
+        order = 4
+    )
+    private final boolean webkitEnabled;
+
+    @AlertParameter(
         labelKey = "alerts.template.playwrightPage.loadTimeoutSeconds",
         descriptionKey = "alerts.template.playwrightPage.loadTimeoutSecondsDescription",
         options = { "5", "10", "15", "30", "60" },
         defaultValue = "10",
-        order = 2
+        order = 5
     )
     private final int loadTimeoutSeconds;
 
@@ -71,7 +102,7 @@ public final class PlaywrightPageAlertTemplate implements AlertEvaluator {
         descriptionKey = "alerts.template.playwrightPage.elementTimeoutSecondsDescription",
         options = { "1", "3", "5", "10", "30" },
         defaultValue = "5",
-        order = 3
+        order = 6
     )
     private final int elementTimeoutSeconds;
 
@@ -80,18 +111,21 @@ public final class PlaywrightPageAlertTemplate implements AlertEvaluator {
         descriptionKey = "alerts.template.playwrightPage.stepsDescription",
         multiline = true,
         required = false,
-        order = 4
+        order = 7
     )
     private final String steps;
 
     private final BrowserSessionFactory sessionFactory;
 
-    public PlaywrightPageAlertTemplate(String url, int loadTimeoutSeconds, int elementTimeoutSeconds, String steps) {
-        this(url, loadTimeoutSeconds, elementTimeoutSeconds, steps, PlaywrightBrowserSession::open);
+    public PlaywrightPageAlertTemplate(String url, boolean chromiumEnabled, boolean firefoxEnabled, boolean webkitEnabled, int loadTimeoutSeconds, int elementTimeoutSeconds, String steps) {
+        this(url, chromiumEnabled, firefoxEnabled, webkitEnabled, loadTimeoutSeconds, elementTimeoutSeconds, steps, PlaywrightBrowserSession::open);
     }
 
-    PlaywrightPageAlertTemplate(String url, int loadTimeoutSeconds, int elementTimeoutSeconds, String steps, BrowserSessionFactory sessionFactory) {
+    PlaywrightPageAlertTemplate(String url, boolean chromiumEnabled, boolean firefoxEnabled, boolean webkitEnabled, int loadTimeoutSeconds, int elementTimeoutSeconds, String steps, BrowserSessionFactory sessionFactory) {
         this.url = url;
+        this.chromiumEnabled = chromiumEnabled;
+        this.firefoxEnabled = firefoxEnabled;
+        this.webkitEnabled = webkitEnabled;
         this.loadTimeoutSeconds = loadTimeoutSeconds;
         this.elementTimeoutSeconds = elementTimeoutSeconds;
         this.steps = steps;
@@ -104,10 +138,33 @@ public final class PlaywrightPageAlertTemplate implements AlertEvaluator {
         long loadTimeoutMillis = timeoutMillis(loadTimeoutSeconds, "loadTimeoutSeconds");
         long elementTimeoutMillis = timeoutMillis(elementTimeoutSeconds, "elementTimeoutSeconds");
         List<Command> commands = parseCommands(steps);
+        List<BrowserEngine> browsers = selectedBrowsers();
         String endpoint = safeUrl(configuredUrl.toString());
-        Map<String, Object> statusMessage = baseStatus(endpoint, loadTimeoutSeconds, elementTimeoutSeconds, commands.size());
+        Map<String, Object> statusMessage = baseStatus(endpoint, loadTimeoutSeconds, elementTimeoutSeconds, commands.size(), browsers.size());
+        List<Map<String, Object>> browserResults = new ArrayList<>();
+        int successfulBrowsers = 0;
 
-        try (BrowserSession session = sessionFactory.open()) {
+        for (BrowserEngine browser : browsers) {
+            Map<String, Object> browserStatus = browserStatus(browser);
+            boolean success = evaluateBrowser(configuredUrl, loadTimeoutMillis, elementTimeoutMillis, commands, browserStatus, browser);
+            browserStatus.put("status", success ? "SUCCESS" : "WARN");
+            if (success)
+                successfulBrowsers++;
+
+            browserResults.add(browserStatus);
+        }
+
+        int warningBrowsers = browsers.size() - successfulBrowsers;
+        statusMessage.put("successfulBrowserCount", successfulBrowsers);
+        statusMessage.put("warningBrowserCount", warningBrowsers);
+        statusMessage.put("browserResults", List.copyOf(browserResults));
+        String status = warningBrowsers == 0 ? "SUCCESS" : "WARN";
+        context.setState("endpoint=" + endpoint + ";status=" + status + ";browsers=" + browsers.size() + ";warnings=" + warningBrowsers);
+        return warningBrowsers == 0 ? AlertResult.success(statusMessage) : AlertResult.warn(statusMessage);
+    }
+
+    private boolean evaluateBrowser(URI configuredUrl, long loadTimeoutMillis, long elementTimeoutMillis, List<Command> commands, Map<String, Object> statusMessage, BrowserEngine browser) throws Exception {
+        try (BrowserSession session = sessionFactory.open(browser)) {
             long startedNanos = System.nanoTime();
             Navigation navigation;
             try {
@@ -115,14 +172,14 @@ public final class PlaywrightPageAlertTemplate implements AlertEvaluator {
             } catch (RuntimeException exception) {
                 statusMessage.put("loadDurationMs", elapsedMillis(startedNanos));
                 statusMessage.put("finalUrl", safeUrl(session.url()));
-                return warn(context, statusMessage, isPlaywrightTimeout(exception) ? "loadTimeout" : "navigationFailure", null, null, endpoint);
+                warn(statusMessage, isPlaywrightTimeout(exception) ? "loadTimeout" : "navigationFailure", null, null);
+                return false;
             }
 
             long loadDurationMillis = elapsedMillis(startedNanos);
             updateNavigationStatus(statusMessage, session, navigation, loadDurationMillis, "load");
-            AlertResult navigationWarning = navigationWarning(context, statusMessage, navigation, loadDurationMillis, loadTimeoutMillis, null, endpoint);
-            if (navigationWarning != null)
-                return navigationWarning;
+            if (navigationWarning(statusMessage, navigation, loadDurationMillis, loadTimeoutMillis, null))
+                return false;
 
             int completed = 0;
             for (Command command : commands) {
@@ -133,18 +190,19 @@ public final class PlaywrightPageAlertTemplate implements AlertEvaluator {
                     } catch (RuntimeException exception) {
                         statusMessage.put("reloadDurationMs", elapsedMillis(startedNanos));
                         statusMessage.put("finalUrl", safeUrl(session.url()));
-                        return warn(context, statusMessage, isPlaywrightTimeout(exception) ? "reloadTimeout" : "reloadFailure", command, "RELOAD", endpoint);
+                        warn(statusMessage, isPlaywrightTimeout(exception) ? "reloadTimeout" : "reloadFailure", command, "RELOAD");
+                        return false;
                     }
                     loadDurationMillis = elapsedMillis(startedNanos);
                     updateNavigationStatus(statusMessage, session, navigation, loadDurationMillis, "reload");
-                    navigationWarning = navigationWarning(context, statusMessage, navigation, loadDurationMillis, loadTimeoutMillis, command, endpoint);
-                    if (navigationWarning != null)
-                        return navigationWarning;
+                    if (navigationWarning(statusMessage, navigation, loadDurationMillis, loadTimeoutMillis, command))
+                        return false;
                 } else {
                     try {
                         execute(session, command, elementTimeoutMillis);
                     } catch (RuntimeException exception) {
-                        return warn(context, statusMessage, "commandFailure", command, command.keyword(), endpoint);
+                        warn(statusMessage, "commandFailure", command, command.keyword());
+                        return false;
                     }
                 }
                 completed++;
@@ -153,8 +211,7 @@ public final class PlaywrightPageAlertTemplate implements AlertEvaluator {
 
             statusMessage.put("completedCommandCount", completed);
             statusMessage.put("finalUrl", safeUrl(session.url()));
-            context.setState("endpoint=" + endpoint + ";status=SUCCESS;commands=" + completed);
-            return AlertResult.success(statusMessage);
+            return true;
         }
     }
 
@@ -310,14 +367,18 @@ public final class PlaywrightPageAlertTemplate implements AlertEvaluator {
         }
     }
 
-    private static AlertResult navigationWarning(AlertExecutionContext context, Map<String, Object> statusMessage, Navigation navigation, long durationMillis, long timeoutMillis, Command command, String endpoint) {
-        if (durationMillis > timeoutMillis)
-            return warn(context, statusMessage, command == null ? "loadTimeout" : "reloadTimeout", command, command == null ? null : "RELOAD", endpoint);
+    private static boolean navigationWarning(Map<String, Object> statusMessage, Navigation navigation, long durationMillis, long timeoutMillis, Command command) {
+        if (durationMillis > timeoutMillis) {
+            warn(statusMessage, command == null ? "loadTimeout" : "reloadTimeout", command, command == null ? null : "RELOAD");
+            return true;
+        }
 
-        if (navigation.statusCode() != null && navigation.statusCode() >= 400)
-            return warn(context, statusMessage, "httpStatus", command, command == null ? null : "RELOAD", endpoint);
+        if (navigation.statusCode() != null && navigation.statusCode() >= 400) {
+            warn(statusMessage, "httpStatus", command, command == null ? null : "RELOAD");
+            return true;
+        }
 
-        return null;
+        return false;
     }
 
     private static void updateNavigationStatus(Map<String, Object> statusMessage, BrowserSession session, Navigation navigation, long durationMillis, String prefix) {
@@ -328,26 +389,48 @@ public final class PlaywrightPageAlertTemplate implements AlertEvaluator {
         statusMessage.put("finalUrl", safeUrl(session.url()));
     }
 
-    private static AlertResult warn(AlertExecutionContext context, Map<String, Object> statusMessage, String failureReason, Command command, String failedCommand, String endpoint) {
+    private static void warn(Map<String, Object> statusMessage, String failureReason, Command command, String failedCommand) {
         statusMessage.put("failureReason", failureReason);
         if (command != null)
             statusMessage.put("failedLine", command.lineNumber());
         if (failedCommand != null)
             statusMessage.put("failedCommand", failedCommand);
-
-        context.setState("endpoint=" + endpoint + ";status=WARN;failure=" + failureReason);
-        return AlertResult.warn(statusMessage);
     }
 
-    private static Map<String, Object> baseStatus(String endpoint, int loadTimeoutSeconds, int elementTimeoutSeconds, int commandCount) {
+    private static Map<String, Object> baseStatus(String endpoint, int loadTimeoutSeconds, int elementTimeoutSeconds, int commandCount, int browserCount) {
         Map<String, Object> status = new LinkedHashMap<>();
         status.put("endpoint", endpoint);
         status.put("loadTimeoutSeconds", loadTimeoutSeconds);
         status.put("elementTimeoutSeconds", elementTimeoutSeconds);
         status.put("commandCount", commandCount);
-        status.put("completedCommandCount", 0);
+        status.put("browserCount", browserCount);
         status.put("checkedAt", Instant.now().toString());
         return status;
+    }
+
+    private static Map<String, Object> browserStatus(BrowserEngine browser) {
+        Map<String, Object> status = new LinkedHashMap<>();
+        status.put("browser", browser.key());
+        status.put("status", "SUCCESS");
+        status.put("completedCommandCount", 0);
+        return status;
+    }
+
+    private List<BrowserEngine> selectedBrowsers() {
+        List<BrowserEngine> browsers = new ArrayList<>();
+        if (chromiumEnabled)
+            browsers.add(BrowserEngine.CHROMIUM);
+
+        if (firefoxEnabled)
+            browsers.add(BrowserEngine.FIREFOX);
+
+        if (webkitEnabled)
+            browsers.add(BrowserEngine.WEBKIT);
+
+        if (browsers.isEmpty())
+            throw new IllegalArgumentException("At least one browser must be enabled");
+
+        return List.copyOf(browsers);
     }
 
     private static URI parseUrl(String configured) {
@@ -491,9 +574,25 @@ public final class PlaywrightPageAlertTemplate implements AlertEvaluator {
     record Navigation(Integer statusCode) {
     }
 
+    enum BrowserEngine {
+        CHROMIUM("chromium"),
+        FIREFOX("firefox"),
+        WEBKIT("webkit");
+
+        private final String key;
+
+        BrowserEngine(String key) {
+            this.key = key;
+        }
+
+        String key() {
+            return key;
+        }
+    }
+
     @FunctionalInterface
     interface BrowserSessionFactory {
-        BrowserSession open();
+        BrowserSession open(BrowserEngine browser);
     }
 
     interface BrowserSession extends AutoCloseable {
@@ -533,10 +632,15 @@ public final class PlaywrightPageAlertTemplate implements AlertEvaluator {
             this.page = page;
         }
 
-        static BrowserSession open() {
+        static BrowserSession open(BrowserEngine engine) {
             Playwright playwright = Playwright.create();
             try {
-                Browser browser = playwright.chromium().launch(new BrowserType.LaunchOptions().setHeadless(true));
+                BrowserType browserType = switch (engine) {
+                    case CHROMIUM -> playwright.chromium();
+                    case FIREFOX -> playwright.firefox();
+                    case WEBKIT -> playwright.webkit();
+                };
+                Browser browser = browserType.launch(new BrowserType.LaunchOptions().setHeadless(true));
                 BrowserContext context = browser.newContext(new Browser.NewContextOptions().setViewportSize(1440, 900));
                 return new PlaywrightBrowserSession(playwright, browser, context, context.newPage());
             } catch (RuntimeException exception) {

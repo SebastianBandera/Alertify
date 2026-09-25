@@ -6,8 +6,10 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
 
 import org.junit.jupiter.api.Test;
@@ -27,6 +29,10 @@ class PlaywrightPageAlertTemplateTest {
 
         assertEquals(WorkerCapability.PLAYWRIGHT, metadata.capability());
         assertEquals("app/alertify/alerts/templates/PlaywrightPageAlertTemplate.java", metadata.sourcePath());
+        assertEquals("true", parameter("chromiumEnabled").defaultValue());
+        assertEquals("false", parameter("firefoxEnabled").defaultValue());
+        assertEquals("false", parameter("webkitEnabled").defaultValue());
+        assertFalse(parameter("chromiumEnabled").bindingAllowed());
         assertEquals("10", parameter("loadTimeoutSeconds").defaultValue());
         assertEquals("5", parameter("elementTimeoutSeconds").defaultValue());
         assertTrue(parameter("steps").multiline());
@@ -100,11 +106,14 @@ class PlaywrightPageAlertTemplateTest {
             USE
             """;
         AlertResult result = template("https://anep.edu.uy/?token=private", commands, session).evaluate(new AlertExecutionContext());
+        Map<?, ?> browserResult = browserResult(result, 0);
 
         assertEquals(AlertExecutionStatus.SUCCESS, result.status());
         assertEquals(7, result.statusMessage().get("commandCount"));
-        assertEquals(7, result.statusMessage().get("completedCommandCount"));
-        assertEquals("https://anep.edu.uy/contacto-anep", result.statusMessage().get("finalUrl"));
+        assertEquals(1, result.statusMessage().get("successfulBrowserCount"));
+        assertEquals("chromium", browserResult.get("browser"));
+        assertEquals(7, browserResult.get("completedCommandCount"));
+        assertEquals("https://anep.edu.uy/contacto-anep", browserResult.get("finalUrl"));
         assertEquals(List.of("navigate", "query", "hover", "query", "check", "click", "query", "click", "close"), session.operations);
         assertFalse(result.statusMessage().toString().contains("Institucional"));
         assertFalse(result.statusMessage().toString().contains("Presentación"));
@@ -162,10 +171,13 @@ class PlaywrightPageAlertTemplateTest {
         session.navigation = new PlaywrightPageAlertTemplate.Navigation(503);
 
         AlertResult result = template("https://example.test", "QUERY .never", session).evaluate(new AlertExecutionContext());
+        Map<?, ?> browserResult = browserResult(result, 0);
 
         assertEquals(AlertExecutionStatus.WARN, result.status());
-        assertEquals("httpStatus", result.statusMessage().get("failureReason"));
-        assertEquals(503, result.statusMessage().get("loadStatusCode"));
+        assertEquals(1, result.statusMessage().get("warningBrowserCount"));
+        assertEquals("WARN", browserResult.get("status"));
+        assertEquals("httpStatus", browserResult.get("failureReason"));
+        assertEquals(503, browserResult.get("loadStatusCode"));
         assertEquals(List.of("navigate", "close"), session.operations);
     }
 
@@ -176,12 +188,13 @@ class PlaywrightPageAlertTemplateTest {
         String secretSelector = "[data-secret=never-persist-this]";
 
         AlertResult result = template("https://example.test", "# comment\nQUERY " + secretSelector + "\nUSE", session).evaluate(new AlertExecutionContext());
+        Map<?, ?> browserResult = browserResult(result, 0);
 
         assertEquals(AlertExecutionStatus.WARN, result.status());
-        assertEquals("commandFailure", result.statusMessage().get("failureReason"));
-        assertEquals(2, result.statusMessage().get("failedLine"));
-        assertEquals("QUERY", result.statusMessage().get("failedCommand"));
-        assertEquals(0, result.statusMessage().get("completedCommandCount"));
+        assertEquals("commandFailure", browserResult.get("failureReason"));
+        assertEquals(2, browserResult.get("failedLine"));
+        assertEquals("QUERY", browserResult.get("failedCommand"));
+        assertEquals(0, browserResult.get("completedCommandCount"));
         assertFalse(result.statusMessage().toString().contains(secretSelector));
         assertFalse(session.operations.contains("click"));
     }
@@ -193,7 +206,67 @@ class PlaywrightPageAlertTemplateTest {
 
         assertEquals(AlertExecutionStatus.SUCCESS, result.status());
         assertTrue(session.operations.contains("reload:10000"));
-        assertEquals(200, result.statusMessage().get("reloadStatusCode"));
+        assertEquals(200, browserResult(result, 0).get("reloadStatusCode"));
+    }
+
+    @Test
+    void executesEnabledBrowsersSequentiallyAndContinuesAfterAWarning() throws Exception {
+        Map<PlaywrightPageAlertTemplate.BrowserEngine, FakeBrowserSession> sessions = new EnumMap<>(PlaywrightPageAlertTemplate.BrowserEngine.class);
+        for (PlaywrightPageAlertTemplate.BrowserEngine browser : PlaywrightPageAlertTemplate.BrowserEngine.values())
+            sessions.put(browser, new FakeBrowserSession());
+
+        sessions.get(PlaywrightPageAlertTemplate.BrowserEngine.CHROMIUM).navigation = new PlaywrightPageAlertTemplate.Navigation(503);
+        List<PlaywrightPageAlertTemplate.BrowserEngine> opened = new ArrayList<>();
+        PlaywrightPageAlertTemplate template = new PlaywrightPageAlertTemplate("https://example.test", true, true, true, 10, 5, "QUERY body", browser -> {
+            opened.add(browser);
+            return sessions.get(browser);
+        });
+
+        AlertResult result = template.evaluate(new AlertExecutionContext());
+
+        assertEquals(AlertExecutionStatus.WARN, result.status());
+        assertEquals(List.of(
+            PlaywrightPageAlertTemplate.BrowserEngine.CHROMIUM,
+            PlaywrightPageAlertTemplate.BrowserEngine.FIREFOX,
+            PlaywrightPageAlertTemplate.BrowserEngine.WEBKIT
+        ), opened);
+        assertEquals(2, result.statusMessage().get("successfulBrowserCount"));
+        assertEquals(1, result.statusMessage().get("warningBrowserCount"));
+        assertEquals("chromium", browserResult(result, 0).get("browser"));
+        assertEquals("WARN", browserResult(result, 0).get("status"));
+        assertEquals("firefox", browserResult(result, 1).get("browser"));
+        assertEquals("SUCCESS", browserResult(result, 1).get("status"));
+        assertEquals("webkit", browserResult(result, 2).get("browser"));
+        assertEquals("SUCCESS", browserResult(result, 2).get("status"));
+    }
+
+    @Test
+    void skipsDisabledBrowsersWithoutChangingTheRelativeOrder() throws Exception {
+        List<PlaywrightPageAlertTemplate.BrowserEngine> opened = new ArrayList<>();
+        PlaywrightPageAlertTemplate template = new PlaywrightPageAlertTemplate("https://example.test", true, false, true, 10, 5, null, browser -> {
+            opened.add(browser);
+            return new FakeBrowserSession();
+        });
+
+        AlertResult result = template.evaluate(new AlertExecutionContext());
+
+        assertEquals(AlertExecutionStatus.SUCCESS, result.status());
+        assertEquals(List.of(
+            PlaywrightPageAlertTemplate.BrowserEngine.CHROMIUM,
+            PlaywrightPageAlertTemplate.BrowserEngine.WEBKIT
+        ), opened);
+    }
+
+    @Test
+    void rejectsAnExecutionWithoutBrowsersBeforeOpeningAPlaywrightSession() {
+        AtomicBoolean opened = new AtomicBoolean();
+        PlaywrightPageAlertTemplate template = new PlaywrightPageAlertTemplate("https://example.test", false, false, false, 10, 5, null, browser -> {
+            opened.set(true);
+            return new FakeBrowserSession();
+        });
+
+        assertThrows(IllegalArgumentException.class, () -> template.evaluate(new AlertExecutionContext()));
+        assertFalse(opened.get());
     }
 
     @Test
@@ -201,13 +274,17 @@ class PlaywrightPageAlertTemplateTest {
         FakeBrowserSession session = new FakeBrowserSession();
 
         assertThrows(IllegalArgumentException.class, () -> template("file:///tmp/test", null, session).evaluate(new AlertExecutionContext()));
-        assertThrows(IllegalArgumentException.class, () -> new PlaywrightPageAlertTemplate("https://example.test", 0, 5, null, () -> session).evaluate(new AlertExecutionContext()));
-        assertThrows(IllegalArgumentException.class, () -> new PlaywrightPageAlertTemplate("https://example.test", 10, -1, null, () -> session).evaluate(new AlertExecutionContext()));
+        assertThrows(IllegalArgumentException.class, () -> new PlaywrightPageAlertTemplate("https://example.test", true, false, false, 0, 5, null, browser -> session).evaluate(new AlertExecutionContext()));
+        assertThrows(IllegalArgumentException.class, () -> new PlaywrightPageAlertTemplate("https://example.test", true, false, false, 10, -1, null, browser -> session).evaluate(new AlertExecutionContext()));
         assertTrue(session.operations.isEmpty());
     }
 
     private static PlaywrightPageAlertTemplate template(String url, String commands, FakeBrowserSession session) {
-        return new PlaywrightPageAlertTemplate(url, 10, 5, commands, () -> session);
+        return new PlaywrightPageAlertTemplate(url, true, false, false, 10, 5, commands, browser -> session);
+    }
+
+    private static Map<?, ?> browserResult(AlertResult result, int index) {
+        return (Map<?, ?>) ((List<?>) result.statusMessage().get("browserResults")).get(index);
     }
 
     private static AlertParameter parameter(String name) throws ReflectiveOperationException {
