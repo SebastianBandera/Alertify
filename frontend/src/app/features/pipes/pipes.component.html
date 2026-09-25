@@ -12,6 +12,9 @@
       <button class="button button--secondary" type="button" [disabled]="importing()" (click)="openImportPicker()">
         {{ dynamic(importing() ? 'pipes.importing' : 'pipes.import') }}
       </button>
+      @if (activeTab() === 'pipes') {
+        <button class="button button--secondary" type="button" (click)="openTagManager()">{{ dynamic('pipes.manageTags') }}</button>
+      }
       <button class="button button--primary" type="button" (click)="openCreate()">{{ dynamic('pipes.create') }}</button>
     </div>
   </header>
@@ -46,6 +49,7 @@
         <table>
           <thead><tr>
             <th>{{ dynamic('pipes.column.name') }}</th>
+            <th>{{ dynamic('pipes.column.tags') }}</th>
             <th>{{ dynamic('pipes.column.steps') }}</th>
             <th>{{ dynamic('pipes.column.concurrent') }}</th>
             <th>{{ dynamic('pipes.column.status') }}</th>
@@ -56,6 +60,13 @@
             @for (pipe of pipes(); track pipe.id) {
               <tr>
                 <td><strong>{{ pipe.name }}</strong><small>{{ pipe.description || '—' }}</small></td>
+                <td>
+                  <div class="tag-list">
+                    @for (tag of pipe.tags; track tag.id) {
+                      <span class="tag" [style.--tag-color]="tag.color">{{ tag.name }}</span>
+                    } @empty { <span class="muted">—</span> }
+                  </div>
+                </td>
                 <td>
                   <ol class="compact-list">
                     @for (step of pipe.steps; track step.id) {
@@ -194,6 +205,17 @@
             <label class="checkbox checkbox--with-help"><input name="concurrent" type="checkbox" [ngModel]="form().allowConcurrentExecutions" (ngModelChange)="patchForm('allowConcurrentExecutions', $event)"><span>{{ dynamic('pipes.form.concurrent') }}<small>{{ dynamic('pipes.form.concurrentHelp') }}</small></span></label>
           </div>
           <label class="full"><span>{{ dynamic('pipes.form.description') }}</span><textarea name="description" rows="2" maxlength="4000" [ngModel]="form().description" (ngModelChange)="patchForm('description', $event)"></textarea></label>
+          <fieldset class="full tag-fieldset">
+            <legend>{{ dynamic('pipes.form.tags') }}</legend>
+            <div class="tag-options">
+              @for (tag of tags(); track tag.id) {
+                <label class="tag-option">
+                  <input type="checkbox" [checked]="form().tagIds.includes(tag.id)" (change)="toggleTag(tag.id, $any($event.target).checked)">
+                  <span class="tag" [style.--tag-color]="tag.color">{{ tag.name }}</span>
+                </label>
+              }
+            </div>
+          </fieldset>
         </div>
 
         <section class="step-editor">
@@ -245,6 +267,35 @@
         @if (formError()) { <p class="form-error" role="alert">{{ formError() }}</p> }
         <footer><button class="button button--secondary" type="button" (click)="closeEditor()">{{ dynamic('pipes.cancel') }}</button><button class="button button--primary" type="submit" [disabled]="saving()">{{ dynamic('pipes.save') }}</button></footer>
       </form>
+    </section>
+  </div>
+}
+
+@if (tagDialogOpen()) {
+  <div class="modal-backdrop" (mousedown)="closeTagManager()">
+    <section class="modal modal--tags" role="dialog" aria-modal="true" [attr.aria-label]="dynamic('pipes.tags.title')" (mousedown)="$event.stopPropagation()">
+      <header>
+        <h2>{{ dynamic('pipes.tags.title') }}</h2>
+        <button class="close" type="button" (click)="closeTagManager()">×</button>
+      </header>
+      <div class="tag-manager-body">
+        <form class="tag-form" (ngSubmit)="saveTag()">
+          <label><span>{{ dynamic('pipes.tags.name') }}</span><input name="tagName" required maxlength="100" [ngModel]="tagName()" (ngModelChange)="tagName.set($event)" [placeholder]="dynamic('pipes.tags.name')"></label>
+          <label><span>{{ dynamic('pipes.tags.color') }}</span><input name="tagColor" type="color" [ngModel]="tagColor()" (ngModelChange)="tagColor.set($event)"></label>
+          <button class="button button--primary" type="submit" [disabled]="saving() || !tagName().trim()">{{ dynamic(editingTag() ? 'pipes.tags.update' : 'pipes.tags.add') }}</button>
+        </form>
+        @if (tagError()) { <p id="pipe-tag-error" class="form-error" role="alert" tabindex="-1">{{ tagError() }}</p> }
+        <div class="tag-manager-list">
+          @for (tag of tags(); track tag.id) {
+            <div class="tag-manager-row">
+              <span class="tag" [style.--tag-color]="tag.color">{{ tag.name }}</span>
+              <code>{{ tag.color }}</code>
+              <button class="button button--secondary" type="button" (click)="editTag(tag)">{{ dynamic('pipes.edit') }}</button>
+              <button class="button button--secondary danger" type="button" (click)="deleteTag(tag)">{{ dynamic('pipes.delete') }}</button>
+            </div>
+          } @empty { <p class="muted">{{ dynamic('pipes.tags.empty') }}</p> }
+        </div>
+      </div>
     </section>
   </div>
 }

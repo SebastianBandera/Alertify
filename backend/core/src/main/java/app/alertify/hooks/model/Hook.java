@@ -3,17 +3,21 @@ package app.alertify.hooks.model;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
+import org.hibernate.envers.AuditJoinTable;
 import org.hibernate.envers.AuditTable;
 import org.hibernate.envers.Audited;
 import org.hibernate.envers.NotAudited;
 
 import app.alertify.jpa.entity.ApplicationSecret;
+import app.alertify.jpa.entity.Tag;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -24,6 +28,8 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.JoinTable;
+import jakarta.persistence.ManyToMany;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
@@ -78,6 +84,13 @@ public class Hook {
     @OrderBy("position ASC")
     private List<HookTarget> targets = new ArrayList<>();
 
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(name = "hook_tag", schema = "core",
+            joinColumns = @JoinColumn(name = "hook_id"),
+            inverseJoinColumns = @JoinColumn(name = "tag_id"))
+    @AuditJoinTable(name = "hook_tag_aud", schema = "audit")
+    private Set<Tag> tags = new LinkedHashSet<>();
+
     @CreationTimestamp
     @NotAudited
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -114,6 +127,7 @@ public class Hook {
     public Integer getRateLimitCount() { return rateLimitCount; }
     public Long getRateLimitWindowSeconds() { return rateLimitWindowSeconds; }
     public List<HookTarget> getTargets() { return Collections.unmodifiableList(targets); }
+    public Set<Tag> getTags() { return Collections.unmodifiableSet(tags); }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
 
@@ -134,6 +148,12 @@ public class Hook {
     }
 
     public void clearTargets() { targets.clear(); }
+
+    public void replaceTags(Set<Tag> values) {
+        tags.clear();
+        if (values != null)
+            tags.addAll(values);
+    }
 
     public void rotatePublicId() { publicId = UUID.randomUUID(); }
 

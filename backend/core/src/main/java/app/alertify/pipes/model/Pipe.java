@@ -3,21 +3,29 @@ package app.alertify.pipes.model;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
+import org.hibernate.envers.AuditJoinTable;
 import org.hibernate.envers.AuditTable;
 import org.hibernate.envers.Audited;
 import org.hibernate.envers.NotAudited;
 
+import app.alertify.jpa.entity.Tag;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.JoinTable;
+import jakarta.persistence.ManyToMany;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
@@ -55,6 +63,13 @@ public class Pipe {
     @OrderBy("position ASC")
     private List<PipeStep> steps = new ArrayList<>();
 
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(name = "pipe_tag", schema = "core",
+            joinColumns = @JoinColumn(name = "pipe_id"),
+            inverseJoinColumns = @JoinColumn(name = "tag_id"))
+    @AuditJoinTable(name = "pipe_tag_aud", schema = "audit")
+    private Set<Tag> tags = new LinkedHashSet<>();
+
     @CreationTimestamp
     @NotAudited
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -85,6 +100,11 @@ public class Pipe {
     }
 
     public void clearSteps() { steps.clear(); }
+    public void replaceTags(Set<Tag> values) {
+        tags.clear();
+        if (values != null)
+            tags.addAll(values);
+    }
     public Long getId() { return id; }
     public long getVersion() { return version; }
     public String getName() { return name; }
@@ -92,6 +112,7 @@ public class Pipe {
     public boolean isEnabled() { return enabled; }
     public boolean isConcurrentExecutionAllowed() { return allowConcurrentExecutions; }
     public List<PipeStep> getSteps() { return Collections.unmodifiableList(steps); }
+    public Set<Tag> getTags() { return Collections.unmodifiableSet(tags); }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
 }

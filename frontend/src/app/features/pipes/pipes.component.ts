@@ -3,6 +3,7 @@ import { ChangeDetectionStrategy, Component, ElementRef, OnDestroy, OnInit, inje
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 
+import { ApiRequestError } from '../../core/api/configuration-api.service';
 import {
   Pipe,
   PipeApiService,
@@ -12,6 +13,7 @@ import {
   PipeOption,
   PipeOptions,
   PipeOutcome,
+  PipeTag,
   PipeStepType,
   PipeStepWriteRequest,
 } from '../../core/api/pipe-api.service';
@@ -37,6 +39,7 @@ interface PipeForm {
   description: string;
   enabled: boolean;
   allowConcurrentExecutions: boolean;
+  tagIds: number[];
   steps: PipeStepForm[];
 }
 
@@ -76,6 +79,7 @@ export class PipesComponent implements OnInit, OnDestroy {
 
   protected readonly activeTab = signal<PipeTab>('pipes');
   protected readonly pipes = signal<readonly Pipe[]>([]);
+  protected readonly tags = signal<readonly PipeTag[]>([]);
   protected readonly pipeChoices = signal<readonly Pipe[]>([]);
   protected readonly options = signal<PipeOptions>(EMPTY_OPTIONS);
   protected readonly executions = signal<readonly PipeExecution[]>([]);
@@ -102,6 +106,11 @@ export class PipesComponent implements OnInit, OnDestroy {
   protected readonly editing = signal<Pipe | null>(null);
   protected readonly form = signal<PipeForm>(this.emptyForm());
   protected readonly formError = signal<string | null>(null);
+  protected readonly tagDialogOpen = signal(false);
+  protected readonly editingTag = signal<PipeTag | null>(null);
+  protected readonly tagName = signal('');
+  protected readonly tagColor = signal('#6D5DFC');
+  protected readonly tagError = signal<string | null>(null);
   protected readonly newStepType = signal<PipeStepType>('PROCEDURE');
   protected readonly newStepResourceId = signal<number | null>(null);
   protected readonly outcomes = ALL_OUTCOMES;
@@ -208,6 +217,7 @@ export class PipesComponent implements OnInit, OnDestroy {
       description: pipe.description ?? '',
       enabled: pipe.enabled,
       allowConcurrentExecutions: pipe.allowConcurrentExecutions,
+      tagIds: pipe.tags.map((tag) => tag.id),
       steps: pipe.steps.map((step) => ({
         key: step.key,
         type: step.type,
@@ -319,6 +329,13 @@ export class PipesComponent implements OnInit, OnDestroy {
     }));
   }
 
+  protected toggleTag(tagId: number, checked: boolean): void {
+    this.form.update((form) => ({
+      ...form,
+      tagIds: checked ? [...form.tagIds, tagId] : form.tagIds.filter((id) => id !== tagId),
+    }));
+  }
+
   protected artifactInputs(index: number): readonly string[] {
     const step = this.form().steps[index];
     return this.options().resources.find((option) => option.type === step.type && option.id === step.resourceId)
@@ -388,6 +405,7 @@ export class PipesComponent implements OnInit, OnDestroy {
         description: form.description.trim() || null,
         enabled: form.enabled,
         allowConcurrentExecutions: form.allowConcurrentExecutions,
+        tagIds: form.tagIds,
         steps,
       };
       if (editing) await this.api.update(editing.id, request);
@@ -440,6 +458,65 @@ export class PipesComponent implements OnInit, OnDestroy {
     }
   }
 
+  protected openTagManager(): void {
+    this.editingTag.set(null);
+    this.tagName.set('');
+    this.tagColor.set('#6D5DFC');
+    this.tagError.set(null);
+    this.tagDialogOpen.set(true);
+  }
+
+  protected closeTagManager(): void {
+    if (!this.saving()) this.tagDialogOpen.set(false);
+  }
+
+  protected editTag(tag: PipeTag): void {
+    this.editingTag.set(tag);
+    this.tagName.set(tag.name);
+    this.tagColor.set(tag.color);
+  }
+
+  protected async saveTag(): Promise<void> {
+    const name = this.tagName().trim();
+    if (!name) return;
+    this.saving.set(true);
+    this.tagError.set(null);
+    try {
+      const editing = this.editingTag();
+      if (editing) await this.api.updateTag(editing.id, { version: editing.version, name, color: this.tagColor() });
+      else await this.api.createTag({ name, color: this.tagColor() });
+      this.editingTag.set(null);
+      this.tagName.set('');
+      await Promise.all([this.loadTags(), this.loadPipes()]);
+    } catch (error) {
+      this.showTagError(this.errorMessage(error));
+    } finally {
+      this.saving.set(false);
+    }
+  }
+
+  protected async deleteTag(tag: PipeTag): Promise<void> {
+    if (!window.confirm(this.dynamic('pipes.tags.deleteConfirm'))) return;
+    this.tagError.set(null);
+    try {
+      await this.api.deleteTag(tag);
+      await Promise.all([this.loadTags(), this.loadPipes()]);
+    } catch (error) {
+      this.showTagError(error instanceof ApiRequestError && error.code === 'PIPE_TAG_IN_USE'
+        ? this.dynamic('pipes.tags.inUse').replace('{name}', tag.name)
+        : this.errorMessage(error));
+    }
+  }
+
+  private showTagError(message: string): void {
+    this.tagError.set(message);
+    requestAnimationFrame(() => {
+      const error = this.elementRef.nativeElement.querySelector<HTMLElement>('#pipe-tag-error');
+      error?.focus({ preventScroll: true });
+      error?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+  }
+
   protected async exportCsv(): Promise<void> {
     this.exporting.set(true);
     try {
@@ -481,9 +558,10 @@ export class PipesComponent implements OnInit, OnDestroy {
   private async loadAll(showLoading = true): Promise<void> {
     if (showLoading) this.loading.set(true);
     try {
-      const [options, choices] = await Promise.all([this.api.options(), this.api.list('', 0, 500)]);
+      const [options, choices, tags] = await Promise.all([this.api.options(), this.api.list('', 0, 500), this.api.listTags()]);
       this.options.set(options);
       this.pipeChoices.set(choices.content);
+      this.tags.set(tags);
       await Promise.all([this.loadPipes(), this.loadHistory()]);
       this.error.set(null);
     } catch (error) {
@@ -525,6 +603,10 @@ export class PipesComponent implements OnInit, OnDestroy {
     }
   }
 
+  private async loadTags(): Promise<void> {
+    this.tags.set(await this.api.listTags());
+  }
+
   private startRefresh(): void {
     this.stopRefresh();
     this.refreshTimer = setInterval(() => void this.loadHistory(), 2000);
@@ -564,7 +646,7 @@ export class PipesComponent implements OnInit, OnDestroy {
   }
 
   private emptyForm(): PipeForm {
-    return { name: '', description: '', enabled: false, allowConcurrentExecutions: false, steps: [] };
+    return { name: '', description: '', enabled: false, allowConcurrentExecutions: false, tagIds: [], steps: [] };
   }
 
   private importNotice(result: PipeImportResult): string {

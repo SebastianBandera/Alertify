@@ -10,6 +10,22 @@ export type PipeExecutionStatus = 'RUNNING' | 'COMPLETED' | 'PARTIAL' | 'FAILED'
 export type PipeStepStatus = 'PENDING' | 'RUNNING' | 'SUCCESS' | 'WARN' | 'ERROR'
   | 'SKIPPED_DISABLED' | 'SKIPPED_SEQUENCE' | 'MISSING_PIPE_OUTPUT' | 'ARTIFACT_UNAVAILABLE';
 
+export interface PipeTag {
+  readonly id: number;
+  readonly version: number;
+  readonly scope: 'PIPE';
+  readonly name: string;
+  readonly color: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+export interface PipeTagWriteRequest {
+  readonly version?: number;
+  readonly name: string;
+  readonly color: string;
+}
+
 export interface PipeBinding {
   readonly targetParameterKey: string;
   readonly sourceStepKey: string;
@@ -36,6 +52,7 @@ export interface Pipe {
   readonly description: string | null;
   readonly enabled: boolean;
   readonly allowConcurrentExecutions: boolean;
+  readonly tags: readonly PipeTag[];
   readonly steps: readonly PipeStep[];
   readonly createdAt: string;
   readonly updatedAt: string;
@@ -70,6 +87,7 @@ export interface PipeWriteRequest {
   readonly enabled: boolean;
   readonly allowConcurrentExecutions: boolean;
   readonly steps: readonly PipeStepWriteRequest[];
+  readonly tagIds: readonly number[];
 }
 
 export interface PipeStepResult {
@@ -138,6 +156,23 @@ export class PipeApiService {
   }
 
   options(): Promise<PipeOptions> { return this.request('/api/pipes/options'); }
+
+  async listTags(): Promise<readonly PipeTag[]> {
+    const page = await this.request<PageResponse<PipeTag>>('/api/pipe-tags?page=0&size=200&sort=name,asc');
+    return page.content;
+  }
+
+  createTag(request: PipeTagWriteRequest): Promise<PipeTag> {
+    return this.request('/api/pipe-tags', { method: 'POST', body: JSON.stringify(request) });
+  }
+
+  updateTag(id: number, request: PipeTagWriteRequest): Promise<PipeTag> {
+    return this.request(`/api/pipe-tags/${id}`, { method: 'PUT', body: JSON.stringify(request) });
+  }
+
+  async deleteTag(tag: PipeTag): Promise<void> {
+    await this.request<void>(`/api/pipe-tags/${tag.id}?version=${tag.version}`, { method: 'DELETE' }, true);
+  }
 
   create(request: PipeWriteRequest): Promise<Pipe> {
     return this.request('/api/pipes', { method: 'POST', body: JSON.stringify(request) });

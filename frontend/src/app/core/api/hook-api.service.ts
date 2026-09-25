@@ -12,6 +12,22 @@ export type HookTargetStatus = 'PENDING' | 'WAITING_ALERT' | 'WAITING_PROCEDURE'
   | 'SKIPPED_DISABLED' | 'SKIPPED_MAINTENANCE' | 'SKIPPED_SEQUENCE' | 'ALERT_BUSY_TIMEOUT'
   | 'PROCEDURE_BUSY_TIMEOUT' | 'PIPE_BUSY_TIMEOUT';
 
+export interface HookTag {
+  readonly id: number;
+  readonly version: number;
+  readonly scope: 'HOOK';
+  readonly name: string;
+  readonly color: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+export interface HookTagWriteRequest {
+  readonly version?: number;
+  readonly name: string;
+  readonly color: string;
+}
+
 export interface HookTarget {
   readonly id: number;
   readonly type: HookTargetType;
@@ -36,6 +52,7 @@ export interface Hook {
   readonly maxConcurrentInvocations: number | null;
   readonly rateLimitCount: number | null;
   readonly rateLimitWindow: string | null;
+  readonly tags: readonly HookTag[];
   readonly targets: readonly HookTarget[];
   readonly createdAt: string;
   readonly updatedAt: string;
@@ -77,6 +94,7 @@ export interface HookWriteRequest {
   readonly rateLimitCount: number | null;
   readonly rateLimitWindow: string | null;
   readonly targets: readonly HookTargetWriteRequest[];
+  readonly tagIds: readonly number[];
 }
 
 export interface HookInvocationTarget {
@@ -137,6 +155,23 @@ export class HookApiService {
   }
 
   options(): Promise<HookOptions> { return this.request('/api/hooks/options'); }
+
+  async listTags(): Promise<readonly HookTag[]> {
+    const page = await this.request<PageResponse<HookTag>>('/api/hook-tags?page=0&size=200&sort=name,asc');
+    return page.content;
+  }
+
+  createTag(request: HookTagWriteRequest): Promise<HookTag> {
+    return this.request('/api/hook-tags', { method: 'POST', body: JSON.stringify(request) });
+  }
+
+  updateTag(id: number, request: HookTagWriteRequest): Promise<HookTag> {
+    return this.request(`/api/hook-tags/${id}`, { method: 'PUT', body: JSON.stringify(request) });
+  }
+
+  async deleteTag(tag: HookTag): Promise<void> {
+    await this.request<void>(`/api/hook-tags/${tag.id}?version=${tag.version}`, { method: 'DELETE' }, true);
+  }
 
   create(request: HookWriteRequest): Promise<Hook> {
     return this.request('/api/hooks', { method: 'POST', body: JSON.stringify(request) });

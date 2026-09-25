@@ -16,16 +16,17 @@ import app.alertify.hooks.model.Hook;
 public interface HookRepository extends JpaRepository<Hook, Long> {
     boolean existsByNameIgnoreCase(String name);
     boolean existsByNameIgnoreCaseAndIdNot(String name, Long id);
+    boolean existsByTagsId(Long tagId);
 
     @Override
-    @EntityGraph(attributePaths = { "tokenSecret", "targets", "targets.alert", "targets.procedure", "targets.pipe" })
+    @EntityGraph(attributePaths = { "tokenSecret", "targets", "targets.alert", "targets.procedure", "targets.pipe", "tags" })
     Optional<Hook> findById(Long id);
 
     @Override
-    @EntityGraph(attributePaths = { "tokenSecret", "targets", "targets.alert", "targets.procedure", "targets.pipe" })
+    @EntityGraph(attributePaths = { "tokenSecret", "targets", "targets.alert", "targets.procedure", "targets.pipe", "tags" })
     List<Hook> findAll(Sort sort);
 
-    @EntityGraph(attributePaths = { "tokenSecret", "targets", "targets.alert", "targets.procedure", "targets.pipe" })
+    @EntityGraph(attributePaths = { "tokenSecret", "targets", "targets.alert", "targets.procedure", "targets.pipe", "tags" })
     Optional<Hook> findByPublicIdAndEnabledTrue(UUID publicId);
 
     Page<Hook> findAllByNameContainingIgnoreCase(String name, Pageable pageable);

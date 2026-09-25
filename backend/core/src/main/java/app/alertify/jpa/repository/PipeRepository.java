@@ -12,9 +12,10 @@ import app.alertify.pipes.model.Pipe;
 public interface PipeRepository extends JpaRepository<Pipe, Long> {
     boolean existsByNameIgnoreCase(String name);
     boolean existsByNameIgnoreCaseAndIdNot(String name, Long id);
+    boolean existsByTagsId(Long tagId);
     Page<Pipe> findAllByNameContainingIgnoreCase(String name, Pageable pageable);
 
-    @EntityGraph(attributePaths = { "steps", "steps.alert", "steps.procedure", "steps.bindings",
+    @EntityGraph(attributePaths = { "steps", "steps.alert", "steps.procedure", "steps.bindings", "tags",
             "steps.bindings.targetParameter", "steps.bindings.sourceStep", "steps.bindings.sourceOutput" })
     @Query("select p from Pipe p where p.id = :id")
     Optional<Pipe> findDetailedById(Long id);

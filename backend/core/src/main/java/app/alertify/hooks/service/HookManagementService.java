@@ -33,6 +33,8 @@ import app.alertify.hooks.model.HookTarget;
 import app.alertify.hooks.model.HookTargetType;
 import app.alertify.jpa.entity.ApplicationSecret;
 import app.alertify.jpa.entity.SecretValueType;
+import app.alertify.jpa.entity.Tag;
+import app.alertify.jpa.entity.TagScope;
 import app.alertify.jpa.repository.AlertRepository;
 import app.alertify.jpa.repository.ApplicationSecretRepository;
 import app.alertify.jpa.repository.HookInvocationRepository;
@@ -40,6 +42,7 @@ import app.alertify.jpa.repository.HookInvocationTargetRepository;
 import app.alertify.jpa.repository.HookRepository;
 import app.alertify.jpa.repository.ProcedureRepository;
 import app.alertify.jpa.repository.PipeRepository;
+import app.alertify.jpa.repository.TagRepository;
 import app.alertify.logging.ApplicationEventLogger;
 import app.alertify.procedures.model.Procedure;
 import app.alertify.pipes.model.Pipe;
@@ -57,11 +60,12 @@ public class HookManagementService {
     private final ApplicationSecretRepository secretRepository;
     private final HookInvocationRepository invocationRepository;
     private final HookInvocationTargetRepository invocationTargetRepository;
+    private final TagRepository tagRepository;
     private final SecretEncryptionService encryptionService;
     private final HookMapper mapper;
     private final ApplicationEventLogger eventLogger;
 
-    public HookManagementService(HookRepository hookRepository, AlertRepository alertRepository, ProcedureRepository procedureRepository, PipeRepository pipeRepository, ApplicationSecretRepository secretRepository, HookInvocationRepository invocationRepository, HookInvocationTargetRepository invocationTargetRepository, SecretEncryptionService encryptionService, HookMapper mapper, ApplicationEventLogger eventLogger) {
+    public HookManagementService(HookRepository hookRepository, AlertRepository alertRepository, ProcedureRepository procedureRepository, PipeRepository pipeRepository, ApplicationSecretRepository secretRepository, HookInvocationRepository invocationRepository, HookInvocationTargetRepository invocationTargetRepository, TagRepository tagRepository, SecretEncryptionService encryptionService, HookMapper mapper, ApplicationEventLogger eventLogger) {
         this.hookRepository = hookRepository;
         this.alertRepository = alertRepository;
         this.procedureRepository = procedureRepository;
@@ -69,6 +73,7 @@ public class HookManagementService {
         this.secretRepository = secretRepository;
         this.invocationRepository = invocationRepository;
         this.invocationTargetRepository = invocationTargetRepository;
+        this.tagRepository = tagRepository;
         this.encryptionService = encryptionService;
         this.mapper = mapper;
         this.eventLogger = eventLogger;
@@ -104,6 +109,7 @@ public class HookManagementService {
         ensureNameAvailable(name, null);
         Limits limits = limits(request.maxConcurrentInvocations(), request.rateLimitCount(), request.rateLimitWindow());
         Hook hook = new Hook(name, optional(request.description()), request.mode(), secret(request.tokenSecretId()), request.maxConcurrentInvocations(), limits.count(), limits.windowSeconds());
+        hook.replaceTags(resolveTags(request.tagIds()));
         List<HookTarget> targets = targets(hook, request.targets());
         hook.replaceTargets(targets);
         Hook saved = hookRepository.saveAndFlush(hook);
@@ -124,6 +130,7 @@ public class HookManagementService {
 
         Limits limits = limits(request.maxConcurrentInvocations(), request.rateLimitCount(), request.rateLimitWindow());
         hook.update(name, optional(request.description()), request.enabled(), request.mode(), secret(request.tokenSecretId()), request.maxConcurrentInvocations(), limits.count(), limits.windowSeconds());
+        hook.replaceTags(resolveTags(request.tagIds()));
         List<HookTarget> values = targets(hook, request.targets());
         for (int index = 0; index < hook.getTargets().size(); index++)
             hook.getTargets().get(index).moveTemporarily(1_000_000 + index);
@@ -222,6 +229,18 @@ public class HookManagementService {
             throw invalid("Hook token secret must be a STRING secret");
 
         return secret;
+    }
+
+    private Set<Tag> resolveTags(Set<Long> requestedIds) {
+        Set<Long> ids = requestedIds == null ? Set.of() : Set.copyOf(requestedIds);
+        if (ids.isEmpty())
+            return Set.of();
+
+        List<Tag> found = tagRepository.findAllByIdInAndScope(ids, TagScope.HOOK);
+        if (found.size() != ids.size())
+            throw invalid("One or more Hook tags do not exist");
+
+        return new java.util.LinkedHashSet<>(found);
     }
 
     private Hook find(Long id) { return hookRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Hook " + id + NOT_FOUND_SUFFIX)); }

@@ -1,8 +1,11 @@
 package app.alertify.pipes.service;
 
 import java.time.Duration;
+import java.util.Comparator;
 import java.util.LinkedHashSet;
+import java.util.Locale;
 
+import app.alertify.configuration.api.TagResponse;
 import app.alertify.pipes.api.PipeBindingResponse;
 import app.alertify.pipes.api.PipeExecutionResponse;
 import app.alertify.pipes.api.PipeResponse;
@@ -20,7 +23,11 @@ final class PipeMapper {
 
     static PipeResponse response(Pipe pipe) {
         return new PipeResponse(pipe.getId(), pipe.getVersion(), pipe.getName(), pipe.getDescription(), pipe.isEnabled(),
-                pipe.isConcurrentExecutionAllowed(), pipe.getSteps().stream().map(PipeMapper::step).toList(),
+                pipe.isConcurrentExecutionAllowed(),
+                pipe.getTags().stream().sorted(Comparator.comparing(tag -> tag.getName().toLowerCase(Locale.ROOT)))
+                        .map(tag -> new TagResponse(tag.getId(), tag.getVersion(), tag.getScope(), tag.getName(), tag.getColor(), tag.getCreatedAt(), tag.getUpdatedAt()))
+                        .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new)),
+                pipe.getSteps().stream().map(PipeMapper::step).toList(),
                 pipe.getCreatedAt(), pipe.getUpdatedAt());
     }
 

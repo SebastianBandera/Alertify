@@ -3,8 +3,10 @@ package app.alertify.hooks.api;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
+import app.alertify.configuration.api.TagResponse;
 import app.alertify.hooks.model.HookMode;
 
 public record HookResponse(
@@ -20,6 +22,7 @@ public record HookResponse(
     Integer maxConcurrentInvocations,
     Integer rateLimitCount,
     Duration rateLimitWindow,
+    Set<TagResponse> tags,
     List<HookTargetResponse> targets,
     Instant createdAt,
     Instant updatedAt

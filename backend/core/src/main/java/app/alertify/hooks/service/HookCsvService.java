@@ -119,12 +119,12 @@ public class HookCsvService {
             HookCsvCodec.ImportRow row = entry.row();
             if (entry.existing() == null) {
                 HookResponse response = managementService.create(new HookCreateRequest(row.name(), row.description(), row.mode(),
-                        entry.tokenSecretId(), row.maxConcurrentInvocations(), row.rateLimitCount(), window(row), entry.targets()));
+                        entry.tokenSecretId(), row.maxConcurrentInvocations(), row.rateLimitCount(), window(row), entry.targets(), Set.of()));
                 if (row.publicId() != null || row.enabled()) {
                     Hook hook = hookRepository.findById(response.id()).orElseThrow();
                     if (row.publicId() != null) hook.restorePublicId(row.publicId());
 
-                    managementService.update(hook.getId(), updateRequest(hook.getVersion(), row, entry));
+                    managementService.update(hook.getId(), updateRequest(hook.getVersion(), row, entry, tagIds(hook)));
                 }
                 created++;
                 continue;
@@ -133,7 +133,7 @@ public class HookCsvService {
                 unchanged++;
                 continue;
             }
-            managementService.update(entry.existing().getId(), updateRequest(entry.existing().getVersion(), row, entry));
+            managementService.update(entry.existing().getId(), updateRequest(entry.existing().getVersion(), row, entry, tagIds(entry.existing())));
             updated++;
         }
         int total = read.rows().size() + read.errors().size();
@@ -191,10 +191,12 @@ public class HookCsvService {
         return new Resolved(row, existing, tokenSecretId, List.copyOf(targets));
     }
 
-    private static HookUpdateRequest updateRequest(long version, HookCsvCodec.ImportRow row, Resolved entry) {
+    private static HookUpdateRequest updateRequest(long version, HookCsvCodec.ImportRow row, Resolved entry, Set<Long> tagIds) {
         return new HookUpdateRequest(version, row.name(), row.description(), row.enabled(), row.mode(), entry.tokenSecretId(),
-                row.maxConcurrentInvocations(), row.rateLimitCount(), window(row), entry.targets());
+                row.maxConcurrentInvocations(), row.rateLimitCount(), window(row), entry.targets(), tagIds);
     }
+
+    private static Set<Long> tagIds(Hook hook) { return hook.getTags().stream().map(app.alertify.jpa.entity.Tag::getId).collect(java.util.stream.Collectors.toSet()); }
 
     private static Duration window(HookCsvCodec.ImportRow row) {
         return row.rateLimitWindowSeconds() == null ? null : Duration.ofSeconds(row.rateLimitWindowSeconds());

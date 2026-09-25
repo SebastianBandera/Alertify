@@ -196,7 +196,7 @@ class HookCsvServiceTest {
     }
 
     private static HookResponse response(long id) {
-        return new HookResponse(id, 0, UUID.randomUUID(), "ok", null, false, HookMode.PARALLEL, null, null, null, null, null, List.of(), null, null);
+        return new HookResponse(id, 0, UUID.randomUUID(), "ok", null, false, HookMode.PARALLEL, null, null, null, null, null, Set.of(), List.of(), null, null);
     }
 
     private static MockMultipartFile file(String... rows) {

@@ -2,6 +2,7 @@ package app.alertify.hooks.api;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Set;
 
 import app.alertify.hooks.model.HookMode;
 import jakarta.validation.Valid;
@@ -21,6 +22,7 @@ public record HookUpdateRequest(
     @Positive Integer maxConcurrentInvocations,
     @Positive Integer rateLimitCount,
     Duration rateLimitWindow,
-    @NotNull List<@Valid HookTargetRequest> targets
+    @NotNull List<@Valid HookTargetRequest> targets,
+    @NotNull @Size(max = 100) Set<@Positive Long> tagIds
 ) {
 }

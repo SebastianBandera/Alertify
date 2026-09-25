@@ -1,10 +1,13 @@
 package app.alertify.hooks.service;
 
 import java.time.Duration;
+import java.util.Comparator;
 import java.util.LinkedHashSet;
+import java.util.Locale;
 
 import org.springframework.stereotype.Component;
 
+import app.alertify.configuration.api.TagResponse;
 import app.alertify.hooks.api.HookInvocationResponse;
 import app.alertify.hooks.api.HookInvocationTargetResponse;
 import app.alertify.hooks.api.HookResponse;
@@ -24,6 +27,9 @@ public class HookMapper {
                 hook.isEnabled(), hook.getMode(), hook.getTokenSecret() == null ? null : hook.getTokenSecret().getId(),
                 hook.getTokenSecret() == null ? null : hook.getTokenSecret().getName(), hook.getMaxConcurrentInvocations(),
                 hook.getRateLimitCount(), hook.getRateLimitWindowSeconds() == null ? null : Duration.ofSeconds(hook.getRateLimitWindowSeconds()),
+                hook.getTags().stream().sorted(Comparator.comparing(tag -> tag.getName().toLowerCase(Locale.ROOT)))
+                        .map(tag -> new TagResponse(tag.getId(), tag.getVersion(), tag.getScope(), tag.getName(), tag.getColor(), tag.getCreatedAt(), tag.getUpdatedAt()))
+                        .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new)),
                 hook.getTargets().stream().map(this::toResponse).toList(), hook.getCreatedAt(), hook.getUpdatedAt()
         );
     }

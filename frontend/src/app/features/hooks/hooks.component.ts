@@ -14,6 +14,7 @@ import {
   HookOption,
   HookOptions,
   HookOutcome,
+  HookTag,
   HookTargetType,
   HookTargetWriteRequest,
 } from '../../core/api/hook-api.service';
@@ -40,6 +41,7 @@ interface HookForm {
   maxConcurrentInvocations: number | null;
   rateLimitCount: number | null;
   rateLimitWindowSeconds: number | null;
+  tagIds: number[];
   targets: HookTargetForm[];
 }
 
@@ -85,6 +87,7 @@ export class HooksComponent implements OnInit, OnDestroy {
 
   protected readonly activeTab = signal<HookTab>('hooks');
   protected readonly hooks = signal<readonly Hook[]>([]);
+  protected readonly tags = signal<readonly HookTag[]>([]);
   protected readonly hookChoices = signal<readonly Hook[]>([]);
   protected readonly options = signal<HookOptions>(EMPTY_OPTIONS);
   protected readonly invocations = signal<readonly HookInvocation[]>([]);
@@ -111,6 +114,11 @@ export class HooksComponent implements OnInit, OnDestroy {
   protected readonly tokenSecretSaving = signal(false);
   protected readonly tokenSecretForm = signal<TokenSecretForm>(this.emptyTokenSecretForm());
   protected readonly tokenSecretError = signal<string | null>(null);
+  protected readonly tagDialogOpen = signal(false);
+  protected readonly editingTag = signal<HookTag | null>(null);
+  protected readonly tagName = signal('');
+  protected readonly tagColor = signal('#6D5DFC');
+  protected readonly tagError = signal<string | null>(null);
   protected readonly newTargetType = signal<HookTargetType>('ALERT');
   protected readonly newTargetId = signal<number | null>(null);
   protected readonly outcomes = ALL_OUTCOMES;
@@ -232,6 +240,7 @@ export class HooksComponent implements OnInit, OnDestroy {
       maxConcurrentInvocations: hook.maxConcurrentInvocations,
       rateLimitCount: hook.rateLimitCount,
       rateLimitWindowSeconds: this.durationSeconds(hook.rateLimitWindow),
+      tagIds: hook.tags.map((tag) => tag.id),
       targets: hook.targets.map((target) => ({
         type: target.type,
         resourceId: target.resourceId,
@@ -374,6 +383,13 @@ export class HooksComponent implements OnInit, OnDestroy {
     this.form.update((form) => ({ ...form, targets: form.targets.filter((_, candidate) => candidate !== index) }));
   }
 
+  protected toggleTag(tagId: number, checked: boolean): void {
+    this.form.update((form) => ({
+      ...form,
+      tagIds: checked ? [...form.tagIds, tagId] : form.tagIds.filter((id) => id !== tagId),
+    }));
+  }
+
   protected async save(): Promise<void> {
     const form = this.form();
     if (!form.name.trim() || form.enabled && !form.targets.length) {
@@ -411,6 +427,7 @@ export class HooksComponent implements OnInit, OnDestroy {
         maxConcurrentInvocations: form.maxConcurrentInvocations,
         rateLimitCount: form.rateLimitCount,
         rateLimitWindow: form.rateLimitWindowSeconds === null ? null : `PT${form.rateLimitWindowSeconds}S`,
+        tagIds: form.tagIds,
         targets,
       };
       if (editing) await this.api.update(editing.id, request);
@@ -448,6 +465,65 @@ export class HooksComponent implements OnInit, OnDestroy {
     } catch (error) {
       this.error.set(this.errorMessage(error));
     }
+  }
+
+  protected openTagManager(): void {
+    this.editingTag.set(null);
+    this.tagName.set('');
+    this.tagColor.set('#6D5DFC');
+    this.tagError.set(null);
+    this.tagDialogOpen.set(true);
+  }
+
+  protected closeTagManager(): void {
+    if (!this.saving()) this.tagDialogOpen.set(false);
+  }
+
+  protected editTag(tag: HookTag): void {
+    this.editingTag.set(tag);
+    this.tagName.set(tag.name);
+    this.tagColor.set(tag.color);
+  }
+
+  protected async saveTag(): Promise<void> {
+    const name = this.tagName().trim();
+    if (!name) return;
+    this.saving.set(true);
+    this.tagError.set(null);
+    try {
+      const editing = this.editingTag();
+      if (editing) await this.api.updateTag(editing.id, { version: editing.version, name, color: this.tagColor() });
+      else await this.api.createTag({ name, color: this.tagColor() });
+      this.editingTag.set(null);
+      this.tagName.set('');
+      await Promise.all([this.loadTags(), this.loadHooks()]);
+    } catch (error) {
+      this.showTagError(this.errorMessage(error));
+    } finally {
+      this.saving.set(false);
+    }
+  }
+
+  protected async deleteTag(tag: HookTag): Promise<void> {
+    if (!window.confirm(this.dynamic('hooks.tags.deleteConfirm'))) return;
+    this.tagError.set(null);
+    try {
+      await this.api.deleteTag(tag);
+      await Promise.all([this.loadTags(), this.loadHooks()]);
+    } catch (error) {
+      this.showTagError(error instanceof ApiRequestError && error.code === 'HOOK_TAG_IN_USE'
+        ? this.dynamic('hooks.tags.inUse').replace('{name}', tag.name)
+        : this.errorMessage(error));
+    }
+  }
+
+  private showTagError(message: string): void {
+    this.tagError.set(message);
+    requestAnimationFrame(() => {
+      const error = this.elementRef.nativeElement.querySelector<HTMLElement>('#hook-tag-error');
+      error?.focus({ preventScroll: true });
+      error?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
   }
 
   protected invocationUrl(hook: Hook): string { return this.api.invocationUrl(hook.publicId); }
@@ -505,9 +581,10 @@ export class HooksComponent implements OnInit, OnDestroy {
   private async loadAll(showLoading = true): Promise<void> {
     if (showLoading) this.loading.set(true);
     try {
-      const [options, choices] = await Promise.all([this.api.options(), this.api.list('', 0, 500)]);
+      const [options, choices, tags] = await Promise.all([this.api.options(), this.api.list('', 0, 500), this.api.listTags()]);
       this.options.set(options);
       this.hookChoices.set(choices.content);
+      this.tags.set(tags);
       await this.loadHooks();
       if (this.historyHookId() === null && this.hookChoices().length) this.historyHookId.set(this.hookChoices()[0].id);
       await this.loadHistory();
@@ -551,6 +628,10 @@ export class HooksComponent implements OnInit, OnDestroy {
     }
   }
 
+  private async loadTags(): Promise<void> {
+    this.tags.set(await this.api.listTags());
+  }
+
   private startRefresh(): void {
     this.stopRefresh();
     this.refreshTimer = setInterval(() => {
@@ -567,7 +648,7 @@ export class HooksComponent implements OnInit, OnDestroy {
   private emptyForm(): HookForm {
     return {
       name: '', description: '', enabled: false, mode: 'PARALLEL', tokenSecretId: null,
-      maxConcurrentInvocations: null, rateLimitCount: null, rateLimitWindowSeconds: null, targets: [],
+      maxConcurrentInvocations: null, rateLimitCount: null, rateLimitWindowSeconds: null, tagIds: [], targets: [],
     };
   }
 

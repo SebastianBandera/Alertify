@@ -8,6 +8,9 @@
       <input id="hook-import" class="file-input" type="file" accept=".csv,text/csv" (change)="importCsv($event)">
       <button class="button button--secondary" type="button" (click)="exportCsv()">{{ dynamic('hooks.export') }}</button>
       <button class="button button--secondary" type="button" (click)="selectImport()">{{ dynamic('hooks.import') }}</button>
+      @if (activeTab() === 'hooks') {
+        <button class="button button--secondary" type="button" (click)="openTagManager()">{{ dynamic('hooks.manageTags') }}</button>
+      }
       <button class="button button--primary" type="button" (click)="openCreate()">{{ dynamic('hooks.create') }}</button>
     </div>
   </header>
@@ -52,6 +55,7 @@
         <table>
           <thead><tr>
             <th>{{ dynamic('hooks.column.name') }}</th>
+            <th>{{ dynamic('hooks.column.tags') }}</th>
             <th>{{ dynamic('hooks.column.url') }}</th>
             <th>{{ dynamic('hooks.column.mode') }}</th>
             <th>{{ dynamic('hooks.column.targets') }}</th>
@@ -62,6 +66,13 @@
             @for (hook of hooks(); track hook.id) {
               <tr>
                 <td><strong>{{ hook.name }}</strong><small>{{ hook.description || '—' }}</small></td>
+                <td>
+                  <div class="tag-list">
+                    @for (tag of hook.tags; track tag.id) {
+                      <span class="tag" [style.--tag-color]="tag.color">{{ tag.name }}</span>
+                    } @empty { <span class="muted">—</span> }
+                  </div>
+                </td>
                 <td>
                   <code class="url">{{ invocationUrl(hook) }}</code>
                   <button class="text-button" type="button" (click)="copyUrl(hook)">{{ dynamic('hooks.copy') }}</button>
@@ -175,6 +186,17 @@
           <label><span>{{ dynamic('hooks.form.name') }}</span><input name="name" required maxlength="255" [ngModel]="form().name" (ngModelChange)="patchForm('name', $event)"></label>
           <label><span>{{ dynamic('hooks.form.mode') }}</span><select name="mode" [ngModel]="form().mode" (ngModelChange)="patchForm('mode', $event)"><option value="PARALLEL">{{ dynamic('hooks.mode.PARALLEL') }}</option><option value="SEQUENTIAL">{{ dynamic('hooks.mode.SEQUENTIAL') }}</option></select></label>
           <label class="full"><span>{{ dynamic('hooks.form.description') }}</span><textarea name="description" rows="2" maxlength="4000" [ngModel]="form().description" (ngModelChange)="patchForm('description', $event)"></textarea></label>
+          <fieldset class="full tag-fieldset">
+            <legend>{{ dynamic('hooks.form.tags') }}</legend>
+            <div class="tag-options">
+              @for (tag of tags(); track tag.id) {
+                <label class="tag-option">
+                  <input type="checkbox" [checked]="form().tagIds.includes(tag.id)" (change)="toggleTag(tag.id, $any($event.target).checked)">
+                  <span class="tag" [style.--tag-color]="tag.color">{{ tag.name }}</span>
+                </label>
+              }
+            </div>
+          </fieldset>
           @if (editing()) {
             <label class="checkbox full"><input type="checkbox" name="enabled" [ngModel]="form().enabled" (ngModelChange)="patchForm('enabled', $event)"><span>{{ dynamic('hooks.form.enabled') }}</span></label>
           } @else {
@@ -240,6 +262,35 @@
         @if (formError()) { <p class="form-error" role="alert">{{ formError() }}</p> }
         <footer><button class="button button--secondary" type="button" (click)="closeEditor()">{{ dynamic('hooks.cancel') }}</button><button class="button button--primary" type="submit" [disabled]="saving()">{{ dynamic('hooks.save') }}</button></footer>
       </form>
+    </section>
+  </div>
+}
+
+@if (tagDialogOpen()) {
+  <div class="modal-backdrop" (mousedown)="closeTagManager()">
+    <section class="modal modal--tags" role="dialog" aria-modal="true" [attr.aria-label]="dynamic('hooks.tags.title')" (mousedown)="$event.stopPropagation()">
+      <header>
+        <h2>{{ dynamic('hooks.tags.title') }}</h2>
+        <button class="close" type="button" (click)="closeTagManager()">×</button>
+      </header>
+      <div class="tag-manager-body">
+        <form class="tag-form" (ngSubmit)="saveTag()">
+          <label><span>{{ dynamic('hooks.tags.name') }}</span><input name="tagName" required maxlength="100" [ngModel]="tagName()" (ngModelChange)="tagName.set($event)" [placeholder]="dynamic('hooks.tags.name')"></label>
+          <label><span>{{ dynamic('hooks.tags.color') }}</span><input name="tagColor" type="color" [ngModel]="tagColor()" (ngModelChange)="tagColor.set($event)"></label>
+          <button class="button button--primary" type="submit" [disabled]="saving() || !tagName().trim()">{{ dynamic(editingTag() ? 'hooks.tags.update' : 'hooks.tags.add') }}</button>
+        </form>
+        @if (tagError()) { <p id="hook-tag-error" class="form-error" role="alert" tabindex="-1">{{ tagError() }}</p> }
+        <div class="tag-manager-list">
+          @for (tag of tags(); track tag.id) {
+            <div class="tag-manager-row">
+              <span class="tag" [style.--tag-color]="tag.color">{{ tag.name }}</span>
+              <code>{{ tag.color }}</code>
+              <button class="button button--secondary" type="button" (click)="editTag(tag)">{{ dynamic('hooks.edit') }}</button>
+              <button class="button button--secondary danger" type="button" (click)="deleteTag(tag)">{{ dynamic('hooks.delete') }}</button>
+            </div>
+          } @empty { <p class="muted">{{ dynamic('hooks.tags.empty') }}</p> }
+        </div>
+      </div>
     </section>
   </div>
 }

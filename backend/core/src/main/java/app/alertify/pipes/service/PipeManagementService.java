@@ -28,6 +28,9 @@ import app.alertify.jpa.repository.ProcedureParameterValueRepository;
 import app.alertify.jpa.repository.ProcedureRepository;
 import app.alertify.jpa.repository.ProcedureTemplateOutputDefinitionRepository;
 import app.alertify.jpa.repository.ProcedureTemplateParameterDefinitionRepository;
+import app.alertify.jpa.entity.Tag;
+import app.alertify.jpa.entity.TagScope;
+import app.alertify.jpa.repository.TagRepository;
 import app.alertify.logging.ApplicationEventLogger;
 import app.alertify.pipes.api.PipeCreateRequest;
 import app.alertify.pipes.api.PipeDeletionImpactResponse;
@@ -56,10 +59,11 @@ public class PipeManagementService {
     private final ProcedureTemplateOutputDefinitionRepository outputRepository;
     private final HookRepository hookRepository;
     private final ProcedureParameterValueRepository procedureParameterRepository;
+    private final TagRepository tagRepository;
     private final PipeExecutionOrchestrator orchestrator;
     private final ApplicationEventLogger eventLogger;
 
-    public PipeManagementService(PipeRepository pipeRepository, PipeExecutionRepository executionRepository, AlertRepository alertRepository, ProcedureRepository procedureRepository, ProcedureTemplateParameterDefinitionRepository parameterRepository, ProcedureTemplateOutputDefinitionRepository outputRepository, HookRepository hookRepository, ProcedureParameterValueRepository procedureParameterRepository, PipeExecutionOrchestrator orchestrator, ApplicationEventLogger eventLogger) {
+    public PipeManagementService(PipeRepository pipeRepository, PipeExecutionRepository executionRepository, AlertRepository alertRepository, ProcedureRepository procedureRepository, ProcedureTemplateParameterDefinitionRepository parameterRepository, ProcedureTemplateOutputDefinitionRepository outputRepository, HookRepository hookRepository, ProcedureParameterValueRepository procedureParameterRepository, TagRepository tagRepository, PipeExecutionOrchestrator orchestrator, ApplicationEventLogger eventLogger) {
         this.pipeRepository = pipeRepository;
         this.executionRepository = executionRepository;
         this.alertRepository = alertRepository;
@@ -68,6 +72,7 @@ public class PipeManagementService {
         this.outputRepository = outputRepository;
         this.hookRepository = hookRepository;
         this.procedureParameterRepository = procedureParameterRepository;
+        this.tagRepository = tagRepository;
         this.orchestrator = orchestrator;
         this.eventLogger = eventLogger;
     }
@@ -107,6 +112,7 @@ public class PipeManagementService {
         ensureNameAvailable(name, null);
         validateHasSteps(request.enabled(), request.steps());
         Pipe pipe = pipeRepository.saveAndFlush(new Pipe(name, optional(request.description()), request.enabled(), request.allowConcurrentExecutions()));
+        pipe.replaceTags(resolveTags(request.tagIds()));
         List<PipeStep> steps = steps(pipe, request.steps());
         validateComplete(request.enabled(), steps);
         pipe.replaceSteps(steps);
@@ -127,6 +133,7 @@ public class PipeManagementService {
         List<PipeStep> steps = steps(pipe, request.steps());
         validateComplete(request.enabled(), steps);
         pipe.update(name, optional(request.description()), request.enabled(), request.allowConcurrentExecutions());
+        pipe.replaceTags(resolveTags(request.tagIds()));
         clearBindings(pipe);
         for (int index = 0; index < pipe.getSteps().size(); index++)
             pipe.getSteps().get(index).moveTemporarily(1_000_000 + index);
@@ -243,6 +250,18 @@ public class PipeManagementService {
 
     private Pipe find(long id) {
         return pipeRepository.findDetailedById(id).orElseThrow(() -> new ResourceNotFoundException("Pipe " + id + " was not found"));
+    }
+
+    private Set<Tag> resolveTags(Set<Long> requestedIds) {
+        Set<Long> ids = requestedIds == null ? Set.of() : Set.copyOf(requestedIds);
+        if (ids.isEmpty())
+            return Set.of();
+
+        List<Tag> found = tagRepository.findAllByIdInAndScope(ids, TagScope.PIPE);
+        if (found.size() != ids.size())
+            throw invalid("One or more Pipe tags do not exist");
+
+        return new java.util.LinkedHashSet<>(found);
     }
 
     private void ensureNameAvailable(String name, Long id) {

@@ -84,18 +84,20 @@ public class PipeCsvService {
         for (Resolved entry : resolved) {
             PipeCsvCodec.ImportRow row = entry.row();
             if (entry.existing() == null) {
-                managementService.create(new PipeCreateRequest(row.name(), row.description(), row.enabled(), row.allowConcurrentExecutions(), entry.steps()));
+                managementService.create(new PipeCreateRequest(row.name(), row.description(), row.enabled(), row.allowConcurrentExecutions(), entry.steps(), Set.of()));
                 created++;
             } else if (unchanged(entry.existing(), row, entry.steps())) {
                 unchanged++;
             } else {
-                managementService.update(entry.existing().getId(), new PipeUpdateRequest(entry.existing().getVersion(), row.name(), row.description(), row.enabled(), row.allowConcurrentExecutions(), entry.steps()));
+                managementService.update(entry.existing().getId(), new PipeUpdateRequest(entry.existing().getVersion(), row.name(), row.description(), row.enabled(), row.allowConcurrentExecutions(), entry.steps(), tagIds(entry.existing())));
                 updated++;
             }
         }
         eventLogger.successAfterCommit("PIPE_IMPORT", Map.of("total", rows.size(), "created", created, "updated", updated, "unchanged", unchanged));
         return new PipeImportResult(rows.size(), created, updated, unchanged);
     }
+
+    private static Set<Long> tagIds(Pipe pipe) { return pipe.getTags().stream().map(app.alertify.jpa.entity.Tag::getId).collect(java.util.stream.Collectors.toSet()); }
 
     private Resolved resolve(PipeCsvCodec.ImportRow row, Map<String, Alert> alerts, Map<String, Procedure> procedures, Pipe existing) {
         List<PipeStepRequest> steps = new ArrayList<>();
