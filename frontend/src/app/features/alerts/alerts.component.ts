@@ -18,7 +18,7 @@ import {
   AlertTemplateTag,
   AlertTag,
 } from '../../core/api/alert-api.service';
-import { ApiRequestError, TagMatchMode } from '../../core/api/configuration-api.service';
+import { ApiRequestError, SortDirection, TagMatchMode } from '../../core/api/configuration-api.service';
 import { LocalizationService } from '../../core/i18n/localization.service';
 import { isCompatibleConfigurationValueType, isCompatibleSecretValueType } from '../../core/utils/parameter-binding-compatibility';
 import { templateClassName } from '../../core/utils/template-key';
@@ -112,6 +112,7 @@ export class AlertsComponent implements OnInit {
   protected readonly templateFilterId = signal<number | null>(null);
   protected readonly selectedTagIds = signal<readonly number[]>([]);
   protected readonly tagMatchMode = signal<TagMatchMode>('OR');
+  protected readonly updatedAtSort = signal<SortDirection | null>(null);
   protected readonly pageSize = signal(readStoredPageSize());
   protected readonly alertPage = signal(0);
   protected readonly alertTotalPages = signal(0);
@@ -283,7 +284,7 @@ export class AlertsComponent implements OnInit {
     try {
       const page = await this.api.listAlerts(
         this.search(), this.templateFilterId(), this.selectedTagIds(), this.tagMatchMode(),
-        this.alertPage(), this.pageSize(),
+        this.alertPage(), this.pageSize(), this.updatedAtSort(),
       );
       this.alerts.set(page.content);
       this.alertPage.set(page.page.number);
@@ -406,6 +407,13 @@ export class AlertsComponent implements OnInit {
   }
 
   protected applySearch(): void {
+    this.alertPage.set(0);
+    void this.loadAlerts();
+  }
+
+  protected toggleUpdatedAtSort(): void {
+    const current = this.updatedAtSort();
+    this.updatedAtSort.set(current === null ? 'desc' : current === 'desc' ? 'asc' : null);
     this.alertPage.set(0);
     void this.loadAlerts();
   }

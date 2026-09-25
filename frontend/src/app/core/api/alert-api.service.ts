@@ -2,7 +2,7 @@ import { inject, Injectable } from '@angular/core';
 
 import { AuthService } from '../auth/auth.service';
 import { RUNTIME_CONFIG } from '../config/runtime-config';
-import { ApiRequestError, PageResponse, TagMatchMode } from './configuration-api.service';
+import { ApiRequestError, PageResponse, SortDirection, TagMatchMode } from './configuration-api.service';
 
 export type AlertParameterSource = 'TEXT' | 'CONFIGURATION' | 'SECRET' | 'PROCEDURE' | 'PIPE' | 'PIPE_OUTPUT';
 export type AlertExecutionStatus = 'SUCCESS' | 'WARN' | 'ERROR';
@@ -200,8 +200,10 @@ export class AlertApiService {
     tagMatchMode: TagMatchMode,
     page: number,
     size: number,
+    updatedAtSort: SortDirection | null = null,
   ): Promise<PageResponse<Alert>> {
-    const params = new URLSearchParams({ page: String(page), size: String(size), sort: 'name,asc' });
+    const sort = updatedAtSort === null ? 'name,asc' : `updatedAt,${updatedAtSort}`;
+    const params = new URLSearchParams({ page: String(page), size: String(size), sort });
     if (name.trim()) params.set('name', name.trim());
     if (templateId !== null) params.set('templateId', String(templateId));
     tagIds.forEach((tagId) => params.append('tagId', String(tagId)));

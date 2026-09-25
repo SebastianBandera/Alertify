@@ -16,6 +16,7 @@ export type ConfigurationValueType =
   | 'BINARY';
 
 export type TagMatchMode = 'OR' | 'AND';
+export type SortDirection = 'asc' | 'desc';
 
 export interface ConfigurationTag {
   readonly id: number;

@@ -5,7 +5,7 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 
 import { AlertParameterSource } from '../../core/api/alert-api.service';
-import { ApiRequestError, TagMatchMode } from '../../core/api/configuration-api.service';
+import { ApiRequestError, SortDirection, TagMatchMode } from '../../core/api/configuration-api.service';
 import {
   Procedure,
   ProcedureApiService,
@@ -99,6 +99,7 @@ export class ProceduresComponent implements OnInit {
   protected readonly notice = signal<string | null>(null);
   protected readonly search = signal('');
   protected readonly templateFilterId = signal<number | null>(null);
+  protected readonly updatedAtSort = signal<SortDirection | null>(null);
   protected readonly templateListSearch = signal('');
   protected readonly selectedTemplateTagKeys = signal<readonly string[]>([]);
   protected readonly templateTagMatchMode = signal<TagMatchMode>('OR');
@@ -307,6 +308,12 @@ export class ProceduresComponent implements OnInit {
 
   protected async applySearch(): Promise<void> {
     await this.loadProcedures();
+  }
+
+  protected toggleUpdatedAtSort(): void {
+    const current = this.updatedAtSort();
+    this.updatedAtSort.set(current === null ? 'desc' : current === 'desc' ? 'asc' : null);
+    void this.loadProcedures();
   }
 
   protected updateTemplateFilter(templateId: number | null): void {
@@ -666,7 +673,7 @@ export class ProceduresComponent implements OnInit {
   }
 
   private async loadProcedures(): Promise<void> {
-    const page = await this.api.listProcedures(this.search(), this.templateFilterId(), [], 'OR', 0, 500);
+    const page = await this.api.listProcedures(this.search(), this.templateFilterId(), [], 'OR', 0, 500, this.updatedAtSort());
     this.procedures.set(page.content);
   }
 

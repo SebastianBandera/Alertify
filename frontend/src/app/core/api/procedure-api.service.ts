@@ -3,7 +3,7 @@ import { inject, Injectable } from '@angular/core';
 import { AuthService } from '../auth/auth.service';
 import { RUNTIME_CONFIG } from '../config/runtime-config';
 import { AlertParameterSource, WorkerCapability } from './alert-api.service';
-import { ApiRequestError, PageResponse, TagMatchMode } from './configuration-api.service';
+import { ApiRequestError, PageResponse, SortDirection, TagMatchMode } from './configuration-api.service';
 
 export type ProcedureExecutionStatus = 'RUNNING' | 'COMPLETED' | 'ERROR';
 
@@ -183,8 +183,10 @@ export class ProcedureApiService {
   private readonly apiBaseUrl = inject(RUNTIME_CONFIG).apiBaseUrl;
 
   async listProcedures(name = '', templateId: number | null = null, tagIds: readonly number[] = [],
-      tagMatchMode: TagMatchMode = 'OR', page = 0, size = 20): Promise<PageResponse<Procedure>> {
-    const params = new URLSearchParams({ page: String(page), size: String(size), sort: 'name,asc' });
+      tagMatchMode: TagMatchMode = 'OR', page = 0, size = 20,
+      updatedAtSort: SortDirection | null = null): Promise<PageResponse<Procedure>> {
+    const sort = updatedAtSort === null ? 'name,asc' : `updatedAt,${updatedAtSort}`;
+    const params = new URLSearchParams({ page: String(page), size: String(size), sort });
     if (name.trim()) params.set('name', name.trim());
     if (templateId !== null) params.set('templateId', String(templateId));
     tagIds.forEach((tagId) => params.append('tagId', String(tagId)));
