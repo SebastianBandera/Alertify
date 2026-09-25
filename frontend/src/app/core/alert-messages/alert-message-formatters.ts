@@ -11,6 +11,16 @@ function count(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
 }
 
+function record(value: unknown): Readonly<Record<string, unknown>> | null {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Readonly<Record<string, unknown>>
+    : null;
+}
+
+function records(value: unknown): readonly Readonly<Record<string, unknown>>[] {
+  return Array.isArray(value) ? value.map(record).filter((item): item is Readonly<Record<string, unknown>> => item !== null) : [];
+}
+
 function join(...parts: readonly (string | null | undefined)[]): string {
   return parts.filter((part): part is string => !!part).join(' · ');
 }
@@ -203,6 +213,41 @@ export const ALERT_MESSAGE_FORMATTERS: AlertMessageFormatters = {
       parts.push(context.translate('alertMessage.git.deploymentDelayed', { days: context.formatNumber(last?.['oldestPendingAgeDays']) }));
     }
     return parts.length > 0 ? join(...parts) : context.translate('alertMessage.git.upToDate');
+  },
+
+  [`${TEMPLATES}GitLabPipelineAlertTemplate`]: (context) => {
+    const topLevelFailure = failure(context);
+    if (topLevelFailure !== null) return topLevelFailure;
+
+    const summaries = records(context.message['branchResults']).map((branch) => {
+      const name = text(branch['branch']) ?? '?';
+      const reason = failureMessage(context, branch);
+      if (reason !== null) return `${name}: ${reason}`;
+      if (branch['outcome'] === 'no_executed_pipeline') {
+        return context.translate('alertMessage.gitLabPipeline.noExecuted', { branch: name });
+      }
+
+      const pipeline = record(branch['pipeline']);
+      const status = text(pipeline?.['status']) ?? '?';
+      const branchWarnings = Array.isArray(branch['warnings']) ? branch['warnings'] : [];
+      const childWarnings: string[] = [];
+      const visitChildren = (children: unknown): void => {
+        for (const child of records(children)) {
+          if (child['warning'] === true) childWarnings.push(`#${child['id']} (${text(child['status']) ?? '?'})`);
+          visitChildren(child['childPipelines']);
+        }
+      };
+      visitChildren(branch['childPipelines']);
+
+      const parentSummary = branchWarnings.some((warning) => warning !== 'child_pipeline_not_success')
+        ? context.translate('alertMessage.gitLabPipeline.warning', { branch: name, status })
+        : context.translate('alertMessage.gitLabPipeline.healthy', { branch: name, status });
+      const childSummary = childWarnings.length > 0
+        ? context.translate('alertMessage.gitLabPipeline.childrenWarning', { children: childWarnings.join(', ') })
+        : null;
+      return join(parentSummary, childSummary);
+    });
+    return summaries.join('; ');
   },
 
   [`${TEMPLATES}devtools.SimulatedResultAlertTemplate`]: (context) => text(context.message['message']),

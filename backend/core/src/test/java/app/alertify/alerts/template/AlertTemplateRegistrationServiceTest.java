@@ -25,6 +25,7 @@ import org.springframework.core.io.DefaultResourceLoader;
 import app.alertify.alerts.model.AlertTemplateDefinition;
 import app.alertify.alerts.model.AlertTemplateParameterDefinition;
 import app.alertify.alerts.template.annotation.AlertParameterSource;
+import app.alertify.alerts.templates.GitLabPipelineAlertTemplate;
 import app.alertify.alerts.templates.HttpsCertificateExpiryAlertTemplate;
 import app.alertify.alerts.templates.InternetConnectionAlertTemplate;
 import app.alertify.alerts.templates.PlaywrightPageAlertTemplate;
@@ -62,12 +63,12 @@ class AlertTemplateRegistrationServiceTest {
 
         AlertTemplateRegistrationSummary summary = service.scanAndRegister();
 
-        assertTrue(summary.templates() >= 7);
-        assertTrue(summary.parameters() >= 31);
+        assertTrue(summary.templates() >= 8);
+        assertTrue(summary.parameters() >= 39);
 
         ArgumentCaptor<AlertTemplateDefinition> templateCaptor =
             ArgumentCaptor.forClass(AlertTemplateDefinition.class);
-        verify(templateRepository, atLeast(7)).save(templateCaptor.capture());
+        verify(templateRepository, atLeast(8)).save(templateCaptor.capture());
         Map<String, AlertTemplateDefinition> templatesByKey = new LinkedHashMap<>();
         for (AlertTemplateDefinition template : templateCaptor.getAllValues())
             templatesByKey.put(template.getTemplateKey(), template);
@@ -97,6 +98,14 @@ class AlertTemplateRegistrationServiceTest {
         assertEquals(1, internetTemplate.getTags().size());
         assertEquals("alerts.templateTag.network", internetTemplate.getTags().get(0).nameKey());
         assertEquals("#0EA5E9", internetTemplate.getTags().get(0).color());
+
+        AlertTemplateDefinition gitLabPipelineTemplate =
+            templatesByKey.get(GitLabPipelineAlertTemplate.class.getName());
+        assertNotNull(gitLabPipelineTemplate);
+        assertEquals(
+            "app/alertify/alerts/templates/GitLabPipelineAlertTemplate.java",
+            gitLabPipelineTemplate.getSourcePath()
+        );
 
         AlertTemplateDefinition tcpTemplate = templatesByKey.get(TcpConnectionAlertTemplate.class.getName());
         assertNotNull(tcpTemplate);
@@ -147,7 +156,7 @@ class AlertTemplateRegistrationServiceTest {
 
         ArgumentCaptor<AlertTemplateParameterDefinition> parameterCaptor =
             ArgumentCaptor.forClass(AlertTemplateParameterDefinition.class);
-        verify(parameterRepository, atLeast(31)).save(parameterCaptor.capture());
+        verify(parameterRepository, atLeast(39)).save(parameterCaptor.capture());
 
         List<AlertTemplateParameterDefinition> httpsParameters = parametersOf(parameterCaptor, httpsCertificateTemplate);
         assertEquals(4, httpsParameters.size());
