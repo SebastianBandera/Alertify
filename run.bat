@@ -27,6 +27,7 @@ if not exist "!ENVIRONMENT_FILE!" set "ENVIRONMENT_FILE=!TEMPLATE_FILE!"
 
 for /f "usebackq tokens=1,* delims==" %%A in ("!ENVIRONMENT_FILE!") do (
     if /I "%%A"=="PUBLIC_PORT" set "PUBLIC_PORT=%%B"
+    if /I "%%A"=="PUBLIC_HTTP_PORT" set "PUBLIC_HTTP_PORT=%%B"
     if /I "%%A"=="COMPOSE_PROJECT_NAME" set "ENV_COMPOSE_PROJECT_NAME=%%B"
 )
 if not defined PUBLIC_PORT (
@@ -39,15 +40,27 @@ if not defined ENV_COMPOSE_PROJECT_NAME (
         if /I "%%A"=="COMPOSE_PROJECT_NAME" set "ENV_COMPOSE_PROJECT_NAME=%%B"
     )
 )
+if not defined PUBLIC_HTTP_PORT (
+    for /f "usebackq tokens=1,* delims==" %%A in ("!TEMPLATE_FILE!") do (
+        if /I "%%A"=="PUBLIC_HTTP_PORT" set "PUBLIC_HTTP_PORT=%%B"
+    )
+)
 
 set "PUBLIC_PORT=!PUBLIC_PORT:"=!"
 set "PUBLIC_PORT=!PUBLIC_PORT:'=!"
+set "PUBLIC_HTTP_PORT=!PUBLIC_HTTP_PORT:"=!"
+set "PUBLIC_HTTP_PORT=!PUBLIC_HTTP_PORT:'=!"
 set "ENV_COMPOSE_PROJECT_NAME=!ENV_COMPOSE_PROJECT_NAME:"=!"
 set "ENV_COMPOSE_PROJECT_NAME=!ENV_COMPOSE_PROJECT_NAME:'=!"
 
 powershell -NoProfile -Command "$portValue = 0; if (-not [int]::TryParse('!PUBLIC_PORT!', [ref]$portValue) -or $portValue -lt 1 -or $portValue -gt 65535) { exit 1 }"
 if errorlevel 1 (
     echo ERROR: PUBLIC_PORT must be an integer between 1 and 65535; received: !PUBLIC_PORT!. 1>&2
+    exit /b 1
+)
+powershell -NoProfile -Command "$portValue = 0; if (-not [int]::TryParse('!PUBLIC_HTTP_PORT!', [ref]$portValue) -or $portValue -lt 1 -or $portValue -gt 65535) { exit 1 }"
+if errorlevel 1 (
+    echo ERROR: PUBLIC_HTTP_PORT must be an integer between 1 and 65535; received: !PUBLIC_HTTP_PORT!. 1>&2
     exit /b 1
 )
 
@@ -80,6 +93,37 @@ if defined PUBLISHER_OWNS_PORT (
         exit /b 1
     )
     echo PUBLIC_PORT !PUBLIC_PORT! is available.
+)
+
+if not "!PUBLIC_HTTP_PORT!"=="!PUBLIC_PORT!" (
+    set "PUBLISHER_OWNS_HTTP_PORT="
+    set "UNEXPECTED_HTTP_CONTAINER="
+    for /f "delims=" %%C in ('docker ps --filter "publish=!PUBLIC_HTTP_PORT!" --format "{{.Names}}"') do (
+        if /I "%%C"=="!EXPECTED_PUBLISHER!" (
+            set "PUBLISHER_OWNS_HTTP_PORT=1"
+        ) else (
+            set "UNEXPECTED_HTTP_CONTAINER=%%C"
+        )
+    )
+    if defined UNEXPECTED_HTTP_CONTAINER (
+        echo ERROR: PUBLIC_HTTP_PORT !PUBLIC_HTTP_PORT! is already published by !UNEXPECTED_HTTP_CONTAINER!. 1>&2
+        exit /b 1
+    )
+    if defined PUBLISHER_OWNS_HTTP_PORT (
+        echo PUBLIC_HTTP_PORT !PUBLIC_HTTP_PORT! is already owned by !EXPECTED_PUBLISHER!; continuing.
+    ) else (
+        powershell -NoProfile -Command "try { $listener = (@(Get-NetTCPConnection -State Listen -ErrorAction Stop)).Where({ $_.LocalPort -eq !PUBLIC_HTTP_PORT! }, 'First'); if (@($listener).Count -gt 0) { exit 1 }; exit 0 } catch { exit 2 }"
+        set "HTTP_PORT_CHECK_RESULT=!ERRORLEVEL!"
+        if "!HTTP_PORT_CHECK_RESULT!"=="1" (
+            echo ERROR: PUBLIC_HTTP_PORT !PUBLIC_HTTP_PORT! is already in use. 1>&2
+            exit /b 1
+        )
+        if not "!HTTP_PORT_CHECK_RESULT!"=="0" (
+            echo ERROR: PUBLIC_HTTP_PORT !PUBLIC_HTTP_PORT! could not be checked with Get-NetTCPConnection. 1>&2
+            exit /b 1
+        )
+        echo PUBLIC_HTTP_PORT !PUBLIC_HTTP_PORT! is available.
+    )
 )
 
 set "HOST_IS_INTERACTIVE="

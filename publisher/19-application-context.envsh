@@ -1,6 +1,50 @@
 #!/usr/bin/env sh
 
 context_path=${APP_CONTEXT_PATH:?APP_CONTEXT_PATH is required}
+public_port=${PUBLIC_PORT:?PUBLIC_PORT is required}
+tls_enabled=${PUBLISHER_TLS_ENABLED:-false}
+
+if [ "$public_port" = "443" ]; then
+  PUBLISHER_HTTPS_REDIRECT_PORT=
+else
+  PUBLISHER_HTTPS_REDIRECT_PORT=:$public_port
+fi
+
+case "$tls_enabled" in
+  true)
+    PUBLISHER_HTTP_REDIRECT_SERVER="server {
+    listen 8080;
+    server_name _;
+
+    location = /publisher-health {
+        access_log off;
+        add_header Content-Type text/plain;
+        return 200 \"UP\\n\";
+    }
+
+    location / {
+        return 308 https://\$host${PUBLISHER_HTTPS_REDIRECT_PORT}\$request_uri;
+    }
+}"
+    PUBLISHER_APPLICATION_LISTEN='listen 8443 ssl;'
+    PUBLISHER_APPLICATION_SERVER_NAME="server_name ${PUBLISHER_TLS_SERVER_NAME:?PUBLISHER_TLS_SERVER_NAME is required when TLS is enabled};"
+    PUBLISHER_TLS_CONFIGURATION='ssl_certificate /run/alertify-publisher-tls/current/publisher-server.crt;
+    ssl_certificate_key /run/alertify-publisher-tls/current/publisher-server.key;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_session_cache shared:AlertifyTLS:10m;
+    ssl_session_tickets off;'
+    ;;
+  false)
+    PUBLISHER_HTTP_REDIRECT_SERVER=
+    PUBLISHER_APPLICATION_LISTEN='listen 8080;'
+    PUBLISHER_APPLICATION_SERVER_NAME='server_name _;'
+    PUBLISHER_TLS_CONFIGURATION=
+    ;;
+  *)
+    echo "ERROR: PUBLISHER_TLS_ENABLED must be true or false." >&2
+    exit 1
+    ;;
+esac
 
 case "$context_path" in
   /)
@@ -21,3 +65,5 @@ case "$context_path" in
 esac
 
 export PUBLISHER_CONTEXT_PATH PUBLISHER_CONTEXT_GUARDS PUBLISHER_OUTSIDE_CONTEXT_LOCATION
+export PUBLISHER_HTTPS_REDIRECT_PORT PUBLISHER_HTTP_REDIRECT_SERVER
+export PUBLISHER_APPLICATION_LISTEN PUBLISHER_APPLICATION_SERVER_NAME PUBLISHER_TLS_CONFIGURATION

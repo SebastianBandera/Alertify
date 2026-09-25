@@ -14,6 +14,7 @@ const PRIVATE_KEY_PART_SOURCE = path.join(
   'PrivateKeyPart.java',
 );
 const CLEANUP_PRESERVATION_LABEL = 'app.alertify.cleanup-preservation=true';
+const PUBLISHER_CA_EXPORT_PATH = path.join('.alertify', 'certificates', 'alertify-local-ca.crt');
 
 function parseDocument(content, sourceName) {
   const lines = content.split(/\r?\n/);
@@ -440,7 +441,15 @@ function applicationContextPath(environment) {
 function applyApplicationContext(environment) {
   const contextualEnvironment = new Map(environment);
   const contextPath = applicationContextPath(environment);
+  const appPublicUrlValue = required(environment, 'APP_PUBLIC_URL');
+  let appPublicUrl;
+  try {
+    appPublicUrl = new URL(appPublicUrlValue);
+  } catch {
+    throw new Error(`APP_PUBLIC_URL must be an absolute URL; received: ${appPublicUrlValue}.`);
+  }
   contextualEnvironment.set('APP_CONTEXT_PATH', contextPath || '/');
+  contextualEnvironment.set('APP_PUBLIC_ORIGIN', appPublicUrl.origin);
   contextualEnvironment.set('KEYCLOAK_RELATIVE_PATH', `${contextPath}/identity`);
 
   if (!contextPath) {
@@ -494,6 +503,20 @@ function validateUrlPort(environment, key, expectedPort) {
   }
 }
 
+function parsedUrl(environment, key) {
+  const rawValue = required(environment, key);
+  try {
+    return new URL(rawValue);
+  } catch {
+    throw new Error(`${key} must be an absolute URL; received: ${rawValue}.`);
+  }
+}
+
+function isLocalhostHostname(hostname) {
+  const normalized = hostname.toLowerCase();
+  return normalized === 'localhost' || normalized.endsWith('.localhost');
+}
+
 function redactUrl(value) {
   try {
     const parsed = new URL(value);
@@ -511,6 +534,8 @@ function buildPlan(environment, options = {}) {
   const backendMode = mode(environment, 'BACKEND_MODE');
   const frontendMode = mode(environment, 'FRONTEND_MODE');
   const publicPort = portValue(environment, 'PUBLIC_PORT');
+  const appPublicUrl = parsedUrl(environment, 'APP_PUBLIC_URL');
+  const publisherTlsEnabled = !isLocalhostHostname(appPublicUrl.hostname);
   const skipKeycloak = options.skipKeycloak === true;
   const skipRedis = options.skipRedis === true;
   const skipDatabase = options.skipDatabase === true;
@@ -534,7 +559,13 @@ function buildPlan(environment, options = {}) {
     frontendUrl: required(environment, 'APP_PUBLIC_URL'),
     skipFrontend,
     publicPort,
+    publicHttpPort: null,
     publisherUrl: required(environment, 'APP_PUBLIC_URL'),
+    publisherTlsEnabled,
+    publisherTlsServerName: null,
+    publisherTlsCertificateValidityDays: null,
+    publisherTlsCaValidityDays: null,
+    rotatePublisherTlsCertificate: false,
     skipPublisher,
     keycloakAdminUrl: null,
     backendDebugEnabled: false,
@@ -571,6 +602,36 @@ function buildPlan(environment, options = {}) {
   required(environment, 'PUBLISHER_IDENTITY_UPSTREAM');
   required(environment, 'PUBLISHER_CONTAINER_MEMORY');
   validateUrlPort(environment, 'APP_PUBLIC_URL', publicPort);
+  if (publisherTlsEnabled) {
+    if (appPublicUrl.protocol !== 'https:') {
+      throw new Error(
+        `APP_PUBLIC_URL must use HTTPS when its hostname is not localhost or *.localhost; received: ${plan.publisherUrl}.`,
+      );
+    }
+    plan.publicHttpPort = portValue(environment, 'PUBLIC_HTTP_PORT');
+    if (plan.publicHttpPort === publicPort) {
+      throw new Error('PUBLIC_HTTP_PORT must be different from the HTTPS PUBLIC_PORT.');
+    }
+    required(environment, 'PUBLISHER_TLS_CERTIFICATE_GENERATOR_IMAGE');
+    required(environment, 'PUBLISHER_TLS_OPENSSL_IMAGE');
+    plan.publisherTlsServerName = dnsNameValue(environment, 'PUBLISHER_TLS_SERVER_NAME');
+    if (plan.publisherTlsServerName.toLowerCase() !== appPublicUrl.hostname.toLowerCase()) {
+      throw new Error(
+        `PUBLISHER_TLS_SERVER_NAME must match the APP_PUBLIC_URL hostname ${appPublicUrl.hostname}; ` +
+          `received: ${plan.publisherTlsServerName}.`,
+      );
+    }
+    plan.publisherTlsCertificateValidityDays = positiveIntegerValue(
+      environment,
+      'PUBLISHER_TLS_CERTIFICATE_VALIDITY_DAYS',
+    );
+    plan.publisherTlsCaValidityDays = positiveIntegerValue(environment, 'PUBLISHER_TLS_CA_VALIDITY_DAYS');
+    plan.rotatePublisherTlsCertificate = !skipPublisher;
+  } else if (appPublicUrl.protocol !== 'http:') {
+    throw new Error(
+      `APP_PUBLIC_URL must use HTTP when its hostname is localhost or *.localhost; received: ${plan.publisherUrl}.`,
+    );
+  }
 
   if (redisMode === 'local') {
     required(environment, 'CACHE_PASSWORD');
@@ -828,11 +889,22 @@ function printPlan(plan, environment) {
 
   if (plan.skipPublisher) {
     console.log(
-      `  - HTTP publisher: local, reusing the existing container without rebuild or restart ` +
+      `  - ${plan.publisherTlsEnabled ? 'HTTPS' : 'HTTP'} publisher: local, reusing the existing container without rebuild or restart ` +
         `(${redactUrl(plan.publisherUrl)})`,
     );
   } else {
-    console.log(`  - HTTP publisher: local (${redactUrl(plan.publisherUrl)})`);
+    console.log(`  - ${plan.publisherTlsEnabled ? 'HTTPS' : 'HTTP'} publisher: local (${redactUrl(plan.publisherUrl)})`);
+  }
+  if (plan.publisherTlsEnabled) {
+    console.log(
+      `  - HTTP redirect: port ${plan.publicHttpPort} to ${redactUrl(plan.publisherUrl)}`,
+    );
+    console.log(
+      `  - Local HTTPS CA certificate: ${PUBLISHER_CA_EXPORT_PATH} ` +
+        '(install manually in the Windows trusted root store)',
+    );
+  } else {
+    console.log('  - Local HTTPS certificate: disabled for localhost or *.localhost');
   }
   if (plan.keycloakAdminUrl) {
     console.log(
@@ -884,6 +956,80 @@ function captureCommand(command, args, cwd, label) {
 function commandSucceeds(command, args, cwd) {
   const result = spawnSync(command, args, { cwd, stdio: 'ignore', shell: false });
   return !result.error && result.status === 0;
+}
+
+function preparePublisherTlsCertificate(plan, environment, projectDirectory) {
+  if (!plan.publisherTlsEnabled) {
+    return;
+  }
+
+  const generatorImage = required(environment, 'PUBLISHER_TLS_CERTIFICATE_GENERATOR_IMAGE');
+  const opensslImage = required(environment, 'PUBLISHER_TLS_OPENSSL_IMAGE');
+  const projectName = required(environment, 'COMPOSE_PROJECT_NAME');
+  const volumes = {
+    ca: `${projectName}-publisher-tls-ca`,
+    publisher: `${projectName}-publisher-tls`,
+  };
+
+  runCommand(
+    'docker',
+    [
+      'build',
+      '--build-arg', `PUBLISHER_TLS_OPENSSL_IMAGE=${opensslImage}`,
+      '--file', path.join('publisher', 'tls', 'Dockerfile'),
+      '--tag', generatorImage,
+      path.join('publisher', 'tls'),
+    ],
+    projectDirectory,
+    'Preparing the publisher TLS certificate generator...',
+  );
+
+  if (plan.rotatePublisherTlsCertificate) {
+    for (const [role, volume] of Object.entries(volumes)) {
+      runCommand('docker', ['volume', 'create', volume], projectDirectory, `Preparing the publisher TLS ${role} volume...`);
+    }
+  } else {
+    const missingVolumes = Object.values(volumes).filter(
+      (volume) => !commandSucceeds('docker', ['volume', 'inspect', volume], projectDirectory),
+    );
+    if (missingVolumes.length > 0) {
+      throw new Error(
+        'Publisher TLS certificate cannot be reused because its Docker volumes do not exist. ' +
+          'Run once without --skip-publisher.',
+      );
+    }
+  }
+
+  const generatorArguments = [
+    'run', '--rm',
+    '--volume', `${volumes.ca}:/ca`,
+    '--volume', `${volumes.publisher}:/publisher`,
+    '--env', `PUBLISHER_TLS_SERVER_NAME=${plan.publisherTlsServerName}`,
+    '--env', `PUBLISHER_TLS_CERTIFICATE_VALIDITY_DAYS=${plan.publisherTlsCertificateValidityDays}`,
+    '--env', `PUBLISHER_TLS_CA_VALIDITY_DAYS=${plan.publisherTlsCaValidityDays}`,
+    generatorImage,
+  ];
+  runCommand(
+    'docker',
+    [...generatorArguments, plan.rotatePublisherTlsCertificate ? 'rotate' : 'validate'],
+    projectDirectory,
+    plan.rotatePublisherTlsCertificate
+      ? 'Renewing the local publisher HTTPS certificate...'
+      : 'Validating the existing local publisher HTTPS certificate without modifying it...',
+  );
+
+  const caCertificate = captureCommand(
+    'docker',
+    [...generatorArguments, 'export-ca'],
+    projectDirectory,
+    'Exporting the public publisher CA certificate',
+  );
+  const parsedCertificate = new crypto.X509Certificate(caCertificate);
+  const exportPath = path.join(projectDirectory, PUBLISHER_CA_EXPORT_PATH);
+  fs.mkdirSync(path.dirname(exportPath), { recursive: true });
+  fs.writeFileSync(exportPath, caCertificate, { encoding: 'utf8', mode: 0o644 });
+  console.log(`Public publisher CA certificate exported to ${PUBLISHER_CA_EXPORT_PATH}.`);
+  console.log(`Publisher CA SHA-256 fingerprint: ${parsedCertificate.fingerprint256}`);
 }
 
 function prepareGrpcCertificates(plan, environment, projectDirectory) {
@@ -948,19 +1094,32 @@ function prepareGrpcCertificates(plan, environment, projectDirectory) {
   );
 }
 
-function createWorkerComposeOverride(plan, projectDirectory) {
+function createRuntimeComposeOverride(plan, projectDirectory) {
   const workerGroups = [
     { baseService: 'worker-standard', instances: plan.workerStandardInstances },
     { baseService: 'worker-playwright', instances: plan.workerPlaywrightInstances },
   ].filter((group) => group.instances.length > 0);
-  if (workerGroups.length === 0) {
+  if (workerGroups.length === 0 && !plan.publisherTlsEnabled) {
     return null;
   }
 
-  const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'alertify-worker-compose-'));
+  const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'alertify-runtime-compose-'));
   const overridePath = path.join(temporaryDirectory, 'compose.yaml');
   const baseComposePath = path.join(projectDirectory, 'compose.yaml');
   const lines = ['services:'];
+  if (plan.publisherTlsEnabled) {
+    lines.push(
+      '  publisher:',
+      '    environment:',
+      '      PUBLISHER_TLS_ENABLED: "true"',
+      `      PUBLISHER_TLS_SERVER_NAME: ${JSON.stringify(plan.publisherTlsServerName)}`,
+      '    ports: !override',
+      '      - "${BIND_ADDRESS:?Set BIND_ADDRESS in .env}:${PUBLIC_HTTP_PORT:?Set PUBLIC_HTTP_PORT in .env}:8080"',
+      '      - "${BIND_ADDRESS:?Set BIND_ADDRESS in .env}:${PUBLIC_PORT:?Set PUBLIC_PORT in .env}:8443"',
+      '    volumes: !override',
+      '      - publisher_tls:/run/alertify-publisher-tls:ro',
+    );
+  }
   for (const group of workerGroups) {
     for (const instance of group.instances) {
       lines.push(
@@ -976,14 +1135,22 @@ function createWorkerComposeOverride(plan, projectDirectory) {
       );
     }
   }
+  if (plan.publisherTlsEnabled) {
+    lines.push(
+      'volumes:',
+      '  publisher_tls:',
+      '    external: true',
+      '    name: ${COMPOSE_PROJECT_NAME:?Set COMPOSE_PROJECT_NAME in .env}-publisher-tls',
+    );
+  }
   fs.writeFileSync(overridePath, `${lines.join('\n')}\n`, 'utf8');
   return { path: overridePath, directory: temporaryDirectory };
 }
 
-function composeArguments(workerComposeOverride) {
+function composeArguments(runtimeComposeOverride) {
   const args = ['compose', '--env-file', '.env', '--file', 'compose.yaml'];
-  if (workerComposeOverride) {
-    args.push('--file', workerComposeOverride.path);
+  if (runtimeComposeOverride) {
+    args.push('--file', runtimeComposeOverride.path);
   }
   return args;
 }
@@ -1034,8 +1201,8 @@ function startLocalServices(plan, environment, projectDirectory) {
     return;
   }
 
-  const workerComposeOverride = createWorkerComposeOverride(plan, projectDirectory);
-  const baseComposeArguments = composeArguments(workerComposeOverride);
+  const runtimeComposeOverride = createRuntimeComposeOverride(plan, projectDirectory);
+  const baseComposeArguments = composeArguments(runtimeComposeOverride);
   try {
     runCommand('docker', ['compose', 'version'], projectDirectory, 'Checking Docker Compose...', environment);
     runCommand(
@@ -1078,8 +1245,8 @@ function startLocalServices(plan, environment, projectDirectory) {
       runCommand('docker', args, projectDirectory, `Starting ${service.name}...`, environment);
     }
   } finally {
-    if (workerComposeOverride) {
-      fs.rmSync(workerComposeOverride.directory, { recursive: true, force: true });
+    if (runtimeComposeOverride) {
+      fs.rmSync(runtimeComposeOverride.directory, { recursive: true, force: true });
     }
   }
 }
@@ -1231,7 +1398,7 @@ function printHelp() {
     '  --skip-database    Do not rebuild or restart the local application database.\n' +
     '  --skip-backend     Do not rebuild or restart the local backend.\n' +
     '  --skip-frontend    Do not rebuild or restart the local frontend.\n' +
-    '  --skip-publisher   Do not rebuild or restart the local HTTP publisher.\n' +
+    '  --skip-publisher   Do not rebuild or restart the local HTTP/HTTPS publisher.\n' +
     '  --skip-worker-standard    Do not rebuild or restart standard workers.\n' +
     '  --skip-worker-playwright  Do not rebuild or restart Playwright workers.\n' +
     '  --cleanup-docker[=PATTERNS]  Remove unused Docker images and build cache. Optional semicolon-separated image reference globs are preserved.\n' +
@@ -1263,7 +1430,7 @@ const INTERACTIVE_MENU_ITEMS = [
   { key: 'skipDatabase', label: 'Skip database: do not rebuild or restart the local application database' },
   { key: 'skipBackend', label: 'Skip backend: do not rebuild or restart the local backend' },
   { key: 'skipFrontend', label: 'Skip frontend: do not rebuild or restart the local frontend' },
-  { key: 'skipPublisher', label: 'Skip publisher: do not rebuild or restart the local HTTP publisher' },
+  { key: 'skipPublisher', label: 'Skip publisher: do not rebuild or restart the local HTTP/HTTPS publisher' },
   { key: 'skipWorkerStandard', label: 'Skip standard workers: do not rebuild or restart standard workers' },
   { key: 'skipWorkerPlaywright', label: 'Skip Playwright workers: do not rebuild or restart Playwright workers' },
   { key: 'configureOnly', label: 'Configure only: reconcile .env and show the plan without starting services' },
@@ -1504,6 +1671,7 @@ async function main(argv = process.argv.slice(2), projectDirectory = path.resolv
     return;
   }
 
+  preparePublisherTlsCertificate(plan, effectiveEnvironment, projectDirectory);
   prepareGrpcCertificates(plan, effectiveEnvironment, projectDirectory);
   startLocalServices(plan, effectiveEnvironment, projectDirectory);
   if (cleanupDocker.enabled) {
@@ -1522,12 +1690,13 @@ if (require.main === module) {
 module.exports = {
   applyApplicationContext,
   buildPlan,
-  createWorkerComposeOverride,
+  createRuntimeComposeOverride,
   ensurePrivateKeyPartClass,
   imageReferencePattern,
   main,
   parseCleanupDockerOption,
   parseExistingEnvironment,
+  preparePublisherTlsCertificate,
   prepareGrpcCertificates,
   reconcileEnvironment,
   resolveSecretValues,

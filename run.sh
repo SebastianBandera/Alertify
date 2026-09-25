@@ -38,10 +38,13 @@ fi
 if [ -f "$environment_file" ]; then
   public_port=$(read_environment_value "$environment_file" PUBLIC_PORT ||
     read_environment_value "$template_file" PUBLIC_PORT)
+  public_http_port=$(read_environment_value "$environment_file" PUBLIC_HTTP_PORT ||
+    read_environment_value "$template_file" PUBLIC_HTTP_PORT)
   compose_project_name=$(read_environment_value "$environment_file" COMPOSE_PROJECT_NAME ||
     read_environment_value "$template_file" COMPOSE_PROJECT_NAME)
 else
   public_port=$(read_environment_value "$template_file" PUBLIC_PORT)
+  public_http_port=$(read_environment_value "$template_file" PUBLIC_HTTP_PORT)
   compose_project_name=$(read_environment_value "$template_file" COMPOSE_PROJECT_NAME)
 fi
 
@@ -53,6 +56,16 @@ case "$public_port" in
 esac
 if [ "$public_port" -lt 1 ] || [ "$public_port" -gt 65535 ]; then
   echo "ERROR: PUBLIC_PORT must be an integer between 1 and 65535; received: $public_port." >&2
+  exit 1
+fi
+case "$public_http_port" in
+  ''|*[!0-9]*)
+    echo "ERROR: PUBLIC_HTTP_PORT must be an integer between 1 and 65535; received: $public_http_port." >&2
+    exit 1
+    ;;
+esac
+if [ "$public_http_port" -lt 1 ] || [ "$public_http_port" -gt 65535 ]; then
+  echo "ERROR: PUBLIC_HTTP_PORT must be an integer between 1 and 65535; received: $public_http_port." >&2
   exit 1
 fi
 
@@ -106,6 +119,30 @@ else
     exit 1
   fi
   echo "PUBLIC_PORT $public_port is available."
+fi
+
+if [ "$public_http_port" != "$public_port" ]; then
+  published_http_containers=$(docker ps --filter "publish=$public_http_port" --format '{{.Names}}')
+  unexpected_http_containers=$(printf '%s\n' "$published_http_containers" |
+    grep -v '^$' | grep -vx "$publisher_container" || :)
+  if [ -n "$unexpected_http_containers" ]; then
+    echo "ERROR: PUBLIC_HTTP_PORT $public_http_port is already published by: $unexpected_http_containers." >&2
+    exit 1
+  fi
+
+  if printf '%s\n' "$published_http_containers" | grep -qx "$publisher_container"; then
+    echo "PUBLIC_HTTP_PORT $public_http_port is already owned by $publisher_container; continuing."
+  elif port_is_listening "$public_http_port"; then
+    echo "ERROR: PUBLIC_HTTP_PORT $public_http_port is already in use." >&2
+    exit 1
+  else
+    http_port_check_status=$?
+    if [ "$http_port_check_status" -eq 2 ]; then
+      echo "ERROR: No supported tool is available to verify PUBLIC_HTTP_PORT $public_http_port." >&2
+      exit 1
+    fi
+    echo "PUBLIC_HTTP_PORT $public_http_port is available."
+  fi
 fi
 
 socket_source=/var/run/docker.sock
