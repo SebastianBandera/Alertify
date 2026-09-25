@@ -51,7 +51,7 @@ class DashboardPageRequestHandlerTest {
     @Test
     void viewerPagesLeaveTheWorkerAddressOut() {
         AlertExecutionResponse execution = execution();
-        DashboardCardResponse card = new DashboardCardResponse(null, execution, execution, null, null, 10);
+        DashboardCardResponse card = new DashboardCardResponse(null, execution, execution, null, null, 10, null);
         DashboardPageResponse response = new DashboardPageResponse(List.of(card), new DashboardPageResponse.PageMetadata(12, 0, 1, 1));
         when(cardService.page(0, DashboardCardService.DEFAULT_PAGE_SIZE)).thenReturn(response);
 

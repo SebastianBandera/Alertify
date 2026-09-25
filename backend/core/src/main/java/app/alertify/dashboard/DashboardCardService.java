@@ -2,6 +2,7 @@ package app.alertify.dashboard;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -70,6 +71,11 @@ public class DashboardCardService {
         Map<Long, AlertExecutionResponse> executions = executionRepository.findAllById(executionIds).stream()
                 .collect(Collectors.toMap(AlertExecution::getId, AlertMapper::toExecution));
         Map<Long, DashboardHistorySummaryResponse> summaries = executionQuery.historySummaries(latestExecutionIds.keySet(), since);
+        Map<Long, Instant> persistentSince = new HashMap<>();
+        for (Alert alert : alerts)
+            if (alert.getPersistentIssuesSince() != null)
+                persistentSince.put(alert.getId(), alert.getPersistentIssuesSince());
+        Map<Long, DashboardIssueTimesResponse> issueTimes = executionQuery.lastIssueTimes(persistentSince);
         return alerts.stream()
                 .map(alert -> new DashboardCardResponse(
                         AlertMapper.toAlert(alert, parameterValueRepository.findAllByAlertIdOrdered(alert.getId())),
@@ -77,7 +83,8 @@ public class DashboardCardService {
                         executions.get(previousIssueIds.get(alert.getId())),
                         summaries.get(alert.getId()),
                         runningRegistry.runningSince(alert.getId()).orElse(null),
-                        windowDays
+                        windowDays,
+                        issueTimes.get(alert.getId())
                 ))
                 .toList();
     }

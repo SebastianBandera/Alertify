@@ -26,9 +26,12 @@ import { SessionActionsService } from '../../core/auth/session-actions.service';
 import { LocalizationService } from '../../core/i18n/localization.service';
 import { TranslationKey } from '../../core/i18n/localization.types';
 import { DragScrollDirective } from '../../shared/drag-scroll/drag-scroll.directive';
+import { DashboardAcknowledgementService } from './dashboard-acknowledgement.service';
 import {
   compareDashboardCards,
   DashboardAlertCard,
+  effectiveStatus,
+  PendingIssue,
   stateChangedAt,
 } from './dashboard-card';
 import { DashboardDeck } from './dashboard-deck';
@@ -45,6 +48,8 @@ type SuccessAge = 'very-fresh' | 'fresh' | 'recent' | 'aging' | 'old' | 'very-ol
 interface Stability {
   readonly state: StabilityState;
   readonly label: string;
+  /** Tooltip; the look-back window description when absent. */
+  readonly title?: string;
 }
 
 /** The context menu opened on a card, at the pointer (or the card corner from the keyboard). */
@@ -104,6 +109,11 @@ const INCIDENT_LABEL_KEYS: Readonly<Record<'WARN' | 'ERROR', TranslationKey>> = 
   ERROR: 'dashboard.card.incident.ERROR',
 };
 
+const PENDING_LABEL_KEYS: Readonly<Record<'WARN' | 'ERROR', TranslationKey>> = {
+  WARN: 'dashboard.pending.WARN',
+  ERROR: 'dashboard.pending.ERROR',
+};
+
 /* The current non-success status, still ongoing since the streak started. */
 const ONGOING_LABEL_KEYS: Readonly<Record<'WARN' | 'ERROR', TranslationKey>> = {
   WARN: 'dashboard.card.ongoing.WARN',
@@ -145,7 +155,9 @@ export class DashboardComponent {
   protected readonly cards = this.live.cards;
   /* Cards whose state just changed, while their highlight animation plays. */
   protected readonly changedIds = signal<ReadonlySet<number>>(new Set());
-  protected readonly sortedCards = computed(() => [...this.cards()].sort(compareDashboardCards));
+  protected readonly acknowledgements = inject(DashboardAcknowledgementService);
+  private readonly pendingOf = (card: DashboardAlertCard): PendingIssue | null => this.acknowledgements.pending(card);
+  protected readonly sortedCards = computed(() => [...this.cards()].sort((left, right) => compareDashboardCards(left, right, this.pendingOf)));
   protected readonly settings = signal(readStoredViewSettings());
   protected readonly availableTags = computed<readonly AlertTag[]>(() => {
     const tags = new Map<number, AlertTag>();
@@ -222,6 +234,10 @@ export class DashboardComponent {
       if (this.selectedCard()) this.detailDialog()?.nativeElement.focus();
     });
     effect(() => storeViewSettings(this.settings()));
+    /* The user's own "seen" marks come back on every (re)connection, like the tiles themselves. */
+    effect(() => {
+      if (this.live.connectionState() === 'connected') void this.acknowledgements.load();
+    });
     /* Decks lay their cards out in pixels, so they track the grid's column width and their own width. */
     const resizeObserver = new ResizeObserver(() => this.measureDeck());
     effect(() => {
@@ -385,6 +401,14 @@ export class DashboardComponent {
     }
   }
 
+  protected acknowledgeCard(card: DashboardAlertCard): void {
+    this.closeCardMenu(true);
+    this.rearrange(() => {
+      this.acknowledgements.acknowledge(card.alert.id).catch(() =>
+        this.showNotice(this.localization.translate('dashboard.pending.acknowledgeFailed').replace('{name}', card.alert.name), true));
+    });
+  }
+
   protected openCardHistory(card: DashboardAlertCard): void {
     this.closeCardMenu();
     void this.router.navigate(['/alerts'], { queryParams: { tab: 'history', alertId: card.alert.id } });
@@ -520,8 +544,20 @@ export class DashboardComponent {
     return this.localization.translateDynamic(key);
   }
 
-  protected cardState(card: DashboardAlertCard): CardState {
+  /** State of the last result alone, for places that name it rather than color the whole tile. */
+  protected resultState(card: DashboardAlertCard): CardState {
     return card.lastExecution ? CARD_STATES[card.lastExecution.status] : 'none';
+  }
+
+  protected pendingDetail(card: DashboardAlertCard, pending: PendingIssue): string {
+    const label = this.localization.translate(PENDING_LABEL_KEYS[pending.status]).replace('{elapsed}', this.formatElapsed(pending.at));
+    return card.lastExecution?.status === 'SUCCESS' ? `${label} · ${this.localization.translate('dashboard.pending.nowSuccess')}` : label;
+  }
+
+  /* An issue the user has not seen yet raises the tile to that status, even after the alert recovered. */
+  protected cardState(card: DashboardAlertCard): CardState {
+    const status = effectiveStatus(card, this.pendingOf(card));
+    return status ? CARD_STATES[status] : 'none';
   }
 
   protected cardClasses(card: DashboardAlertCard): string {
@@ -572,6 +608,17 @@ export class DashboardComponent {
    */
   protected stability(card: DashboardAlertCard): Stability | null {
     const execution = card.lastExecution;
+    /* An unseen issue as bad as the current result takes the pill until the user marks it as seen. */
+    const pending = this.pendingOf(card);
+    if (pending !== null && (execution === null || SEVERITY[pending.status] >= SEVERITY[execution.status])) {
+      /* The pill's color already tells WARN from ERROR and the badge names the current result, so the tile keeps it short. */
+      return {
+        state: STABILITY_STATES[pending.status],
+        label: this.localization.translate('dashboard.pending.short').replace('{elapsed}', this.formatElapsed(pending.at)),
+        title: `${this.pendingDetail(card, pending)}. ${this.localization.translate('dashboard.pending.hint')}`,
+      };
+    }
+
     const history = card.history;
     if (execution === null || history === null) return null;
 

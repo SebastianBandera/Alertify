@@ -65,7 +65,7 @@
 
       <footer class="alert-card__meta">
         @if (stability(card); as stability) {
-          <span [class]="'alert-card__stability alert-card__stability--' + stability.state" [title]="historyWindowTitle(card)">
+          <span [class]="'alert-card__stability alert-card__stability--' + stability.state" [title]="stability.title ?? historyWindowTitle(card)">
             {{ stability.label }}
           </span>
         }
@@ -262,6 +262,12 @@
         </button>
       }
     }
+    @if (acknowledgements.pending(card)) {
+      <hr class="card-menu__separator" />
+      <button type="button" role="menuitem" class="card-menu__item" (click)="acknowledgeCard(card)">
+        {{ localization.translate('dashboard.menu.acknowledge') }}
+      </button>
+    }
     @if (canRunCard(card) || isAdmin) {
       <hr class="card-menu__separator" />
     }
@@ -293,7 +299,7 @@
         <div class="modal__heading">
           <h2>{{ card.alert.name }}</h2>
           <div class="modal__status">
-            <span [class]="'badge badge--' + cardState(card)">{{ statusLabel(card) }}</span>
+            <span [class]="'badge badge--' + resultState(card)">{{ statusLabel(card) }}</span>
             @if (card.runningSince; as runningSince) {
               <span class="running" [title]="runningSince">
                 <span class="running__icon" aria-hidden="true"></span>
@@ -316,6 +322,14 @@
               </span>
             }
           </div>
+          @if (acknowledgements.pending(card); as pending) {
+            <div [class]="'modal__pending modal__pending--' + (pending.status === 'ERROR' ? 'error' : 'warn')">
+              <span>{{ pendingDetail(card, pending) }}</span>
+              <button type="button" class="button button--secondary" (click)="acknowledgeCard(card)">
+                {{ localization.translate('dashboard.menu.acknowledge') }}
+              </button>
+            </div>
+          }
         </div>
         <button type="button" class="close" (click)="closeCard()" [attr.aria-label]="localization.translate('dashboard.detail.close')">×</button>
       </header>

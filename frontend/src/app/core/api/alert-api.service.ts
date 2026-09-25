@@ -89,6 +89,8 @@ export interface Alert {
   readonly parameters: readonly AlertParameterValue[];
   readonly createdAt: string;
   readonly updatedAt: string;
+  /** Since when past WARN/ERROR results persist on the dashboard until seen; null while the option is off. */
+  readonly persistentIssuesSince: string | null;
 }
 
 export interface AlertParameterWriteRequest {
@@ -108,8 +110,15 @@ export interface AlertWriteRequest {
   readonly cronExpression: string;
   readonly enabled: boolean;
   readonly allowConcurrentExecutions: boolean;
+  readonly persistentIssues: boolean;
   readonly tagIds: readonly number[];
   readonly parameters: readonly AlertParameterWriteRequest[];
+}
+
+/** Instant up to which the current user has seen an alert's persistent issues. */
+export interface AlertIssueAcknowledgement {
+  readonly alertId: number;
+  readonly acknowledgedAt: string;
 }
 
 export interface AlertTagWriteRequest {
@@ -207,6 +216,16 @@ export class AlertApiService {
   // Answers 202 Accepted with no body, which the shared request helper only tolerates on 204.
   async runAlertNow(id: number): Promise<void> {
     await this.postAccepted(`/api/alerts/${id}/run`);
+  }
+
+  /** The current user's acknowledgements of persistent issues, for any dashboard user. */
+  async issueAcknowledgements(): Promise<readonly AlertIssueAcknowledgement[]> {
+    return this.request('/api/dashboard/acknowledgements');
+  }
+
+  /** Marks every issue of the alert up to now as seen by the current user. */
+  async acknowledgeIssues(id: number): Promise<AlertIssueAcknowledgement> {
+    return this.request(`/api/dashboard/alerts/${id}/acknowledge`, { method: 'POST' });
   }
 
   /** The dashboard viewer's run: enabled alerts only, one per second. */

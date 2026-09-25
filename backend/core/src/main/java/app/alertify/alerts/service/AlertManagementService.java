@@ -75,6 +75,7 @@ public class AlertManagementService {
     private static final String ALERT = "Alert";
     private static final String ALERT_ID = "alertId";
     private static final String ALLOW_CONCURRENT_EXECUTIONS = "allowConcurrentExecutions";
+    private static final String PERSISTENT_ISSUES = "persistentIssues";
     private static final String PARAMETER_PREFIX = "Parameter '";
     private static final Set<String> SORT_FIELDS = Set.of(
             "id", "version", "name", "cronExpression", "enabled",
@@ -153,12 +154,14 @@ public class AlertManagementService {
         AlertTemplateDefinition template = templateRepository.findById(request.templateId())
                 .orElseThrow(() -> notFound("Alert template", request.templateId()));
         Set<Tag> tags = resolveAlertTags(request.tagIds());
-        Alert alert = alertRepository.saveAndFlush(new Alert(
+        Alert newAlert = new Alert(
                 template, name, normalizeOptional(request.description()), cron, request.enabled(),
                 request.allowConcurrentExecutions(), tags
-        ));
+        );
+        newAlert.changePersistentIssues(Boolean.TRUE.equals(request.persistentIssues()), Instant.now());
+        Alert alert = alertRepository.saveAndFlush(newAlert);
         List<AlertParameterValue> values = synchronizeParameters(alert, request.parameters(), List.of());
-        eventLogger.successAfterCommit("ALERT_CREATED", Map.of(ALERT_ID, alert.getId(), "name", alert.getName(), "templateId", template.getId(), ALLOW_CONCURRENT_EXECUTIONS, alert.isConcurrentExecutionAllowed()));
+        eventLogger.successAfterCommit("ALERT_CREATED", Map.of(ALERT_ID, alert.getId(), "name", alert.getName(), "templateId", template.getId(), ALLOW_CONCURRENT_EXECUTIONS, alert.isConcurrentExecutionAllowed(), PERSISTENT_ISSUES, alert.getPersistentIssuesSince() != null));
         scheduleService.rescheduleAfterCommit(alert.getId());
         dashboardEventPublisher.alertChangedAfterCommit(alert.getId());
         return AlertMapper.toAlert(alert, values);
@@ -179,12 +182,15 @@ public class AlertManagementService {
             alert.disable();
 
         alert.changeConcurrentExecution(request.allowConcurrentExecutions());
+        /* Omitted by clients that do not know the option: leave it as it is. */
+        if (request.persistentIssues() != null)
+            alert.changePersistentIssues(request.persistentIssues(), Instant.now());
         alert.replaceTags(resolveAlertTags(request.tagIds()));
 
         List<AlertParameterValue> existing = parameterValueRepository.findAllByAlertIdOrdered(id);
         List<AlertParameterValue> values = synchronizeParameters(alert, request.parameters(), existing);
         alertRepository.flush();
-        eventLogger.successAfterCommit("ALERT_UPDATED", Map.of(ALERT_ID, alert.getId(), "name", alert.getName(), "version", alert.getVersion(), ALLOW_CONCURRENT_EXECUTIONS, alert.isConcurrentExecutionAllowed()));
+        eventLogger.successAfterCommit("ALERT_UPDATED", Map.of(ALERT_ID, alert.getId(), "name", alert.getName(), "version", alert.getVersion(), ALLOW_CONCURRENT_EXECUTIONS, alert.isConcurrentExecutionAllowed(), PERSISTENT_ISSUES, alert.getPersistentIssuesSince() != null));
         scheduleService.rescheduleAfterCommit(alert.getId());
         dashboardEventPublisher.alertChangedAfterCommit(alert.getId());
         return AlertMapper.toAlert(alert, values);

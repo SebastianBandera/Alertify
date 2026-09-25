@@ -112,6 +112,29 @@ class DashboardCardServiceTest {
     }
 
     @Test
+    void carriesTheLatestIssuesOnlyForAlertsWhoseIssuesPersist() {
+        Alert persistent = alert(5L, "Persistent");
+        Instant since = Instant.parse("2026-09-20T00:00:00Z");
+        persistent.changePersistentIssues(true, since);
+        Alert regular = alert(6L, "Regular");
+        DashboardIssueTimesResponse times = new DashboardIssueTimesResponse(since.plusSeconds(60), null);
+        when(alertRepository.findAll(any(Pageable.class))).thenReturn(new PageImpl<>(List.of(persistent, regular), PageRequest.of(0, 12), 2));
+        when(parameterValueRepository.findAllByAlertIdOrdered(anyLong())).thenReturn(List.of());
+        when(executionQuery.latestExecutionIds(List.of(5L, 6L))).thenReturn(Map.of());
+        when(executionRepository.findAllById(anyCollection())).thenReturn(List.of());
+        when(executionQuery.historySummaries(anyCollection(), any(Instant.class))).thenReturn(Map.of());
+        when(executionQuery.lastIssueTimes(Map.of(5L, since))).thenReturn(Map.of(5L, times));
+        when(historyWindow.days()).thenReturn(DashboardHistoryWindow.DEFAULT_DAYS);
+
+        DashboardPageResponse page = service().page(0, 12);
+
+        assertThat(page.content().get(0).persistentIssues()).isEqualTo(times);
+        assertThat(page.content().get(0).alert().persistentIssuesSince()).isEqualTo(since);
+        assertThat(page.content().get(1).persistentIssues()).isNull();
+        assertThat(page.content().get(1).alert().persistentIssuesSince()).isNull();
+    }
+
+    @Test
     void cardIsEmptyForUnknownAlert() {
         when(alertRepository.findById(9L)).thenReturn(Optional.empty());
 

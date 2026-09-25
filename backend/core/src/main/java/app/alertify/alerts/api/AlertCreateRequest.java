@@ -17,10 +17,17 @@ public record AlertCreateRequest(
     boolean enabled,
     boolean allowConcurrentExecutions,
     @NotNull @Size(max = 100) List<@Valid AlertParameterValueRequest> parameters,
-    @NotNull @Size(max = 100) Set<@Positive Long> tagIds
+    @NotNull @Size(max = 100) Set<@Positive Long> tagIds,
+    /** Keeps past WARN/ERROR results on the dashboard until each user marks them as seen; off when omitted. */
+    Boolean persistentIssues
 ) {
     public AlertCreateRequest(Long templateId, String name, String description, String cronExpression,
             boolean enabled, List<AlertParameterValueRequest> parameters, Set<Long> tagIds) {
         this(templateId, name, description, cronExpression, enabled, false, parameters, tagIds);
+    }
+
+    public AlertCreateRequest(Long templateId, String name, String description, String cronExpression,
+            boolean enabled, boolean allowConcurrentExecutions, List<AlertParameterValueRequest> parameters, Set<Long> tagIds) {
+        this(templateId, name, description, cronExpression, enabled, allowConcurrentExecutions, parameters, tagIds, null);
     }
 }

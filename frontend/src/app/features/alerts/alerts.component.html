@@ -477,6 +477,18 @@
               <small>{{ localization.translate('alerts.form.allowConcurrentExecutionsHelp') }}</small>
             </span>
           </label>
+          <label class="checkbox checkbox--with-help full">
+            <input
+              type="checkbox"
+              [ngModel]="form().persistentIssues"
+              (ngModelChange)="patchForm({ persistentIssues: $event })"
+              name="persistentIssues"
+            >
+            <span>
+              {{ localization.translate('alerts.form.persistentIssues') }}
+              <small>{{ localization.translate('alerts.form.persistentIssuesHelp') }}</small>
+            </span>
+          </label>
           <fieldset class="tag-fieldset full">
             <legend>{{ localization.translate('alerts.form.tags') }}</legend>
             @if (tags().length) {

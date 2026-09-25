@@ -73,6 +73,10 @@ public class Alert {
     @Column(name = "allow_concurrent_executions", nullable = false)
     private boolean allowConcurrentExecutions;
 
+    /** When issues started persisting until seen; null while the option is off. */
+    @Column(name = "persistent_issues_since")
+    private Instant persistentIssuesSince;
+
     @CreationTimestamp
     @NotAudited
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -184,6 +188,22 @@ public class Alert {
 
     public void changeConcurrentExecution(boolean allowConcurrentExecutions) {
         this.allowConcurrentExecutions = allowConcurrentExecutions;
+    }
+
+    public Instant getPersistentIssuesSince() {
+        return persistentIssuesSince;
+    }
+
+    /**
+     * Turns persistent issues on or off. Turning it on keeps the original start
+     * when it was already on, so saving the alert again never hides issues
+     * that were already pending; only issues after the start ever count.
+     */
+    public void changePersistentIssues(boolean persistent, Instant now) {
+        if (!persistent)
+            persistentIssuesSince = null;
+        else if (persistentIssuesSince == null)
+            persistentIssuesSince = Objects.requireNonNull(now, "now must not be null");
     }
 
     public void replaceTags(Set<Tag> tags) {

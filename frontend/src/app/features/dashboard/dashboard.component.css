@@ -812,6 +812,30 @@ p {
   font-weight: 600;
 }
 
+/* An issue the user has not seen yet, with the action that clears it for them. */
+.modal__pending {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-top: 12px;
+  padding: 8px 10px 8px 12px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.modal__pending--warn {
+  background: #fffaeb;
+  color: #b54708;
+}
+
+.modal__pending--error {
+  background: #fef3f2;
+  color: #b42318;
+}
+
 .close {
   flex: none;
   width: 34px;

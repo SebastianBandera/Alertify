@@ -168,6 +168,54 @@ public class DashboardExecutionQuery {
         return result;
     }
 
+    /**
+     * When each alert last finished a WARN and an ERROR since its persistent
+     * issues were turned on, with no look-back window: a past issue stays
+     * relevant until each user marks it as seen. Keyed by alert id; alerts
+     * with neither issue are left out.
+     */
+    public Map<Long, DashboardIssueTimesResponse> lastIssueTimes(Map<Long, Instant> persistentSince) {
+        if (persistentSince.isEmpty())
+            return Collections.emptyMap();
+
+        List<Object> parameters = new ArrayList<>();
+        persistentSince.forEach((alertId, since) -> {
+            parameters.add(alertId);
+            parameters.add(timestamp(since));
+        });
+        String rows = String.join(", ", Collections.nCopies(persistentSince.size(), "(?, ?::timestamptz)"));
+        Map<Long, DashboardIssueTimesResponse> result = new HashMap<>();
+        jdbcTemplate.query("""
+                select alerts.alert_id, last_warn.finished_at as last_warn_at, last_error.finished_at as last_error_at
+                from (values %s) as alerts(alert_id, since)
+                left join lateral (
+                    select execution.finished_at
+                    from core.alert_executions execution
+                    where execution.alert_id = alerts.alert_id and execution.status = 'WARN'
+                      and execution.started_at >= alerts.since
+                    order by execution.started_at desc, execution.id desc
+                    limit 1
+                ) last_warn on true
+                left join lateral (
+                    select execution.finished_at
+                    from core.alert_executions execution
+                    where execution.alert_id = alerts.alert_id and execution.status = 'ERROR'
+                      and execution.started_at >= alerts.since
+                    order by execution.started_at desc, execution.id desc
+                    limit 1
+                ) last_error on true
+                where last_warn.finished_at is not null or last_error.finished_at is not null
+                """.formatted(rows),
+                resultSet -> {
+                    result.put(resultSet.getLong("alert_id"), new DashboardIssueTimesResponse(
+                            instant(resultSet.getObject("last_warn_at", OffsetDateTime.class)),
+                            instant(resultSet.getObject("last_error_at", OffsetDateTime.class))
+                    ));
+                },
+                parameters.toArray());
+        return result;
+    }
+
     private static String valueRows(int count) {
         return valueRows(count, 1);
     }

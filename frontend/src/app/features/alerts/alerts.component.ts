@@ -45,6 +45,7 @@ interface AlertForm {
   cronExpression: string;
   enabled: boolean;
   allowConcurrentExecutions: boolean;
+  persistentIssues: boolean;
   tagIds: number[];
   parameters: Readonly<Record<string, ParameterForm>>;
 }
@@ -578,6 +579,7 @@ export class AlertsComponent implements OnInit {
       cronExpression: alert.cronExpression,
       enabled: alert.enabled,
       allowConcurrentExecutions: alert.allowConcurrentExecutions,
+      persistentIssues: alert.persistentIssuesSince !== null,
       tagIds: alert.tags.map((tag) => tag.id),
       parameters,
     });
@@ -606,6 +608,7 @@ export class AlertsComponent implements OnInit {
       cronExpression: current.cronExpression,
       enabled: current.enabled,
       allowConcurrentExecutions: current.allowConcurrentExecutions,
+      persistentIssues: current.persistentIssues,
       tagIds: current.tagIds,
     });
     this.clearFieldError('template');
@@ -696,6 +699,7 @@ export class AlertsComponent implements OnInit {
         cronExpression,
         enabled: form.enabled,
         allowConcurrentExecutions: form.allowConcurrentExecutions,
+        persistentIssues: form.persistentIssues,
         tagIds: form.tagIds,
         parameters,
       };
@@ -928,6 +932,7 @@ export class AlertsComponent implements OnInit {
       cronExpression: '-',
       enabled: true,
       allowConcurrentExecutions: false,
+      persistentIssues: false,
       tagIds: [],
       parameters: {},
     };

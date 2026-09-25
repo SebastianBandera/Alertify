@@ -20,8 +20,22 @@ public record AlertResponse(
     Set<TagResponse> tags,
     List<AlertParameterValueResponse> parameters,
     Instant createdAt,
-    Instant updatedAt
+    Instant updatedAt,
+    /** Since when past WARN/ERROR results persist until seen; null while the option is off. */
+    Instant persistentIssuesSince
 ) {
+    public AlertResponse(
+        Long id, long version, Long templateId, String templateKey, String templateNameKey,
+        String name, String description, String cronExpression, boolean enabled, boolean allowConcurrentExecutions,
+        Set<TagResponse> tags, List<AlertParameterValueResponse> parameters,
+        Instant createdAt, Instant updatedAt
+    ) {
+        this(
+            id, version, templateId, templateKey, templateNameKey, name, description,
+            cronExpression, enabled, allowConcurrentExecutions, tags, parameters, createdAt, updatedAt, null
+        );
+    }
+
     public AlertResponse(
         Long id, long version, Long templateId, String templateKey, String templateNameKey,
         String name, String description, String cronExpression, boolean enabled,
