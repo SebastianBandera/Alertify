@@ -644,7 +644,7 @@
           </label>
           <button class="button button--primary" type="submit" [disabled]="saving() || !tagForm().name.trim()">{{ localization.translate(editingTag() ? 'alerts.tags.update' : 'alerts.tags.add') }}</button>
         </form>
-        @if (tagError()) { <p class="form-error" role="alert">{{ tagError() }}</p> }
+        @if (tagError()) { <p id="alert-tag-error" class="form-error" role="alert" aria-live="assertive" tabindex="-1">{{ tagError() }}</p> }
         <div class="tag-manager-list">
           @for (tag of tags(); track tag.id) {
             <div class="tag-manager-row">

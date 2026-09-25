@@ -349,7 +349,7 @@ export const ES_UY_TRANSLATIONS = {
   'alerts.tags.edit': 'Editar',
   'alerts.tags.delete': 'Eliminar',
   'alerts.tags.deleteConfirm': '¿Eliminar este tag?',
-  'alerts.tags.inUse': 'Este tag está asignado a una o más alertas.',
+  'alerts.tags.inUse': 'No se puede eliminar el tag "{name}" porque está asignado a una o más alertas.',
   'alerts.tags.empty': 'Todavía no hay tags de alertas definidos.',
   'alerts.templateTag.network': 'Red',
   'alerts.templateTag.security': 'Seguridad',

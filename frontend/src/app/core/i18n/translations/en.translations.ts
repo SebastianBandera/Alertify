@@ -349,7 +349,7 @@ export const EN_TRANSLATIONS = {
   'alerts.tags.edit': 'Edit',
   'alerts.tags.delete': 'Delete',
   'alerts.tags.deleteConfirm': 'Delete this tag?',
-  'alerts.tags.inUse': 'This tag is assigned to one or more alerts.',
+  'alerts.tags.inUse': 'The tag "{name}" cannot be deleted because it is assigned to one or more alerts.',
   'alerts.tags.empty': 'No alert tags have been defined yet.',
   'alerts.templateTag.network': 'Network',
   'alerts.templateTag.security': 'Security',

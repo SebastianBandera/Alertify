@@ -844,7 +844,7 @@ export class AlertsComponent implements OnInit {
       this.tagForm.set({ name: '', color: '#6D5DFC' });
       await Promise.all([this.loadTags(), this.loadAlerts()]);
     } catch (error) {
-      this.tagError.set(this.errorMessage(error));
+      this.showTagError(this.errorMessage(error));
     } finally {
       this.saving.set(false);
     }
@@ -852,15 +852,27 @@ export class AlertsComponent implements OnInit {
 
   protected async deleteTag(tag: AlertTag): Promise<void> {
     if (!window.confirm(this.localization.translate('alerts.tags.deleteConfirm'))) return;
+
+    this.tagError.set(null);
+
     try {
       await this.api.deleteTag(tag.id, tag.version);
       this.selectedTagIds.set(this.selectedTagIds().filter((id) => id !== tag.id));
       await Promise.all([this.loadTags(), this.loadAlerts()]);
     } catch (error) {
-      this.tagError.set(error instanceof ApiRequestError && error.code === 'ALERT_TAG_IN_USE'
-        ? this.localization.translate('alerts.tags.inUse')
+      this.showTagError(error instanceof ApiRequestError && error.code === 'ALERT_TAG_IN_USE'
+        ? this.localization.translate('alerts.tags.inUse').replace('{name}', tag.name)
         : this.errorMessage(error));
     }
+  }
+
+  private showTagError(message: string): void {
+    this.tagError.set(message);
+    requestAnimationFrame(() => {
+      const error = this.elementRef.nativeElement.querySelector<HTMLElement>('#alert-tag-error');
+      error?.focus({ preventScroll: true });
+      error?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
   }
 
   protected alertPageTo(page: number): void {
