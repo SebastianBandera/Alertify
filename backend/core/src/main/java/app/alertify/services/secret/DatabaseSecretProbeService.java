@@ -4,6 +4,7 @@ import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
@@ -45,6 +46,12 @@ public class DatabaseSecretProbeService {
     private static final int TIMEOUT_SECONDS = 10;
     private static final Duration EXECUTION_TIMEOUT = Duration.ofSeconds(45);
     private static final JsonMapper JSON = JsonMapper.builder().build();
+    private static final String EXECUTION_ERROR = "execution_error";
+    private static final String UNKNOWN_FAILURE = "unknown";
+    private static final Set<String> FAILURE_REASONS = Set.of(
+            "invalid_connection", "driver_missing", "timeout", "auth_failed",
+            "connect_failed", "sql_error", EXECUTION_ERROR, UNKNOWN_FAILURE
+    );
 
     private final AlertTemplateDefinitionRepository templateRepository;
     private final AlertExecutionPreparationService preparationService;
@@ -67,34 +74,40 @@ public class DatabaseSecretProbeService {
     /** Probes credentials, tagging the audit event with the stored secret they belong to when there is one. */
     public DatabaseSecretTestResponse test(DatabaseCredentials credentials, Long secretId, String secretName) {
         Map<String, Object> data = new LinkedHashMap<>();
-        if (secretId != null)
+        boolean stored = secretId != null;
+        data.put("targetKind", stored ? "STORED" : "DRAFT");
+        if (stored)
             data.put("secretId", secretId);
-        if (secretName != null)
+        if (stored && secretName != null)
             data.put("name", secretName);
-        data.put("engine", credentials.engine().name());
-        data.put("host", credentials.host());
-        data.put("port", credentials.port());
-        data.put("database", credentials.database());
-        data.put("username", credentials.username());
         DatabaseSecretTestResponse response;
         try {
             response = probe(credentials);
         } catch (RuntimeException exception) {
+            data.put("connected", false);
+            data.put("failureReason", EXECUTION_ERROR);
             data.put("exceptionType", exception.getClass().getName());
-            if (exception.getMessage() != null)
-                data.put("exceptionMessage", exception.getMessage());
             eventLogger.failure(EVENT, data);
             throw exception;
         }
         data.put("connected", response.connected());
         if (response.failureReason() != null)
             data.put("failureReason", response.failureReason());
+
+        if (response.connectMs() != null)
+            data.put("connectMs", response.connectMs());
+
+        if (response.totalLatencyMs() != null)
+            data.put("totalLatencyMs", response.totalLatencyMs());
+
         if (response.workerName() != null)
             data.put("workerName", response.workerName());
+
         if (response.connected())
             eventLogger.success(EVENT, data);
         else
             eventLogger.failure(EVENT, data);
+
         return response;
     }
 
@@ -138,7 +151,7 @@ public class DatabaseSecretProbeService {
                     throw new IllegalStateException("Procedure invocations are not available while probing credentials");
                 });
             } catch (WorkerTemplateSynchronizationException exception) {
-                return failure("execution_error", exception.error().getMessage(), worker.status().getWorkerName());
+                return failure(EXECUTION_ERROR, worker.status().getWorkerName());
             }
             return toResponse(result, worker.status().getWorkerName());
         }
@@ -146,19 +159,22 @@ public class DatabaseSecretProbeService {
 
     private static DatabaseSecretTestResponse toResponse(AlertExecutionResult result, String workerName) {
         if (result.hasError())
-            return failure("execution_error", result.getError().getMessage(), workerName);
+            return failure(EXECUTION_ERROR, workerName);
 
         JsonNode message = result.getStatusMessageJson().isBlank() ? JSON.createObjectNode() : JSON.readTree(result.getStatusMessageJson());
+        boolean connected = message.path("connected").asBoolean(false);
         return new DatabaseSecretTestResponse(
-                message.path("connected").asBoolean(false),
-                text(message, "failureReason"), text(message, "failureMessage"), text(message, "sqlState"),
+                connected, connected ? null : failureReason(text(message, "failureReason")), text(message, "sqlState"),
                 text(message, "productName"), text(message, "productVersion"), text(message, "driverName"),
                 number(message, "connectMs"), number(message, "totalLatencyMs"), workerName);
     }
 
-    private static DatabaseSecretTestResponse failure(String reason, String message, String workerName) {
-        return new DatabaseSecretTestResponse(false, reason, message == null || message.isBlank() ? null : message,
-                null, null, null, null, null, null, workerName);
+    private static DatabaseSecretTestResponse failure(String reason, String workerName) {
+        return new DatabaseSecretTestResponse(false, failureReason(reason), null, null, null, null, null, null, workerName);
+    }
+
+    private static String failureReason(String reason) {
+        return reason != null && FAILURE_REASONS.contains(reason) ? reason : UNKNOWN_FAILURE;
     }
 
     private static String text(JsonNode node, String field) {

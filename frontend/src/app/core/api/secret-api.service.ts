@@ -75,7 +75,6 @@ export interface SecretExpressionValidationRequest {
 export interface DatabaseSecretTestResult {
   readonly connected: boolean;
   readonly failureReason: string | null;
-  readonly failureMessage: string | null;
   readonly sqlState: string | null;
   readonly productName: string | null;
   readonly productVersion: string | null;

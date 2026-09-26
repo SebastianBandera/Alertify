@@ -377,9 +377,8 @@ export class SecretsComponent implements OnInit {
     }
     const reasonKey = `secrets.dbTest.reason.${result.failureReason ?? 'unknown'}`;
     const reason = this.localization.translateDynamic(reasonKey);
-    const detail = result.failureMessage ? ` — ${result.failureMessage.split('\n')[0]}` : '';
     return this.localization.translate('secrets.dbTest.failure')
-      .replace('{reason}', reason === reasonKey ? (result.failureReason ?? 'unknown') : reason) + detail;
+      .replace('{reason}', reason === reasonKey ? (result.failureReason ?? 'unknown') : reason);
   }
 
   protected patchDatabaseForm(patch: Partial<DatabaseSecretForm>): void {

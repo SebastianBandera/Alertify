@@ -8,7 +8,6 @@ package app.alertify.secret.api;
 public record DatabaseSecretTestResponse(
     boolean connected,
     String failureReason,
-    String failureMessage,
     String sqlState,
     String productName,
     String productVersion,
