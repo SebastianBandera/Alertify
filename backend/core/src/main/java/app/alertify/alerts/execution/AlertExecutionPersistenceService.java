@@ -19,6 +19,7 @@ import app.alertify.alerts.model.AlertExecutionWorker;
 import app.alertify.alerts.model.AlertState;
 import app.alertify.grpc.discovery.WorkerEndpoint;
 import app.alertify.configuration.service.WritableConfigurationService;
+import app.alertify.execution.ExecutionTimestamps;
 import app.alertify.jpa.repository.AlertExecutionRepository;
 import app.alertify.jpa.repository.AlertRepository;
 import app.alertify.jpa.repository.AlertStateRepository;
@@ -63,22 +64,21 @@ public class AlertExecutionPersistenceService {
     public void persistWorkerResult(long alertId, UUID executionId, WorkerEndpoint endpoint, AlertExecutionResult result) {
         TriggerContext context = triggerContexts.get(executionId);
         Alert alert = alert(alertId);
-        Instant startedAt = instant(result.getStartedAt());
-        Instant workStartedAt = instant(result.getWorkStartedAt());
-        Instant finishedAt = instant(result.getFinishedAt());
+        ExecutionTimestamps timestamps = ExecutionTimestamps.ordered("ALERT", executionId, result.getWorkerName(),
+                instant(result.getStartedAt()), instant(result.getWorkStartedAt()), instant(result.getFinishedAt()));
         AlertExecution execution;
         AlertExecutionWorker worker = worker(endpoint, result.getWorkerName(), result.getWorkerInstanceId());
 
         if (result.getStatus() == WorkerExecutionStatus.WORKER_EXECUTION_STATUS_ERROR) {
             ExecutionError error = result.getError();
             execution = AlertExecution.error(
-                    executionId, alert, worker, startedAt, workStartedAt, finishedAt,
+                    executionId, alert, worker, timestamps.startedAt(), timestamps.workStartedAt(), timestamps.finishedAt(),
                     required(error.getType(), "Worker error type"), emptyToNull(error.getMessage()),
                     emptyToNull(error.getStackTrace()), trigger(context), actor(context)
             );
         } else {
             execution = AlertExecution.result(
-                    executionId, alert, worker, status(result.getStatus()), startedAt, workStartedAt, finishedAt,
+                    executionId, alert, worker, status(result.getStatus()), timestamps.startedAt(), timestamps.workStartedAt(), timestamps.finishedAt(),
                     statusMessage(result.getStatusMessageJson()), trigger(context), actor(context)
             );
         }
@@ -138,8 +138,9 @@ public class AlertExecutionPersistenceService {
 
     private void persistFailure(long alertId, UUID executionId, AlertExecutionWorker worker, Instant startedAt, Instant workStartedAt, Instant finishedAt, String errorType, String errorMessage, String errorStackTrace) {
         TriggerContext context = triggerContexts.get(executionId);
+        ExecutionTimestamps timestamps = ExecutionTimestamps.ordered("ALERT", executionId, worker == null ? null : worker.name(), startedAt, workStartedAt, finishedAt);
         AlertExecution execution = AlertExecution.error(
-                executionId, alert(alertId), worker, startedAt, workStartedAt, finishedAt,
+                executionId, alert(alertId), worker, timestamps.startedAt(), timestamps.workStartedAt(), timestamps.finishedAt(),
                 errorType, errorMessage, errorStackTrace, trigger(context), actor(context)
         );
         executionRepository.save(execution);

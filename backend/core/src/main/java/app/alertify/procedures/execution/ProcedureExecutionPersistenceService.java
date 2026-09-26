@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import app.alertify.alerts.model.AlertExecutionWorker;
 import app.alertify.configuration.service.WritableConfigurationService;
+import app.alertify.execution.ExecutionTimestamps;
 import app.alertify.grpc.discovery.WorkerEndpoint;
 import app.alertify.jpa.repository.ProcedureExecutionRepository;
 import app.alertify.jpa.repository.ProcedureRepository;
@@ -83,16 +84,18 @@ public class ProcedureExecutionPersistenceService {
     public JsonNode complete(UUID executionId, WorkerEndpoint endpoint, ProcedureExecutionResult result, boolean sensitiveResult) {
         ProcedureExecution execution = execution(executionId);
         AlertExecutionWorker worker = worker(endpoint, result.getWorkerName(), result.getWorkerInstanceId());
+        ExecutionTimestamps timestamps = ExecutionTimestamps.ordered("PROCEDURE", executionId, result.getWorkerName(),
+                execution.getStartedAt(), instant(result.getWorkStartedAt()), instant(result.getFinishedAt()));
         if (!result.getSuccessful()) {
             ExecutionError error = result.getError();
-            execution.fail(worker, instant(result.getWorkStartedAt()), instant(result.getFinishedAt()),
+            execution.fail(worker, timestamps.workStartedAt(), timestamps.finishedAt(),
                     required(error.getType(), "Worker error type"), empty(error.getMessage()), empty(error.getStackTrace()));
             executionRepository.flush();
             log(execution);
             return null;
         }
         JsonNode value = parse(result.getResultJson());
-        execution.complete(worker, instant(result.getWorkStartedAt()), instant(result.getFinishedAt()),
+        execution.complete(worker, timestamps.workStartedAt(), timestamps.finishedAt(),
                 value, sensitiveResult);
         for (var artifact : result.getArtifactsList())
             artifactRepository.save(new ProcedureArtifactMetadata(execution, artifact.getOutputKey(),
@@ -110,7 +113,8 @@ public class ProcedureExecutionPersistenceService {
     @Transactional
     public void failRemote(UUID executionId, WorkerEndpoint endpoint, String workerName, String workerInstanceId, Instant workStartedAt, Instant finishedAt, ExecutionError error) {
         ProcedureExecution execution = execution(executionId);
-        execution.fail(worker(endpoint, workerName, workerInstanceId), workStartedAt, finishedAt,
+        ExecutionTimestamps timestamps = ExecutionTimestamps.ordered("PROCEDURE", executionId, workerName, execution.getStartedAt(), workStartedAt, finishedAt);
+        execution.fail(worker(endpoint, workerName, workerInstanceId), timestamps.workStartedAt(), timestamps.finishedAt(),
                 required(error.getType(), "Worker error type"), empty(error.getMessage()), empty(error.getStackTrace()));
         executionRepository.flush();
         log(execution);
@@ -122,8 +126,9 @@ public class ProcedureExecutionPersistenceService {
         if (execution == null || execution.getStatus() != ProcedureExecutionStatus.RUNNING)
             return;
 
-        Instant finishedAt = Instant.now();
-        execution.fail(null, execution.getStartedAt(), finishedAt, error.getClass().getName(),
+        ExecutionTimestamps timestamps = ExecutionTimestamps.ordered("PROCEDURE", executionId, null,
+                execution.getStartedAt(), execution.getStartedAt(), Instant.now());
+        execution.fail(null, timestamps.workStartedAt(), timestamps.finishedAt(), error.getClass().getName(),
                 error.getMessage(), stackTrace(error));
         executionRepository.flush();
         log(execution);

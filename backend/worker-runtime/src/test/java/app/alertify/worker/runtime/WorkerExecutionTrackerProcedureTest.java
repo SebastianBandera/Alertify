@@ -20,7 +20,7 @@ class WorkerExecutionTrackerProcedureTest {
         WorkerExecutionTracker tracker = new WorkerExecutionTracker(properties());
         WorkerExecutionTracker.Permit alertPermit = tracker.acquire(
                 ExecuteAlertRequest.newBuilder().setExecutionId("alert-1").setAlertId(1)
-                        .setAlertName("parent").build(), Instant.now()
+                        .setAlertName("parent").build(), ExecutionTimeline.start("alert-1")
         );
 
         WorkerExecutionTracker.ProcedurePermit procedurePermit = tracker.startProcedure(

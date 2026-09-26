@@ -40,7 +40,8 @@ class WorkerExecutionTracker {
         semaphore = new Semaphore(properties.maxConcurrentAlerts(), true);
     }
 
-    Permit acquire(ExecuteAlertRequest request, Instant queuedAt) throws InterruptedException {
+    Permit acquire(ExecuteAlertRequest request, ExecutionTimeline timeline) throws InterruptedException {
+        Instant queuedAt = timeline.startedAt();
         TaskState task = new TaskState(
                 request.getExecutionId(), request.getAlertId(), request.getAlertName(), queuedAt, null
         );
@@ -57,7 +58,7 @@ class WorkerExecutionTracker {
             throw exception;
         }
 
-        Instant workStartedAt = Instant.now();
+        Instant workStartedAt = timeline.next();
         waiting.remove(request.getExecutionId());
         running.put(request.getExecutionId(), task.withWorkStartedAt(workStartedAt));
 

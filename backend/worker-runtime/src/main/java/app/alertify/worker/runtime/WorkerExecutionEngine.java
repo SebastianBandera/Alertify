@@ -66,17 +66,17 @@ class WorkerExecutionEngine implements AutoCloseable {
     }
 
     void execute(ExecuteAlertRequest request, StreamObserver<AlertExecutionResult> observer, Deadline deadline, ProcedureHandleFactory procedureHandles) {
-        Instant queuedAt = Instant.now();
-        executor.submit(() -> run(request, observer, queuedAt, deadline, procedureHandles));
+        ExecutionTimeline timeline = ExecutionTimeline.start(request.getExecutionId());
+        executor.submit(() -> run(request, observer, timeline, deadline, procedureHandles));
     }
 
-    private void run(ExecuteAlertRequest request, StreamObserver<AlertExecutionResult> observer, Instant startedAt, Deadline deadline, ProcedureHandleFactory procedureHandles) {
+    private void run(ExecuteAlertRequest request, StreamObserver<AlertExecutionResult> observer, ExecutionTimeline timeline, Deadline deadline, ProcedureHandleFactory procedureHandles) {
         WorkerExecutionTracker.Permit permit = null;
         BinaryExecutionGuard.Lease binaryLease = null;
         AlertExecutionContext context = null;
         AlertExecutionStatus finalStatus = AlertExecutionStatus.ERROR;
         try {
-            permit = tracker.acquire(request, startedAt);
+            permit = tracker.acquire(request, timeline);
             binaryLease = binaryExecutionGuard.acquire(request);
             Map<String, AlertParameterSource> parameterSources = request.getParametersList().stream()
                     .collect(Collectors.toUnmodifiableMap(
@@ -90,11 +90,11 @@ class WorkerExecutionEngine implements AutoCloseable {
             AlertResult result = evaluator.evaluate(context);
 
             finalStatus = result.status();
-            Instant finishedAt = Instant.now();
+            Instant finishedAt = timeline.next();
 
             AlertExecutionResult.Builder response = AlertExecutionResult.newBuilder()
                     .setStatus(toGrpcStatus(result.status()))
-                    .setStartedAt(timestamp(startedAt))
+                    .setStartedAt(timestamp(timeline.startedAt()))
                     .setWorkStartedAt(timestamp(permit.workStartedAt()))
                     .setFinishedAt(timestamp(finishedAt))
                     .setStatusMessageJson(jsonMapper.writeValueAsString(result.statusMessage()))
@@ -112,12 +112,12 @@ class WorkerExecutionEngine implements AutoCloseable {
             if (exception instanceof InterruptedException)
                 Thread.currentThread().interrupt();
 
-            Instant workStartedAt = permit == null ? startedAt : permit.workStartedAt();
+            Instant workStartedAt = permit == null ? timeline.startedAt() : permit.workStartedAt();
             observer.onNext(AlertExecutionResult.newBuilder()
                     .setStatus(WorkerExecutionStatus.WORKER_EXECUTION_STATUS_ERROR)
-                    .setStartedAt(timestamp(startedAt))
+                    .setStartedAt(timestamp(timeline.startedAt()))
                     .setWorkStartedAt(timestamp(workStartedAt))
-                    .setFinishedAt(timestamp(Instant.now()))
+                    .setFinishedAt(timestamp(timeline.next()))
                     .setState(context == null ? request.getState() : context.getState())
                     .setError(error(exception))
                     .setWorkerName(properties.name())

@@ -57,13 +57,13 @@ class ProcedureExecutionEngine implements AutoCloseable {
     }
 
     void execute(ExecuteProcedureRequest request, StreamObserver<ProcedureExecutionResult> observer, Deadline deadline, ProcedureHandleFactory handles) {
-        Instant startedAt = Instant.now();
-        executor.submit(() -> run(request, observer, startedAt, deadline, handles));
+        ExecutionTimeline timeline = ExecutionTimeline.start(request.getExecutionId());
+        executor.submit(() -> run(request, observer, timeline, deadline, handles));
     }
 
-    private void run(ExecuteProcedureRequest request, StreamObserver<ProcedureExecutionResult> observer, Instant startedAt, Deadline deadline, ProcedureHandleFactory handles) {
+    private void run(ExecuteProcedureRequest request, StreamObserver<ProcedureExecutionResult> observer, ExecutionTimeline timeline, Deadline deadline, ProcedureHandleFactory handles) {
         CompiledProcedureTemplate.Instance instance = null;
-        try (WorkerExecutionTracker.ProcedurePermit permit = tracker.startProcedure(request, Instant.now());
+        try (WorkerExecutionTracker.ProcedurePermit permit = tracker.startProcedure(request, timeline.next());
                 BinaryExecutionGuard.Lease ignored = binaryExecutionGuard.acquire(request)) {
             Map<String, AlertParameterSource> sources = request.getParametersList().stream()
                     .collect(Collectors.toUnmodifiableMap(AlertParameter::getName,
@@ -82,9 +82,9 @@ class ProcedureExecutionEngine implements AutoCloseable {
             CompiledProcedureTemplate.WritableValues writable = template.writableValues(evaluator, request.getParametersList());
             observer.onNext(ProcedureExecutionResult.newBuilder()
                     .setSuccessful(true)
-                    .setStartedAt(WorkerExecutionEngine.timestamp(startedAt))
+                    .setStartedAt(WorkerExecutionEngine.timestamp(timeline.startedAt()))
                     .setWorkStartedAt(WorkerExecutionEngine.timestamp(permit.workStartedAt()))
-                    .setFinishedAt(WorkerExecutionEngine.timestamp(Instant.now()))
+                    .setFinishedAt(WorkerExecutionEngine.timestamp(timeline.next()))
                     .setResultJson(jsonMapper.writeValueAsString(result))
                     .setWorkerName(properties.name())
                     .setWorkerInstanceId(identity.id())
@@ -100,11 +100,11 @@ class ProcedureExecutionEngine implements AutoCloseable {
             if (exception instanceof InterruptedException)
                 Thread.currentThread().interrupt();
 
-            Instant now = Instant.now();
+            Instant now = timeline.next();
             observer.onNext(ProcedureExecutionResult.newBuilder()
                     .setSuccessful(false)
-                    .setStartedAt(WorkerExecutionEngine.timestamp(startedAt))
-                    .setWorkStartedAt(WorkerExecutionEngine.timestamp(startedAt))
+                    .setStartedAt(WorkerExecutionEngine.timestamp(timeline.startedAt()))
+                    .setWorkStartedAt(WorkerExecutionEngine.timestamp(timeline.startedAt()))
                     .setFinishedAt(WorkerExecutionEngine.timestamp(now))
                     .setError(WorkerExecutionEngine.error(exception))
                     .setWorkerName(properties.name())
