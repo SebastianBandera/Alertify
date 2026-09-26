@@ -141,7 +141,7 @@
     </div>
   }
 
-  <app-dashboard-ribbon [(settings)]="settings" [tags]="availableTags()">
+  <app-dashboard-ribbon [(settings)]="settings" [tags]="availableTags()" [(searchText)]="searchText">
     @if (!isAdmin) {
       <div dashboardRibbonActions class="viewer-session-controls">
         <label class="viewer-language-selector">

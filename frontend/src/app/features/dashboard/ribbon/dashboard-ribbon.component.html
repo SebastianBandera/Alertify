@@ -89,6 +89,38 @@
         </div>
       }
     </div>
+
+    <div class="ribbon__group ribbon__search">
+      <button
+        type="button"
+        class="ribbon__search-toggle"
+        [class.ribbon__search-toggle--open]="searchOpen()"
+        [attr.aria-expanded]="searchOpen()"
+        aria-controls="dashboard-card-search"
+        [attr.aria-label]="localization.translate(searchOpen() ? 'dashboard.ribbon.searchClose' : 'dashboard.ribbon.search')"
+        [attr.title]="localization.translate(searchOpen() ? 'dashboard.ribbon.searchClose' : 'dashboard.ribbon.search')"
+        (click)="toggleSearch()">
+        <svg class="ribbon__search-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="10.5" cy="10.5" r="6.5"></circle>
+          <path d="m15.5 15.5 5 5"></path>
+        </svg>
+      </button>
+      @if (searchOpen()) {
+        <label class="ribbon__search-field" animate.enter="ribbon__options--enter">
+          <span class="ribbon__search-label">{{ localization.translate('dashboard.ribbon.search') }}</span>
+          <input
+            #searchInput
+            id="dashboard-card-search"
+            type="search"
+            autocomplete="off"
+            [ngModel]="searchText()"
+            (ngModelChange)="searchText.set($event)"
+            (keydown.escape)="closeSearchFromKeyboard($event)"
+            [placeholder]="localization.translate('dashboard.ribbon.searchPlaceholder')"
+            [attr.aria-label]="localization.translate('dashboard.ribbon.search')">
+        </label>
+      }
+    </div>
   </div>
 
   <div class="ribbon__actions">

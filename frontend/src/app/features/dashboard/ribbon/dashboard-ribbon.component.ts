@@ -1,4 +1,17 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, model, signal } from '@angular/core';
+import {
+  afterNextRender,
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  ElementRef,
+  inject,
+  Injector,
+  input,
+  model,
+  signal,
+  viewChild,
+} from '@angular/core';
+import { FormsModule } from '@angular/forms';
 
 import { AlertTag } from '../../../core/api/alert-api.service';
 import { LocalizationService } from '../../../core/i18n/localization.service';
@@ -29,16 +42,19 @@ const ADVANCED_OPTIONS: readonly { readonly key: AdvancedOption; readonly labelK
  */
 @Component({
   selector: 'app-dashboard-ribbon',
-  imports: [DragScrollDirective],
+  imports: [FormsModule, DragScrollDirective],
   templateUrl: './dashboard-ribbon.component.html',
   styleUrl: './dashboard-ribbon.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class DashboardRibbonComponent {
   protected readonly localization = inject(LocalizationService);
+  private readonly injector = inject(Injector);
   readonly settings = model.required<DashboardViewSettings>();
   readonly tags = input.required<readonly AlertTag[]>();
+  readonly searchText = model.required<string>();
   protected readonly openMenu = signal<RibbonMenu | null>(null);
+  protected readonly searchOpen = signal(false);
   protected readonly states = CARD_STATE_ORDER;
   protected readonly advancedOptions = ADVANCED_OPTIONS;
   protected readonly visibleStateCount = computed(() => this.states.length - this.settings().hiddenStates.length);
@@ -48,6 +64,7 @@ export class DashboardRibbonComponent {
   });
   protected readonly activeAdvancedCount = computed(() =>
     this.advancedOptions.filter((option) => this.settings()[option.key]).length);
+  private readonly searchInput = viewChild<ElementRef<HTMLInputElement>>('searchInput');
 
   protected toggleMenu(menu: RibbonMenu): void {
     this.openMenu.update((current) => (current === menu ? null : menu));
@@ -85,5 +102,27 @@ export class DashboardRibbonComponent {
 
   protected toggleAdvanced(option: AdvancedOption): void {
     this.settings.update((settings) => ({ ...settings, [option]: !settings[option] }));
+  }
+
+  protected toggleSearch(): void {
+    if (this.searchOpen()) {
+      this.closeSearch();
+      return;
+    }
+    this.openMenu.set(null);
+    this.searchOpen.set(true);
+    afterNextRender(() => this.searchInput()?.nativeElement.focus(), { injector: this.injector });
+  }
+
+  protected closeSearch(): void {
+    this.searchOpen.set(false);
+    this.searchText.set('');
+  }
+
+  protected closeSearchFromKeyboard(event: Event): void {
+    event.preventDefault();
+    const search = (event.currentTarget as HTMLElement).closest('.ribbon__search');
+    search?.querySelector<HTMLButtonElement>('.ribbon__search-toggle')?.focus();
+    this.closeSearch();
   }
 }

@@ -159,6 +159,7 @@ export class DashboardComponent {
   private readonly pendingOf = (card: DashboardAlertCard): PendingIssue | null => this.acknowledgements.pending(card);
   protected readonly sortedCards = computed(() => [...this.cards()].sort((left, right) => compareDashboardCards(left, right, this.pendingOf)));
   protected readonly settings = signal(readStoredViewSettings());
+  protected readonly searchText = signal('');
   protected readonly availableTags = computed<readonly AlertTag[]>(() => {
     const tags = new Map<number, AlertTag>();
     for (const card of this.cards()) for (const tag of card.alert.tags) tags.set(tag.id, tag);
@@ -166,7 +167,11 @@ export class DashboardComponent {
   });
   protected readonly visibleCards = computed(() => {
     const { hiddenStates, hiddenTagIds } = this.settings();
-    return this.sortedCards().filter((card) => !hiddenStates.includes(this.cardState(card)) && hasVisibleTag(card, hiddenTagIds));
+    const searchTerms = this.normalizeSearch(this.searchText()).split(' ').filter(Boolean);
+    return this.sortedCards().filter((card) =>
+      !hiddenStates.includes(this.cardState(card))
+      && hasVisibleTag(card, hiddenTagIds)
+      && this.matchesSearch(card, searchTerms));
   });
   /* Ignored and silenced alerts leave the regular flow and always close the board as their own deck. */
   private readonly activeCards = computed(() => this.visibleCards().filter((card) => !this.mute.isMuted(card.alert.id)));
@@ -656,6 +661,22 @@ export class DashboardComponent {
   protected lastExecutionMessage(card: DashboardAlertCard): string {
     const execution = card.lastExecution;
     return execution === null ? '' : this.alertMessages.tileMessage(card.alert.templateKey, execution);
+  }
+
+  private matchesSearch(card: DashboardAlertCard, searchTerms: readonly string[]): boolean {
+    if (searchTerms.length === 0) return true;
+    const execution = card.lastExecution;
+    const searchableText = this.normalizeSearch([
+      card.alert.name,
+      execution === null ? '' : this.alertMessages.tileMessage(card.alert.templateKey, execution),
+      execution?.errorMessage ?? '',
+      execution?.errorType ?? '',
+    ].join(' '));
+    return searchTerms.every((term) => searchableText.includes(term));
+  }
+
+  private normalizeSearch(value: string): string {
+    return value.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLocaleLowerCase().trim().replace(/\s+/g, ' ');
   }
 
   /** The template formatter's readable summary of an execution, when it has one. */
