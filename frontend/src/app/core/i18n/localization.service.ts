@@ -24,9 +24,22 @@ function isAppLocale(value: string | null): value is AppLocale {
   return value === 'en' || value === 'es-UY';
 }
 
+function readBrowserLocale(): AppLocale {
+  try {
+    const browserLocale = navigator.language.toLowerCase();
+    return browserLocale === 'es' || browserLocale.startsWith('es-') ? 'es-UY' : DEFAULT_LOCALE;
+  } catch {
+    return DEFAULT_LOCALE;
+  }
+}
+
 function readStoredLocale(): AppLocale {
   try {
     const storedLocale = localStorage.getItem(STORAGE_KEY);
+    if (storedLocale === null) {
+      return readBrowserLocale();
+    }
+
     return isAppLocale(storedLocale) ? storedLocale : DEFAULT_LOCALE;
   } catch {
     return DEFAULT_LOCALE;
