@@ -538,17 +538,16 @@ td small {
 .row-actions__run {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  margin-right: 6px;
-  padding: 5px 11px;
+  justify-content: center;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  padding: 0;
   border: 1px solid #d0d5dd;
   border-radius: 7px;
   background: white;
   color: #344054;
   cursor: pointer;
-  font: inherit;
-  font-size: 12px;
-  font-weight: 700;
 }
 
 .row-actions__run:hover:not(:disabled) {
@@ -562,12 +561,17 @@ td small {
   opacity: .5;
 }
 
+.row-actions__run:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
 .row-actions__run-icon {
   flex: none;
   width: 0;
   height: 0;
   border-style: solid;
-  border-width: 4px 0 4px 6px;
+  border-width: 5px 0 5px 7px;
   border-color: transparent transparent transparent currentColor;
 }
 
