@@ -5,6 +5,7 @@ import java.io.StringWriter;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -17,6 +18,7 @@ import app.alertify.alerts.model.Alert;
 import app.alertify.alerts.model.AlertExecution;
 import app.alertify.alerts.model.AlertExecutionWorker;
 import app.alertify.alerts.model.AlertState;
+import app.alertify.alerts.template.annotation.AlertParameterSource;
 import app.alertify.grpc.discovery.WorkerEndpoint;
 import app.alertify.configuration.service.WritableConfigurationService;
 import app.alertify.execution.ExecutionTimestamps;
@@ -25,6 +27,7 @@ import app.alertify.jpa.repository.AlertRepository;
 import app.alertify.jpa.repository.AlertStateRepository;
 import app.alertify.logging.ApplicationEventLogger;
 import app.alertify.services.secret.WritableSecretService;
+import app.alertify.worker.contract.ExecutionErrorSanitizer;
 import app.alertify.worker.grpc.AlertExecutionResult;
 import app.alertify.worker.grpc.ExecutionError;
 import app.alertify.worker.grpc.WorkerExecutionStatus;
@@ -61,7 +64,7 @@ public class AlertExecutionPersistenceService {
     public void clearTrigger(UUID executionId) { triggerContexts.remove(executionId); }
 
     @Transactional
-    public void persistWorkerResult(long alertId, UUID executionId, WorkerEndpoint endpoint, AlertExecutionResult result) {
+    public void persistWorkerResult(long alertId, UUID executionId, WorkerEndpoint endpoint, AlertExecutionResult result, PreparedAlertExecution prepared) {
         TriggerContext context = triggerContexts.get(executionId);
         Alert alert = alert(alertId);
         ExecutionTimestamps timestamps = ExecutionTimestamps.ordered("ALERT", executionId, result.getWorkerName(),
@@ -70,7 +73,7 @@ public class AlertExecutionPersistenceService {
         AlertExecutionWorker worker = worker(endpoint, result.getWorkerName(), result.getWorkerInstanceId());
 
         if (result.getStatus() == WorkerExecutionStatus.WORKER_EXECUTION_STATUS_ERROR) {
-            ExecutionError error = result.getError();
+            ExecutionError error = sanitize(result.getError(), prepared);
             execution = AlertExecution.error(
                     executionId, alert, worker, timestamps.startedAt(), timestamps.workStartedAt(), timestamps.finishedAt(),
                     required(error.getType(), "Worker error type"), emptyToNull(error.getMessage()),
@@ -101,38 +104,22 @@ public class AlertExecutionPersistenceService {
     }
 
     @Transactional
-    public void persistRemoteFailure(
-        long alertId,
-        UUID executionId,
-        WorkerEndpoint endpoint,
-        String workerName,
-        String workerInstanceId,
-        Instant startedAt,
-        Instant workStartedAt,
-        Instant finishedAt,
-        ExecutionError error
-    ) {
+    public void persistRemoteFailure(long alertId, UUID executionId, WorkerEndpoint endpoint, String workerName, String workerInstanceId, Instant startedAt, Instant workStartedAt, Instant finishedAt, ExecutionError error, PreparedAlertExecution prepared) {
+        ExecutionError sanitized = sanitize(error, prepared);
         persistFailure(
                 alertId, executionId, worker(endpoint, workerName, workerInstanceId), startedAt, workStartedAt, finishedAt,
-                required(error.getType(), "Worker error type"), emptyToNull(error.getMessage()),
-                emptyToNull(error.getStackTrace())
+                required(sanitized.getType(), "Worker error type"), emptyToNull(sanitized.getMessage()),
+                emptyToNull(sanitized.getStackTrace())
         );
     }
 
     @Transactional
-    public void persistLocalFailure(
-        long alertId,
-        UUID executionId,
-        WorkerEndpoint endpoint,
-        String workerName,
-        String workerInstanceId,
-        Instant startedAt,
-        Throwable error
-    ) {
+    public void persistLocalFailure(long alertId, UUID executionId, WorkerEndpoint endpoint, String workerName, String workerInstanceId, Instant startedAt, Throwable error, PreparedAlertExecution prepared) {
         Instant finishedAt = Instant.now();
+        ExecutionError sanitized = sanitize(error(error), prepared);
         persistFailure(
                 alertId, executionId, worker(endpoint, workerName, workerInstanceId), startedAt, startedAt, finishedAt,
-                error.getClass().getName(), error.getMessage(), stackTrace(error)
+                sanitized.getType(), emptyToNull(sanitized.getMessage()), emptyToNull(sanitized.getStackTrace())
         );
     }
 
@@ -166,9 +153,6 @@ public class AlertExecutionPersistenceService {
         }
         if (execution.getStatus() == AlertExecutionStatus.ERROR) {
             data.put("errorType", execution.getErrorType());
-            if (execution.getErrorMessage() != null)
-                data.put("errorMessage", execution.getErrorMessage());
-
             eventLogger.errorAfterCommit("ALERT_EXECUTION_COMPLETED", data);
         } else {
             eventLogger.successAfterCommit("ALERT_EXECUTION_COMPLETED", data);
@@ -224,6 +208,21 @@ public class AlertExecutionPersistenceService {
         StringWriter stackTrace = new StringWriter();
         error.printStackTrace(new PrintWriter(stackTrace));
         return stackTrace.toString();
+    }
+
+    private static ExecutionError error(Throwable error) {
+        return ExecutionError.newBuilder()
+                .setType(error.getClass().getName())
+                .setMessage(error.getMessage() == null ? "" : error.getMessage())
+                .setStackTrace(stackTrace(error))
+                .build();
+    }
+
+    private static ExecutionError sanitize(ExecutionError error, PreparedAlertExecution prepared) {
+        return ExecutionErrorSanitizer.sanitize(error, prepared == null ? List.of() : prepared.parameters().stream()
+                .filter(parameter -> parameter.source() == AlertParameterSource.SECRET)
+                .map(ResolvedAlertParameter::value)
+                .toList());
     }
 
     private static String required(String value, String name) {

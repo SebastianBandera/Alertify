@@ -18,12 +18,12 @@ import app.alertify.alerts.api.AlertResponse;
  */
 public record DashboardCardResponse(AlertResponse alert, AlertExecutionResponse lastExecution, AlertExecutionResponse previousIssue, DashboardHistorySummaryResponse history, Instant runningSince, int historyWindowDays, DashboardIssueTimesResponse persistentIssues) {
 
-    /** The tile as dashboard viewers receive it: worker network addresses stay on the administrative side. */
+    /** The tile as dashboard viewers receive it: internal diagnostics stay on the administrative side. */
     public DashboardCardResponse forViewer() {
-        return new DashboardCardResponse(alert, withoutWorkerAddress(lastExecution), withoutWorkerAddress(previousIssue), history, runningSince, historyWindowDays, persistentIssues);
+        return new DashboardCardResponse(alert, forViewer(lastExecution), forViewer(previousIssue), history, runningSince, historyWindowDays, persistentIssues);
     }
 
-    private static AlertExecutionResponse withoutWorkerAddress(AlertExecutionResponse execution) {
-        return execution == null ? null : execution.withoutWorkerAddress();
+    private static AlertExecutionResponse forViewer(AlertExecutionResponse execution) {
+        return execution == null ? null : execution.forViewer();
     }
 }

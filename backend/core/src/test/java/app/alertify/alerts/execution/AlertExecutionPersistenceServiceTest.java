@@ -6,6 +6,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.Instant;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -15,6 +17,7 @@ import org.mockito.ArgumentCaptor;
 import app.alertify.alerts.model.Alert;
 import app.alertify.alerts.model.AlertExecution;
 import app.alertify.alerts.model.AlertState;
+import app.alertify.alerts.template.annotation.AlertParameterSource;
 import app.alertify.configuration.service.WritableConfigurationService;
 import app.alertify.jpa.repository.AlertExecutionRepository;
 import app.alertify.jpa.repository.AlertRepository;
@@ -22,7 +25,9 @@ import app.alertify.jpa.repository.AlertStateRepository;
 import app.alertify.logging.ApplicationEventLogger;
 import app.alertify.services.secret.WritableSecretService;
 import app.alertify.worker.grpc.AlertExecutionResult;
+import app.alertify.worker.grpc.ExecutionError;
 import app.alertify.worker.grpc.WorkerExecutionStatus;
+import app.alertify.worker.contract.WorkerCapability;
 import com.google.protobuf.Timestamp;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -54,7 +59,7 @@ class AlertExecutionPersistenceServiceTest {
                 .setState("updated")
                 .build();
 
-        service.persistWorkerResult(2L, executionId, null, result);
+        service.persistWorkerResult(2L, executionId, null, result, null);
 
         ArgumentCaptor<AlertExecution> saved = ArgumentCaptor.forClass(AlertExecution.class);
         verify(executions).save(saved.capture());
@@ -66,6 +71,55 @@ class AlertExecutionPersistenceServiceTest {
         verify(state).replaceState("updated");
         verify(configurations).apply(2L, "Demo WARN", executionId, result.getWritableConfigurationValuesList());
         verify(secrets).apply(2L, "Demo WARN", executionId, result.getWritableSecretValuesList());
+    }
+
+    @Test
+    void redactsSecretDiagnosticsAndOmitsTheMessageFromTheAuditEvent() {
+        AlertRepository alerts = mock(AlertRepository.class);
+        AlertExecutionRepository executions = mock(AlertExecutionRepository.class);
+        AlertStateRepository states = mock(AlertStateRepository.class);
+        ApplicationEventLogger eventLogger = mock(ApplicationEventLogger.class);
+        Alert alert = mock(Alert.class);
+        AlertState state = mock(AlertState.class);
+        when(alert.getId()).thenReturn(2L);
+        when(alert.getName()).thenReturn("Secret failure");
+        when(alerts.findById(2L)).thenReturn(Optional.of(alert));
+        when(states.findById(2L)).thenReturn(Optional.of(state));
+        AlertExecutionPersistenceService service = new AlertExecutionPersistenceService(alerts, executions,
+                states, eventLogger, JsonMapper.builder().build(), mock(WritableConfigurationService.class),
+                mock(WritableSecretService.class));
+        String secret = "{\"username\":\"monitor\",\"password\":\"opaque-password\"}";
+        PreparedAlertExecution prepared = new PreparedAlertExecution(
+                2L, "Secret failure", "dynamic.SecretFailure", WorkerCapability.STANDARD,
+                "a".repeat(64), "source", "state", List.of(new ResolvedAlertParameter(
+                        "credentials", String.class.getName(), secret, false,
+                        AlertParameterSource.SECRET, null, 9L, false
+                ))
+        );
+        UUID executionId = UUID.randomUUID();
+        Instant startedAt = Instant.parse("2026-09-25T15:00:00Z");
+        AlertExecutionResult result = AlertExecutionResult.newBuilder()
+                .setStatus(WorkerExecutionStatus.WORKER_EXECUTION_STATUS_ERROR)
+                .setStartedAt(timestamp(startedAt))
+                .setWorkStartedAt(timestamp(startedAt.plusMillis(1)))
+                .setFinishedAt(timestamp(startedAt.plusMillis(2)))
+                .setState("state")
+                .setError(ExecutionError.newBuilder()
+                        .setType("example.DatabaseFailure")
+                        .setMessage("Login monitor failed with opaque-password")
+                        .setStackTrace("credentials=" + secret))
+                .build();
+
+        service.persistWorkerResult(2L, executionId, null, result, prepared);
+
+        ArgumentCaptor<AlertExecution> saved = ArgumentCaptor.forClass(AlertExecution.class);
+        verify(executions).save(saved.capture());
+        assertThat(saved.getValue().getErrorMessage()).isEqualTo("Login [REDACTED] failed with [REDACTED]");
+        assertThat(saved.getValue().getErrorStackTrace()).isEqualTo("credentials=[REDACTED]");
+        ArgumentCaptor<Map<String, Object>> auditData = ArgumentCaptor.captor();
+        verify(eventLogger).errorAfterCommit(org.mockito.ArgumentMatchers.eq("ALERT_EXECUTION_COMPLETED"), auditData.capture());
+        assertThat(auditData.getValue()).containsEntry("errorType", "example.DatabaseFailure");
+        assertThat(auditData.getValue()).doesNotContainKey("errorMessage");
     }
 
     private static Timestamp timestamp(Instant value) {

@@ -85,6 +85,8 @@ class DashboardCardServiceTest {
         assertThat(first.lastExecution().status()).isEqualTo(AlertExecutionStatus.WARN);
         assertThat(first.previousIssue().status()).isEqualTo(AlertExecutionStatus.ERROR);
         assertThat(first.previousIssue().errorMessage()).isEqualTo("Connection refused");
+        assertThat(first.forViewer().previousIssue().errorMessage()).isNull();
+        assertThat(first.forViewer().previousIssue().workerIpAddress()).isNull();
         assertThat(first.history()).isEqualTo(summary);
         assertThat(first.runningSince()).isEqualTo(finishedAt.plusSeconds(60));
         assertThat(page.content()).allSatisfy(card -> assertThat(card.historyWindowDays()).isEqualTo(7));

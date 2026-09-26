@@ -69,11 +69,11 @@ class DashboardEventPublisherTest {
     }
 
     @Test
-    void viewersReceiveTheTileWithoutTheWorkerAddress() {
+    void viewersReceiveTheTileWithoutInternalDiagnostics() {
         Instant at = Instant.parse("2026-09-24T12:00:00Z");
         AlertExecutionResponse execution = new AlertExecutionResponse(
-                1L, UUID.randomUUID(), 1L, "Alert", 2L, "template.name", AlertExecutionStatus.SUCCESS,
-                AlertExecutionTrigger.CRON, null, at, at, at, 0, 0, 0, null, null, null,
+                1L, UUID.randomUUID(), 1L, "Alert", 2L, "template.name", AlertExecutionStatus.ERROR,
+                AlertExecutionTrigger.CRON, null, at, at, at, 0, 0, 0, null, "example.Failure", "internal detail",
                 "worker-standard-2", "172.18.0.4", 9090, UUID.randomUUID()
         );
         DashboardCardResponse card = new DashboardCardResponse(null, execution, null, null, null, 10, null);
@@ -89,6 +89,7 @@ class DashboardEventPublisherTest {
         verify(viewerEventPublisher, timeout(2_000)).publish(DashboardEventPublisher.ALERT_EVENT, card.forViewer());
         assertThat(card.forViewer().lastExecution().workerIpAddress()).isNull();
         assertThat(card.forViewer().lastExecution().workerPort()).isNull();
+        assertThat(card.forViewer().lastExecution().errorMessage()).isNull();
         assertThat(card.forViewer().lastExecution().workerName()).isEqualTo("worker-standard-2");
     }
 

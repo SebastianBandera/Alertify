@@ -79,14 +79,15 @@ class SqlStatusAlertTemplateTest {
     }
 
     @Test
-    void failsTheExecutionWithTheDetailWhenTheQueryReportsError() {
-        SqlStatusAlertTemplate template = template(STATUS_AND_DETAIL_QUERY, "[\"error\",\"Replication lag above limit\"]", "alert_detail");
+    void failsTheExecutionWithoutExposingTheDetailWhenTheQueryReportsError() {
+        SqlStatusAlertTemplate template = template(STATUS_AND_DETAIL_QUERY, "[\"error\",\"secret database detail\"]", "alert_detail");
 
         SqlStatusAlertTemplate.SqlStatusFailure failure = assertThrows(
             SqlStatusAlertTemplate.SqlStatusFailure.class, () -> template.evaluate(new AlertExecutionContext())
         );
 
-        assertEquals("Replication lag above limit", failure.getMessage());
+        assertEquals("SQL status query reported ERROR", failure.getMessage());
+        assertFalse(failure.getMessage().contains("secret database detail"));
     }
 
     @Test

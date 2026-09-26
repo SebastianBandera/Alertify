@@ -39,4 +39,13 @@ public record AlertExecutionResponse(
                 errorType, errorMessage, workerName, null, null, workerInstanceId
         );
     }
+
+    /** The execution fields that dashboard viewers may receive. */
+    public AlertExecutionResponse forViewer() {
+        return new AlertExecutionResponse(
+                id, executionId, alertId, alertName, templateId, templateNameKey, status, trigger, triggeredBy,
+                startedAt, workStartedAt, finishedAt, durationMillis, idleMillis, executionMillis, statusMessage,
+                errorType, null, workerName, null, null, workerInstanceId
+        );
+    }
 }

@@ -53,6 +53,7 @@ import app.alertify.worker.grpc.TemplateKind;
 import app.alertify.worker.grpc.ArtifactDescriptor;
 import app.alertify.procedures.artifact.ProcedureArtifactInput;
 import app.alertify.worker.contract.BinaryPayloadCodec;
+import app.alertify.worker.contract.ExecutionErrorSanitizer;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -538,16 +539,10 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
     }
 
     private static ExecutionError sanitize(ExecutionError error, PreparedProcedureExecution prepared) {
-        String message = error.getMessage();
-        String stack = error.getStackTrace();
-        for (ResolvedProcedureParameter parameter : prepared.parameters()) {
-            if (parameter.source() != AlertParameterSource.SECRET || parameter.value() == null || parameter.value().isEmpty())
-                continue;
-
-            message = message.replace(parameter.value(), "[REDACTED]");
-            stack = stack.replace(parameter.value(), "[REDACTED]");
-        }
-        return error.toBuilder().setMessage(message).setStackTrace(stack).build();
+        return ExecutionErrorSanitizer.sanitize(error, prepared.parameters().stream()
+                .filter(parameter -> parameter.source() == AlertParameterSource.SECRET)
+                .map(ResolvedProcedureParameter::value)
+                .toList());
     }
 
     private static InvokeProcedureResponse failure(ProcedureInvocationFailureKind kind, UUID executionId, Throwable exception, ExecutionError error) {

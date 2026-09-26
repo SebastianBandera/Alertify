@@ -162,11 +162,12 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
         WorkerEndpoint endpoint = null;
         String workerName = null;
         String workerInstanceId = null;
+        PreparedAlertExecution execution = null;
         Instant deadline = startedAt.plus(properties.execution().timeout());
         persistenceService.registerTrigger(executionId, source, triggeredBy);
         try {
             // A manual run also covers alerts that are currently disabled.
-            PreparedAlertExecution execution = preparationService
+            execution = preparationService
                     .prepare(alertId, source == AlertExecutionTrigger.MANUAL)
                     .orElse(null);
             if (execution == null)
@@ -195,10 +196,10 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
                     result = workerClient.executeAlert(endpoint, request, templateSource, remaining(deadline), procedureExecutionOrchestrator::invokeToken);
                 } catch (WorkerTemplateSynchronizationException exception) {
                     Instant finishedAt = Instant.now();
-                    persistenceService.persistRemoteFailure(alertId, executionId, endpoint, workerName, workerInstanceId, startedAt, finishedAt, finishedAt, exception.error());
+                    persistenceService.persistRemoteFailure(alertId, executionId, endpoint, workerName, workerInstanceId, startedAt, finishedAt, finishedAt, exception.error(), execution);
                     return AlertExecutionStatus.ERROR;
                 }
-                persistenceService.persistWorkerResult(alertId, executionId, endpoint, result);
+                persistenceService.persistWorkerResult(alertId, executionId, endpoint, result, execution);
                 return switch (result.getStatus()) {
                     case WORKER_EXECUTION_STATUS_SUCCESS -> AlertExecutionStatus.SUCCESS;
                     case WORKER_EXECUTION_STATUS_WARN -> AlertExecutionStatus.WARN;
@@ -212,7 +213,7 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
             try {
                 persistenceService.persistLocalFailure(
                         alertId, executionId, endpoint, workerName, workerInstanceId,
-                        startedAt, exception
+                        startedAt, exception, execution
                 );
             } catch (RuntimeException persistenceException) {
                 Map<String, Object> data = new LinkedHashMap<>();
@@ -221,9 +222,6 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
                 data.put("trigger", source.name());
                 data.put("triggeredBy", triggeredBy == null ? "system" : triggeredBy);
                 data.put("exceptionType", exception.getClass().getName());
-                if (exception.getMessage() != null)
-                    data.put("exceptionMessage", exception.getMessage());
-
                 data.put("persistenceExceptionType", persistenceException.getClass().getName());
                 eventLogger.error("ALERT_EXECUTION_DISPATCH_FAILED", data);
             }

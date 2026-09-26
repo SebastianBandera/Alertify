@@ -107,7 +107,7 @@ class AlertExecutionOrchestratorTest {
         orchestrator.trigger(7L, "Sample alert", false);
 
         verify(persistenceService, org.mockito.Mockito.timeout(5000)).persistWorkerResult(
-                eq(7L), any(UUID.class), eq(ENDPOINT), eq(result)
+                eq(7L), any(UUID.class), eq(ENDPOINT), eq(result), any(PreparedAlertExecution.class)
         );
         ArgumentCaptor<ExecuteAlertRequest> executionRequest =
                 ArgumentCaptor.forClass(ExecuteAlertRequest.class);
@@ -153,7 +153,7 @@ class AlertExecutionOrchestratorTest {
         orchestrator.trigger(7L, "Sample alert", false);
 
         verify(persistenceService, org.mockito.Mockito.timeout(5000)).persistWorkerResult(
-                eq(7L), any(UUID.class), eq(ENDPOINT), any(AlertExecutionResult.class)
+                eq(7L), any(UUID.class), eq(ENDPOINT), any(AlertExecutionResult.class), any(PreparedAlertExecution.class)
         );
         ArgumentCaptor<ExecuteAlertRequest> request = ArgumentCaptor.forClass(ExecuteAlertRequest.class);
         verify(workerClient).executeAlert(eq(ENDPOINT), request.capture(), any(), any(Duration.class), any());
@@ -183,7 +183,7 @@ class AlertExecutionOrchestratorTest {
         orchestrator.trigger(7L, "Sample alert", false);
 
         verify(persistenceService, org.mockito.Mockito.timeout(5000)).persistWorkerResult(
-                eq(7L), any(UUID.class), eq(ENDPOINT), any(AlertExecutionResult.class)
+                eq(7L), any(UUID.class), eq(ENDPOINT), any(AlertExecutionResult.class), any(PreparedAlertExecution.class)
         );
         ArgumentCaptor<ExecuteAlertRequest> request = ArgumentCaptor.forClass(ExecuteAlertRequest.class);
         verify(workerClient).executeAlert(eq(ENDPOINT), request.capture(), any(), any(Duration.class), any());
@@ -217,7 +217,7 @@ class AlertExecutionOrchestratorTest {
         verify(eventLogger).failure(eq("ALERT_EXECUTION_SKIPPED"), any());
         releaseExecution.countDown();
         verify(persistenceService, org.mockito.Mockito.timeout(5000)).persistWorkerResult(
-                eq(7L), any(UUID.class), eq(ENDPOINT), any(AlertExecutionResult.class)
+                eq(7L), any(UUID.class), eq(ENDPOINT), any(AlertExecutionResult.class), any(PreparedAlertExecution.class)
         );
         verify(workerClient).executeAlert(eq(ENDPOINT), any(), any(), any(Duration.class), any());
     }
@@ -247,7 +247,7 @@ class AlertExecutionOrchestratorTest {
 
         assertThat(accepted).isTrue();
         verify(persistenceService, org.mockito.Mockito.timeout(5000)).persistWorkerResult(
-                eq(7L), any(UUID.class), eq(ENDPOINT), any(AlertExecutionResult.class)
+                eq(7L), any(UUID.class), eq(ENDPOINT), any(AlertExecutionResult.class), any(PreparedAlertExecution.class)
         );
     }
 
@@ -263,7 +263,7 @@ class AlertExecutionOrchestratorTest {
 
         assertThat(accepted).isTrue();
         verify(persistenceService, org.mockito.Mockito.timeout(5000)).persistWorkerResult(
-                eq(7L), any(UUID.class), eq(ENDPOINT), any(AlertExecutionResult.class)
+                eq(7L), any(UUID.class), eq(ENDPOINT), any(AlertExecutionResult.class), any(PreparedAlertExecution.class)
         );
         ArgumentCaptor<java.util.Map<String, Object>> triggered = ArgumentCaptor.captor();
         verify(eventLogger).success(eq("ALERT_EXECUTION_TRIGGERED"), triggered.capture());
@@ -306,7 +306,7 @@ class AlertExecutionOrchestratorTest {
                 .containsEntry("reason", "ALREADY_RUNNING");
         releaseExecution.countDown();
         verify(persistenceService, org.mockito.Mockito.timeout(5000)).persistWorkerResult(
-                eq(7L), any(UUID.class), eq(ENDPOINT), any(AlertExecutionResult.class)
+                eq(7L), any(UUID.class), eq(ENDPOINT), any(AlertExecutionResult.class), any(PreparedAlertExecution.class)
         );
     }
 

@@ -19,6 +19,7 @@ import app.alertify.alerts.AlertExecutionContext;
 import app.alertify.alerts.AlertResult;
 import app.alertify.alerts.execution.AlertExecutionStatus;
 import app.alertify.alerts.template.annotation.AlertParameterSource;
+import app.alertify.worker.contract.ExecutionErrorSanitizer;
 import app.alertify.worker.grpc.AlertExecutionResult;
 import app.alertify.worker.grpc.AlertParameter;
 import app.alertify.worker.grpc.AlertParameterValueSource;
@@ -119,7 +120,7 @@ class WorkerExecutionEngine implements AutoCloseable {
                     .setWorkStartedAt(timestamp(workStartedAt))
                     .setFinishedAt(timestamp(timeline.next()))
                     .setState(context == null ? request.getState() : context.getState())
-                    .setError(error(exception))
+                    .setError(ExecutionErrorSanitizer.sanitize(error(exception), secretValues(request)))
                     .setWorkerName(properties.name())
                     .setWorkerInstanceId(instanceIdentity.id())
                     .build());
@@ -174,6 +175,14 @@ class WorkerExecutionEngine implements AutoCloseable {
                 .setMessage(exception.getMessage() == null ? "" : exception.getMessage())
                 .setStackTrace(stackTrace.toString())
                 .build();
+    }
+
+    private static java.util.List<String> secretValues(ExecuteAlertRequest request) {
+        return request.getParametersList().stream()
+                .filter(parameter -> parameter.getSource() == AlertParameterValueSource.ALERT_PARAMETER_VALUE_SOURCE_SECRET)
+                .filter(parameter -> !parameter.getNullValue() && !parameter.getValue().isEmpty())
+                .map(AlertParameter::getValue)
+                .toList();
     }
 
     @Override

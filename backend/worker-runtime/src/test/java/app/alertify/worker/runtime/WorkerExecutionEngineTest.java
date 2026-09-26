@@ -91,6 +91,60 @@ class WorkerExecutionEngineTest {
     }
 
     @Test
+    void redactsSecretParametersFromReportedExceptions() throws Exception {
+        WorkerRuntimeProperties properties = properties();
+        AlertTemplateCompiler compiler = new AlertTemplateCompiler(properties);
+        String source = """
+                package dynamic;
+
+                import app.alertify.alerts.AlertEvaluator;
+                import app.alertify.alerts.AlertExecutionContext;
+                import app.alertify.alerts.AlertResult;
+
+                public final class SecretFailingAlert implements AlertEvaluator {
+                    private final String token;
+
+                    public SecretFailingAlert(String token) {
+                        this.token = token;
+                    }
+
+                    @Override
+                    public AlertResult evaluate(AlertExecutionContext context) {
+                        throw new IllegalStateException("credential=" + token);
+                    }
+                }
+                """;
+        String checksum = sha256(source);
+        compiler.synchronize("dynamic.SecretFailingAlert", checksum, source);
+        CompletableFuture<AlertExecutionResult> result = new CompletableFuture<>();
+
+        try (WorkerExecutionEngine engine = new WorkerExecutionEngine(
+                compiler, new WorkerExecutionTracker(properties), properties, new WorkerInstanceIdentity()
+        )) {
+            engine.execute(
+                    ExecuteAlertRequest.newBuilder()
+                            .setExecutionId("execution-secret-failure")
+                            .setAlertId(10)
+                            .setAlertName("Secret failure sample")
+                            .setTemplateClassName("dynamic.SecretFailingAlert")
+                            .setSourceChecksum(checksum)
+                            .addParameters(AlertParameter.newBuilder()
+                                    .setName("token")
+                                    .setJavaType(String.class.getName())
+                                    .setValue("opaque-token")
+                                    .setSource(AlertParameterValueSource.ALERT_PARAMETER_VALUE_SOURCE_SECRET))
+                            .build(),
+                    observer(result)
+            );
+
+            AlertExecutionResult execution = result.get(5, TimeUnit.SECONDS);
+
+            assertThat(execution.getError().getMessage()).isEqualTo("credential=[REDACTED]");
+            assertThat(execution.getError().getStackTrace()).doesNotContain("opaque-token");
+        }
+    }
+
+    @Test
     void returnsOnlyChangedWritableConfigurationParameters() throws Exception {
         WorkerRuntimeProperties properties = properties();
         AlertTemplateCompiler compiler = new AlertTemplateCompiler(properties);

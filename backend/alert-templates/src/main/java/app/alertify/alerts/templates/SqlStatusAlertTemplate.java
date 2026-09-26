@@ -34,9 +34,9 @@ import tools.jackson.databind.json.JsonMapper;
  * from one textual column: SUCCESS or WARN report that status and ERROR fails
  * the execution, compared ignoring case and surrounding blanks. Any other
  * value is a misconfigured query and fails the execution as well. One textual
- * detail column can optionally be included in the persisted result. SQL text,
- * bound parameter values and credentials are never copied to the execution
- * state or status message.
+ * detail column can optionally be included in SUCCESS or WARN results, but is
+ * never copied to exception diagnostics. SQL text, bound parameter values and
+ * credentials are never copied to the execution state or status message.
  */
 @AlertTemplate(
     nameKey = "alerts.template.sqlStatus.name",
@@ -150,8 +150,7 @@ public final class SqlStatusAlertTemplate implements AlertEvaluator {
         String status = status(queryResult.status());
         context.setState("status=" + status);
         if (ERROR.equals(status))
-            throw new SqlStatusFailure(queryResult.detail() == null || queryResult.detail().isBlank()
-                    ? "SQL status query reported ERROR" : queryResult.detail());
+            throw new SqlStatusFailure("SQL status query reported ERROR");
 
         Map<String, Object> statusMessage = statusMessage(elapsedMillis(startedNanos));
         statusMessage.put("value", status);
@@ -315,7 +314,7 @@ public final class SqlStatusAlertTemplate implements AlertEvaluator {
         return Math.max(0, System.nanoTime() - startedNanos) / 1_000_000;
     }
 
-    /** Raised when the query itself reports ERROR; the detail column, when set, becomes its message. */
+    /** Raised with a stable message when the query itself reports ERROR. */
     public static final class SqlStatusFailure extends RuntimeException {
 
         private static final long serialVersionUID = 1L;
