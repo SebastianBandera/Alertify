@@ -10,11 +10,24 @@ import com.google.protobuf.ByteString;
 
 import app.alertify.worker.contract.BinaryPayloadCodec;
 import app.alertify.worker.contract.GitCredentials;
+import app.alertify.worker.contract.KubeconfigCredentials;
 import app.alertify.worker.contract.GitProvider;
 import app.alertify.worker.contract.OidcTokenSet;
 import app.alertify.worker.grpc.AlertParameter;
 
 class AlertParameterConverterTest {
+
+    @Test
+    void roundTripsExactKubeconfigText() {
+        String raw = "apiVersion: v1\ncurrent-context: producción\n";
+        AlertParameter parameter = AlertParameter.newBuilder()
+                .setJavaType(KubeconfigCredentials.class.getName()).setValue(raw).build();
+
+        Object value = AlertParameterConverter.convert(parameter, KubeconfigCredentials.class);
+
+        assertThat(value).isEqualTo(new KubeconfigCredentials(raw));
+        assertThat(AlertParameterConverter.serialize(value, KubeconfigCredentials.class)).isEqualTo(raw);
+    }
 
     @Test
     void roundTripsGitCredentialsThroughCanonicalJson() {

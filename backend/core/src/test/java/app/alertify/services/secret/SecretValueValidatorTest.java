@@ -134,6 +134,25 @@ class SecretValueValidatorTest {
     }
 
     @Test
+    void preservesAndValidatesRawKubeconfigText() {
+        String kubeconfig = "apiVersion: v1\ncurrent-context: producción\n";
+
+        assertThat(validator.validateAndNormalize(SecretValueType.KUBECONFIG, StringNode.valueOf(kubeconfig))).isEqualTo(kubeconfig);
+        assertThat(validator.validateAndNormalizeRaw(SecretValueType.KUBECONFIG, kubeconfig)).isEqualTo(kubeconfig);
+        assertThatThrownBy(() -> validator.validateAndNormalize(SecretValueType.KUBECONFIG, json("{}")))
+                .isInstanceOf(InvalidSecretValueException.class);
+        assertThatThrownBy(() -> validator.validateAndNormalizeRaw(SecretValueType.KUBECONFIG, "x\0y"))
+                .isInstanceOf(InvalidSecretValueException.class)
+                .hasMessageContaining("NUL");
+        assertThatThrownBy(() -> validator.validateAndNormalize(SecretValueType.KUBECONFIG, StringNode.valueOf(" \n\t")))
+                .isInstanceOf(InvalidSecretValueException.class)
+                .hasMessageContaining("blank");
+        assertThatThrownBy(() -> validator.validateAndNormalizeRaw(SecretValueType.KUBECONFIG, " \n\t"))
+                .isInstanceOf(InvalidSecretValueException.class)
+                .hasMessageContaining("blank");
+    }
+
+    @Test
     void validatesExpressionSyntaxWithSecretScope() {
         String expression = "Basic {{utils.BASE64({{secrets.USER}}:{{secrets.PASS}})}} {{configs.REALM}}";
 

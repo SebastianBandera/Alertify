@@ -12,6 +12,7 @@ import app.alertify.jpa.entity.SecretValueType;
 import app.alertify.worker.contract.DatabaseCredentials;
 import app.alertify.worker.contract.GitCredentials;
 import app.alertify.worker.contract.OidcTokenSet;
+import app.alertify.worker.contract.KubeconfigCredentials;
 import app.alertify.procedures.artifact.ProcedureArtifactInput;
 
 /**
@@ -31,6 +32,7 @@ public final class ParameterValueTypeCompatibility {
     private static final String DATABASE_CREDENTIALS_JAVA_TYPE = DatabaseCredentials.class.getName();
     private static final String GIT_CREDENTIALS_JAVA_TYPE = GitCredentials.class.getName();
     private static final String OIDC_TOKEN_SET_JAVA_TYPE = OidcTokenSet.class.getName();
+    private static final String KUBECONFIG_CREDENTIALS_JAVA_TYPE = KubeconfigCredentials.class.getName();
     private static final String ARTIFACT_INPUT_JAVA_TYPE = ProcedureArtifactInput.class.getName();
 
     private ParameterValueTypeCompatibility() {
@@ -54,6 +56,9 @@ public final class ParameterValueTypeCompatibility {
         if (OIDC_TOKEN_SET_JAVA_TYPE.equals(javaType))
             return Optional.of(SecretValueType.OIDC_TOKEN_SET);
 
+        if (KUBECONFIG_CREDENTIALS_JAVA_TYPE.equals(javaType))
+            return Optional.of(SecretValueType.KUBECONFIG);
+
         return Optional.empty();
     }
 
@@ -71,7 +76,8 @@ public final class ParameterValueTypeCompatibility {
         return requiredSecretValueType(javaType)
             .map(required -> required == valueType)
             .orElse(valueType != SecretValueType.BINARY && valueType != SecretValueType.DB_SECRET
-                && valueType != SecretValueType.GIT_SECRET && valueType != SecretValueType.OIDC_TOKEN_SET);
+                && valueType != SecretValueType.GIT_SECRET && valueType != SecretValueType.OIDC_TOKEN_SET
+                && valueType != SecretValueType.KUBECONFIG);
     }
 
     /**
@@ -104,7 +110,7 @@ public final class ParameterValueTypeCompatibility {
     /**
      * Same resolution as {@link #effectiveAllowedConfigurationValueTypes} but for
      * secret value types, where {@code BINARY}, {@code DB_SECRET},
-     * {@code GIT_SECRET} and {@code OIDC_TOKEN_SET} are structured pairings that
+     * {@code GIT_SECRET}, {@code OIDC_TOKEN_SET} and {@code KUBECONFIG} are structured pairings that
      * are not meaningful as free text, so they may only be bound by a java type
      * that requires them.
      */
@@ -121,9 +127,10 @@ public final class ParameterValueTypeCompatibility {
             return List.of(required.get().name());
         }
         if (names.contains(SecretValueType.BINARY.name()) || names.contains(SecretValueType.DB_SECRET.name())
-                || names.contains(SecretValueType.GIT_SECRET.name()) || names.contains(SecretValueType.OIDC_TOKEN_SET.name())) {
+                || names.contains(SecretValueType.GIT_SECRET.name()) || names.contains(SecretValueType.OIDC_TOKEN_SET.name())
+                || names.contains(SecretValueType.KUBECONFIG.name())) {
             throw new IllegalStateException(
-                "allowedSecretValueTypes must not include BINARY, DB_SECRET, GIT_SECRET or OIDC_TOKEN_SET unless the java type requires it: " + description
+                "allowedSecretValueTypes must not include BINARY, DB_SECRET, GIT_SECRET, OIDC_TOKEN_SET or KUBECONFIG unless the java type requires it: " + description
             );
         }
         return names;

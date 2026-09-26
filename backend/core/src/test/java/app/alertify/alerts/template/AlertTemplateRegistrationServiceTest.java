@@ -28,6 +28,7 @@ import app.alertify.alerts.template.annotation.AlertParameterSource;
 import app.alertify.alerts.templates.GitLabPipelineAlertTemplate;
 import app.alertify.alerts.templates.HttpsCertificateExpiryAlertTemplate;
 import app.alertify.alerts.templates.InternetConnectionAlertTemplate;
+import app.alertify.alerts.templates.KubernetesWorkloadAlertTemplate;
 import app.alertify.alerts.templates.PlaywrightPageAlertTemplate;
 import app.alertify.alerts.templates.SqlStatusAlertTemplate;
 import app.alertify.alerts.templates.SqlThresholdAlertTemplate;
@@ -118,6 +119,10 @@ class AlertTemplateRegistrationServiceTest {
             webRequestTemplate.getSourcePath()
         );
 
+        AlertTemplateDefinition kubernetesTemplate = templatesByKey.get(KubernetesWorkloadAlertTemplate.class.getName());
+        assertNotNull(kubernetesTemplate);
+        assertEquals(WorkerCapability.STANDARD, kubernetesTemplate.getRequiredCapability());
+
         AlertTemplateDefinition playwrightPageTemplate =
             templatesByKey.get(PlaywrightPageAlertTemplate.class.getName());
         assertNotNull(playwrightPageTemplate);
@@ -157,6 +162,21 @@ class AlertTemplateRegistrationServiceTest {
         ArgumentCaptor<AlertTemplateParameterDefinition> parameterCaptor =
             ArgumentCaptor.forClass(AlertTemplateParameterDefinition.class);
         verify(parameterRepository, atLeast(39)).save(parameterCaptor.capture());
+
+        List<AlertTemplateParameterDefinition> kubernetesParameters = parametersOf(parameterCaptor, kubernetesTemplate);
+        assertEquals(7, kubernetesParameters.size());
+        assertEquals("credentials", kubernetesParameters.get(0).getParameterKey());
+        assertEquals(List.of(AlertParameterSource.SECRET), kubernetesParameters.get(0).getAllowedSources());
+        assertEquals(List.of("KUBECONFIG"), kubernetesParameters.get(0).getAllowedSecretValueTypes());
+        assertEquals("context", kubernetesParameters.get(1).getParameterKey());
+        assertFalse(kubernetesParameters.get(1).isRequired());
+        assertEquals(List.of(AlertParameterSource.TEXT, AlertParameterSource.CONFIGURATION), kubernetesParameters.get(1).getAllowedSources());
+        assertEquals("default", kubernetesParameters.get(2).getDefaultValue());
+        assertEquals(List.of(AlertParameterSource.TEXT, AlertParameterSource.CONFIGURATION), kubernetesParameters.get(2).getAllowedSources());
+        assertEquals(List.of("Deployment", "StatefulSet", "DaemonSet"), kubernetesParameters.get(3).getOptions());
+        assertEquals(List.of(AlertParameterSource.TEXT, AlertParameterSource.CONFIGURATION), kubernetesParameters.get(4).getAllowedSources());
+        assertEquals("true", kubernetesParameters.get(5).getDefaultValue());
+        assertEquals(List.of("1", "3", "5", "10", "30"), kubernetesParameters.get(6).getOptions());
 
         List<AlertTemplateParameterDefinition> httpsParameters = parametersOf(parameterCaptor, httpsCertificateTemplate);
         assertEquals(4, httpsParameters.size());

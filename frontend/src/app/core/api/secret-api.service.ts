@@ -14,13 +14,13 @@ export interface SecretTag {
   readonly updatedAt: string;
 }
 
-export type SecretValueType = 'STRING' | 'DB_SECRET' | 'GIT_SECRET' | 'OIDC_TOKEN_SET' | 'EXPRESSION' | 'BINARY';
+export type SecretValueType = 'STRING' | 'DB_SECRET' | 'GIT_SECRET' | 'OIDC_TOKEN_SET' | 'KUBECONFIG' | 'EXPRESSION' | 'BINARY';
 
 export type DatabaseEngine = 'POSTGRESQL' | 'MARIADB' | 'SQL_SERVER' | 'ORACLE' | 'OTHER';
 
 export type GitProvider = 'GITHUB' | 'GITLAB' | 'BITBUCKET' | 'OTHER';
 
-export const SECRET_VALUE_TYPES: readonly SecretValueType[] = ['STRING', 'DB_SECRET', 'GIT_SECRET', 'OIDC_TOKEN_SET', 'EXPRESSION', 'BINARY'];
+export const SECRET_VALUE_TYPES: readonly SecretValueType[] = ['STRING', 'DB_SECRET', 'GIT_SECRET', 'OIDC_TOKEN_SET', 'KUBECONFIG', 'EXPRESSION', 'BINARY'];
 
 export const DATABASE_ENGINES: readonly DatabaseEngine[] = ['POSTGRESQL', 'MARIADB', 'SQL_SERVER', 'ORACLE', 'OTHER'];
 

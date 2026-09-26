@@ -12,6 +12,7 @@ import app.alertify.jpa.entity.SecretValueType;
 import app.alertify.worker.contract.DatabaseCredentials;
 import app.alertify.worker.contract.GitCredentials;
 import app.alertify.worker.contract.OidcTokenSet;
+import app.alertify.worker.contract.KubeconfigCredentials;
 
 /**
  * Validates a submitted secret value against its declared type and returns the
@@ -41,6 +42,7 @@ public class SecretValueValidator {
             case DB_SECRET -> validateDatabaseCredentials(value);
             case GIT_SECRET -> validateGitCredentials(value);
             case OIDC_TOKEN_SET -> validateOidcTokenSet(value);
+            case KUBECONFIG -> validateKubeconfig(validateString(value, "KUBECONFIG"));
             case EXPRESSION -> validateExpression(validateString(value, "EXPRESSION"));
             case BINARY -> throw new InvalidSecretValueException("BINARY values require multipart file upload");
         };
@@ -78,6 +80,13 @@ public class SecretValueValidator {
                     yield OidcTokenSet.fromJson(raw).toJson();
                 } catch (IllegalArgumentException exception) {
                     throw new InvalidSecretValueException("OIDC_TOKEN_SET value is invalid: " + exception.getMessage());
+                }
+            }
+            case KUBECONFIG -> {
+                try {
+                    yield new KubeconfigCredentials(raw).kubeconfig();
+                } catch (IllegalArgumentException exception) {
+                    throw new InvalidSecretValueException("KUBECONFIG value is invalid: " + exception.getMessage());
                 }
             }
             case EXPRESSION -> validateExpression(raw);
@@ -134,6 +143,14 @@ public class SecretValueValidator {
             return OidcTokenSet.fromJson(value).toJson();
         } catch (IllegalArgumentException exception) {
             throw new InvalidSecretValueException("OIDC_TOKEN_SET value is invalid: " + exception.getMessage());
+        }
+    }
+
+    private static String validateKubeconfig(String value) {
+        try {
+            return new KubeconfigCredentials(value).kubeconfig();
+        } catch (IllegalArgumentException exception) {
+            throw new InvalidSecretValueException("KUBECONFIG value is invalid: " + exception.getMessage());
         }
     }
 }

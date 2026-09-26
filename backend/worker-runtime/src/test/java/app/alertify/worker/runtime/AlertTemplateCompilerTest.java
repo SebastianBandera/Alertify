@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.nio.file.Files;
 import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.HexFormat;
@@ -95,6 +96,18 @@ class AlertTemplateCompilerTest {
                 .isInstanceOf(TemplateCompilationException.class)
                 .hasMessageContaining("compilation failed")
                 .hasMessageContaining("line 1");
+    }
+
+    @Test
+    void compilesTheKubernetesWorkloadTemplateAsTheSingleWorkerSourceUnit() throws Exception {
+        Path sourcePath = Path.of("../alert-templates/src/main/java/app/alertify/alerts/templates/KubernetesWorkloadAlertTemplate.java");
+        String source = Files.readString(sourcePath, StandardCharsets.UTF_8);
+        String className = "app.alertify.alerts.templates.KubernetesWorkloadAlertTemplate";
+        AlertTemplateCompiler compiler = new AlertTemplateCompiler(properties());
+
+        compiler.synchronize(className, sha256(source), source);
+
+        assertThat(compiler.isAvailable(className, sha256(source))).isTrue();
     }
 
     private WorkerRuntimeProperties properties() {

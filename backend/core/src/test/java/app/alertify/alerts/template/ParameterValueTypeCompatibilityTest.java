@@ -13,6 +13,7 @@ import app.alertify.jpa.entity.ConfigurationValueType;
 import app.alertify.jpa.entity.SecretValueType;
 import app.alertify.worker.contract.DatabaseCredentials;
 import app.alertify.worker.contract.GitCredentials;
+import app.alertify.worker.contract.KubeconfigCredentials;
 import app.alertify.worker.contract.OidcTokenSet;
 
 class ParameterValueTypeCompatibilityTest {
@@ -21,6 +22,7 @@ class ParameterValueTypeCompatibilityTest {
     private static final String DATABASE_CREDENTIALS = DatabaseCredentials.class.getName();
     private static final String GIT_CREDENTIALS = GitCredentials.class.getName();
     private static final String OIDC_TOKEN_SET = OidcTokenSet.class.getName();
+    private static final String KUBECONFIG_CREDENTIALS = KubeconfigCredentials.class.getName();
     private static final String STRING = String.class.getName();
 
     @Test
@@ -40,6 +42,8 @@ class ParameterValueTypeCompatibilityTest {
                 .contains(SecretValueType.GIT_SECRET);
         assertThat(ParameterValueTypeCompatibility.requiredSecretValueType(OIDC_TOKEN_SET))
                 .contains(SecretValueType.OIDC_TOKEN_SET);
+        assertThat(ParameterValueTypeCompatibility.requiredSecretValueType(KUBECONFIG_CREDENTIALS))
+                .contains(SecretValueType.KUBECONFIG);
         assertThat(ParameterValueTypeCompatibility.requiredSecretValueType(STRING)).isEmpty();
     }
 
@@ -63,6 +67,8 @@ class ParameterValueTypeCompatibilityTest {
         assertThat(ParameterValueTypeCompatibility.isSecretValueTypeCompatible(STRING, SecretValueType.GIT_SECRET)).isFalse();
         assertThat(ParameterValueTypeCompatibility.isSecretValueTypeCompatible(OIDC_TOKEN_SET, SecretValueType.OIDC_TOKEN_SET)).isTrue();
         assertThat(ParameterValueTypeCompatibility.isSecretValueTypeCompatible(STRING, SecretValueType.OIDC_TOKEN_SET)).isFalse();
+        assertThat(ParameterValueTypeCompatibility.isSecretValueTypeCompatible(KUBECONFIG_CREDENTIALS, SecretValueType.KUBECONFIG)).isTrue();
+        assertThat(ParameterValueTypeCompatibility.isSecretValueTypeCompatible(STRING, SecretValueType.KUBECONFIG)).isFalse();
     }
 
     @Test
