@@ -1262,26 +1262,27 @@ function imageReferencePattern(pattern) {
 function splitImagePatterns(rawPatterns) {
   const imagePatterns = rawPatterns.split(';').map((pattern) => pattern.trim());
   if (imagePatterns.some((pattern) => pattern.length === 0)) {
-    throw new Error('--cleanup-docker image patterns must not be empty.');
+    throw new Error('--cleanup-docker-preserve-images patterns must not be empty.');
   }
   return [...new Set(imagePatterns)];
 }
 
-function parseCleanupDockerOption(argv) {
-  const options = argv.filter((argument) => argument === '--cleanup-docker' || argument.startsWith('--cleanup-docker='));
+function parseCleanupDockerPreserveImagesOption(argv) {
+  const optionName = '--cleanup-docker-preserve-images';
+  const options = argv.filter((argument) => argument === optionName || argument.startsWith(`${optionName}=`));
   if (options.length > 1) {
-    throw new Error('--cleanup-docker may only be specified once.');
+    throw new Error(`${optionName} may only be specified once.`);
   }
   if (options.length === 0) {
     return { enabled: false, imagePatterns: [] };
   }
 
   const option = options[0];
-  if (option === '--cleanup-docker') {
-    return { enabled: true, imagePatterns: [] };
+  if (option === optionName) {
+    throw new Error(`${optionName} requires a non-empty semicolon-separated image pattern list.`);
   }
 
-  const rawPatterns = option.substring('--cleanup-docker='.length);
+  const rawPatterns = option.substring(`${optionName}=`.length);
   return { enabled: true, imagePatterns: splitImagePatterns(rawPatterns) };
 }
 
@@ -1401,8 +1402,10 @@ function printHelp() {
     '  --skip-publisher   Do not rebuild or restart the local HTTP/HTTPS publisher.\n' +
     '  --skip-worker-standard    Do not rebuild or restart standard workers.\n' +
     '  --skip-worker-playwright  Do not rebuild or restart Playwright workers.\n' +
-    '  --cleanup-docker[=PATTERNS]  Remove unused Docker images and build cache. Optional semicolon-separated image reference globs are preserved.\n' +
-    '                              Example: "--cleanup-docker=maven:*;mcr.microsoft.com/playwright:*;monitoring-*"\n' +
+    '  --cleanup-docker-preserve-images=PATTERNS\n' +
+    '                     Remove unused Docker images and build cache while preserving images\n' +
+    '                     matching the required semicolon-separated reference globs.\n' +
+    '                     Example: "--cleanup-docker-preserve-images=maven:*;mcr.microsoft.com/playwright:*;monitoring-*"\n' +
     '  --help             Show this help.\n\n' +
     '  Passing any option above without --non-interactive runs non-interactively, exactly as\n' +
     '  if --non-interactive had also been passed.\n\n' +
@@ -1463,7 +1466,7 @@ function promptInteractiveSelections(environment) {
     );
   }
 
-  const cleanupPatterns = required(environment, 'CLEANUP_DOCKER_DEFAULT_PATTERNS');
+  const cleanupPatterns = required(environment, 'CLEANUP_DOCKER_PRESERVE_IMAGE_PATTERNS');
   const items = INTERACTIVE_MENU_ITEMS.map((item) => ({ ...item, checked: false }));
   items.push({
     key: 'cleanupDocker',
@@ -1557,7 +1560,7 @@ async function main(argv = process.argv.slice(2), projectDirectory = path.resolv
     throw new Error(`Node.js 18 or later is required; detected version: ${process.versions.node}.`);
   }
 
-  const cleanupDockerFromArgv = parseCleanupDockerOption(argv);
+  const cleanupDockerFromArgv = parseCleanupDockerPreserveImagesOption(argv);
   const allowed = new Set([
     '--non-interactive',
     '--replace-stale-runner',
@@ -1570,10 +1573,9 @@ async function main(argv = process.argv.slice(2), projectDirectory = path.resolv
     '--skip-publisher',
     '--skip-worker-standard',
     '--skip-worker-playwright',
-    '--cleanup-docker',
     '--help',
   ]);
-  const unknown = argv.filter((argument) => !allowed.has(argument) && !argument.startsWith('--cleanup-docker='));
+  const unknown = argv.filter((argument) => !allowed.has(argument) && !argument.startsWith('--cleanup-docker-preserve-images='));
   if (unknown.length > 0) {
     throw new Error(`Unknown option: ${unknown.join(', ')}. Use --help to list the available options.`);
   }
@@ -1639,7 +1641,7 @@ async function main(argv = process.argv.slice(2), projectDirectory = path.resolv
     cleanupDocker = selections.cleanupDocker
       ? {
           enabled: true,
-          imagePatterns: splitImagePatterns(required(effectiveEnvironment, 'CLEANUP_DOCKER_DEFAULT_PATTERNS')),
+          imagePatterns: splitImagePatterns(required(effectiveEnvironment, 'CLEANUP_DOCKER_PRESERVE_IMAGE_PATTERNS')),
         }
       : { enabled: false, imagePatterns: [] };
   } else {
@@ -1658,7 +1660,7 @@ async function main(argv = process.argv.slice(2), projectDirectory = path.resolv
   }
 
   if (configureOnlySelected && cleanupDocker.enabled) {
-    throw new Error('--cleanup-docker cannot be combined with --configure-only.');
+    throw new Error('--cleanup-docker-preserve-images cannot be combined with --configure-only.');
   }
 
   const plan = buildPlan(effectiveEnvironment, skipOptions);
@@ -1694,7 +1696,7 @@ module.exports = {
   ensurePrivateKeyPartClass,
   imageReferencePattern,
   main,
-  parseCleanupDockerOption,
+  parseCleanupDockerPreserveImagesOption,
   parseExistingEnvironment,
   preparePublisherTlsCertificate,
   prepareGrpcCertificates,

@@ -126,6 +126,7 @@ _.code-workspace
 
 nogit/
 *.md
+!AGENTS.md
 !THIRD_PARTY_NOTICES.md
 
 /*.bat

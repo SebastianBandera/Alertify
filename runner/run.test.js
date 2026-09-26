@@ -10,9 +10,50 @@ const {
   applyApplicationContext,
   buildPlan,
   createRuntimeComposeOverride,
+  parseCleanupDockerPreserveImagesOption,
   parseExistingEnvironment,
   workerInstances,
 } = require('./run');
+
+test('parseCleanupDockerPreserveImagesOption keeps cleanup disabled when omitted', () => {
+  assert.deepEqual(parseCleanupDockerPreserveImagesOption([]), {
+    enabled: false,
+    imagePatterns: [],
+  });
+});
+
+test('parseCleanupDockerPreserveImagesOption enables cleanup and deduplicates preserved patterns', () => {
+  assert.deepEqual(
+    parseCleanupDockerPreserveImagesOption([
+      '--cleanup-docker-preserve-images=maven:*; monitoring-* ;maven:*',
+    ]),
+    {
+      enabled: true,
+      imagePatterns: ['maven:*', 'monitoring-*'],
+    },
+  );
+});
+
+test('parseCleanupDockerPreserveImagesOption requires non-empty preserved patterns', () => {
+  assert.throws(
+    () => parseCleanupDockerPreserveImagesOption(['--cleanup-docker-preserve-images']),
+    /requires a non-empty semicolon-separated image pattern list/,
+  );
+  assert.throws(
+    () => parseCleanupDockerPreserveImagesOption(['--cleanup-docker-preserve-images=']),
+    /patterns must not be empty/,
+  );
+});
+
+test('parseCleanupDockerPreserveImagesOption rejects duplicate options', () => {
+  assert.throws(
+    () => parseCleanupDockerPreserveImagesOption([
+      '--cleanup-docker-preserve-images=maven:*',
+      '--cleanup-docker-preserve-images=monitoring-*',
+    ]),
+    /may only be specified once/,
+  );
+});
 
 test('workerInstances appends stable one-based suffixes when unique names are enabled', () => {
   assert.deepEqual(workerInstances('worker-standard', 'alertify-worker-standard', 2, true), [
