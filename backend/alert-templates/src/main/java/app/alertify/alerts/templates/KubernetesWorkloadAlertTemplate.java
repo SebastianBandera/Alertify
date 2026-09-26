@@ -593,8 +593,8 @@ public final class KubernetesWorkloadAlertTemplate implements AlertEvaluator {
         status.put("metrics", health.metrics());
         status.put("restartTrackingEnabled", restartTrackingEnabled);
         List<String> reasons = new ArrayList<>(health.reasons());
-        if (restartTrackingEnabled && restarts.totalDelta() > 0)
-            reasons.add("restartCountIncreased");
+        if (restartTrackingEnabled && restarts.total() > 0)
+            reasons.add("restartCountPresent");
         if (extraReason != null)
             reasons.add(extraReason);
         if (!reasons.isEmpty())

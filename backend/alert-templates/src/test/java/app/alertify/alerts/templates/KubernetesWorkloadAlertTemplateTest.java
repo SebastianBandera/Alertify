@@ -42,8 +42,9 @@ class KubernetesWorkloadAlertTemplateTest {
 
         FakeSession stableSession = deploymentSession(deployment(3, 4, 3, 3, 3, 0), pods(2, UID, "rs-uid"));
         AlertResult stable = template(KubernetesWorkloadKind.Deployment, true, stableSession).evaluate(context);
-        assertEquals(AlertExecutionStatus.SUCCESS, stable.status());
+        assertEquals(AlertExecutionStatus.WARN, stable.status());
         assertEquals(0L, stable.statusMessage().get("restartDelta"));
+        assertTrue(reasons(stable).contains("restartCountPresent"));
 
         FakeSession increasedSession = deploymentSession(deployment(3, 4, 3, 3, 3, 0), pods(5, UID, "rs-uid"));
         AlertResult increased = template(KubernetesWorkloadKind.Deployment, true, increasedSession).evaluate(context);
@@ -52,11 +53,16 @@ class KubernetesWorkloadAlertTemplateTest {
 
         FakeSession decreasedSession = deploymentSession(deployment(3, 4, 3, 3, 3, 0), pods(1, UID, "rs-uid"));
         AlertResult decreased = template(KubernetesWorkloadKind.Deployment, true, decreasedSession).evaluate(context);
-        assertEquals(AlertExecutionStatus.SUCCESS, decreased.status());
+        assertEquals(AlertExecutionStatus.WARN, decreased.status());
 
         FakeSession rotatedSession = deploymentSession(deployment(3, 4, 3, 3, 3, 0), pods(7, "new-pod-uid", "rs-uid"));
         AlertResult rotated = template(KubernetesWorkloadKind.Deployment, true, rotatedSession).evaluate(context);
-        assertEquals(AlertExecutionStatus.SUCCESS, rotated.status());
+        assertEquals(AlertExecutionStatus.WARN, rotated.status());
+
+        FakeSession recoveredSession = deploymentSession(deployment(3, 4, 3, 3, 3, 0), pods(0, "new-pod-uid", "rs-uid"));
+        AlertResult recovered = template(KubernetesWorkloadKind.Deployment, true, recoveredSession).evaluate(context);
+        assertEquals(AlertExecutionStatus.SUCCESS, recovered.status());
+        assertEquals(0L, recovered.statusMessage().get("restartTotal"));
     }
 
     @Test

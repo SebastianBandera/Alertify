@@ -25,6 +25,14 @@ function join(...parts: readonly (string | null | undefined)[]): string {
   return parts.filter((part): part is string => !!part).join(' · ');
 }
 
+function strings(value: unknown): readonly string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+}
+
+function localizedReasons(context: AlertMessageContext, value: unknown): readonly string[] {
+  return strings(value).map((reason) => context.translate(`alertMessage.reason.${reason}`) ?? reason).sort();
+}
+
 /* A known failure code reads as a sentence; an unknown one is still shown, as is. */
 function failureMessage(context: AlertMessageContext, message: Readonly<Record<string, unknown>>): string | null {
   const reason = text(message['failureReason']);
@@ -86,6 +94,31 @@ export const ALERT_MESSAGE_FORMATTERS: AlertMessageFormatters = {
     });
   },
 
+  [`${TEMPLATES}KubernetesWorkloadAlertTemplate`]: (context) => {
+    const message = context.message;
+    const target = `${text(message['kind']) ?? 'Workload'} ${text(message['namespace']) ?? '?'}/${text(message['name']) ?? '?'}`;
+    const total = count(message['restartTotal']);
+    const delta = count(message['restartDelta']);
+    const reasonValues = strings(message['reasons']);
+    const reason = text(message['reason']);
+    const reasons = localizedReasons(context, reasonValues.length > 0 ? reasonValues : reason === null ? [] : [reason]).filter((reason) =>
+      reason !== (context.translate('alertMessage.reason.restartCountPresent') ?? 'restartCountPresent'));
+    const restartSummary = message['restartTrackingEnabled'] === true
+      ? context.translate(delta > 0 ? 'alertMessage.kubernetes.restartsIncreased' : 'alertMessage.kubernetes.restarts', {
+        total: context.formatNumber(total), delta: context.formatNumber(delta),
+      })
+      : null;
+    const problemSummary = reasons.length > 0
+      ? context.translate('alertMessage.kubernetes.problems', { reasons: reasons.join(', ') })
+      : null;
+    const summary = join(target, restartSummary, problemSummary);
+    const identity = join(
+      message['restartTrackingEnabled'] === true ? context.translate('alertMessage.kubernetes.restartIdentity', { total: context.formatNumber(total) }) : null,
+      problemSummary,
+    );
+    return { summary, identity };
+  },
+
   [`${TEMPLATES}HttpsCertificateExpiryAlertTemplate`]: (context) => {
     const message = context.message;
     const validity = message['notYetValid'] === true
@@ -103,9 +136,11 @@ export const ALERT_MESSAGE_FORMATTERS: AlertMessageFormatters = {
     if (message['timedOut'] === true) {
       return context.translate('alertMessage.internet.timeout', { seconds: context.formatNumber(message['timeoutSeconds']) });
     }
-    return failure(context) ?? context.translate('alertMessage.http', {
+    const reason = failure(context);
+    const summary = reason ?? context.translate('alertMessage.http', {
       code: message['statusCode'], latency: context.formatDuration(message['latencyMs']),
     });
+    return { summary, identity: reason ?? `HTTP ${String(message['statusCode'] ?? '')}` };
   },
 
   [`${TEMPLATES}TcpConnectionAlertTemplate`]: (context) => {
@@ -136,9 +171,10 @@ export const ALERT_MESSAGE_FORMATTERS: AlertMessageFormatters = {
       ? text(message['method'])
       : `${text(message['method']) ?? ''} HTTP ${message['statusCode']}`.trim();
     const reason = failure(context);
-    return reason !== null
+    const summary = reason !== null
       ? join(request, reason)
       : join(request, context.formatDuration(message['latencyMs']));
+    return { summary, identity: join(request, reason) };
   },
 
   [`${TEMPLATES}PlaywrightPageAlertTemplate`]: (context) => {

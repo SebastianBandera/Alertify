@@ -241,10 +241,22 @@
     (keydown.arrowup)="moveMenuFocus($event, -1)"
     (contextmenu)="$event.preventDefault()">
     <p class="card-menu__title">{{ card.alert.name }}</p>
-    @if (mute.isIgnored(card.alert.id)) {
+    @if (mute.isStateIgnored(card.alert.id)) {
+      <button type="button" role="menuitem" class="card-menu__item" (click)="unmuteCard(card)">
+        {{ localization.translate('dashboard.menu.unignoreState') }}
+      </button>
+      <button type="button" role="menuitem" class="card-menu__item" (click)="ignoreCard(card)">
+        {{ localization.translate('dashboard.menu.ignore') }}
+      </button>
+    } @else if (mute.isIgnored(card.alert.id)) {
       <button type="button" role="menuitem" class="card-menu__item" (click)="unmuteCard(card)">
         {{ localization.translate('dashboard.menu.unignore') }}
       </button>
+      @if (canIgnoreState(card)) {
+        <button type="button" role="menuitem" class="card-menu__item" (click)="ignoreCardState(card)">
+          {{ localization.translate('dashboard.menu.ignoreState') }}
+        </button>
+      }
     } @else if (mute.isSilenced(card.alert.id)) {
       <button type="button" role="menuitem" class="card-menu__item" (click)="unmuteCard(card)">
         {{ localization.translate('dashboard.menu.unsilence') }}
@@ -252,6 +264,11 @@
       <button type="button" role="menuitem" class="card-menu__item" (click)="ignoreCard(card)">
         {{ localization.translate('dashboard.menu.ignore') }}
       </button>
+      @if (canIgnoreState(card)) {
+        <button type="button" role="menuitem" class="card-menu__item" (click)="ignoreCardState(card)">
+          {{ localization.translate('dashboard.menu.ignoreState') }}
+        </button>
+      }
     } @else {
       <button type="button" role="menuitem" class="card-menu__item" (click)="ignoreCard(card)">
         {{ localization.translate('dashboard.menu.ignore') }}
@@ -259,6 +276,11 @@
       @if (canSilence(card)) {
         <button type="button" role="menuitem" class="card-menu__item" (click)="silenceCard(card)">
           {{ localization.translate('dashboard.menu.silence') }}
+        </button>
+      }
+      @if (canIgnoreState(card)) {
+        <button type="button" role="menuitem" class="card-menu__item" (click)="ignoreCardState(card)">
+          {{ localization.translate('dashboard.menu.ignoreState') }}
         </button>
       }
     }
@@ -391,6 +413,25 @@
             <p class="detail-empty">{{ localization.translate('dashboard.detail.neverExecuted') }}</p>
           }
         </section>
+
+        @if (mute.stateComparison(card.alert.id); as comparison) {
+          <section class="detail-section state-comparison">
+            <h3>{{ localization.translate('dashboard.detail.stateComparison') }}</h3>
+            <p class="state-comparison__hint">{{ localization.translate('dashboard.detail.stateComparisonHint') }}</p>
+            <div class="state-comparison__results">
+              <article>
+                <h4>{{ localization.translate('dashboard.detail.ignoredState') }}</h4>
+                <span [class]="'badge badge--' + historyState(comparison.ignored.status)">{{ localization.translate(statusKey(comparison.ignored.status)) }}</span>
+                <p>{{ comparison.ignored.message || localization.translate('dashboard.card.noMessage') }}</p>
+              </article>
+              <article>
+                <h4>{{ localization.translate('dashboard.detail.currentState') }}</h4>
+                <span [class]="'badge badge--' + historyState(comparison.current.status)">{{ localization.translate(statusKey(comparison.current.status)) }}</span>
+                <p>{{ comparison.current.message || localization.translate('dashboard.card.noMessage') }}</p>
+              </article>
+            </div>
+          </section>
+        }
 
         @if (card.lastExecution) {
           <section class="detail-section">

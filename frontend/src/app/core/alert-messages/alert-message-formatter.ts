@@ -24,11 +24,18 @@ export interface AlertMessageContext {
   formatDate(value: unknown): string;
 }
 
+/** A readable result plus the stable, localized meaning used by state-aware ignores. */
+export interface AlertMessagePresentation {
+  readonly summary: string | null | undefined;
+  /** Defaults to the summary. Exclude diagnostic timings and other non-semantic noise here. */
+  readonly identity?: string | null | undefined;
+}
+
 /**
  * Turns a status message into the text shown on a dashboard tile. Returning
  * null, an empty text or throwing falls back to the raw JSON.
  */
-export type AlertMessageFormatter = (context: AlertMessageContext) => string | null | undefined;
+export type AlertMessageFormatter = (context: AlertMessageContext) => string | null | undefined | AlertMessagePresentation;
 
 /** Formatters keyed by the template's fully qualified class name. */
 export type AlertMessageFormatters = Readonly<Record<string, AlertMessageFormatter>>;

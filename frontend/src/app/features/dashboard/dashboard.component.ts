@@ -355,6 +355,16 @@ export class DashboardComponent {
     this.rearrange(() => this.mute.ignore(card.alert.id));
   }
 
+  protected canIgnoreState(card: DashboardAlertCard): boolean {
+    const status = card.lastExecution?.status;
+    return status === 'WARN' || status === 'ERROR';
+  }
+
+  protected ignoreCardState(card: DashboardAlertCard): void {
+    this.closeCardMenu(true);
+    this.rearrange(() => this.mute.ignoreState(card));
+  }
+
   protected silenceCard(card: DashboardAlertCard): void {
     this.closeCardMenu(true);
     this.rearrange(() => this.mute.silence(card.alert.id));

@@ -7,6 +7,11 @@ import { ALERT_MESSAGE_FORMATTERS } from './alert-message-formatters';
 
 const PLACEHOLDER = /\{(\w+)\}/g;
 
+export interface AlertExecutionPresentation {
+  readonly text: string;
+  readonly identity: string;
+}
+
 /**
  * Readable summaries of execution results, produced by the formatter
  * registered for the alert's template. Reading the language signal here
@@ -18,9 +23,21 @@ export class AlertMessageService {
 
   /** Text for a dashboard tile: the formatter's summary when there is one, otherwise the raw result. */
   tileMessage(templateKey: string, execution: AlertExecution): string {
-    if (execution.status === 'ERROR') return execution.errorMessage ?? execution.errorType ?? '';
-    if (execution.statusMessage === null) return '';
-    return this.summary(templateKey, execution) ?? JSON.stringify(execution.statusMessage);
+    return this.presentation(templateKey, execution).text;
+  }
+
+  /** Text shown to the user and the stable localized identity used to compare alert results. */
+  presentation(templateKey: string, execution: AlertExecution): AlertExecutionPresentation {
+    if (execution.status === 'ERROR') {
+      const text = execution.errorMessage ?? execution.errorType ?? '';
+      return { text, identity: text };
+    }
+    if (execution.statusMessage === null) return { text: '', identity: '' };
+
+    const formatted = this.formatted(templateKey, execution);
+    const fallback = JSON.stringify(execution.statusMessage);
+    const text = formatted?.summary ?? fallback;
+    return { text, identity: formatted?.identity ?? text };
   }
 
   /**
@@ -29,13 +46,22 @@ export class AlertMessageService {
    * returns nothing or fails: a broken formatter must never break the board.
    */
   summary(templateKey: string, execution: AlertExecution): string | null {
+    return this.formatted(templateKey, execution)?.summary ?? null;
+  }
+
+  private formatted(templateKey: string, execution: AlertExecution): { readonly summary: string; readonly identity: string } | null {
     const formatter = ALERT_MESSAGE_FORMATTERS[templateKey];
     const message = execution.statusMessage;
     if (!formatter || execution.status === 'ERROR' || message === null || typeof message !== 'object' || Array.isArray(message)) return null;
 
     try {
-      const summary = formatter(this.context(message as Readonly<Record<string, unknown>>, execution.status));
-      return typeof summary === 'string' && summary.trim() !== '' ? summary.trim() : null;
+      const result = formatter(this.context(message as Readonly<Record<string, unknown>>, execution.status));
+      const rawSummary = typeof result === 'object' && result !== null ? result.summary : result;
+      const rawIdentity = typeof result === 'object' && result !== null ? result.identity : rawSummary;
+      const summary = typeof rawSummary === 'string' && rawSummary.trim() !== '' ? rawSummary.trim() : null;
+      if (summary === null) return null;
+      const identity = typeof rawIdentity === 'string' && rawIdentity.trim() !== '' ? rawIdentity.trim() : summary;
+      return { summary, identity };
     } catch {
       return null;
     }

@@ -109,6 +109,7 @@ export class DashboardLiveService {
           for (const card of page.content) next.set(card.alert.id, card);
           return next;
         });
+        this.mute.releaseChangedStates(page.content);
         this.mute.releaseRecovered(page.content);
         this.totalCards.set(page.page.totalElements);
         this.loadedFromPages.update((count) => count + page.content.length);
@@ -132,9 +133,10 @@ export class DashboardLiveService {
     const previous = this.cardsById().get(alertId);
     this.snapshotIds?.add(alertId);
     this.cardsById.update((cards) => new Map(cards).set(alertId, card));
+    const stateReleased = this.mute.releaseChangedStates([card]).has(alertId);
     this.mute.releaseRecovered([card]);
-    this.changes$.next({ kind: 'update', alertId, stateChanged: resultStatus(previous) !== resultStatus(card) });
-    if (this.isNewResult(previous, card)) this.notify(card);
+    this.changes$.next({ kind: 'update', alertId, stateChanged: stateReleased || resultStatus(previous) !== resultStatus(card) });
+    if (stateReleased || this.isNewResult(previous, card)) this.notify(card);
   }
 
   private remove(alertId: number): void {
