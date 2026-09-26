@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# Activate this hook in each clone with: git config core.hooksPath .githooks
+
+set -euo pipefail
+
+staged_paths="$(mktemp)"
+trap 'rm -f "$staged_paths"' EXIT
+
+git diff --cached --name-only --diff-filter=ACMRT -z > "$staged_paths"
+
+shopt -s nocasematch
+blocked=0
+
+while IFS= read -r -d '' path; do
+    name="${path##*/}"
+    reason=''
+
+    case "$name" in
+        .env.example|.env.template|.env.*.example|.env.*.template|*.env.example|*.env.template|*.env.*.example|*.env.*.template)
+            ;;
+        .env|.env.*|*.env|*.env.*)
+            reason='local environment file'
+            ;;
+    esac
+
+    if [[ -z "$reason" ]]; then
+        case "$name" in
+            *.key|*.pem|*.crt|*.cer|*.der|*.p12|*.pfx|*.jks|*.keystore)
+                reason='local key or certificate'
+                ;;
+            bootstrap.properties|AGENTS.override.md)
+                reason='local configuration'
+                ;;
+            *.class|*.jar|*.war|*.ear|*.nar|*.log|*.tsbuildinfo|*.tmp|*.temp|*.swp|*.swo)
+                reason='generated or temporary artifact'
+                ;;
+        esac
+    fi
+
+    if [[ -z "$reason" ]]; then
+        case "/$path/" in
+            */.alertify/*|*/target/*|*/node_modules/*|*/dist/*|*/build/*|*/out/*|*/coverage/*|*/tmp/*|*/logs/*|*/.angular/cache/*)
+                reason='generated or local directory'
+                ;;
+            */frontend/public/config/*|*/backend/alert-templates/src/main/java/app/alertify/alerts/templates/custom/*)
+                reason='runtime file or local template'
+                ;;
+        esac
+    fi
+
+    if [[ -z "$reason" ]]; then
+        case "$path" in
+            backend/core/src/main/java/app/alertify/services/secret/key/PrivateKeyPart.java)
+                reason='generated private key fragment'
+                ;;
+        esac
+    fi
+
+    if [[ -n "$reason" ]]; then
+        printf '  - %q (%s)\n' "$path" "$reason" >&2
+        blocked=1
+    fi
+done < "$staged_paths"
+
+if (( blocked )); then
+    printf 'Commit blocked: remove the listed files from the staging area.\n' >&2
+    exit 1
+fi
