@@ -125,7 +125,7 @@ export class DashboardMuteService {
     this.store({
       ignored: new Set(ignored).add(alertId),
       silenced: this.without(silenced, alertId),
-      stateIgnores: this.withoutActiveStateIgnore(alertId),
+      stateIgnores: this.withoutStateIgnore(alertId),
     });
   }
 
@@ -151,14 +151,14 @@ export class DashboardMuteService {
     this.store({
       ignored: this.without(ignored, alertId),
       silenced: new Set(silenced).add(alertId),
-      stateIgnores: this.withoutActiveStateIgnore(alertId),
+      stateIgnores: this.withoutStateIgnore(alertId),
     });
   }
 
   unmute(alertId: number): void {
     const { ignored, silenced } = this.muted();
     const stateIgnores = new Map(this.muted().stateIgnores);
-    if (this.isStateIgnored(alertId)) stateIgnores.delete(alertId);
+    stateIgnores.delete(alertId);
     this.store({ ignored: this.without(ignored, alertId), silenced: this.without(silenced, alertId), stateIgnores });
   }
 
@@ -204,9 +204,9 @@ export class DashboardMuteService {
     return next;
   }
 
-  private withoutActiveStateIgnore(alertId: number): ReadonlyMap<number, StateIgnore> {
+  private withoutStateIgnore(alertId: number): ReadonlyMap<number, StateIgnore> {
     const stateIgnores = new Map(this.muted().stateIgnores);
-    if (this.isStateIgnored(alertId)) stateIgnores.delete(alertId);
+    stateIgnores.delete(alertId);
     return stateIgnores;
   }
 

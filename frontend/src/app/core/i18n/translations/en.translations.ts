@@ -219,7 +219,7 @@ export const EN_TRANSLATIONS = {
   'dashboard.detail.stateComparison': 'Ignored state changed',
   'dashboard.detail.stateComparisonHint': 'The card was automatically restored because its result changed.',
   'dashboard.detail.ignoredState': 'Ignored result',
-  'dashboard.detail.currentState': 'Current result',
+  'dashboard.detail.currentState': 'Result that restored the alert',
   'status.title': 'Application status',
   'status.description': 'Live worker availability, capabilities, load, and alert execution activity.',
   'status.summary': 'Worker status summary',

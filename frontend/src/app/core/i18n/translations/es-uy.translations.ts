@@ -219,7 +219,7 @@ export const ES_UY_TRANSLATIONS = {
   'dashboard.detail.stateComparison': 'Cambió el estado ignorado',
   'dashboard.detail.stateComparisonHint': 'La tarjeta se restauró automáticamente porque cambió su resultado.',
   'dashboard.detail.ignoredState': 'Resultado ignorado',
-  'dashboard.detail.currentState': 'Resultado actual',
+  'dashboard.detail.currentState': 'Resultado que restauró la alerta',
   'status.title': 'Estado de la aplicación',
   'status.description': 'Disponibilidad, capacidades, carga y ejecuciones de alertas de los workers en tiempo real.',
   'status.summary': 'Resumen del estado de los workers',
