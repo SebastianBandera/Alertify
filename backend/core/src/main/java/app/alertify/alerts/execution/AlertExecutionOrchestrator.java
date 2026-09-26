@@ -5,6 +5,7 @@ import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -28,6 +29,7 @@ import app.alertify.procedures.execution.ProcedureInvocationRegistry;
 import app.alertify.procedures.execution.ProcedureInvocationTokenService;
 import app.alertify.procedures.execution.ProcedureExecutionOrchestrator;
 import app.alertify.system.SystemStatusEventPublisher;
+import app.alertify.worker.contract.SecretValueSanitizer;
 import app.alertify.worker.grpc.AlertExecutionResult;
 import app.alertify.worker.grpc.AlertParameter;
 import app.alertify.worker.grpc.AlertParameterValueSource;
@@ -243,7 +245,7 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
                 .setAlertName(execution.alertName())
                 .setTemplateClassName(execution.templateClassName())
                 .setSourceChecksum(execution.sourceChecksum())
-                .setState(execution.state());
+                .setState(SecretValueSanitizer.sanitize(execution.state(), secretValues(execution)));
         for (ResolvedAlertParameter parameter : execution.parameters()) {
             AlertParameter.Builder value = AlertParameter.newBuilder()
                     .setName(parameter.name())
@@ -281,6 +283,13 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
             request.addParameters(value);
         }
         return request.build();
+    }
+
+    private static List<String> secretValues(PreparedAlertExecution execution) {
+        return execution.parameters().stream()
+                .filter(parameter -> parameter.source() == AlertParameterSource.SECRET)
+                .map(ResolvedAlertParameter::value)
+                .toList();
     }
 
     private static AlertParameterValueSource toGrpcSource(AlertParameterSource source) {

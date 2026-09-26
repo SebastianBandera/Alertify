@@ -11,14 +11,16 @@ import java.util.regex.Pattern;
 import app.alertify.worker.grpc.ExecutionError;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
 
-/** Removes secret-bound values from execution diagnostics before they cross a trust boundary. */
-public final class ExecutionErrorSanitizer {
+/** Removes secret-bound values from execution outputs before they cross a trust boundary. */
+public final class SecretValueSanitizer {
 
     public static final String REDACTED = "[REDACTED]";
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
-    private ExecutionErrorSanitizer() {
+    private SecretValueSanitizer() {
     }
 
     public static ExecutionError sanitize(ExecutionError error, Iterable<String> secretValues) {
@@ -37,8 +39,32 @@ public final class ExecutionErrorSanitizer {
         return pattern == null ? text : sanitize(text, pattern);
     }
 
+    public static JsonNode sanitize(JsonNode node, Iterable<String> secretValues) {
+        Pattern pattern = sensitivePattern(secretValues);
+        return pattern == null || node == null ? node : sanitize(node, pattern);
+    }
+
     private static String sanitize(String text, Pattern pattern) {
         return text == null ? null : pattern.matcher(text).replaceAll(Matcher.quoteReplacement(REDACTED));
+    }
+
+    private static JsonNode sanitize(JsonNode node, Pattern pattern) {
+        if (node.isString())
+            return JSON.valueToTree(sanitize(node.stringValue(), pattern));
+
+        if (node.isArray()) {
+            ArrayNode sanitized = JSON.createArrayNode();
+            for (int index = 0; index < node.size(); index++)
+                sanitized.add(sanitize(node.get(index), pattern));
+
+            return sanitized;
+        }
+        if (node.isObject()) {
+            ObjectNode sanitized = JSON.createObjectNode();
+            node.properties().forEach(entry -> sanitized.set(entry.getKey(), sanitize(entry.getValue(), pattern)));
+            return sanitized;
+        }
+        return node.deepCopy();
     }
 
     private static Pattern sensitivePattern(Iterable<String> secretValues) {

@@ -3,6 +3,7 @@ package app.alertify.worker.runtime;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -19,7 +20,7 @@ import app.alertify.alerts.AlertExecutionContext;
 import app.alertify.alerts.AlertResult;
 import app.alertify.alerts.execution.AlertExecutionStatus;
 import app.alertify.alerts.template.annotation.AlertParameterSource;
-import app.alertify.worker.contract.ExecutionErrorSanitizer;
+import app.alertify.worker.contract.SecretValueSanitizer;
 import app.alertify.worker.grpc.AlertExecutionResult;
 import app.alertify.worker.grpc.AlertParameter;
 import app.alertify.worker.grpc.AlertParameterValueSource;
@@ -76,6 +77,7 @@ class WorkerExecutionEngine implements AutoCloseable {
         BinaryExecutionGuard.Lease binaryLease = null;
         AlertExecutionContext context = null;
         AlertExecutionStatus finalStatus = AlertExecutionStatus.ERROR;
+        List<String> secretValues = secretValues(request);
         try {
             permit = tracker.acquire(request, timeline);
             binaryLease = binaryExecutionGuard.acquire(request);
@@ -84,7 +86,7 @@ class WorkerExecutionEngine implements AutoCloseable {
                             AlertParameter::getName,
                             parameter -> source(parameter.getSource())
                     ));
-            context = new AlertExecutionContext(request.getState(), parameterSources);
+            context = new AlertExecutionContext(SecretValueSanitizer.sanitize(request.getState(), secretValues), parameterSources);
 
             CompiledAlertTemplate template = compiler.get(request.getTemplateClassName(), request.getSourceChecksum());
             AlertEvaluator evaluator = template.newInstance(request.getParametersList(), procedureHandles, deadline);
@@ -92,14 +94,17 @@ class WorkerExecutionEngine implements AutoCloseable {
 
             finalStatus = result.status();
             Instant finishedAt = timeline.next();
+            String statusMessageJson = jsonMapper.writeValueAsString(SecretValueSanitizer.sanitize(
+                    jsonMapper.valueToTree(result.statusMessage()), secretValues
+            ));
 
             AlertExecutionResult.Builder response = AlertExecutionResult.newBuilder()
                     .setStatus(toGrpcStatus(result.status()))
                     .setStartedAt(timestamp(timeline.startedAt()))
                     .setWorkStartedAt(timestamp(permit.workStartedAt()))
                     .setFinishedAt(timestamp(finishedAt))
-                    .setStatusMessageJson(jsonMapper.writeValueAsString(result.statusMessage()))
-                    .setState(context.getState())
+                    .setStatusMessageJson(statusMessageJson)
+                    .setState(SecretValueSanitizer.sanitize(context.getState(), secretValues))
                     .setWorkerName(properties.name())
                     .setWorkerInstanceId(instanceIdentity.id());
             CompiledAlertTemplate.WritableValues writableValues = template.writableValues(
@@ -119,8 +124,8 @@ class WorkerExecutionEngine implements AutoCloseable {
                     .setStartedAt(timestamp(timeline.startedAt()))
                     .setWorkStartedAt(timestamp(workStartedAt))
                     .setFinishedAt(timestamp(timeline.next()))
-                    .setState(context == null ? request.getState() : context.getState())
-                    .setError(ExecutionErrorSanitizer.sanitize(error(exception), secretValues(request)))
+                    .setState(SecretValueSanitizer.sanitize(context == null ? request.getState() : context.getState(), secretValues))
+                    .setError(SecretValueSanitizer.sanitize(error(exception), secretValues))
                     .setWorkerName(properties.name())
                     .setWorkerInstanceId(instanceIdentity.id())
                     .build());
@@ -177,7 +182,7 @@ class WorkerExecutionEngine implements AutoCloseable {
                 .build();
     }
 
-    private static java.util.List<String> secretValues(ExecuteAlertRequest request) {
+    private static List<String> secretValues(ExecuteAlertRequest request) {
         return request.getParametersList().stream()
                 .filter(parameter -> parameter.getSource() == AlertParameterValueSource.ALERT_PARAMETER_VALUE_SOURCE_SECRET)
                 .filter(parameter -> !parameter.getNullValue() && !parameter.getValue().isEmpty())

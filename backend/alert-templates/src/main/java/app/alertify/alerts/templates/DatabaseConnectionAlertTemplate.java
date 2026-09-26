@@ -25,7 +25,8 @@ import app.alertify.worker.contract.DatabaseCredentials;
 /**
  * Standard alert that opens a JDBC connection with the credentials of a
  * {@code DB_SECRET} and verifies that the database answers a validity check.
- * The password never appears in the status message or the stored state.
+ * Raw driver errors never appear in the status message, and endpoint metadata
+ * is not retained in the stored state.
  */
 @AlertTemplate(
     nameKey = "alerts.template.databaseConnection.name",
@@ -93,9 +94,6 @@ public final class DatabaseConnectionAlertTemplate implements AlertEvaluator {
             if (exception.getSQLState() != null)
                 statusMessage.put("sqlState", exception.getSQLState());
 
-            if (exception.getMessage() != null && !exception.getMessage().isBlank())
-                statusMessage.put("failureMessage", exception.getMessage());
-
             context.setState(state(false, totalLatencyMs, failureReason));
             return AlertResult.warn(statusMessage);
         }
@@ -122,14 +120,14 @@ public final class DatabaseConnectionAlertTemplate implements AlertEvaluator {
             statusMessage.put("productName", metaData.getDatabaseProductName());
             statusMessage.put("productVersion", metaData.getDatabaseProductVersion());
             statusMessage.put("driverName", metaData.getDriverName());
-        } catch (SQLException exception) {
-            statusMessage.put("metadataError", exception.getMessage());
+            statusMessage.put("metadataAvailable", true);
+        } catch (SQLException _) {
+            statusMessage.put("metadataAvailable", false);
         }
     }
 
     private String state(boolean connected, long totalLatencyMs, String failureReason) {
-        String value = "engine=" + credentials.engine() + ";host=" + credentials.host() + ";port=" + credentials.port()
-            + ";database=" + credentials.database() + ";connected=" + connected + ";totalLatencyMs=" + totalLatencyMs;
+        String value = "connected=" + connected + ";totalLatencyMs=" + totalLatencyMs;
         if (failureReason == null)
             return value;
 

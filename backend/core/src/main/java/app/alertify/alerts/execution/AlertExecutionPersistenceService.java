@@ -27,7 +27,7 @@ import app.alertify.jpa.repository.AlertRepository;
 import app.alertify.jpa.repository.AlertStateRepository;
 import app.alertify.logging.ApplicationEventLogger;
 import app.alertify.services.secret.WritableSecretService;
-import app.alertify.worker.contract.ExecutionErrorSanitizer;
+import app.alertify.worker.contract.SecretValueSanitizer;
 import app.alertify.worker.grpc.AlertExecutionResult;
 import app.alertify.worker.grpc.ExecutionError;
 import app.alertify.worker.grpc.WorkerExecutionStatus;
@@ -82,13 +82,13 @@ public class AlertExecutionPersistenceService {
         } else {
             execution = AlertExecution.result(
                     executionId, alert, worker, status(result.getStatus()), timestamps.startedAt(), timestamps.workStartedAt(), timestamps.finishedAt(),
-                    statusMessage(result.getStatusMessageJson()), trigger(context), actor(context)
+                    statusMessage(result.getStatusMessageJson(), prepared), trigger(context), actor(context)
             );
         }
 
         executionRepository.save(execution);
         AlertState state = stateRepository.findById(alertId).orElseThrow(() -> new IllegalStateException("Alert state " + alertId + " was not found"));
-        state.replaceState(result.getState());
+        state.replaceState(SecretValueSanitizer.sanitize(result.getState(), secretValues(prepared)));
         stateRepository.save(state);
         if (result.getStatus() != WorkerExecutionStatus.WORKER_EXECUTION_STATUS_ERROR) {
             writableConfigurationService.apply(
@@ -178,12 +178,12 @@ public class AlertExecutionPersistenceService {
         );
     }
 
-    private JsonNode statusMessage(String json) {
+    private JsonNode statusMessage(String json, PreparedAlertExecution prepared) {
         if (json == null || json.isBlank())
             return null;
 
         try {
-            return jsonMapper.readTree(json);
+            return SecretValueSanitizer.sanitize(jsonMapper.readTree(json), secretValues(prepared));
         } catch (JacksonException exception) {
             throw new IllegalArgumentException("Worker returned invalid status message JSON", exception);
         }
@@ -219,10 +219,14 @@ public class AlertExecutionPersistenceService {
     }
 
     private static ExecutionError sanitize(ExecutionError error, PreparedAlertExecution prepared) {
-        return ExecutionErrorSanitizer.sanitize(error, prepared == null ? List.of() : prepared.parameters().stream()
+        return SecretValueSanitizer.sanitize(error, secretValues(prepared));
+    }
+
+    private static List<String> secretValues(PreparedAlertExecution prepared) {
+        return prepared == null ? List.of() : prepared.parameters().stream()
                 .filter(parameter -> parameter.source() == AlertParameterSource.SECRET)
                 .map(ResolvedAlertParameter::value)
-                .toList());
+                .toList();
     }
 
     private static String required(String value, String name) {

@@ -50,16 +50,24 @@ class AlertExecutionPersistenceServiceTest {
                 states, mock(ApplicationEventLogger.class), JsonMapper.builder().build(), configurations, secrets);
         UUID executionId = UUID.randomUUID();
         Instant startedAt = Instant.parse("2026-09-25T15:00:00Z");
+        String secret = "{\"host\":\"db.internal\",\"username\":\"monitor\",\"password\":\"opaque-password\"}";
+        PreparedAlertExecution prepared = new PreparedAlertExecution(
+                2L, "Demo WARN", "dynamic.SecretWarning", WorkerCapability.STANDARD,
+                "a".repeat(64), "source", "state", List.of(new ResolvedAlertParameter(
+                        "credentials", String.class.getName(), secret, false,
+                        AlertParameterSource.SECRET, null, 9L, false
+                ))
+        );
         AlertExecutionResult result = AlertExecutionResult.newBuilder()
                 .setStatus(WorkerExecutionStatus.WORKER_EXECUTION_STATUS_WARN)
                 .setStartedAt(timestamp(startedAt))
                 .setWorkStartedAt(timestamp(startedAt.minusMillis(1)))
                 .setFinishedAt(timestamp(startedAt.plusMillis(5)))
-                .setStatusMessageJson("{\"message\":\"warn\"}")
-                .setState("updated")
+                .setStatusMessageJson("{\"message\":\"warn monitor with opaque-password\",\"nested\":{\"host\":\"db.internal\"}}")
+                .setState("updated by monitor at db.internal")
                 .build();
 
-        service.persistWorkerResult(2L, executionId, null, result, null);
+        service.persistWorkerResult(2L, executionId, null, result, prepared);
 
         ArgumentCaptor<AlertExecution> saved = ArgumentCaptor.forClass(AlertExecution.class);
         verify(executions).save(saved.capture());
@@ -67,8 +75,9 @@ class AlertExecutionPersistenceServiceTest {
         assertThat(saved.getValue().getStartedAt()).isEqualTo(startedAt);
         assertThat(saved.getValue().getWorkStartedAt()).isEqualTo(startedAt);
         assertThat(saved.getValue().getFinishedAt()).isEqualTo(startedAt.plusMillis(5));
-        assertThat(saved.getValue().getStatusMessage().get("message").asText()).isEqualTo("warn");
-        verify(state).replaceState("updated");
+        assertThat(saved.getValue().getStatusMessage().get("message").asText()).isEqualTo("warn [REDACTED] with [REDACTED]");
+        assertThat(saved.getValue().getStatusMessage().get("nested").get("host").asText()).isEqualTo("[REDACTED]");
+        verify(state).replaceState("updated by [REDACTED] at [REDACTED]");
         verify(configurations).apply(2L, "Demo WARN", executionId, result.getWritableConfigurationValuesList());
         verify(secrets).apply(2L, "Demo WARN", executionId, result.getWritableSecretValuesList());
     }
@@ -103,7 +112,7 @@ class AlertExecutionPersistenceServiceTest {
                 .setStartedAt(timestamp(startedAt))
                 .setWorkStartedAt(timestamp(startedAt.plusMillis(1)))
                 .setFinishedAt(timestamp(startedAt.plusMillis(2)))
-                .setState("state")
+                .setState("state for monitor with opaque-password")
                 .setError(ExecutionError.newBuilder()
                         .setType("example.DatabaseFailure")
                         .setMessage("Login monitor failed with opaque-password")
@@ -116,6 +125,7 @@ class AlertExecutionPersistenceServiceTest {
         verify(executions).save(saved.capture());
         assertThat(saved.getValue().getErrorMessage()).isEqualTo("Login [REDACTED] failed with [REDACTED]");
         assertThat(saved.getValue().getErrorStackTrace()).isEqualTo("credentials=[REDACTED]");
+        verify(state).replaceState("state for [REDACTED] with [REDACTED]");
         ArgumentCaptor<Map<String, Object>> auditData = ArgumentCaptor.captor();
         verify(eventLogger).errorAfterCommit(org.mockito.ArgumentMatchers.eq("ALERT_EXECUTION_COMPLETED"), auditData.capture());
         assertThat(auditData.getValue()).containsEntry("errorType", "example.DatabaseFailure");

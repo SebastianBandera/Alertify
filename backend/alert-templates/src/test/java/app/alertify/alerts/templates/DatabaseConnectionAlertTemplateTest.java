@@ -50,8 +50,12 @@ class DatabaseConnectionAlertTemplateTest {
         assertEquals(false, result.statusMessage().get("connected"));
         assertEquals("driver_missing", result.statusMessage().get("failureReason"));
         assertEquals("db.local", result.statusMessage().get("host"));
+        assertFalse(result.statusMessage().containsKey("failureMessage"));
         assertFalse(result.statusMessage().toString().contains("hunter2"));
         assertFalse(context.getState().contains("hunter2"));
+        assertFalse(context.getState().contains("db.local"));
+        assertFalse(context.getState().contains("alertify"));
+        assertFalse(context.getState().contains("5432"));
         assertTrue(context.getState().contains("failureReason=driver_missing"));
     }
 

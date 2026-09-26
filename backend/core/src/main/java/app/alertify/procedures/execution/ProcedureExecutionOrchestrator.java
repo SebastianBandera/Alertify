@@ -53,7 +53,7 @@ import app.alertify.worker.grpc.TemplateKind;
 import app.alertify.worker.grpc.ArtifactDescriptor;
 import app.alertify.procedures.artifact.ProcedureArtifactInput;
 import app.alertify.worker.contract.BinaryPayloadCodec;
-import app.alertify.worker.contract.ExecutionErrorSanitizer;
+import app.alertify.worker.contract.SecretValueSanitizer;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -539,7 +539,7 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
     }
 
     private static ExecutionError sanitize(ExecutionError error, PreparedProcedureExecution prepared) {
-        return ExecutionErrorSanitizer.sanitize(error, prepared.parameters().stream()
+        return SecretValueSanitizer.sanitize(error, prepared.parameters().stream()
                 .filter(parameter -> parameter.source() == AlertParameterSource.SECRET)
                 .map(ResolvedProcedureParameter::value)
                 .toList());

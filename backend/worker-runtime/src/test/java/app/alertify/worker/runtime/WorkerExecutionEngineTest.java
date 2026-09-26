@@ -110,6 +110,7 @@ class WorkerExecutionEngineTest {
 
                     @Override
                     public AlertResult evaluate(AlertExecutionContext context) {
+                        context.setState("credential=" + token);
                         throw new IllegalStateException("credential=" + token);
                     }
                 }
@@ -141,6 +142,70 @@ class WorkerExecutionEngineTest {
 
             assertThat(execution.getError().getMessage()).isEqualTo("credential=[REDACTED]");
             assertThat(execution.getError().getStackTrace()).doesNotContain("opaque-token");
+            assertThat(execution.getState()).isEqualTo("credential=[REDACTED]");
+        }
+    }
+
+    @Test
+    void redactsSecretParametersFromStatusMessageAndState() throws Exception {
+        WorkerRuntimeProperties properties = properties();
+        AlertTemplateCompiler compiler = new AlertTemplateCompiler(properties);
+        String source = """
+                package dynamic;
+
+                import java.util.List;
+                import java.util.Map;
+                import app.alertify.alerts.AlertEvaluator;
+                import app.alertify.alerts.AlertExecutionContext;
+                import app.alertify.alerts.AlertResult;
+
+                public final class SecretResultAlert implements AlertEvaluator {
+                    private final String credentials;
+
+                    public SecretResultAlert(String credentials) {
+                        this.credentials = credentials;
+                    }
+
+                    @Override
+                    public AlertResult evaluate(AlertExecutionContext context) {
+                        context.setState("previous=" + context.getState() + ";credentials=" + credentials);
+                        return AlertResult.warn(Map.of(
+                            "detail", "Login monitor at db.internal with opaque-password",
+                            "nested", List.of("safe", "db.internal")
+                        ));
+                    }
+                }
+                """;
+        String checksum = sha256(source);
+        compiler.synchronize("dynamic.SecretResultAlert", checksum, source);
+        CompletableFuture<AlertExecutionResult> result = new CompletableFuture<>();
+        String credentials = "{\"host\":\"db.internal\",\"username\":\"monitor\",\"password\":\"opaque-password\"}";
+
+        try (WorkerExecutionEngine engine = new WorkerExecutionEngine(
+                compiler, new WorkerExecutionTracker(properties), properties, new WorkerInstanceIdentity()
+        )) {
+            engine.execute(
+                    ExecuteAlertRequest.newBuilder()
+                            .setExecutionId("execution-secret-result")
+                            .setAlertId(11)
+                            .setAlertName("Secret result sample")
+                            .setTemplateClassName("dynamic.SecretResultAlert")
+                            .setSourceChecksum(checksum)
+                            .setState("initial=db.internal")
+                            .addParameters(AlertParameter.newBuilder()
+                                    .setName("credentials")
+                                    .setJavaType(String.class.getName())
+                                    .setValue(credentials)
+                                    .setSource(AlertParameterValueSource.ALERT_PARAMETER_VALUE_SOURCE_SECRET))
+                            .build(),
+                    observer(result)
+            );
+
+            AlertExecutionResult execution = result.get(5, TimeUnit.SECONDS);
+
+            assertThat(execution.getStatusMessageJson()).doesNotContain("monitor", "db.internal", "opaque-password");
+            assertThat(execution.getStatusMessageJson()).contains("[REDACTED]");
+            assertThat(execution.getState()).isEqualTo("previous=initial=[REDACTED];credentials=[REDACTED]");
         }
     }
 

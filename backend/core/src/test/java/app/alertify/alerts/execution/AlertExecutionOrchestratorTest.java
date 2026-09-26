@@ -118,7 +118,7 @@ class AlertExecutionOrchestratorTest {
             assertThat(request.getAlertName()).isEqualTo("Sample alert");
             assertThat(request.getTemplateClassName()).isEqualTo("dynamic.SampleAlert");
             assertThat(request.getSourceChecksum()).isEqualTo(CHECKSUM);
-            assertThat(request.getState()).isEqualTo("previous-state");
+            assertThat(request.getState()).isEqualTo("previous-[REDACTED]-state");
             assertThat(request.getParametersCount()).isEqualTo(1);
             assertThat(request.getParameters(0).getName()).isEqualTo("endpoint");
             assertThat(request.getParameters(0).getValue()).isEqualTo("google");
@@ -313,7 +313,7 @@ class AlertExecutionOrchestratorTest {
     private static PreparedAlertExecution prepared() {
         return new PreparedAlertExecution(
                 7L, "Sample alert", "dynamic.SampleAlert", WorkerCapability.STANDARD,
-                CHECKSUM, "source", "previous-state",
+                CHECKSUM, "source", "previous-google-state",
                 List.of(new ResolvedAlertParameter(
                         "endpoint", String.class.getName(), "google", null, false,
                         AlertParameterSource.SECRET, null, 73L, null, true, 4L
