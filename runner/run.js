@@ -1365,6 +1365,10 @@ function removePreservationContainers(projectDirectory, containerIds) {
   );
 }
 
+function dockerBuildCachePruneArguments() {
+  return ['buildx', 'prune', '--all', '--force', '--filter', 'type!=exec.cachemount'];
+}
+
 function cleanupDockerResources(projectDirectory, imagePatterns = []) {
   const preservationContainers = createPreservationContainers(
     projectDirectory,
@@ -1382,7 +1386,7 @@ function cleanupDockerResources(projectDirectory, imagePatterns = []) {
   }
   runCommand(
     'docker',
-    ['buildx', 'prune', '--all', '--force', '--filter', 'type!=exec.cachemount'],
+    dockerBuildCachePruneArguments(),
     projectDirectory,
     'Removing Docker build cache while preserving dependency cache mounts...',
   );
@@ -1403,8 +1407,9 @@ function printHelp() {
     '  --skip-worker-standard    Do not rebuild or restart standard workers.\n' +
     '  --skip-worker-playwright  Do not rebuild or restart Playwright workers.\n' +
     '  --cleanup-docker-preserve-images=PATTERNS\n' +
-    '                     Remove unused Docker images and build cache while preserving images\n' +
-    '                     matching the required semicolon-separated reference globs.\n' +
+    '                     Remove unused Docker images and ordinary build cache. Dependency\n' +
+    '                     cache mounts are kept automatically; images matching the required\n' +
+    '                     semicolon-separated reference globs are also preserved.\n' +
     '                     Example: "--cleanup-docker-preserve-images=maven:*;mcr.microsoft.com/playwright:*;monitoring-*"\n' +
     '  --help             Show this help.\n\n' +
     '  Passing any option above without --non-interactive runs non-interactively, exactly as\n' +
@@ -1693,6 +1698,7 @@ module.exports = {
   applyApplicationContext,
   buildPlan,
   createRuntimeComposeOverride,
+  dockerBuildCachePruneArguments,
   ensurePrivateKeyPartClass,
   imageReferencePattern,
   main,

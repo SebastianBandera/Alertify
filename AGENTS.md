@@ -92,8 +92,12 @@ untracked `AGENTS.override.md`, not in this file.
   affected by the current change. Backend and worker skips are independent.
 - When Docker cleanup is appropriate, use the explicit, quoted
   `--cleanup-docker-preserve-images=PATTERNS` option. Matching images are kept;
-  other unused images and build cache may be removed. For example:
+  other unused images and ordinary build cache may be removed. Named BuildKit
+  dependency cache mounts are preserved automatically. For example:
   `"--cleanup-docker-preserve-images=maven:*;node:*;mcr.microsoft.com/playwright:*;monitoring-*"`.
+- In Dockerfiles, give package-manager cache mounts a stable project-specific
+  `id`. For npm installs, mount `/root/.npm` and use `npm ci --prefer-offline` so
+  cleanup does not force unchanged packages to be downloaded again.
 - Run the full affected stack after changes to shared context-path behavior,
   backend configuration, identity configuration, database or Redis setup,
   worker code, gRPC contracts, or certificates.

@@ -10,10 +10,22 @@ const {
   applyApplicationContext,
   buildPlan,
   createRuntimeComposeOverride,
+  dockerBuildCachePruneArguments,
   parseCleanupDockerPreserveImagesOption,
   parseExistingEnvironment,
   workerInstances,
 } = require('./run');
+
+test('dockerBuildCachePruneArguments preserves dependency cache mounts', () => {
+  assert.deepEqual(dockerBuildCachePruneArguments(), [
+    'buildx',
+    'prune',
+    '--all',
+    '--force',
+    '--filter',
+    'type!=exec.cachemount',
+  ]);
+});
 
 test('parseCleanupDockerPreserveImagesOption keeps cleanup disabled when omitted', () => {
   assert.deepEqual(parseCleanupDockerPreserveImagesOption([]), {

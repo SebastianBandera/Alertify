@@ -9,7 +9,7 @@ WORKDIR /build
 
 COPY package.json package-lock.json ./
 RUN --mount=type=cache,id=alertify-npm,target=/root/.npm,sharing=locked \
-    npm ci --no-audit --no-fund
+    npm ci --prefer-offline --no-audit --no-fund
 
 COPY angular.json tsconfig.json tsconfig.app.json ./
 COPY public ./public
