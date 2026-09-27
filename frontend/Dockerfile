@@ -22,6 +22,7 @@ FROM ${FRONTEND_RUNTIME_IMAGE}
 
 COPY nginx/default.conf /etc/nginx/conf.d/default.conf
 COPY --from=builder /build/dist/alertify-frontend/browser /usr/share/nginx/html
+COPY --from=builder /build/dist/alertify-frontend/3rdpartylicenses.txt /usr/share/nginx/html/3rdpartylicenses.txt
 COPY runtime-config.template.json /opt/alertify/runtime-config.template.json
 COPY start-frontend.sh /usr/local/bin/start-frontend.sh
 
