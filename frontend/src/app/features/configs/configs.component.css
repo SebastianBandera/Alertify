@@ -819,6 +819,10 @@ td small {
   gap: 12px;
 }
 
+.secret-value-actions {
+  flex-wrap: wrap;
+}
+
 .expression-actions small {
   color: var(--text-muted);
   font-size: 11px;

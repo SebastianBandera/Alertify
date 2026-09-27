@@ -160,6 +160,7 @@ export class SecretsComponent implements OnInit {
 
   protected readonly editorOpen = signal(false);
   protected readonly editingSecret = signal<ApplicationSecret | null>(null);
+  protected readonly replacingValue = signal(false);
   protected readonly secretForm = signal<SecretForm>(this.emptySecretForm());
   protected readonly formError = signal<string | null>(null);
   protected readonly tagDialogOpen = signal(false);
@@ -260,6 +261,7 @@ export class SecretsComponent implements OnInit {
 
   protected openCreate(): void {
     this.editingSecret.set(null);
+    this.replacingValue.set(false);
     this.secretForm.set(this.emptySecretForm());
     this.formError.set(null);
     this.editorOpen.set(true);
@@ -267,6 +269,7 @@ export class SecretsComponent implements OnInit {
 
   protected openEdit(secret: ApplicationSecret): void {
     this.editingSecret.set(secret);
+    this.replacingValue.set(false);
     this.secretForm.set({
       name: secret.name,
       description: secret.description ?? '',
@@ -318,6 +321,26 @@ export class SecretsComponent implements OnInit {
 
   protected closeEditor(): void {
     if (!this.saving()) this.editorOpen.set(false);
+  }
+
+  protected startValueReplacement(): void {
+    this.replacingValue.set(true);
+    this.formError.set(null);
+  }
+
+  protected keepStoredValue(): void {
+    const editing = this.editingSecret();
+    if (!editing) return;
+
+    this.replacingValue.set(false);
+    this.patchSecretForm({
+      valueType: editing.valueType,
+      newValue: '',
+      dbValue: this.emptyDatabaseForm(),
+      gitValue: this.emptyGitForm(),
+      oidcValue: this.emptyOidcForm(),
+      binaryFile: null,
+    });
   }
 
   protected patchSecretForm(patch: Partial<SecretForm>): void {
@@ -464,9 +487,31 @@ export class SecretsComponent implements OnInit {
 
   protected async saveSecret(): Promise<void> {
     const form = this.secretForm();
+    const editing = this.editingSecret();
+    if (editing && !this.replacingValue()) {
+      if (!form.name.trim()) { this.formError.set(this.localization.translate('secrets.nameRequired')); return; }
+      this.saving.set(true);
+      this.formError.set(null);
+      try {
+        await this.api.updateSecretMetadata(editing.id, {
+          version: editing.version,
+          name: form.name.trim(),
+          description: form.description.trim() || null,
+          tagIds: form.tagIds,
+          writable: form.writable,
+        });
+        this.editorOpen.set(false);
+        this.notice.set(this.localization.translate('secrets.saved'));
+        await Promise.all([this.loadSecrets(), this.loadExpressionSuggestions()]);
+      } catch (error) {
+        this.formError.set(this.errorMessage(error, 'rename'));
+      } finally {
+        this.saving.set(false);
+      }
+      return;
+    }
     if (form.valueType === 'BINARY') {
       if (!form.name.trim()) { this.formError.set(this.localization.translate('secrets.nameRequired')); return; }
-      const editing = this.editingSecret();
       if (!this.confirmSecretReplacement(editing)) return;
       this.saving.set(true); this.formError.set(null);
       try {
@@ -487,7 +532,6 @@ export class SecretsComponent implements OnInit {
       this.formError.set(this.errorMessage(error));
       return;
     }
-    const editing = this.editingSecret();
     if (!this.confirmSecretReplacement(editing)) return;
     this.saving.set(true);
     this.formError.set(null);

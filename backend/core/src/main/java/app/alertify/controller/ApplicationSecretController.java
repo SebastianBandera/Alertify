@@ -29,6 +29,7 @@ import app.alertify.secret.api.DatabaseSecretTestResponse;
 import app.alertify.secret.api.SecretCreateRequest;
 import app.alertify.secret.api.SecretExpressionSuggestionsResponse;
 import app.alertify.secret.api.SecretExpressionValidationRequest;
+import app.alertify.secret.api.SecretMetadataUpdateRequest;
 import app.alertify.secret.api.SecretResponse;
 import app.alertify.secret.api.SecretUpdateRequest;
 import app.alertify.secret.api.SecretUsagesResponse;
@@ -118,6 +119,11 @@ public class ApplicationSecretController {
     @PutMapping("/{id}")
     public SecretResponse update(@PathVariable Long id, @Valid @RequestBody SecretUpdateRequest request) {
         return withUsageCount(service.update(id, request));
+    }
+
+    @PutMapping("/{id}/metadata")
+    public SecretResponse updateMetadata(@PathVariable Long id, @Valid @RequestBody SecretMetadataUpdateRequest request) {
+        return withUsageCount(service.updateMetadata(id, request));
     }
 
     @PutMapping(value = "/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

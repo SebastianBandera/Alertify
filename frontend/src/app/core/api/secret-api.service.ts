@@ -137,6 +137,14 @@ export interface SecretUpdateRequest {
   readonly writable: boolean;
 }
 
+export interface SecretMetadataUpdateRequest {
+  readonly version: number;
+  readonly name: string;
+  readonly description: string | null;
+  readonly tagIds: readonly number[];
+  readonly writable: boolean;
+}
+
 interface ApiErrorResponse {
   readonly code?: string;
   readonly message?: string;
@@ -172,6 +180,10 @@ export class SecretApiService {
 
   async updateSecret(id: number, request: SecretUpdateRequest): Promise<ApplicationSecret> {
     return this.request(`/api/secrets/${id}`, { method: 'PUT', body: JSON.stringify(request) });
+  }
+
+  async updateSecretMetadata(id: number, request: SecretMetadataUpdateRequest): Promise<ApplicationSecret> {
+    return this.request(`/api/secrets/${id}/metadata`, { method: 'PUT', body: JSON.stringify(request) });
   }
 
   async createBinarySecret(metadata: Omit<SecretCreateRequest, 'valueType' | 'value'>, file: File | null): Promise<ApplicationSecret> {

@@ -41,6 +41,7 @@ import tools.jackson.databind.JsonNode;
 import app.alertify.secret.api.SecretCreateRequest;
 import app.alertify.secret.api.SecretExpressionSuggestionsResponse;
 import app.alertify.secret.api.SecretExpressionValidationRequest;
+import app.alertify.secret.api.SecretMetadataUpdateRequest;
 import app.alertify.secret.api.SecretResponse;
 import app.alertify.secret.api.SecretUpdateRequest;
 
@@ -214,26 +215,7 @@ public class ApplicationSecretService {
         String description = normalizeOptional(request.description());
         Set<Tag> tags = resolveSecretTags(request.tagIds());
         String plaintext = valueValidator.validateAndNormalize(request.valueType(), request.newValue());
-        Set<String> changedFields = new LinkedHashSet<>();
-
-        if (!secret.getName().equals(name)) {
-            ensureNameAvailable(name, id);
-            expressionService.ensureNotReferenced(secret, "renamed");
-            secret.rename(name);
-            changedFields.add("name");
-        }
-        if (!Objects.equals(secret.getDescription(), description)) {
-            secret.changeDescription(description);
-            changedFields.add("description");
-        }
-        if (!tagIds(secret.getTags()).equals(tagIds(tags))) {
-            secret.replaceTags(tags);
-            changedFields.add("tags");
-        }
-        if (secret.isWritable() != request.writable()) {
-            secret.changeWritable(request.writable());
-            changedFields.add(WRITABLE);
-        }
+        Set<String> changedFields = applyMetadataChanges(secret, name, description, tags, request.writable());
         if (secret.getValueType() != request.valueType()) {
             if (secret.getValueType() == SecretValueType.BINARY) { binaryRepository.deleteById(id); secret.clearBinaryMetadata(); }
             secret.changeValueType(request.valueType());
@@ -246,8 +228,53 @@ public class ApplicationSecretService {
         secretRepository.flush();
         expressionService.synchronizeDependencies(secret, plaintext);
 
+        logUpdate(secret, previousName, changedFields);
+        return mapper.toResponse(secret);
+    }
+
+    @Transactional
+    public SecretResponse updateMetadata(Long id, SecretMetadataUpdateRequest request) {
+        ApplicationSecret secret = find(id);
+        verifyVersion(secret.getVersion(), request.version(), SECRET);
+        String previousName = secret.getName();
+        String name = normalizeRequired(request.name());
+        String description = normalizeOptional(request.description());
+        Set<Tag> tags = resolveSecretTags(request.tagIds());
+        Set<String> changedFields = applyMetadataChanges(secret, name, description, tags, request.writable());
+        if (changedFields.isEmpty())
+            return mapper.toResponse(secret);
+
+        secretRepository.flush();
+        logUpdate(secret, previousName, changedFields);
+        return mapper.toResponse(secret);
+    }
+
+    private Set<String> applyMetadataChanges(ApplicationSecret secret, String name, String description, Set<Tag> tags, boolean writable) {
+        Set<String> changedFields = new LinkedHashSet<>();
+        if (!secret.getName().equals(name)) {
+            ensureNameAvailable(name, secret.getId());
+            expressionService.ensureNotReferenced(secret, "renamed");
+            secret.rename(name);
+            changedFields.add("name");
+        }
+        if (!Objects.equals(secret.getDescription(), description)) {
+            secret.changeDescription(description);
+            changedFields.add("description");
+        }
+        if (!tagIds(secret.getTags()).equals(tagIds(tags))) {
+            secret.replaceTags(tags);
+            changedFields.add("tags");
+        }
+        if (secret.isWritable() != writable) {
+            secret.changeWritable(writable);
+            changedFields.add(WRITABLE);
+        }
+        return changedFields;
+    }
+
+    private void logUpdate(ApplicationSecret secret, String previousName, Set<String> changedFields) {
         Map<String, Object> logData = new LinkedHashMap<>();
-        logData.put(SECRET_ID, id);
+        logData.put(SECRET_ID, secret.getId());
         logData.put("name", secret.getName());
         logData.put("previousName", previousName);
         logData.put(VALUE_TYPE, secret.getValueType());
@@ -256,7 +283,6 @@ public class ApplicationSecretService {
         logData.put(VALUE_REVISION, secret.getValueRevision());
         logData.put(WRITABLE, secret.isWritable());
         eventLogger.successAfterCommit("SECRET_UPDATED", logData);
-        return mapper.toResponse(secret);
     }
 
     @Transactional
