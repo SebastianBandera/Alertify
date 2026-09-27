@@ -138,7 +138,7 @@ export class LogsComponent implements OnInit {
   protected readonly levels: readonly ApplicationLogLevel[] = ['INFO', 'WARN', 'ERROR'];
   protected readonly outcomes: readonly ApplicationLogOutcome[] = ['SUCCESS', 'FAILURE'];
   protected readonly pageSizeOptions = PAGE_SIZE_OPTIONS;
-  protected readonly eventOptions = signal<readonly string[]>(Object.keys(EVENT_TRANSLATION_KEYS).sort());
+  protected readonly eventOptions = signal<readonly string[]>(Object.keys(EVENT_TRANSLATION_KEYS).sort((first, second) => first.localeCompare(second)));
   private readonly api = inject(LogApiService);
   protected readonly logs = signal<readonly ApplicationLog[]>([]);
   protected readonly loading = signal(true);

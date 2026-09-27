@@ -30,7 +30,7 @@ function strings(value: unknown): readonly string[] {
 }
 
 function localizedReasons(context: AlertMessageContext, value: unknown): readonly string[] {
-  return strings(value).map((reason) => context.translate(`alertMessage.reason.${reason}`) ?? reason).sort();
+  return strings(value).map((reason) => context.translate(`alertMessage.reason.${reason}`) ?? reason).sort((first, second) => first.localeCompare(second));
 }
 
 /* A known failure code reads as a sentence; an unknown one is still shown, as is. */
