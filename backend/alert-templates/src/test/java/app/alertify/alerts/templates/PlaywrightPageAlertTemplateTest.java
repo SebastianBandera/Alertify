@@ -15,6 +15,8 @@ import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.Test;
 
 import app.alertify.alerts.AlertExecutionContext;
+import app.alertify.alerts.AlertExecutionValue;
+import app.alertify.alerts.AlertExecutionValueSource;
 import app.alertify.alerts.AlertResult;
 import app.alertify.alerts.execution.AlertExecutionStatus;
 import app.alertify.alerts.template.annotation.AlertParameter;
@@ -48,6 +50,7 @@ class PlaywrightPageAlertTemplateTest {
             DOUBLE_USE
             HOVER
             FOCUS
+            FILL configs.FORM_VALUE
             SELECT UY
             WAIT 25ms
             WAIT_VISIBLE .result panel
@@ -64,20 +67,23 @@ class PlaywrightPageAlertTemplateTest {
             RELOAD
             """);
 
-        assertEquals(19, commands.size());
+        assertEquals(20, commands.size());
         assertEquals(PlaywrightPageAlertTemplate.CommandType.QUERY, commands.get(0).type());
         assertEquals("form .country", commands.get(0).first());
-        assertEquals(25, commands.get(6).durationMillis());
-        assertEquals(".result panel", commands.get(7).first());
-        assertEquals(0, commands.get(7).durationMillis());
-        assertEquals(".slow-result", commands.get(8).first());
-        assertEquals(15_000, commands.get(8).durationMillis());
-        assertEquals(".spinner", commands.get(9).first());
-        assertEquals(3_000, commands.get(9).durationMillis());
-        assertEquals(PlaywrightPageAlertTemplate.CountOperator.GREATER_OR_EQUAL, commands.get(11).countOperator());
-        assertEquals("data-state", commands.get(16).first());
-        assertEquals("ready now", commands.get(16).second());
-        assertEquals(PlaywrightPageAlertTemplate.CommandType.RELOAD, commands.get(18).type());
+        assertEquals(PlaywrightPageAlertTemplate.CommandType.FILL, commands.get(5).type());
+        assertEquals(AlertExecutionValueSource.CONFIGURATION, commands.get(5).valueSource());
+        assertEquals("FORM_VALUE", commands.get(5).first());
+        assertEquals(25, commands.get(7).durationMillis());
+        assertEquals(".result panel", commands.get(8).first());
+        assertEquals(0, commands.get(8).durationMillis());
+        assertEquals(".slow-result", commands.get(9).first());
+        assertEquals(15_000, commands.get(9).durationMillis());
+        assertEquals(".spinner", commands.get(10).first());
+        assertEquals(3_000, commands.get(10).durationMillis());
+        assertEquals(PlaywrightPageAlertTemplate.CountOperator.GREATER_OR_EQUAL, commands.get(12).countOperator());
+        assertEquals("data-state", commands.get(17).first());
+        assertEquals("ready now", commands.get(17).second());
+        assertEquals(PlaywrightPageAlertTemplate.CommandType.RELOAD, commands.get(19).type());
     }
 
     @Test
@@ -88,7 +94,43 @@ class PlaywrightPageAlertTemplateTest {
         assertThrows(IllegalArgumentException.class, () -> PlaywrightPageAlertTemplate.parseCommands("WAIT_VISIBLE .item 0s"));
         assertThrows(IllegalArgumentException.class, () -> PlaywrightPageAlertTemplate.parseCommands("QUERY .item\nCHECK COUNT approximately 2"));
         assertThrows(IllegalArgumentException.class, () -> PlaywrightPageAlertTemplate.parseCommands("QUERY .item\nCHECK ATTRIBUTE data-state"));
+        assertThrows(IllegalArgumentException.class, () -> PlaywrightPageAlertTemplate.parseCommands("FILL configs.VALUE"));
+        assertThrows(IllegalArgumentException.class, () -> PlaywrightPageAlertTemplate.parseCommands("QUERY input\nFILL literal"));
+        assertThrows(IllegalArgumentException.class, () -> PlaywrightPageAlertTemplate.parseCommands("QUERY input\nFILL secrets."));
         assertThrows(IllegalArgumentException.class, () -> PlaywrightPageAlertTemplate.parseCommands("QUERY .item\nUNKNOWN"));
+    }
+
+    @Test
+    void extractsAndDeduplicatesOnlyFillReferences() {
+        List<PlaywrightPageAlertTemplate.ValueReference> references = PlaywrightPageAlertTemplate.requiredValues("""
+            QUERY input[name=user]
+            FILL configs.Login User
+            QUERY input[name=alias]
+            FILL configs.login user
+            QUERY input[name=password]
+            FILL secrets.Login Password
+            """);
+
+        assertEquals(2, references.size());
+        assertEquals(AlertExecutionValueSource.CONFIGURATION, references.get(0).source());
+        assertEquals("Login User", references.get(0).name());
+        assertEquals(AlertExecutionValueSource.SECRET, references.get(1).source());
+        assertEquals("Login Password", references.get(1).name());
+    }
+
+    @Test
+    void fillsTheCurrentElementFromThePreparedPoolWithoutPersistingTheValue() throws Exception {
+        FakeBrowserSession session = new FakeBrowserSession();
+        AlertExecutionContext context = new AlertExecutionContext("", Map.of(), List.of(
+                new AlertExecutionValue(AlertExecutionValueSource.SECRET, "Login Password", "never-persist-this")
+        ));
+
+        AlertResult result = template("https://example.test", "QUERY input[type=password]\nFILL secrets.login password", session).evaluate(context);
+
+        assertEquals(AlertExecutionStatus.SUCCESS, result.status());
+        assertTrue(session.operations.contains("fill:never-persist-this:5000"));
+        assertFalse(result.statusMessage().toString().contains("Login Password"));
+        assertFalse(result.statusMessage().toString().contains("never-persist-this"));
     }
 
     @Test
@@ -346,6 +388,11 @@ class PlaywrightPageAlertTemplateTest {
         @Override
         public void focus(long timeoutMillis) {
             operations.add("focus");
+        }
+
+        @Override
+        public void fill(String value, long timeoutMillis) {
+            operations.add("fill:" + value + ":" + timeoutMillis);
         }
 
         @Override

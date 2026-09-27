@@ -14,6 +14,8 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
+import app.alertify.alerts.AlertExecutionValue;
+import app.alertify.alerts.AlertExecutionValueSource;
 import app.alertify.alerts.model.Alert;
 import app.alertify.alerts.model.AlertExecution;
 import app.alertify.alerts.model.AlertState;
@@ -98,12 +100,13 @@ class AlertExecutionPersistenceServiceTest {
                 states, eventLogger, JsonMapper.builder().build(), mock(WritableConfigurationService.class),
                 mock(WritableSecretService.class));
         String secret = "{\"username\":\"monitor\",\"password\":\"opaque-password\"}";
+        String preparedSecret = "prepared-private";
         PreparedAlertExecution prepared = new PreparedAlertExecution(
                 2L, "Secret failure", "dynamic.SecretFailure", WorkerCapability.STANDARD,
                 "a".repeat(64), "source", "state", List.of(new ResolvedAlertParameter(
                         "credentials", String.class.getName(), secret, false,
                         AlertParameterSource.SECRET, null, 9L, false
-                ))
+                )), List.of(new AlertExecutionValue(AlertExecutionValueSource.SECRET, "Login Password", preparedSecret))
         );
         UUID executionId = UUID.randomUUID();
         Instant startedAt = Instant.parse("2026-09-25T15:00:00Z");
@@ -112,20 +115,20 @@ class AlertExecutionPersistenceServiceTest {
                 .setStartedAt(timestamp(startedAt))
                 .setWorkStartedAt(timestamp(startedAt.plusMillis(1)))
                 .setFinishedAt(timestamp(startedAt.plusMillis(2)))
-                .setState("state for monitor with opaque-password")
+                .setState("state for monitor with opaque-password and " + preparedSecret)
                 .setError(ExecutionError.newBuilder()
                         .setType("example.DatabaseFailure")
-                        .setMessage("Login monitor failed with opaque-password")
-                        .setStackTrace("credentials=" + secret))
+                        .setMessage("Login monitor failed with opaque-password and " + preparedSecret)
+                        .setStackTrace("credentials=" + secret + "; prepared=" + preparedSecret))
                 .build();
 
         service.persistWorkerResult(2L, executionId, null, result, prepared);
 
         ArgumentCaptor<AlertExecution> saved = ArgumentCaptor.forClass(AlertExecution.class);
         verify(executions).save(saved.capture());
-        assertThat(saved.getValue().getErrorMessage()).isEqualTo("Login [REDACTED] failed with [REDACTED]");
-        assertThat(saved.getValue().getErrorStackTrace()).isEqualTo("credentials=[REDACTED]");
-        verify(state).replaceState("state for [REDACTED] with [REDACTED]");
+        assertThat(saved.getValue().getErrorMessage()).isEqualTo("Login [REDACTED] failed with [REDACTED] and [REDACTED]");
+        assertThat(saved.getValue().getErrorStackTrace()).isEqualTo("credentials=[REDACTED]; prepared=[REDACTED]");
+        verify(state).replaceState("state for [REDACTED] with [REDACTED] and [REDACTED]");
         ArgumentCaptor<Map<String, Object>> auditData = ArgumentCaptor.captor();
         verify(eventLogger).errorAfterCommit(org.mockito.ArgumentMatchers.eq("ALERT_EXECUTION_COMPLETED"), auditData.capture());
         assertThat(auditData.getValue()).containsEntry("errorType", "example.DatabaseFailure");

@@ -3,6 +3,7 @@ package app.alertify.alerts.execution;
 import java.time.Instant;
 import java.time.Duration;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -38,6 +39,7 @@ import app.alertify.worker.grpc.AlertParameterValueSource;
 import app.alertify.worker.grpc.ExecuteAlertRequest;
 import app.alertify.worker.grpc.SynchronizeTemplateRequest;
 import app.alertify.worker.grpc.ProcedureParentKind;
+import app.alertify.worker.grpc.PreparedAlertValue;
 import app.alertify.worker.grpc.TemplateKind;
 
 /**
@@ -318,14 +320,34 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
 
             request.addParameters(value);
         }
+        for (var preparedValue : execution.preparedValues()) {
+            request.addPreparedValues(PreparedAlertValue.newBuilder()
+                    .setSource(toGrpcValueSource(preparedValue.source()))
+                    .setName(preparedValue.name())
+                    .setValue(preparedValue.value()));
+        }
         return request.build();
     }
 
     private static List<String> secretValues(PreparedAlertExecution execution) {
-        return execution.parameters().stream()
+        List<String> values = new ArrayList<>(execution.parameters().stream()
                 .filter(parameter -> parameter.source() == AlertParameterSource.SECRET)
                 .map(ResolvedAlertParameter::value)
-                .toList();
+                .filter(value -> value != null)
+                .toList());
+        execution.preparedValues().stream()
+                .filter(value -> value.source() == app.alertify.alerts.AlertExecutionValueSource.SECRET)
+                .map(app.alertify.alerts.AlertExecutionValue::value)
+                .filter(value -> value != null)
+                .forEach(values::add);
+        return List.copyOf(values);
+    }
+
+    private static app.alertify.worker.grpc.AlertExecutionValueSource toGrpcValueSource(app.alertify.alerts.AlertExecutionValueSource source) {
+        return switch (source) {
+            case CONFIGURATION -> app.alertify.worker.grpc.AlertExecutionValueSource.ALERT_EXECUTION_VALUE_SOURCE_CONFIGURATION;
+            case SECRET -> app.alertify.worker.grpc.AlertExecutionValueSource.ALERT_EXECUTION_VALUE_SOURCE_SECRET;
+        };
     }
 
     private static AlertParameterValueSource toGrpcSource(AlertParameterSource source) {

@@ -16,9 +16,11 @@ import org.junit.jupiter.api.io.TempDir;
 
 import app.alertify.worker.contract.WorkerCapability;
 import app.alertify.worker.grpc.AlertExecutionResult;
+import app.alertify.worker.grpc.AlertExecutionValueSource;
 import app.alertify.worker.grpc.AlertParameter;
 import app.alertify.worker.grpc.AlertParameterValueSource;
 import app.alertify.worker.grpc.ExecuteAlertRequest;
+import app.alertify.worker.grpc.PreparedAlertValue;
 import app.alertify.worker.grpc.WorkerExecutionStatus;
 import io.grpc.stub.StreamObserver;
 
@@ -206,6 +208,62 @@ class WorkerExecutionEngineTest {
             assertThat(execution.getStatusMessageJson()).doesNotContain("monitor", "db.internal", "opaque-password");
             assertThat(execution.getStatusMessageJson()).contains("[REDACTED]");
             assertThat(execution.getState()).isEqualTo("previous=initial=[REDACTED];credentials=[REDACTED]");
+        }
+    }
+
+    @Test
+    void suppliesAndRedactsOnlyPreparedSecretValues() throws Exception {
+        WorkerRuntimeProperties properties = properties();
+        AlertTemplateCompiler compiler = new AlertTemplateCompiler(properties);
+        String source = """
+                package dynamic;
+
+                import java.util.Map;
+                import app.alertify.alerts.AlertEvaluator;
+                import app.alertify.alerts.AlertExecutionContext;
+                import app.alertify.alerts.AlertExecutionValueSource;
+                import app.alertify.alerts.AlertResult;
+
+                public final class PreparedSecretAlert implements AlertEvaluator {
+                    public PreparedSecretAlert() {
+                    }
+
+                    @Override
+                    public AlertResult evaluate(AlertExecutionContext context) {
+                        String value = context.requireValue(AlertExecutionValueSource.SECRET, "login password");
+                        context.setState("password=" + value);
+                        return AlertResult.success(Map.of("password", value));
+                    }
+                }
+                """;
+        String checksum = sha256(source);
+        compiler.synchronize("dynamic.PreparedSecretAlert", checksum, source);
+        CompletableFuture<AlertExecutionResult> result = new CompletableFuture<>();
+
+        try (WorkerExecutionEngine engine = new WorkerExecutionEngine(
+                compiler, new WorkerExecutionTracker(properties), properties, new WorkerInstanceIdentity()
+        )) {
+            engine.execute(
+                    ExecuteAlertRequest.newBuilder()
+                            .setExecutionId("execution-prepared-secret")
+                            .setAlertId(12)
+                            .setAlertName("Prepared secret sample")
+                            .setTemplateClassName("dynamic.PreparedSecretAlert")
+                            .setSourceChecksum(checksum)
+                            .setState("previous=prepared-private")
+                            .addPreparedValues(PreparedAlertValue.newBuilder()
+                                    .setSource(AlertExecutionValueSource.ALERT_EXECUTION_VALUE_SOURCE_SECRET)
+                                    .setName("Login Password")
+                                    .setValue("prepared-private"))
+                            .build(),
+                    observer(result)
+            );
+
+            AlertExecutionResult execution = result.get(5, TimeUnit.SECONDS);
+
+            assertThat(execution.getStatus()).isEqualTo(WorkerExecutionStatus.WORKER_EXECUTION_STATUS_SUCCESS);
+            assertThat(execution.getStatusMessageJson()).isEqualTo("{\"password\":\"[REDACTED]\"}");
+            assertThat(execution.getState()).isEqualTo("password=[REDACTED]");
         }
     }
 

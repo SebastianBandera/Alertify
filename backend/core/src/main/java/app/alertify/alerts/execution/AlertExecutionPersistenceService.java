@@ -4,6 +4,7 @@ import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -223,10 +224,20 @@ public class AlertExecutionPersistenceService {
     }
 
     private static List<String> secretValues(PreparedAlertExecution prepared) {
-        return prepared == null ? List.of() : prepared.parameters().stream()
+        if (prepared == null)
+            return List.of();
+
+        List<String> values = new ArrayList<>(prepared.parameters().stream()
                 .filter(parameter -> parameter.source() == AlertParameterSource.SECRET)
                 .map(ResolvedAlertParameter::value)
-                .toList();
+                .filter(value -> value != null)
+                .toList());
+        prepared.preparedValues().stream()
+                .filter(value -> value.source() == app.alertify.alerts.AlertExecutionValueSource.SECRET)
+                .map(app.alertify.alerts.AlertExecutionValue::value)
+                .filter(value -> value != null)
+                .forEach(values::add);
+        return List.copyOf(values);
     }
 
     private static String required(String value, String name) {

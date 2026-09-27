@@ -46,6 +46,19 @@ message ExecuteAlertRequest {
   string source_checksum = 5;
   repeated AlertParameter parameters = 6;
   string state = 7;
+  repeated PreparedAlertValue prepared_values = 8;
+}
+
+message PreparedAlertValue {
+  AlertExecutionValueSource source = 1;
+  string name = 2;
+  string value = 3;
+}
+
+enum AlertExecutionValueSource {
+  ALERT_EXECUTION_VALUE_SOURCE_UNSPECIFIED = 0;
+  ALERT_EXECUTION_VALUE_SOURCE_CONFIGURATION = 1;
+  ALERT_EXECUTION_VALUE_SOURCE_SECRET = 2;
 }
 
 message AlertParameter {

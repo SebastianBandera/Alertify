@@ -25,6 +25,7 @@ import com.microsoft.playwright.options.WaitUntilState;
 
 import app.alertify.alerts.AlertEvaluator;
 import app.alertify.alerts.AlertExecutionContext;
+import app.alertify.alerts.AlertExecutionValueSource;
 import app.alertify.alerts.AlertResult;
 import app.alertify.alerts.template.annotation.AlertParameter;
 import app.alertify.alerts.template.annotation.AlertTemplate;
@@ -146,7 +147,7 @@ public final class PlaywrightPageAlertTemplate implements AlertEvaluator {
 
         for (BrowserEngine browser : browsers) {
             Map<String, Object> browserStatus = browserStatus(browser);
-            boolean success = evaluateBrowser(configuredUrl, loadTimeoutMillis, elementTimeoutMillis, commands, browserStatus, browser);
+            boolean success = evaluateBrowser(context, configuredUrl, loadTimeoutMillis, elementTimeoutMillis, commands, browserStatus, browser);
             browserStatus.put("status", success ? "SUCCESS" : "WARN");
             if (success)
                 successfulBrowsers++;
@@ -163,7 +164,7 @@ public final class PlaywrightPageAlertTemplate implements AlertEvaluator {
         return warningBrowsers == 0 ? AlertResult.success(statusMessage) : AlertResult.warn(statusMessage);
     }
 
-    private boolean evaluateBrowser(URI configuredUrl, long loadTimeoutMillis, long elementTimeoutMillis, List<Command> commands, Map<String, Object> statusMessage, BrowserEngine browser) throws Exception {
+    private boolean evaluateBrowser(AlertExecutionContext context, URI configuredUrl, long loadTimeoutMillis, long elementTimeoutMillis, List<Command> commands, Map<String, Object> statusMessage, BrowserEngine browser) throws Exception {
         try (BrowserSession session = sessionFactory.open(browser)) {
             long startedNanos = System.nanoTime();
             Navigation navigation;
@@ -199,7 +200,7 @@ public final class PlaywrightPageAlertTemplate implements AlertEvaluator {
                         return false;
                 } else {
                     try {
-                        execute(session, command, elementTimeoutMillis);
+                        execute(context, session, command, elementTimeoutMillis);
                     } catch (RuntimeException exception) {
                         warn(statusMessage, "commandFailure", command, command.keyword());
                         return false;
@@ -241,6 +242,7 @@ public final class PlaywrightPageAlertTemplate implements AlertEvaluator {
                 case "DOUBLE_USE" -> command = currentCommand(lineNumber, CommandType.DOUBLE_USE, arguments, currentElement);
                 case "HOVER" -> command = currentCommand(lineNumber, CommandType.HOVER, arguments, currentElement);
                 case "FOCUS" -> command = currentCommand(lineNumber, CommandType.FOCUS, arguments, currentElement);
+                case "FILL" -> command = fillCommand(lineNumber, arguments, currentElement);
                 case "SELECT" -> {
                     requireCurrent(currentElement, lineNumber, "SELECT");
                     command = command(lineNumber, CommandType.SELECT, requireArgument(arguments, lineNumber, "SELECT"));
@@ -277,7 +279,7 @@ public final class PlaywrightPageAlertTemplate implements AlertEvaluator {
                 if (!matcher.matches())
                     throw lineError(lineNumber, "CHECK COUNT must be '<operator> <non-negative integer>'");
 
-                yield new Command(lineNumber, CommandType.CHECK_COUNT, null, null, 0, CountOperator.parse(matcher.group(1)), Integer.parseInt(matcher.group(2)));
+                yield new Command(lineNumber, CommandType.CHECK_COUNT, null, null, 0, CountOperator.parse(matcher.group(1)), Integer.parseInt(matcher.group(2)), null);
             }
             case "ENABLED" -> currentCheck(lineNumber, CommandType.CHECK_ENABLED, checkArguments, currentElement, "CHECK ENABLED");
             case "DISABLED" -> currentCheck(lineNumber, CommandType.CHECK_DISABLED, checkArguments, currentElement, "CHECK DISABLED");
@@ -289,7 +291,7 @@ public final class PlaywrightPageAlertTemplate implements AlertEvaluator {
                 if (attribute.length != 2 || attribute[0].isBlank() || attribute[1].isBlank())
                     throw lineError(lineNumber, "CHECK ATTRIBUTE must be '<name> <value>'");
 
-                yield new Command(lineNumber, CommandType.CHECK_ATTRIBUTE, attribute[0], attribute[1].trim(), 0, null, 0);
+                yield new Command(lineNumber, CommandType.CHECK_ATTRIBUTE, attribute[0], attribute[1].trim(), 0, null, 0, null);
             }
             case "URL" -> command(lineNumber, CommandType.CHECK_URL, requireArgument(checkArguments, lineNumber, "CHECK URL"));
             default -> throw lineError(lineNumber, "Unsupported CHECK '" + tokens[0] + "'");
@@ -309,12 +311,32 @@ public final class PlaywrightPageAlertTemplate implements AlertEvaluator {
         return command(lineNumber, type);
     }
 
+    private static Command fillCommand(int lineNumber, String arguments, boolean currentElement) {
+        requireCurrent(currentElement, lineNumber, "FILL");
+        String reference = requireArgument(arguments, lineNumber, "FILL");
+        AlertExecutionValueSource source;
+        String name;
+        if (reference.startsWith("configs.")) {
+            source = AlertExecutionValueSource.CONFIGURATION;
+            name = reference.substring("configs.".length()).trim();
+        } else if (reference.startsWith("secrets.")) {
+            source = AlertExecutionValueSource.SECRET;
+            name = reference.substring("secrets.".length()).trim();
+        } else {
+            throw lineError(lineNumber, "FILL must reference configs.<name> or secrets.<name>");
+        }
+        if (name.isEmpty())
+            throw lineError(lineNumber, "FILL reference name must not be blank");
+
+        return new Command(lineNumber, CommandType.FILL, name, null, 0, null, 0, source);
+    }
+
     private static Command durationCommand(int lineNumber, String arguments) {
         String duration = requireArgument(arguments, lineNumber, "WAIT");
         if (duration.indexOf(' ') >= 0 || duration.indexOf('\t') >= 0)
             throw lineError(lineNumber, "WAIT accepts exactly one duration");
 
-        return new Command(lineNumber, CommandType.WAIT, null, null, parseDurationMillis(duration, lineNumber), null, 0);
+        return new Command(lineNumber, CommandType.WAIT, null, null, parseDurationMillis(duration, lineNumber), null, 0, null);
     }
 
     private static Command selectorWaitCommand(int lineNumber, CommandType type, String arguments) {
@@ -323,7 +345,7 @@ public final class PlaywrightPageAlertTemplate implements AlertEvaluator {
         if (!matcher.matches())
             return command(lineNumber, type, configured);
 
-        return new Command(lineNumber, type, matcher.group(1), null, parseDurationMillis(matcher.group(2), lineNumber), null, 0);
+        return new Command(lineNumber, type, matcher.group(1), null, parseDurationMillis(matcher.group(2), lineNumber), null, 0, null);
     }
 
     private static long parseDurationMillis(String configured, int lineNumber) {
@@ -343,7 +365,7 @@ public final class PlaywrightPageAlertTemplate implements AlertEvaluator {
         }
     }
 
-    private static void execute(BrowserSession session, Command command, long elementTimeoutMillis) throws InterruptedException {
+    private static void execute(AlertExecutionContext context, BrowserSession session, Command command, long elementTimeoutMillis) throws InterruptedException {
         long timeout = command.durationMillis() > 0 ? command.durationMillis() : elementTimeoutMillis;
         switch (command.type()) {
             case QUERY -> session.query(command.first(), elementTimeoutMillis);
@@ -351,6 +373,7 @@ public final class PlaywrightPageAlertTemplate implements AlertEvaluator {
             case DOUBLE_USE -> session.doubleClick(elementTimeoutMillis);
             case HOVER -> session.hover(elementTimeoutMillis);
             case FOCUS -> session.focus(elementTimeoutMillis);
+            case FILL -> session.fill(context.requireValue(command.valueSource(), command.first()), elementTimeoutMillis);
             case SELECT -> session.select(command.first(), elementTimeoutMillis);
             case WAIT -> Thread.sleep(command.durationMillis());
             case WAIT_VISIBLE -> session.waitVisible(command.first(), timeout);
@@ -493,11 +516,24 @@ public final class PlaywrightPageAlertTemplate implements AlertEvaluator {
     }
 
     private static Command command(int lineNumber, CommandType type) {
-        return new Command(lineNumber, type, null, null, 0, null, 0);
+        return new Command(lineNumber, type, null, null, 0, null, 0, null);
     }
 
     private static Command command(int lineNumber, CommandType type, String first) {
-        return new Command(lineNumber, type, first, null, 0, null, 0);
+        return new Command(lineNumber, type, first, null, 0, null, 0, null);
+    }
+
+    /** Returns the read-only values that must be prepared before worker dispatch. */
+    public static List<ValueReference> requiredValues(String configured) {
+        Map<String, ValueReference> references = new LinkedHashMap<>();
+        for (Command command : parseCommands(configured)) {
+            if (command.type() != CommandType.FILL)
+                continue;
+
+            ValueReference reference = new ValueReference(command.valueSource(), command.first());
+            references.putIfAbsent(reference.source().name() + ":" + reference.name().toLowerCase(Locale.ROOT), reference);
+        }
+        return List.copyOf(references.values());
     }
 
     private static long elapsedMillis(long startedNanos) {
@@ -514,6 +550,7 @@ public final class PlaywrightPageAlertTemplate implements AlertEvaluator {
         DOUBLE_USE,
         HOVER,
         FOCUS,
+        FILL,
         SELECT,
         WAIT,
         WAIT_VISIBLE,
@@ -561,7 +598,7 @@ public final class PlaywrightPageAlertTemplate implements AlertEvaluator {
         }
     }
 
-    record Command(int lineNumber, CommandType type, String first, String second, long durationMillis, CountOperator countOperator, int count) {
+    record Command(int lineNumber, CommandType type, String first, String second, long durationMillis, CountOperator countOperator, int count, AlertExecutionValueSource valueSource) {
 
         String keyword() {
             return switch (type) {
@@ -569,6 +606,9 @@ public final class PlaywrightPageAlertTemplate implements AlertEvaluator {
                 default -> type.name();
             };
         }
+    }
+
+    public record ValueReference(AlertExecutionValueSource source, String name) {
     }
 
     record Navigation(Integer statusCode) {
@@ -604,6 +644,7 @@ public final class PlaywrightPageAlertTemplate implements AlertEvaluator {
         void doubleClick(long timeoutMillis);
         void hover(long timeoutMillis);
         void focus(long timeoutMillis);
+        void fill(String value, long timeoutMillis);
         void select(String value, long timeoutMillis);
         void waitVisible(String selector, long timeoutMillis);
         void waitHidden(String selector, long timeoutMillis);
@@ -725,6 +766,11 @@ public final class PlaywrightPageAlertTemplate implements AlertEvaluator {
         @Override
         public void focus(long timeoutMillis) {
             current.focus(new Locator.FocusOptions().setTimeout((double) timeoutMillis));
+        }
+
+        @Override
+        public void fill(String value, long timeoutMillis) {
+            current.fill(value, new Locator.FillOptions().setTimeout((double) timeoutMillis));
         }
 
         @Override

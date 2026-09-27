@@ -28,6 +28,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.google.protobuf.Timestamp;
 
+import app.alertify.alerts.AlertExecutionValue;
+import app.alertify.alerts.AlertExecutionValueSource;
 import app.alertify.alerts.template.annotation.AlertParameterSource;
 import app.alertify.dashboard.DashboardEventPublisher;
 import app.alertify.grpc.AlertWorkerClient;
@@ -163,6 +165,40 @@ class AlertExecutionOrchestratorTest {
         assertThat(request.getValue().getParameters(0).getSecretId()).isZero();
         assertThat(request.getValue().getParameters(0).getConfigurationId()).isZero();
         assertThat(request.getValue().getParameters(0).getWritable()).isFalse();
+    }
+
+    @Test
+    void transportsOnlyTheValuesPreparedForThisExecution() {
+        PreparedAlertExecution prepared = new PreparedAlertExecution(
+                7L, "Sample alert", "dynamic.SampleAlert", WorkerCapability.STANDARD,
+                CHECKSUM, "source", "previous-state", List.of(), List.of(
+                        new AlertExecutionValue(AlertExecutionValueSource.CONFIGURATION, "Login User", "monitor"),
+                        new AlertExecutionValue(AlertExecutionValueSource.SECRET, "Login Password", "private")
+                )
+        );
+        when(preparationService.prepare(7L, false)).thenReturn(Optional.of(prepared));
+        when(workerStatusService.reserve(WorkerCapability.STANDARD)).thenReturn(reservation);
+        when(workerClient.executeAlert(eq(ENDPOINT), any(), any(), any(Duration.class), any())).thenReturn(successfulResult());
+
+        orchestrator.trigger(7L, "Sample alert", false);
+
+        verify(persistenceService, org.mockito.Mockito.timeout(5000)).persistWorkerResult(
+                eq(7L), any(UUID.class), eq(ENDPOINT), any(AlertExecutionResult.class), any(PreparedAlertExecution.class)
+        );
+        ArgumentCaptor<ExecuteAlertRequest> request = ArgumentCaptor.forClass(ExecuteAlertRequest.class);
+        verify(workerClient).executeAlert(eq(ENDPOINT), request.capture(), any(), any(Duration.class), any());
+        assertThat(request.getValue().getPreparedValuesList()).satisfiesExactly(
+                value -> {
+                    assertThat(value.getSource()).isEqualTo(app.alertify.worker.grpc.AlertExecutionValueSource.ALERT_EXECUTION_VALUE_SOURCE_CONFIGURATION);
+                    assertThat(value.getName()).isEqualTo("Login User");
+                    assertThat(value.getValue()).isEqualTo("monitor");
+                },
+                value -> {
+                    assertThat(value.getSource()).isEqualTo(app.alertify.worker.grpc.AlertExecutionValueSource.ALERT_EXECUTION_VALUE_SOURCE_SECRET);
+                    assertThat(value.getName()).isEqualTo("Login Password");
+                    assertThat(value.getValue()).isEqualTo("private");
+                }
+        );
     }
 
     @Test

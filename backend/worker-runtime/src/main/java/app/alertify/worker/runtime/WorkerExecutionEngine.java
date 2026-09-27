@@ -17,6 +17,8 @@ import com.google.protobuf.Timestamp;
 
 import app.alertify.alerts.AlertEvaluator;
 import app.alertify.alerts.AlertExecutionContext;
+import app.alertify.alerts.AlertExecutionValue;
+import app.alertify.alerts.AlertExecutionValueSource;
 import app.alertify.alerts.AlertResult;
 import app.alertify.alerts.execution.AlertExecutionStatus;
 import app.alertify.alerts.template.annotation.AlertParameterSource;
@@ -86,7 +88,10 @@ class WorkerExecutionEngine implements AutoCloseable {
                             AlertParameter::getName,
                             parameter -> source(parameter.getSource())
                     ));
-            context = new AlertExecutionContext(SecretValueSanitizer.sanitize(request.getState(), secretValues), parameterSources);
+            List<AlertExecutionValue> preparedValues = request.getPreparedValuesList().stream()
+                    .map(value -> new AlertExecutionValue(valueSource(value.getSource()), value.getName(), value.getValue()))
+                    .toList();
+            context = new AlertExecutionContext(SecretValueSanitizer.sanitize(request.getState(), secretValues), parameterSources, preparedValues);
 
             CompiledAlertTemplate template = compiler.get(request.getTemplateClassName(), request.getSourceChecksum());
             AlertEvaluator evaluator = template.newInstance(request.getParametersList(), procedureHandles, deadline);
@@ -165,6 +170,15 @@ class WorkerExecutionEngine implements AutoCloseable {
         };
     }
 
+    private static AlertExecutionValueSource valueSource(app.alertify.worker.grpc.AlertExecutionValueSource source) {
+        return switch (source) {
+            case ALERT_EXECUTION_VALUE_SOURCE_CONFIGURATION -> AlertExecutionValueSource.CONFIGURATION;
+            case ALERT_EXECUTION_VALUE_SOURCE_SECRET -> AlertExecutionValueSource.SECRET;
+            case ALERT_EXECUTION_VALUE_SOURCE_UNSPECIFIED, UNRECOGNIZED ->
+                    throw new IllegalArgumentException("Prepared alert value source must be specified");
+        };
+    }
+
     static Timestamp timestamp(Instant value) {
         return Timestamp.newBuilder()
                 .setSeconds(value.getEpochSecond())
@@ -183,11 +197,17 @@ class WorkerExecutionEngine implements AutoCloseable {
     }
 
     private static List<String> secretValues(ExecuteAlertRequest request) {
-        return request.getParametersList().stream()
+        List<String> values = new java.util.ArrayList<>(request.getParametersList().stream()
                 .filter(parameter -> parameter.getSource() == AlertParameterValueSource.ALERT_PARAMETER_VALUE_SOURCE_SECRET)
                 .filter(parameter -> !parameter.getNullValue() && !parameter.getValue().isEmpty())
                 .map(AlertParameter::getValue)
-                .toList();
+                .toList());
+        request.getPreparedValuesList().stream()
+                .filter(value -> value.getSource() == app.alertify.worker.grpc.AlertExecutionValueSource.ALERT_EXECUTION_VALUE_SOURCE_SECRET)
+                .map(app.alertify.worker.grpc.PreparedAlertValue::getValue)
+                .filter(value -> !value.isEmpty())
+                .forEach(values::add);
+        return List.copyOf(values);
     }
 
     @Override
