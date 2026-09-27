@@ -232,7 +232,8 @@ export class AdminEventChannelService {
 
     this.connectionState.set('reconnecting');
     const baseDelay = this.reconnectDelayMillis;
-    const delay = Math.round(baseDelay * (0.8 + Math.random() * 0.4));
+    const jitter = crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32;
+    const delay = Math.round(baseDelay * (0.8 + jitter * 0.4));
     this.reconnectDelayMillis = Math.min(MAX_RECONNECT_DELAY_MILLIS, baseDelay * 2);
     this.reconnectTimer = this.document.defaultView?.setTimeout(() => {
       this.reconnectTimer = null;
