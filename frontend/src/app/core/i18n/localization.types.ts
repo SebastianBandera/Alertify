@@ -9,6 +9,8 @@ export type TranslationKey =
   | 'navigation.collapse'
   | 'navigation.expand'
   | 'navigation.sections'
+  | 'navigation.scrollLeft'
+  | 'navigation.scrollRight'
   | 'navigation.noMatches'
   | 'navigation.dashboard'
   | 'navigation.alerts'

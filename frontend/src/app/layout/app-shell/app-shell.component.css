@@ -195,6 +195,17 @@
   transform: rotate(45deg);
 }
 
+.navigation-container {
+  min-height: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.navigation-scroll-button {
+  display: none;
+}
+
 .navigation {
   min-height: 0;
   flex: 1 1 auto;
@@ -634,7 +645,77 @@
   }
 
   .navigation {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    flex: 0 0 auto;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(100px, 1fr);
+    overflow-x: auto;
+    overflow-y: hidden;
+    mask-image: none;
+    -webkit-mask-image: none;
+  }
+
+  .navigation-container {
+    position: relative;
+    flex: 0 0 auto;
+  }
+
+  .navigation-scroll-button:not([hidden]) {
+    position: absolute;
+    z-index: 1;
+    top: 50%;
+    width: 32px;
+    height: 42px;
+    display: grid;
+    place-items: center;
+    border: 1px solid rgb(255 255 255 / 22%);
+    border-radius: 9px;
+    background: #344054;
+    color: white;
+    cursor: pointer;
+    transform: translateY(-50%);
+  }
+
+  .navigation-scroll-button:hover,
+  .navigation-scroll-button:focus-visible {
+    outline: none;
+    background: #475467;
+    box-shadow: 0 0 0 2px #8b7cff;
+  }
+
+  .navigation-scroll-button--left {
+    left: 2px;
+  }
+
+  .navigation-scroll-button--right {
+    right: 2px;
+  }
+
+  .navigation-scroll-button__icon {
+    width: 9px;
+    height: 9px;
+    border-top: 2px solid currentColor;
+    border-right: 2px solid currentColor;
+    transform: rotate(45deg);
+  }
+
+  .navigation-scroll-button--left .navigation-scroll-button__icon {
+    transform: rotate(-135deg);
+  }
+
+  .navigation--more-left,
+  .navigation--more-right {
+    --navigation-fade-left: 0px;
+    --navigation-fade-right: 0px;
+    mask-image: linear-gradient(to right, transparent, #000 var(--navigation-fade-left), #000 calc(100% - var(--navigation-fade-right)), transparent);
+    -webkit-mask-image: linear-gradient(to right, transparent, #000 var(--navigation-fade-left), #000 calc(100% - var(--navigation-fade-right)), transparent);
+  }
+
+  .navigation--more-left {
+    --navigation-fade-left: 88px;
+  }
+
+  .navigation--more-right {
+    --navigation-fade-right: 88px;
   }
 
   .navigation__item {

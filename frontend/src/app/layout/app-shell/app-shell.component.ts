@@ -88,6 +88,8 @@ export class AppShellComponent {
   protected readonly draggedNavigationPath = signal<string | null>(null);
   protected readonly navigationHasMoreAbove = signal(false);
   protected readonly navigationHasMoreBelow = signal(false);
+  protected readonly navigationHasMoreLeft = signal(false);
+  protected readonly navigationHasMoreRight = signal(false);
   private readonly searchInput = viewChild<ElementRef<HTMLInputElement>>('navigationSearchInput');
   private readonly navigationList = viewChild<ElementRef<HTMLElement>>('navigationList');
   private readonly activeTitleKey = signal<TranslationKey>(this.titleKeyForUrl(this.router.url));
@@ -213,6 +215,17 @@ export class AppShellComponent {
     this.navigationHasMoreBelow.set(
       navigation !== undefined && navigation.scrollTop + navigation.clientHeight < navigation.scrollHeight - 1,
     );
+    this.navigationHasMoreLeft.set(navigation !== undefined && navigation.scrollLeft > 1);
+    this.navigationHasMoreRight.set(
+      navigation !== undefined && navigation.scrollLeft + navigation.clientWidth < navigation.scrollWidth - 1,
+    );
+  }
+
+  protected scrollNavigation(direction: -1 | 1): void {
+    const navigation = this.navigationList()?.nativeElement;
+    if (!navigation) return;
+
+    navigation.scrollBy({ left: direction * navigation.clientWidth * 0.7, behavior: 'smooth' });
   }
 
   protected updateLocale(locale: string): void {

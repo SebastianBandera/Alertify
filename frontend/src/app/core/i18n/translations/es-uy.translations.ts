@@ -12,6 +12,8 @@ export const ES_UY_TRANSLATIONS = {
   'navigation.collapse': 'Colapsar navegación',
   'navigation.expand': 'Expandir navegación',
   'navigation.sections': 'Secciones del espacio de trabajo',
+  'navigation.scrollLeft': 'Ver secciones anteriores',
+  'navigation.scrollRight': 'Ver más secciones',
   'navigation.noMatches': 'Ninguna opción coincide con la búsqueda.',
   'navigation.dashboard': 'Tablero',
   'navigation.alerts': 'Alertas',

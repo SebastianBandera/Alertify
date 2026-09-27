@@ -12,6 +12,8 @@ export const EN_TRANSLATIONS = {
   'navigation.collapse': 'Collapse navigation',
   'navigation.expand': 'Expand navigation',
   'navigation.sections': 'Workspace sections',
+  'navigation.scrollLeft': 'Show previous sections',
+  'navigation.scrollRight': 'Show more sections',
   'navigation.noMatches': 'No options match your search.',
   'navigation.dashboard': 'Dashboard',
   'navigation.alerts': 'Alerts',

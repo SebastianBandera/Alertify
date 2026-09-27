@@ -56,50 +56,74 @@
       <span class="navigation-search__icon" aria-hidden="true"></span>
     </button>
 
-    <nav
-      #navigationList
-      class="navigation"
-      [class.navigation--more-above]="navigationHasMoreAbove()"
-      [class.navigation--more-below]="navigationHasMoreBelow()"
-      [attr.aria-label]="localization.translate('navigation.sections')"
-      (scroll)="updateNavigationOverflow()"
-    >
-      @for (item of filteredNavigationItems(); track item.path) {
-        <a
-          class="navigation__item"
-          [routerLink]="item.path"
-          routerLinkActive="navigation__item--active"
-          [attr.aria-label]="localization.translate(item.labelKey)"
-          [attr.title]="localization.translate(item.labelKey)"
-          [attr.draggable]="!searchTerm()"
-          [class.navigation__item--dragging]="draggedNavigationPath() === item.path"
-          [class.navigation__item--drop-target]="draggedNavigationPath() !== null && draggedNavigationPath() !== item.path"
-          (dragstart)="startNavigationDrag($event, item)"
-          (dragover)="allowNavigationDrop($event, item)"
-          (drop)="reorderNavigation($event, item)"
-          (dragend)="finishNavigationDrag()"
-        >
-          <span class="navigation__marker" aria-hidden="true">
-            <span
-              class="navigation__icon"
-              [class.navigation__icon--dashboard]="item.icon === 'dashboard'"
-              [class.navigation__icon--alerts]="item.icon === 'alerts'"
-              [class.navigation__icon--procedures]="item.icon === 'procedures'"
-              [class.navigation__icon--pipes]="item.icon === 'pipes'"
-              [class.navigation__icon--hooks]="item.icon === 'hooks'"
-              [class.navigation__icon--status]="item.icon === 'status'"
-              [class.navigation__icon--configs]="item.icon === 'configs'"
-              [class.navigation__icon--system-configs]="item.icon === 'system-configs'"
-              [class.navigation__icon--secrets]="item.icon === 'secrets'"
-              [class.navigation__icon--logs]="item.icon === 'logs'"
-            ></span>
-          </span>
-          <span class="navigation__label">{{ localization.translate(item.labelKey) }}</span>
-        </a>
-      } @empty {
-        <p class="navigation__empty">{{ localization.translate('navigation.noMatches') }}</p>
-      }
-    </nav>
+    <div class="navigation-container">
+      <nav
+        #navigationList
+        class="navigation"
+        [class.navigation--more-above]="navigationHasMoreAbove()"
+        [class.navigation--more-below]="navigationHasMoreBelow()"
+        [class.navigation--more-left]="navigationHasMoreLeft()"
+        [class.navigation--more-right]="navigationHasMoreRight()"
+        [attr.aria-label]="localization.translate('navigation.sections')"
+        (scroll)="updateNavigationOverflow()"
+      >
+        @for (item of filteredNavigationItems(); track item.path) {
+          <a
+            class="navigation__item"
+            [routerLink]="item.path"
+            routerLinkActive="navigation__item--active"
+            [attr.aria-label]="localization.translate(item.labelKey)"
+            [attr.title]="localization.translate(item.labelKey)"
+            [attr.draggable]="!searchTerm()"
+            [class.navigation__item--dragging]="draggedNavigationPath() === item.path"
+            [class.navigation__item--drop-target]="draggedNavigationPath() !== null && draggedNavigationPath() !== item.path"
+            (dragstart)="startNavigationDrag($event, item)"
+            (dragover)="allowNavigationDrop($event, item)"
+            (drop)="reorderNavigation($event, item)"
+            (dragend)="finishNavigationDrag()"
+          >
+            <span class="navigation__marker" aria-hidden="true">
+              <span
+                class="navigation__icon"
+                [class.navigation__icon--dashboard]="item.icon === 'dashboard'"
+                [class.navigation__icon--alerts]="item.icon === 'alerts'"
+                [class.navigation__icon--procedures]="item.icon === 'procedures'"
+                [class.navigation__icon--pipes]="item.icon === 'pipes'"
+                [class.navigation__icon--hooks]="item.icon === 'hooks'"
+                [class.navigation__icon--status]="item.icon === 'status'"
+                [class.navigation__icon--configs]="item.icon === 'configs'"
+                [class.navigation__icon--system-configs]="item.icon === 'system-configs'"
+                [class.navigation__icon--secrets]="item.icon === 'secrets'"
+                [class.navigation__icon--logs]="item.icon === 'logs'"
+              ></span>
+            </span>
+            <span class="navigation__label">{{ localization.translate(item.labelKey) }}</span>
+          </a>
+        } @empty {
+          <p class="navigation__empty">{{ localization.translate('navigation.noMatches') }}</p>
+        }
+      </nav>
+      <button
+        class="navigation-scroll-button navigation-scroll-button--left"
+        type="button"
+        [hidden]="!navigationHasMoreLeft()"
+        (click)="scrollNavigation(-1)"
+        [attr.aria-label]="localization.translate('navigation.scrollLeft')"
+        [attr.title]="localization.translate('navigation.scrollLeft')"
+      >
+        <span class="navigation-scroll-button__icon" aria-hidden="true"></span>
+      </button>
+      <button
+        class="navigation-scroll-button navigation-scroll-button--right"
+        type="button"
+        [hidden]="!navigationHasMoreRight()"
+        (click)="scrollNavigation(1)"
+        [attr.aria-label]="localization.translate('navigation.scrollRight')"
+        [attr.title]="localization.translate('navigation.scrollRight')"
+      >
+        <span class="navigation-scroll-button__icon" aria-hidden="true"></span>
+      </button>
+    </div>
 
     <div class="sidebar__footer">
       <div class="user-summary">
