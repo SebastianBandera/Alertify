@@ -514,14 +514,18 @@ td small {
 }
 
 .configs--configurations .updated-column,
-.configs--configurations .date-cell {
+.configs--configurations .date-cell,
+.configs--secrets .updated-column,
+.configs--secrets .date-cell {
   width: 145px;
   max-width: 145px;
   white-space: normal;
 }
 
 .configs--configurations .uses-column,
-.configs--configurations .uses-cell {
+.configs--configurations .uses-cell,
+.configs--secrets .uses-column,
+.configs--secrets .uses-cell {
   width: 72px;
   text-align: center;
 }

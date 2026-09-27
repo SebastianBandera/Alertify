@@ -13,6 +13,8 @@ import {
   SECRET_VALUE_TYPES,
   SecretApiService,
   SecretTag,
+  SecretUsageType,
+  SecretUsages,
   SecretValue,
   SecretValueType,
 } from '../../core/api/secret-api.service';
@@ -139,6 +141,11 @@ export class SecretsComponent implements OnInit {
   protected readonly pageSize = signal(readStoredPageSize());
   protected readonly totalElements = signal(0);
   protected readonly totalPages = signal(0);
+  protected readonly usageSecret = signal<ApplicationSecret | null>(null);
+  protected readonly usages = signal<SecretUsages | null>(null);
+  protected readonly usagesLoading = signal(false);
+  protected readonly usagesError = signal<string | null>(null);
+  private usageRequestId = 0;
   protected readonly selectedFilterTags = computed(() => {
     const tagsById = new Map(this.tags().map((tag) => [tag.id, tag]));
     return this.selectedTagIds().flatMap((tagId) => {
@@ -274,6 +281,39 @@ export class SecretsComponent implements OnInit {
     });
     this.formError.set(null);
     this.editorOpen.set(true);
+  }
+
+  protected async openUsages(secret: ApplicationSecret): Promise<void> {
+    const requestId = ++this.usageRequestId;
+    this.usageSecret.set(secret);
+    this.usages.set(null);
+    this.usagesError.set(null);
+    this.usagesLoading.set(true);
+    try {
+      const usages = await this.api.getSecretUsages(secret.id);
+      if (requestId === this.usageRequestId) this.usages.set(usages);
+    } catch (error) {
+      if (requestId === this.usageRequestId) this.usagesError.set(this.errorMessage(error));
+    } finally {
+      if (requestId === this.usageRequestId) this.usagesLoading.set(false);
+    }
+  }
+
+  protected closeUsages(): void {
+    ++this.usageRequestId;
+    this.usageSecret.set(null);
+    this.usages.set(null);
+    this.usagesError.set(null);
+    this.usagesLoading.set(false);
+  }
+
+  protected usageTypeLabel(type: SecretUsageType): string {
+    switch (type) {
+      case 'ALERT': return this.localization.translate('secrets.usages.type.alert');
+      case 'PROCEDURE': return this.localization.translate('secrets.usages.type.procedure');
+      case 'HOOK': return this.localization.translate('secrets.usages.type.hook');
+      case 'SECRET': return this.localization.translate('secrets.usages.type.secret');
+    }
   }
 
   protected closeEditor(): void {

@@ -25,6 +25,20 @@ public record SecretResponse(
     SecretRecoveryStatus recoveryStatus,
     long valueRevision,
     Instant createdAt,
-    Instant updatedAt
+    Instant updatedAt,
+    int usageCount
 ) {
+    public SecretResponse(Long id, long version, String name, String description, SecretValueType valueType,
+            String binaryFileName, String binaryContentType, Long binarySize, Long binaryZipSize,
+            Set<TagResponse> tags, boolean writable, SecretRecoveryStatus recoveryStatus, long valueRevision,
+            Instant createdAt, Instant updatedAt) {
+        this(id, version, name, description, valueType, binaryFileName, binaryContentType, binarySize,
+                binaryZipSize, tags, writable, recoveryStatus, valueRevision, createdAt, updatedAt, 0);
+    }
+
+    public SecretResponse withUsageCount(int count) {
+        return new SecretResponse(id, version, name, description, valueType, binaryFileName,
+                binaryContentType, binarySize, binaryZipSize, tags, writable, recoveryStatus,
+                valueRevision, createdAt, updatedAt, count);
+    }
 }

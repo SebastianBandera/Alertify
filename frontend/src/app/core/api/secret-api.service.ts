@@ -100,6 +100,22 @@ export interface ApplicationSecret {
   readonly valueRevision: number;
   readonly createdAt: string;
   readonly updatedAt: string;
+  readonly usageCount: number;
+}
+
+export type SecretUsageType = 'ALERT' | 'PROCEDURE' | 'HOOK' | 'SECRET';
+
+export interface SecretUsage {
+  readonly type: SecretUsageType;
+  readonly id: number;
+  readonly name: string;
+  readonly enabled: boolean | null;
+}
+
+export interface SecretUsages {
+  readonly totalCount: number;
+  readonly direct: readonly SecretUsage[];
+  readonly indirect: readonly SecretUsage[];
 }
 
 export interface SecretCreateRequest {
@@ -140,6 +156,10 @@ export class SecretApiService {
     tagIds.forEach((tagId) => params.append('tagId', String(tagId)));
     if (tagIds.length >= 2) params.set('tagOperator', tagMatchMode);
     return this.request<PageResponse<ApplicationSecret>>(`/api/secrets?${params.toString()}`);
+  }
+
+  async getSecretUsages(id: number): Promise<SecretUsages> {
+    return this.request(`/api/secrets/${id}/usages`);
   }
 
   async createSecret(request: SecretCreateRequest): Promise<ApplicationSecret> {

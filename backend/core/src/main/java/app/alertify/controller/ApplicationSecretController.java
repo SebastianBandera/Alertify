@@ -1,6 +1,7 @@
 package app.alertify.controller;
 
 import java.net.URI;
+import java.util.List;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -30,10 +31,12 @@ import app.alertify.secret.api.SecretExpressionSuggestionsResponse;
 import app.alertify.secret.api.SecretExpressionValidationRequest;
 import app.alertify.secret.api.SecretResponse;
 import app.alertify.secret.api.SecretUpdateRequest;
+import app.alertify.secret.api.SecretUsagesResponse;
 import app.alertify.secret.api.BinarySecretCreateRequest;
 import app.alertify.secret.api.BinarySecretUpdateRequest;
 import app.alertify.services.secret.ApplicationSecretService;
 import app.alertify.services.secret.DatabaseSecretProbeService;
+import app.alertify.services.secret.SecretUsageService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.PositiveOrZero;
 
@@ -49,15 +52,19 @@ public class ApplicationSecretController {
 
     private final ApplicationSecretService service;
     private final DatabaseSecretProbeService databaseProbeService;
+    private final SecretUsageService usageService;
 
-    public ApplicationSecretController(ApplicationSecretService service, DatabaseSecretProbeService databaseProbeService) {
+    public ApplicationSecretController(ApplicationSecretService service, DatabaseSecretProbeService databaseProbeService, SecretUsageService usageService) {
         this.service = service;
         this.databaseProbeService = databaseProbeService;
+        this.usageService = usageService;
     }
 
     @GetMapping
     public Page<SecretResponse> search(@RequestParam MultiValueMap<String, String> params, @PageableDefault(size = 20, sort = "name") Pageable pageable) {
-        return service.search(params, pageable);
+        Page<SecretResponse> page = service.search(params, pageable);
+        var usages = usageService.getForIds(page.getContent().stream().map(SecretResponse::id).toList());
+        return page.map(secret -> secret.withUsageCount(usages.get(secret.id()).totalCount()));
     }
 
     @GetMapping("/expression-suggestions")
@@ -86,36 +93,45 @@ public class ApplicationSecretController {
 
     @GetMapping("/{id}")
     public SecretResponse get(@PathVariable Long id) {
-        return service.get(id);
+        return withUsageCount(service.get(id));
+    }
+
+    @GetMapping("/{id}/usages")
+    public SecretUsagesResponse usages(@PathVariable Long id) {
+        return usageService.get(id);
     }
 
     @PostMapping
     public ResponseEntity<SecretResponse> create(@Valid @RequestBody SecretCreateRequest request) {
-        SecretResponse response = service.create(request);
+        SecretResponse response = withUsageCount(service.create(request));
         URI location = ServletUriComponentsBuilder.fromCurrentRequest().path("/{id}").buildAndExpand(response.id()).toUri();
         return ResponseEntity.created(location).body(response);
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<SecretResponse> createBinary(@Valid @RequestPart("metadata") BinarySecretCreateRequest request, @RequestPart(value = "file", required = false) MultipartFile file) {
-        SecretResponse response = service.createBinary(request, file);
+        SecretResponse response = withUsageCount(service.createBinary(request, file));
         URI location = ServletUriComponentsBuilder.fromCurrentRequest().path("/{id}").buildAndExpand(response.id()).toUri();
         return ResponseEntity.created(location).body(response);
     }
 
     @PutMapping("/{id}")
     public SecretResponse update(@PathVariable Long id, @Valid @RequestBody SecretUpdateRequest request) {
-        return service.update(id, request);
+        return withUsageCount(service.update(id, request));
     }
 
     @PutMapping(value = "/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public SecretResponse updateBinary(@PathVariable Long id, @Valid @RequestPart("metadata") BinarySecretUpdateRequest request, @RequestPart(value = "file", required = false) MultipartFile file) { 
-        return service.updateBinary(id, request, file);
+        return withUsageCount(service.updateBinary(id, request, file));
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id, @RequestParam @PositiveOrZero long version) {
         service.delete(id, version);
         return ResponseEntity.noContent().build();
+    }
+
+    private SecretResponse withUsageCount(SecretResponse response) {
+        return response.withUsageCount(usageService.getForIds(List.of(response.id())).get(response.id()).totalCount());
     }
 }
