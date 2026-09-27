@@ -50,7 +50,7 @@ class WritableConfigurationServiceTest {
         assertThat(configuration.getValue().intValue()).isEqualTo(6);
         verify(expressionService).synchronizeDependencies(configuration);
         verify(configurationRepository).flush();
-        verify(cacheInvalidator).evictAfterCommit(10L, Set.of("counter"));
+        verify(cacheInvalidator).evictAfterCommit(10L);
         verify(eventLogger).successAfterCommit(
                 eq("CONFIGURATION_OVERWRITTEN_BY_ALERT"),
                 org.mockito.ArgumentMatchers.argThat(data ->

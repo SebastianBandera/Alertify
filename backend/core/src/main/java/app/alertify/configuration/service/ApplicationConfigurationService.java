@@ -110,7 +110,7 @@ public class ApplicationConfigurationService {
         configuration.changeBinaryMetadata(binary.fileName(), binary.contentType(), binary.size(), binary.zipSize(), binary.sha256());
         ApplicationConfiguration saved = configurationRepository.saveAndFlush(configuration);
         binaryRepository.saveAndFlush(new ConfigurationBinaryValue(saved.getId(), binary.zip()));
-        cacheInvalidator.evictAfterCommit(saved.getId(), Set.of(saved.getName()));
+        cacheInvalidator.evictAfterCommit(saved.getId());
         eventLogger.successAfterCommit("CONFIGURATION_CREATED", Map.of(CONFIGURATION_ID, saved.getId(), "name", saved.getName(), VALUE_TYPE, "BINARY"));
         return ConfigurationMapper.toResponse(saved);
     }
@@ -120,7 +120,6 @@ public class ApplicationConfigurationService {
         ApplicationConfiguration configuration = find(id);
         verifyVersion(configuration.getVersion(), request.version(), CONFIGURATION);
         BinaryPayloadService.PreparedBinary binary = prepare(file);
-        String previousName = configuration.getName();
         String name = normalizeRequired(request.name());
         if (!configuration.getName().equals(name)) { expressionService.ensureNotReferenced(configuration, "renamed"); ensureNameAvailable(name, id); configuration.rename(name); }
         configuration.changeDescription(normalizeOptional(request.description()));
@@ -132,7 +131,7 @@ public class ApplicationConfigurationService {
         configurationRepository.flush();
         binaryRepository.saveAndFlush(new ConfigurationBinaryValue(id, binary.zip()));
         expressionService.synchronizeDependencies(configuration);
-        cacheInvalidator.evictAfterCommit(id, new LinkedHashSet<>(List.of(previousName, configuration.getName())));
+        cacheInvalidator.evictAfterCommit(id);
         eventLogger.successAfterCommit("CONFIGURATION_UPDATED", Map.of(
                 CONFIGURATION_ID, id, "name", configuration.getName(), VALUE_TYPE, ConfigurationValueType.BINARY,
                 WRITABLE, configuration.isWritable()
@@ -383,7 +382,7 @@ public class ApplicationConfigurationService {
         );
         ApplicationConfiguration saved = configurationRepository.saveAndFlush(configuration);
         expressionService.synchronizeDependencies(saved);
-        cacheInvalidator.evictAfterCommit(saved.getId(), Set.of(saved.getName()));
+        cacheInvalidator.evictAfterCommit(saved.getId());
         eventLogger.successAfterCommit(
                 "CONFIGURATION_CREATED",
                 Map.of(
@@ -441,10 +440,7 @@ public class ApplicationConfigurationService {
             if (changedFields.contains("value"))
                 expressionService.synchronizeDependencies(configuration);
 
-            cacheInvalidator.evictAfterCommit(
-                    id,
-                    new LinkedHashSet<>(List.of(previousName, configuration.getName()))
-            );
+            cacheInvalidator.evictAfterCommit(id);
         }
         Map<String, Object> logData = new LinkedHashMap<>();
         logData.put(CONFIGURATION_ID, id);
@@ -467,7 +463,7 @@ public class ApplicationConfigurationService {
         String name = configuration.getName();
         configurationRepository.delete(configuration);
         configurationRepository.flush();
-        cacheInvalidator.evictAfterCommit(id, Set.of(name));
+        cacheInvalidator.evictAfterCommit(id);
         eventLogger.successAfterCommit(
                 "CONFIGURATION_DELETED",
                 Map.of(CONFIGURATION_ID, id, "name", name, VERSION, version)

@@ -2,8 +2,6 @@ package app.alertify.configuration.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.util.Set;
-
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.cache.concurrent.ConcurrentMapCacheManager;
@@ -22,38 +20,26 @@ class ConfigurationCacheInvalidatorTest {
 
     @Test
     void evictsOnlyAfterTheDatabaseTransactionCommits() {
-        var cacheManager = new ConcurrentMapCacheManager(
-            ConfigurationCacheNames.BY_ID, ConfigurationCacheNames.BY_NAME
-        );
+        var cacheManager = new ConcurrentMapCacheManager(ConfigurationCacheNames.BY_ID);
         var byId = cacheManager.getCache(ConfigurationCacheNames.BY_ID);
-        var byName = cacheManager.getCache(ConfigurationCacheNames.BY_NAME);
         byId.put(7L, "old");
-        byName.put("old-name", "old");
-        byName.put("new-name", "old");
         TransactionSynchronizationManager.setActualTransactionActive(true);
         TransactionSynchronizationManager.initSynchronization();
 
         new ConfigurationCacheInvalidator(cacheManager)
-            .evictAfterCommit(7L, Set.of("old-name", "new-name"));
+            .evictAfterCommit(7L);
 
         assertThat(byId.get(7L)).isNotNull();
-        assertThat(byName.get("old-name")).isNotNull();
         TransactionSynchronizationManager.getSynchronizations()
             .forEach(TransactionSynchronization::afterCommit);
         assertThat(byId.get(7L)).isNull();
-        assertThat(byName.get("old-name")).isNull();
-        assertThat(byName.get("new-name")).isNull();
     }
 
     @Test
-    void clearsBothConfigurationCachesAfterATagChangeCommits() {
-        var cacheManager = new ConcurrentMapCacheManager(
-            ConfigurationCacheNames.BY_ID, ConfigurationCacheNames.BY_NAME
-        );
+    void clearsConfigurationCacheAfterATagChangeCommits() {
+        var cacheManager = new ConcurrentMapCacheManager(ConfigurationCacheNames.BY_ID);
         var byId = cacheManager.getCache(ConfigurationCacheNames.BY_ID);
-        var byName = cacheManager.getCache(ConfigurationCacheNames.BY_NAME);
         byId.put(7L, "old");
-        byName.put("configuration", "old");
         TransactionSynchronizationManager.setActualTransactionActive(true);
         TransactionSynchronizationManager.initSynchronization();
 
@@ -63,6 +49,5 @@ class ConfigurationCacheInvalidatorTest {
         TransactionSynchronizationManager.getSynchronizations()
             .forEach(TransactionSynchronization::afterCommit);
         assertThat(byId.get(7L)).isNull();
-        assertThat(byName.get("configuration")).isNull();
     }
 }

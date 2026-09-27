@@ -68,9 +68,7 @@ class ApplicationConfigurationServiceTest {
 
         assertThat(response.version()).isZero();
         verify(configurationRepository, never()).flush();
-        verify(cacheInvalidator, never()).evictAfterCommit(
-            org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()
-        );
+        verify(cacheInvalidator, never()).evictAfterCommit(any());
     }
 
     @Test
@@ -88,7 +86,7 @@ class ApplicationConfigurationServiceTest {
         ));
 
         verify(configurationRepository).flush();
-        verify(cacheInvalidator).evictAfterCommit(10L, Set.of("notification.retry-count"));
+        verify(cacheInvalidator).evictAfterCommit(10L);
     }
 
     @Test

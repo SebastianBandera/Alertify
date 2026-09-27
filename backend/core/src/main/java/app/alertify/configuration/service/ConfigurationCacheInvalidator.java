@@ -1,7 +1,5 @@
 package app.alertify.configuration.service;
 
-import java.util.Set;
-
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.springframework.stereotype.Component;
@@ -21,8 +19,8 @@ class ConfigurationCacheInvalidator {
         this.cacheManager = cacheManager;
     }
 
-    void evictAfterCommit(Long id, Set<String> names) {
-        runAfterCommit(() -> evict(id, names));
+    void evictAfterCommit(Long id) {
+        runAfterCommit(() -> evict(id));
     }
 
     void clearAfterCommit() {
@@ -44,23 +42,15 @@ class ConfigurationCacheInvalidator {
         action.run();
     }
 
-    private void evict(Long id, Set<String> names) {
+    private void evict(Long id) {
         Cache byId = cacheManager.getCache(ConfigurationCacheNames.BY_ID);
         if (byId != null && id != null)
             byId.evict(id);
-
-        Cache byName = cacheManager.getCache(ConfigurationCacheNames.BY_NAME);
-        if (byName != null)
-            names.forEach(byName::evict);
     }
 
     private void clear() {
         Cache byId = cacheManager.getCache(ConfigurationCacheNames.BY_ID);
         if (byId != null)
             byId.clear();
-
-        Cache byName = cacheManager.getCache(ConfigurationCacheNames.BY_NAME);
-        if (byName != null)
-            byName.clear();
     }
 }

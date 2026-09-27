@@ -112,14 +112,6 @@ class WorkerGrpcServer implements SmartLifecycle {
         return Integer.MAX_VALUE - 100;
     }
 
-    int port() {
-        Server current = server;
-        if (current == null)
-            throw new IllegalStateException("The worker gRPC server is not running");
-
-        return current.getPort();
-    }
-
     private void validateProperties() {
         if (properties.name() == null || properties.name().isBlank())
             throw new IllegalStateException("alertify.worker.name must not be blank");

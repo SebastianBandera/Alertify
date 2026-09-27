@@ -123,11 +123,4 @@ public class HookTarget {
     public long getBusyWaitTimeoutMillis() { return busyWaitTimeoutMillis; }
 
     public void moveTemporarily(int value) { position = value; }
-
-    public void reconfigure(int value, List<String> outcomes, long timeoutMillis) {
-        position = value;
-        continueOn.clear();
-        continueOn.addAll(outcomes);
-        busyWaitTimeoutMillis = timeoutMillis;
-    }
 }

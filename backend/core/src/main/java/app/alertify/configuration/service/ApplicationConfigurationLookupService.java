@@ -9,7 +9,7 @@ import app.alertify.configuration.api.ConfigurationResponse;
 import app.alertify.jpa.repository.ApplicationConfigurationRepository;
 
 /**
- * Provides cached configuration lookups by ID or name. It returns public
+ * Provides cached configuration lookups by ID. It returns public
  * response objects, so system-managed hidden values are removed by the mapper
  * before an entry can reach Redis or an API consumer.
  */
@@ -30,18 +30,6 @@ public class ApplicationConfigurationLookupService {
                 .orElseThrow(
                         () -> new ResourceNotFoundException(
                                 "Configuration " + id + " was not found"
-                        )
-                );
-    }
-
-    @Cacheable(cacheNames = ConfigurationCacheNames.BY_NAME, key = "#name")
-    @Transactional(readOnly = true)
-    public ConfigurationResponse getByName(String name) {
-        return configurationRepository.findByName(name)
-                .map(ConfigurationMapper::toResponse)
-                .orElseThrow(
-                        () -> new ResourceNotFoundException(
-                                "Configuration '" + name + "' was not found"
                         )
                 );
     }

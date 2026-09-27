@@ -2,7 +2,6 @@ package app.alertify.configuration.service;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
@@ -76,7 +75,7 @@ public class WritableConfigurationService {
                 binaryRepository.save(new ConfigurationBinaryValue(configuration.getId(), prepared.zip()));
                 configuration.changeBinaryMetadata(prepared.fileName(), prepared.contentType(), prepared.size(), prepared.zipSize(), prepared.sha256());
                 configurationRepository.flush();
-                cacheInvalidator.evictAfterCommit(configuration.getId(), Set.of(configuration.getName()));
+                cacheInvalidator.evictAfterCommit(configuration.getId());
                 eventLogger.successAfterCommit(owner.successEvent(), context(owner, executionId, result, configuration));
                 return;
             }
@@ -95,7 +94,7 @@ public class WritableConfigurationService {
                 throw exception;
             }
             configurationRepository.flush();
-            cacheInvalidator.evictAfterCommit(configuration.getId(), Set.of(configuration.getName()));
+            cacheInvalidator.evictAfterCommit(configuration.getId());
 
             Map<String, Object> data = context(owner, executionId, result, configuration);
             data.put("valueType", configuration.getValueType().name());

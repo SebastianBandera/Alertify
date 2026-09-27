@@ -15,7 +15,7 @@ import app.alertify.configuration.api.ConfigurationResponse;
 import app.alertify.configuration.service.ConfigurationCacheNames;
 
 /**
- * Configures the two public configuration caches in Redis with the shared TTL,
+ * Configures the public configuration cache in Redis with its TTL,
  * key prefix and Jackson serializer. Secrets are intentionally not cached.
  */
 @Configuration(proxyBeanMethods = false)
@@ -33,8 +33,6 @@ public class AlertifyRedisCacheConfiguration {
                 .serializeValuesWith(valueSerializer)
                 .disableCachingNullValues();
 
-        return builder -> builder
-                .withCacheConfiguration(ConfigurationCacheNames.BY_ID, configuration)
-                .withCacheConfiguration(ConfigurationCacheNames.BY_NAME, configuration);
+        return builder -> builder.withCacheConfiguration(ConfigurationCacheNames.BY_ID, configuration);
     }
 }
