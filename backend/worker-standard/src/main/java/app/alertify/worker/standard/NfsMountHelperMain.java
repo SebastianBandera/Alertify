@@ -59,7 +59,7 @@ public final class NfsMountHelperMain {
         try (ServerSocketChannel server = ServerSocketChannel.open(StandardProtocolFamily.UNIX)) {
             server.bind(UnixDomainSocketAddress.of(SOCKET));
             assignToApplication(SOCKET, "rw-------");
-            while (true) {
+            while (server.isOpen() && !Thread.currentThread().isInterrupted()) {
                 SocketChannel client = server.accept();
                 Thread.startVirtualThread(() -> handle(client));
             }
@@ -70,9 +70,9 @@ public final class NfsMountHelperMain {
     }
 
     private void handle(SocketChannel client) {
-        try (client) {
-            DataInputStream input = new DataInputStream(Channels.newInputStream(client));
-            DataOutputStream output = new DataOutputStream(Channels.newOutputStream(client));
+        try (client;
+             DataInputStream input = new DataInputStream(Channels.newInputStream(client));
+             DataOutputStream output = new DataOutputStream(Channels.newOutputStream(client))) {
             switch (input.readUnsignedByte()) {
                 case 1 -> mount(input, output);
                 case 2 -> unmount(input, output);

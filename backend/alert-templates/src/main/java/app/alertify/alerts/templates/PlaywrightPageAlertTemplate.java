@@ -632,6 +632,8 @@ public final class PlaywrightPageAlertTemplate implements AlertEvaluator {
             this.page = page;
         }
 
+        // The returned session owns all four Playwright resources and closes them together.
+        @SuppressWarnings("java:S2095")
         static BrowserSession open(BrowserEngine engine) {
             Playwright playwright = Playwright.create();
             try {
@@ -641,10 +643,41 @@ public final class PlaywrightPageAlertTemplate implements AlertEvaluator {
                     case WEBKIT -> playwright.webkit();
                 };
                 Browser browser = browserType.launch(new BrowserType.LaunchOptions().setHeadless(true));
-                BrowserContext context = browser.newContext(new Browser.NewContextOptions().setViewportSize(1440, 900));
-                return new PlaywrightBrowserSession(playwright, browser, context, context.newPage());
+                try {
+                    BrowserContext context = browser.newContext(new Browser.NewContextOptions().setViewportSize(1440, 900));
+                    Page page = null;
+                    try {
+                        page = context.newPage();
+                        return new PlaywrightBrowserSession(playwright, browser, context, page);
+                    } catch (RuntimeException exception) {
+                        if (page != null) {
+                            try {
+                                page.close();
+                            } catch (RuntimeException closeException) {
+                                exception.addSuppressed(closeException);
+                            }
+                        }
+                        try {
+                            context.close();
+                        } catch (RuntimeException closeException) {
+                            exception.addSuppressed(closeException);
+                        }
+                        throw exception;
+                    }
+                } catch (RuntimeException exception) {
+                    try {
+                        browser.close();
+                    } catch (RuntimeException closeException) {
+                        exception.addSuppressed(closeException);
+                    }
+                    throw exception;
+                }
             } catch (RuntimeException exception) {
-                playwright.close();
+                try {
+                    playwright.close();
+                } catch (RuntimeException closeException) {
+                    exception.addSuppressed(closeException);
+                }
                 throw exception;
             }
         }
@@ -754,9 +787,38 @@ public final class PlaywrightPageAlertTemplate implements AlertEvaluator {
 
         @Override
         public void close() {
-            context.close();
-            browser.close();
-            playwright.close();
+            RuntimeException failure = null;
+            try {
+                page.close();
+            } catch (RuntimeException exception) {
+                failure = exception;
+            }
+            try {
+                context.close();
+            } catch (RuntimeException exception) {
+                if (failure == null)
+                    failure = exception;
+                else
+                    failure.addSuppressed(exception);
+            }
+            try {
+                browser.close();
+            } catch (RuntimeException exception) {
+                if (failure == null)
+                    failure = exception;
+                else
+                    failure.addSuppressed(exception);
+            }
+            try {
+                playwright.close();
+            } catch (RuntimeException exception) {
+                if (failure == null)
+                    failure = exception;
+                else
+                    failure.addSuppressed(exception);
+            }
+            if (failure != null)
+                throw failure;
         }
 
         private static Navigation navigation(Response response) {

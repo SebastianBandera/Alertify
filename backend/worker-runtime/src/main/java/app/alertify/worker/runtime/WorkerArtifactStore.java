@@ -66,11 +66,31 @@ class WorkerArtifactStore implements AutoCloseable {
         if (!path.getParent().equals(directory))
             throw new IllegalStateException("Artifact path escaped its private directory");
 
-        OutputStream file = Files.newOutputStream(path, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
-        secure(path);
-        Writer writer = new Writer(id, outputKey, fileName, mediaType, expiresAt, path, file, digest());
-        openWriters.put(id, writer);
-        return writer;
+        MessageDigest messageDigest = digest();
+        Files.createFile(path);
+        try {
+            secure(path);
+            OutputStream file = Files.newOutputStream(path, StandardOpenOption.WRITE);
+            try {
+                Writer writer = new Writer(id, outputKey, fileName, mediaType, expiresAt, path, file, messageDigest);
+                openWriters.put(id, writer);
+                return writer;
+            } catch (RuntimeException exception) {
+                try {
+                    file.close();
+                } catch (IOException closeException) {
+                    exception.addSuppressed(closeException);
+                }
+                throw exception;
+            }
+        } catch (IOException | RuntimeException exception) {
+            try {
+                Files.deleteIfExists(path);
+            } catch (IOException cleanupException) {
+                exception.addSuppressed(cleanupException);
+            }
+            throw exception;
+        }
     }
 
     InputStream open(String artifactId) throws IOException {

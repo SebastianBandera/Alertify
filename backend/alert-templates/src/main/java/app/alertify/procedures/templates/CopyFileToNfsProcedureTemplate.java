@@ -256,30 +256,32 @@ public final class CopyFileToNfsProcedureTemplate implements ProcedureEvaluator 
         private static Mount mount(String server, String export, String version) throws IOException {
             try (SocketChannel channel = SocketChannel.open(StandardProtocolFamily.UNIX)) {
                 channel.connect(UnixDomainSocketAddress.of(HELPER_SOCKET));
-                DataOutputStream output = new DataOutputStream(Channels.newOutputStream(channel));
-                output.writeByte(1);
-                output.writeUTF(server.trim());
-                output.writeUTF(export);
-                output.writeUTF(version);
-                output.flush();
-                DataInputStream input = new DataInputStream(Channels.newInputStream(channel));
-                if (!input.readBoolean())
-                    throw new IllegalStateException("NFS mount helper rejected the mount: " + input.readUTF());
+                try (DataInputStream input = new DataInputStream(Channels.newInputStream(channel));
+                     DataOutputStream output = new DataOutputStream(Channels.newOutputStream(channel))) {
+                    output.writeByte(1);
+                    output.writeUTF(server.trim());
+                    output.writeUTF(export);
+                    output.writeUTF(version);
+                    output.flush();
+                    if (!input.readBoolean())
+                        throw new IllegalStateException("NFS mount helper rejected the mount: " + input.readUTF());
 
-                return new Mount(input.readUTF(), Path.of(input.readUTF()));
+                    return new Mount(input.readUTF(), Path.of(input.readUTF()));
+                }
             }
         }
 
         private static void unmount(String token) throws IOException {
             try (SocketChannel channel = SocketChannel.open(StandardProtocolFamily.UNIX)) {
                 channel.connect(UnixDomainSocketAddress.of(HELPER_SOCKET));
-                DataOutputStream output = new DataOutputStream(Channels.newOutputStream(channel));
-                output.writeByte(2);
-                output.writeUTF(token);
-                output.flush();
-                DataInputStream input = new DataInputStream(Channels.newInputStream(channel));
-                if (!input.readBoolean())
-                    throw new IllegalStateException("NFS unmount failed; deferred cleanup was scheduled: " + input.readUTF());
+                try (DataInputStream input = new DataInputStream(Channels.newInputStream(channel));
+                     DataOutputStream output = new DataOutputStream(Channels.newOutputStream(channel))) {
+                    output.writeByte(2);
+                    output.writeUTF(token);
+                    output.flush();
+                    if (!input.readBoolean())
+                        throw new IllegalStateException("NFS unmount failed; deferred cleanup was scheduled: " + input.readUTF());
+                }
             }
         }
     }
