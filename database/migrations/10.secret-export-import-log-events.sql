@@ -1,4 +1,0 @@
-INSERT INTO audit.log_events (code) VALUES
-    ('SECRET_EXPORT'),
-    ('SECRET_IMPORT')
-ON CONFLICT DO NOTHING;
