@@ -16,8 +16,12 @@ import java.util.Map;
 
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.lib.PersonIdent;
+import org.eclipse.jgit.revwalk.RevCommit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import app.alertify.alerts.AlertExecutionContext;
 import app.alertify.alerts.AlertResult;
@@ -131,6 +135,49 @@ class GitBranchFlowAlertTemplateTest {
         assertEquals(10L, last.get("oldestPendingAgeDays"));
         assertEquals(true, last.get("delayed"));
         assertEquals(false, merge(result).get("conflict"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = { "2038-01-19T03:14:07Z", "2038-01-19T03:14:08Z", "2040-06-01T12:00:00Z", "2106-02-07T06:28:16Z" })
+    void preservesCommitDatesAndAgeBeyondIntegerTimestampRange(String timestamp) throws Exception {
+        Instant committedAt = Instant.parse(timestamp);
+        try (Git git = Git.init().setInitialBranch("develop").setDirectory(remote.toFile()).call()) {
+            RevCommit target = commit(git, "app.txt", "v1", "initial", committedAt.minus(Duration.ofDays(1)));
+            RevCommit previous = commit(git, "app.txt", "v2", "pending", committedAt);
+
+            Map<String, Object> transition = ReflectionTestUtils.invokeMethod(template(), "describeTransition",
+                    git.getRepository(), 1, previous, target, committedAt.plus(Duration.ofDays(5)), true);
+
+            assertNotNull(transition);
+            assertEquals(1, transition.get("pendingCommits"));
+            assertEquals(5L, transition.get("oldestPendingAgeDays"));
+            assertEquals(true, transition.get("delayed"));
+            Map<?, ?> oldest = (Map<?, ?>) transition.get("oldestPendingCommit");
+            assertEquals(previous.getName(), oldest.get("sha"));
+            assertEquals(timestamp, oldest.get("committedAt"));
+        }
+    }
+
+    @Test
+    void selectsOldestPendingCommitAcrossThe2038Boundary() throws Exception {
+        Instant oldestAt = Instant.parse("2038-01-18T12:00:00Z");
+        Instant checkedAt = Instant.parse("2038-01-23T12:00:00Z");
+        try (Git git = Git.init().setInitialBranch("develop").setDirectory(remote.toFile()).call()) {
+            RevCommit target = commit(git, "app.txt", "v1", "initial", oldestAt.minus(Duration.ofDays(1)));
+            RevCommit oldest = commit(git, "app.txt", "v2", "oldest pending", oldestAt);
+            RevCommit previous = commit(git, "app.txt", "v3", "newer pending", Instant.parse("2038-01-20T12:00:00Z"));
+
+            Map<String, Object> transition = ReflectionTestUtils.invokeMethod(template(), "describeTransition",
+                    git.getRepository(), 1, previous, target, checkedAt, true);
+
+            assertNotNull(transition);
+            assertEquals(2, transition.get("pendingCommits"));
+            assertEquals(5L, transition.get("oldestPendingAgeDays"));
+            assertEquals(true, transition.get("delayed"));
+            Map<?, ?> description = (Map<?, ?>) transition.get("oldestPendingCommit");
+            assertEquals(oldest.getName(), description.get("sha"));
+            assertEquals(oldestAt.toString(), description.get("committedAt"));
+        }
     }
 
     @Test
@@ -391,11 +438,11 @@ class GitBranchFlowAlertTemplateTest {
         return new GitCredentials(provider, "github.com", null, TOKEN, null);
     }
 
-    private void commit(Git git, String file, String content, String message, Instant when) throws Exception {
+    private RevCommit commit(Git git, String file, String content, String message, Instant when) throws Exception {
         Files.writeString(remote.resolve(file), content);
         git.add().addFilepattern(file).call();
         PersonIdent ident = new PersonIdent("Tester", "tester@example.org", when, ZoneOffset.UTC);
-        git.commit().setMessage(message).setAuthor(ident).setCommitter(ident).call();
+        return git.commit().setMessage(message).setAuthor(ident).setCommitter(ident).call();
     }
 
     private static Instant daysAgo(int days) {

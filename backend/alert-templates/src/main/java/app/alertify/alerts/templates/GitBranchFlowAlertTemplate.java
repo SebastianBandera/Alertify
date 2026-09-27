@@ -279,11 +279,14 @@ public final class GitBranchFlowAlertTemplate implements AlertEvaluator {
         transition.put("pendingCommits", pending.size());
         if (!pending.isEmpty()) {
             RevCommit oldest = pending.get(0);
+            Instant oldestAt = committedAt(oldest);
             for (RevCommit commit : pending) {
-                if (commit.getCommitTime() < oldest.getCommitTime())
+                Instant committedAt = committedAt(commit);
+                if (committedAt.isBefore(oldestAt)) {
                     oldest = commit;
+                    oldestAt = committedAt;
+                }
             }
-            Instant oldestAt = Instant.ofEpochSecond(oldest.getCommitTime());
             long ageDays = Duration.between(oldestAt, checkedAt).toDays();
             transition.put("oldestPendingCommit", describeCommit(oldest));
             transition.put("oldestPendingAgeDays", ageDays);
@@ -340,11 +343,19 @@ public final class GitBranchFlowAlertTemplate implements AlertEvaluator {
         return commits;
     }
 
-    private static Map<String, Object> describeCommit(RevCommit commit) {
+    private static Instant committedAt(RevCommit commit) throws IOException {
+        var committer = commit.getCommitterIdent();
+        if (committer == null)
+            throw new IOException("Commit " + commit.getName() + " has no committer");
+
+        return committer.getWhenAsInstant();
+    }
+
+    private static Map<String, Object> describeCommit(RevCommit commit) throws IOException {
         Map<String, Object> description = new LinkedHashMap<>();
         description.put("sha", commit.getName());
         description.put("message", commit.getShortMessage());
-        description.put("committedAt", Instant.ofEpochSecond(commit.getCommitTime()).toString());
+        description.put("committedAt", committedAt(commit).toString());
         return description;
     }
 
