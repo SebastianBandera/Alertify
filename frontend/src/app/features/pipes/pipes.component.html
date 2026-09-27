@@ -5,6 +5,7 @@
       <p>{{ dynamic('pipes.description') }}</p>
     </div>
     <div class="page-header__actions">
+      <label class="file-input" for="pipe-import-file">{{ dynamic('pipes.import') }}</label>
       <input id="pipe-import-file" class="file-input" type="file" accept=".csv,text/csv" (change)="importCsv($event)">
       <button class="button button--secondary" type="button" [disabled]="exporting()" (click)="exportCsv()">
         {{ dynamic(exporting() ? 'pipes.exporting' : 'pipes.export') }}

@@ -5,6 +5,7 @@
       <p>{{ dynamic('hooks.description') }}</p>
     </div>
     <div class="page-header__actions">
+      <label class="file-input" for="hook-import">{{ dynamic('hooks.import') }}</label>
       <input id="hook-import" class="file-input" type="file" accept=".csv,text/csv" (change)="importCsv($event)">
       <button class="button button--secondary" type="button" (click)="exportCsv()">{{ dynamic('hooks.export') }}</button>
       <button class="button button--secondary" type="button" (click)="selectImport()">{{ dynamic('hooks.import') }}</button>

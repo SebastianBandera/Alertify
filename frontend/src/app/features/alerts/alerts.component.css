@@ -22,7 +22,7 @@ h3 { font-size: 14px; }
 .template-filter, .history-template-filter, .template-field { display: flex; flex-direction: column; gap: 7px; color: #344054; font-size: 12px; font-weight: 650; }
 .history-template-filter { min-width: 220px; }
 .tag-filter-field { min-width: 230px; flex: 1; color: #344054; font-size: 12px; font-weight: 650; }
-.tag-filter-field > span { display: block; margin-bottom: 7px; }
+.tag-filter-field > label { display: block; margin-bottom: 7px; }
 .tag-filter { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .tag-filter select { width: auto; min-width: 145px; flex: 1; color: #667085; }
 .tag-filter select option { color: var(--text); }

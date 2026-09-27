@@ -21,7 +21,7 @@ h2 { font-size: 20px; }
 .template-filter { width: min(280px, 100%); }
 .template-filter, .template-form-field { display: flex; flex-direction: column; gap: 7px; color: #344054; font-size: 12px; font-weight: 650; }
 .tag-filter-field { min-width: 230px; flex: 1; color: #344054; font-size: 12px; font-weight: 650; }
-.tag-filter-field > span { display: block; margin-bottom: 7px; }
+.tag-filter-field > label { display: block; margin-bottom: 7px; }
 .tag-filter { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .tag-filter select { width: auto; min-width: 145px; flex: 1; color: #667085; }
 .tag-filter select option { color: var(--text); }
@@ -123,7 +123,7 @@ details summary { color: var(--primary-strong); cursor: pointer; font-weight: 70
 .wizard-panel { display: grid; gap: 14px; padding: 26px; }
 .wizard-panel__header { display: grid; gap: 6px; }
 .wizard-panel__header .button { justify-self: start; }
-.wizard-panel__header p { color: var(--text-muted); font-size: 13px; }
+.wizard-panel__header label { color: var(--text-muted); font-size: 13px; }
 .wizard-panel__pastebox { min-height: 140px; resize: vertical; text-align: center; color: var(--text-muted); }
 
 .modal-backdrop { position: fixed; z-index: 50; inset: 0; display: grid; place-items: center; padding: 28px; overflow-y: auto; background: rgb(16 24 40 / 55%); backdrop-filter: blur(2px); }

@@ -6,8 +6,10 @@
     </div>
     <div class="page-header__actions">
       @if (activeTab() === 'alerts') {
+        <label class="file-input" for="alerts-import-file">{{ localization.translate('alerts.import') }}</label>
         <input
           #importFileInput
+          id="alerts-import-file"
           class="file-input"
           type="file"
           accept=".csv,text/csv"
@@ -89,7 +91,7 @@
         />
       </div>
       <div class="tag-filter-field">
-        <span>{{ localization.translate('alerts.filterTag') }}</span>
+        <label for="alerts-tag-filter">{{ localization.translate('alerts.filterTag') }}</label>
         <div class="tag-filter">
           @for (tag of selectedFilterTags(); track tag.id) {
             <span class="filter-tag" [style.--tag-color]="tag.color">
@@ -97,7 +99,7 @@
               <button type="button" [title]="localization.translate('alerts.removeTagFilter')" (click)="removeTagFilter(tag.id)">×</button>
             </span>
           }
-          <select value="" (change)="addTagFilter($event)">
+          <select id="alerts-tag-filter" value="" (change)="addTagFilter($event)">
             <option value="">{{ localization.translate('alerts.addTagFilter') }}</option>
             @for (tag of availableFilterTags(); track tag.id) {
               <option [value]="tag.id">{{ tag.name }}</option>
@@ -229,7 +231,7 @@
           >
         </label>
         <div class="tag-filter-field">
-          <span>{{ localization.translate('alerts.filterTag') }}</span>
+          <label for="alert-templates-tag-filter">{{ localization.translate('alerts.filterTag') }}</label>
           <div class="tag-filter">
             @for (tag of selectedTemplateFilterTags(); track tag.nameKey) {
               <span class="filter-tag" [style.--tag-color]="templateTagColor(tag)">
@@ -237,7 +239,7 @@
                 <button type="button" [title]="localization.translate('alerts.removeTagFilter')" (click)="removeTemplateTagFilter(tag.nameKey)">×</button>
               </span>
             }
-            <select value="" (change)="addTemplateTagFilter($event)">
+            <select id="alert-templates-tag-filter" value="" (change)="addTemplateTagFilter($event)">
               <option value="">{{ localization.translate('alerts.addTagFilter') }}</option>
               @for (tag of availableTemplateFilterTags(); track tag.nameKey) {
                 <option [value]="tag.nameKey">{{ dynamic(tag.nameKey) }}</option>

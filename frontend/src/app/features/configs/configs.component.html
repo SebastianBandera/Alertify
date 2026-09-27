@@ -5,8 +5,10 @@
       <p>{{ localization.translate('configs.description') }}</p>
     </div>
     <div class="configs__header-actions">
+      <label class="file-input" for="configurations-import-file">{{ localization.translate('configs.import') }}</label>
       <input
         #importFileInput
+        id="configurations-import-file"
         class="file-input"
         type="file"
         accept=".csv,text/csv"
@@ -350,17 +352,20 @@
         </label>
 
         <div class="field">
-          <span>{{ localization.translate('configs.field.value') }}</span>
+          @if (configurationForm().valueType !== 'EXPRESSION') {
+            <label for="configuration-value">{{ localization.translate('configs.field.value') }}</label>
+          }
           @switch (configurationForm().valueType) {
             @case ('BINARY') {
               <span>{{ localization.translate('binary.fileLabel').replace('{maximum}', formatBytes(maximumBinaryBytes())) }}</span>
-              <input type="file" (change)="selectBinaryFile($event)" name="configurationBinary" />
+              <input id="configuration-value" type="file" (change)="selectBinaryFile($event)" name="configurationBinary" />
               @if (editingConfiguration()?.binaryFileName && !configurationForm().binaryFile) { <small>{{ editingConfiguration()!.binaryFileName }} — {{ localization.translate('binary.selectReplacement') }}</small> }
               @else if (!configurationForm().binaryFile) { <small>{{ localization.translate('binary.emptyWhenMissing') }}</small> }
             }
             @case ('EXPRESSION') {
               <app-expression-editor
                 name="configurationValue"
+                [label]="localization.translate('configs.field.value')"
                 [value]="configurationForm().rawValue"
                 [placeholder]="localization.translate('configs.expression.placeholder')"
                 [scopes]="expressionScopes"
@@ -388,6 +393,7 @@
             }
             @case ('BOOLEAN') {
               <select
+                id="configuration-value"
                 [ngModel]="configurationForm().rawValue || 'false'"
                 (ngModelChange)="patchConfigurationForm({ rawValue: $event })"
                 name="configurationValue"
@@ -398,6 +404,7 @@
             }
             @case ('DATE') {
               <input
+                id="configuration-value"
                 required
                 type="date"
                 [ngModel]="configurationForm().rawValue"
@@ -407,6 +414,7 @@
             }
             @case ('TIME') {
               <input
+                id="configuration-value"
                 required
                 type="time"
                 step="60"
@@ -417,6 +425,7 @@
             }
             @case ('DATE_TIME') {
               <input
+                id="configuration-value"
                 required
                 type="datetime-local"
                 [ngModel]="configurationForm().rawValue"
@@ -426,6 +435,7 @@
             }
             @case ('JSON') {
               <textarea
+                id="configuration-value"
                 required
                 rows="8"
                 class="code-input"
@@ -436,6 +446,7 @@
             }
             @default {
               <input
+                id="configuration-value"
                 required
                 [type]="configurationForm().valueType === 'STRING' ? 'text' : 'number'"
                 [step]="configurationForm().valueType === 'INTEGER' ? '1' : 'any'"

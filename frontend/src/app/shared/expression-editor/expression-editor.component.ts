@@ -25,6 +25,7 @@ interface ExpressionCompletion {
 export class ExpressionEditorComponent {
   readonly value = input.required<string>();
   readonly name = input.required<string>();
+  readonly label = input.required<string>();
   readonly placeholder = input('');
   readonly required = input(true);
   readonly rows = input(6);
@@ -38,6 +39,7 @@ export class ExpressionEditorComponent {
 
   protected readonly completions = signal<readonly ExpressionCompletion[]>([]);
   protected readonly selectedCompletion = signal(0);
+  protected readonly inputId = `expression-input-${crypto.randomUUID()}`;
   protected readonly listId = `expression-completions-${crypto.randomUUID()}`;
 
   protected updateValue(event: Event): void {

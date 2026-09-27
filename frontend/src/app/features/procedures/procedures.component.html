@@ -6,6 +6,7 @@
     </div>
     <div class="page-header__actions">
       @if (activeTab() === 'procedures') {
+        <label class="file-input" for="procedure-import">{{ localization.translate('procedures.import') }}</label>
         <input id="procedure-import" class="file-input" type="file" accept=".csv,text/csv" (change)="importCsv($event)">
         <button class="button button--secondary" type="button" (click)="exportCsv()">
           {{ localization.translate('procedures.export') }}
@@ -181,7 +182,7 @@
           >
         </label>
         <div class="tag-filter-field">
-          <span>{{ localization.translate('procedures.templates.filterTag') }}</span>
+          <label for="procedure-templates-tag-filter">{{ localization.translate('procedures.templates.filterTag') }}</label>
           <div class="tag-filter">
             @for (tag of selectedTemplateFilterTags(); track tag.nameKey) {
               <span class="filter-tag" [style.--tag-color]="tag.color || '#7C3AED'">
@@ -189,7 +190,7 @@
                 <button type="button" [title]="localization.translate('procedures.templates.removeTagFilter')" (click)="removeTemplateTagFilter(tag.nameKey)">×</button>
               </span>
             }
-            <select value="" (change)="addTemplateTagFilter($event)">
+            <select id="procedure-templates-tag-filter" value="" (change)="addTemplateTagFilter($event)">
               <option value="">{{ localization.translate('procedures.templates.addTagFilter') }}</option>
               @for (tag of availableTemplateFilterTags(); track tag.nameKey) {
                 <option [value]="tag.nameKey">{{ dynamic(tag.nameKey) }}</option>
@@ -315,9 +316,10 @@
             {{ localization.translate('procedures.wizards.back') }}
           </button>
           <h2>{{ localization.translate('procedures.wizards.totpQr.title') }}</h2>
-          <p>{{ localization.translate('procedures.wizards.totpQr.instructions') }}</p>
+          <label for="totp-qr-paste">{{ localization.translate('procedures.wizards.totpQr.instructions') }}</label>
         </header>
         <textarea
+          id="totp-qr-paste"
           readonly
           class="wizard-panel__pastebox"
           tabindex="0"

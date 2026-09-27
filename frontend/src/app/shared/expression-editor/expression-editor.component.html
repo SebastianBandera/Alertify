@@ -1,6 +1,8 @@
 <div class="expression-editor">
+  <label class="expression-editor__label" for="{{ inputId }}">{{ label() }}</label>
   <textarea
     #expressionValue
+    id="{{ inputId }}"
     [required]="required()"
     [rows]="rows()"
     class="expression-editor__input"

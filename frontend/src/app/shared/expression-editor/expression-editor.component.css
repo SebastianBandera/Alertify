@@ -6,6 +6,14 @@
   position: relative;
 }
 
+.expression-editor__label {
+  display: block;
+  margin-bottom: 7px;
+  color: #344054;
+  font-size: 12px;
+  font-weight: 650;
+}
+
 .expression-editor__input {
   width: 100%;
   min-height: 126px;
