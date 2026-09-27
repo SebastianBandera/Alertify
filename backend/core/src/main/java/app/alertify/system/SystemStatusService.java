@@ -50,6 +50,7 @@ public class SystemStatusService {
         return new SystemStatusSummaryResponse(
                 maintenanceModeService.isActive(),
                 cronQuietHoursService.isQuietNow(),
+                (int) workers.stream().filter(WorkerNodeStatusResponse::available).count(),
                 count(workers, WorkerNodeStatusResponse::runningTasks, ALERT_KIND),
                 count(workers, WorkerNodeStatusResponse::waitingTasks, ALERT_KIND),
                 count(workers, WorkerNodeStatusResponse::runningProcedures, PROCEDURE_KIND),

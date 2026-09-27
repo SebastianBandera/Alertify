@@ -40,9 +40,25 @@ class SystemStatusServiceTest {
 
         var summary = service.realtimeSummary();
 
+        assertThat(summary.activeWorkerCount()).isEqualTo(1);
         assertThat(summary.activeAlertExecutions()).isEqualTo(1);
         assertThat(summary.activeProcedureExecutions()).isEqualTo(1);
         assertThat(summary.waitingProcedureExecutions()).isZero();
+    }
+
+    @Test
+    void countsOnlyAvailableWorkers() {
+        WorkerNodeStatusResponse available = new WorkerNodeStatusResponse(
+                "available:9090", true, "available", "available-instance", Instant.now(), Set.of(),
+                0, 0, 0, 1, List.of(), List.of(), 0, 0, List.of(), null, null
+        );
+        WorkerNodeStatusResponse unavailable = new WorkerNodeStatusResponse(
+                "unavailable:9090", false, "unavailable", null, null, Set.of(),
+                0, 0, 0, 1, List.of(), List.of(), 0, 0, List.of(), null, "Connection failed"
+        );
+        when(workerStatusService.realtimeStatus()).thenReturn(List.of(available, unavailable));
+
+        assertThat(service.realtimeSummary().activeWorkerCount()).isEqualTo(1);
     }
 
     /* Kinds go through the same mapping the gRPC status uses, so a drift between the layers fails here. */

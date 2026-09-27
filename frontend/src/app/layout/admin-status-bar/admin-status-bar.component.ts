@@ -58,9 +58,14 @@ export class AdminStatusBarComponent implements AfterViewInit {
     if (summary.cronQuietHoursActive) messages.push(this.localization.translate('adminStatus.cronQuietHours'));
     return messages.length > 0 ? messages.join(' · ') : null;
   });
+  protected readonly healthy = computed(() => {
+    const summary = this.summary();
+    return summary !== null && summary.activeWorkerCount > 0
+      && !this.connectionUnavailable() && this.statusMessage() === null;
+  });
   protected readonly message = computed(() => this.connectionUnavailable()
     ? this.localization.translate('adminStatus.realtimeDisconnected')
-    : this.statusMessage());
+    : this.statusMessage() ?? this.workerMessage());
   private resizeObserver: ResizeObserver | null = null;
 
   constructor() {
@@ -79,6 +84,15 @@ export class AdminStatusBarComponent implements AfterViewInit {
     const statusBar = this.statusBar()?.nativeElement;
     if (statusBar) this.resizeObserver.observe(statusBar);
     this.updateScrolling();
+  }
+
+  private workerMessage(): string | null {
+    const count = this.summary()?.activeWorkerCount;
+    if (count === undefined) return null;
+
+    const key = count === 0 ? 'adminStatus.noActiveWorkers'
+      : count === 1 ? 'adminStatus.healthyWorker' : 'adminStatus.healthyWorkers';
+    return this.localization.translate(key).replace('{count}', count.toString());
   }
 
   private updateScrolling(): void {

@@ -6,6 +6,7 @@ import java.util.List;
 public record SystemStatusSummaryResponse(
     boolean maintenanceModeEnabled,
     boolean cronQuietHoursActive,
+    int activeWorkerCount,
     int activeAlertExecutions,
     int waitingAlertExecutions,
     int activeProcedureExecutions,

@@ -6,6 +6,7 @@ import { RUNTIME_CONFIG } from '../config/runtime-config';
 export interface SystemStatusSummary {
   readonly maintenanceModeEnabled: boolean;
   readonly cronQuietHoursActive: boolean;
+  readonly activeWorkerCount: number;
   readonly activeAlertExecutions: number;
   readonly waitingAlertExecutions: number;
   readonly activeProcedureExecutions: number;

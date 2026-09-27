@@ -3,6 +3,7 @@
     #statusBar
     class="admin-status-bar"
     [class.admin-status-bar--error]="connectionUnavailable()"
+    [class.admin-status-bar--healthy]="healthy()"
     aria-live="polite"
     aria-atomic="true"
   >

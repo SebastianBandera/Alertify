@@ -43,6 +43,15 @@
   background: #fef3f2;
 }
 
+.admin-status-bar--healthy {
+  color: #027a48;
+}
+
+.admin-status-bar--healthy .admin-status-bar__message {
+  border-color: #a6f4c5;
+  background: #ecfdf3;
+}
+
 @keyframes admin-status-bar-scroll {
   from { transform: translateX(0); }
   to { transform: translateX(-50%); }
