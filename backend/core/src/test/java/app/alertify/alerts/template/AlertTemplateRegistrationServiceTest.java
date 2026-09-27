@@ -276,13 +276,17 @@ class AlertTemplateRegistrationServiceTest {
         AlertTemplateDefinition sqlWatchTemplate = templatesByKey.get(SqlWatchAlertTemplate.class.getName());
         assertNotNull(sqlWatchTemplate);
         List<AlertTemplateParameterDefinition> sqlWatchParameters = parametersOf(parameterCaptor, sqlWatchTemplate);
-        assertEquals(8, sqlWatchParameters.size());
+        assertEquals(9, sqlWatchParameters.size());
         AlertTemplateParameterDefinition snapshot = sqlWatchParameters.get(4);
         assertEquals("snapshot", snapshot.getParameterKey());
         assertTrue(snapshot.isWritableBindingRequired());
         assertEquals(List.of(AlertParameterSource.CONFIGURATION, AlertParameterSource.SECRET), snapshot.getAllowedSources());
         assertEquals(List.of("BINARY"), snapshot.getAllowedConfigurationValueTypes());
         assertEquals(List.of("BINARY"), snapshot.getAllowedSecretValueTypes());
+        AlertTemplateParameterDefinition showDetailsInJson = sqlWatchParameters.get(6);
+        assertEquals("showDetailsInJson", showDetailsInJson.getParameterKey());
+        assertEquals("false", showDetailsInJson.getDefaultValue());
+        assertFalse(showDetailsInJson.isBindingAllowed());
     }
 
     private static List<AlertTemplateParameterDefinition> parametersOf(

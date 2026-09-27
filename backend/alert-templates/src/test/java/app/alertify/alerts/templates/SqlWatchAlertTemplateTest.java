@@ -39,6 +39,8 @@ class SqlWatchAlertTemplateTest {
         assertEquals("10", parameter("timeoutSeconds").defaultValue());
         assertTrue(List.of(parameter("timeoutSeconds").options()).contains("604800"));
         assertEquals("20", parameter("maxReportedRows").defaultValue());
+        assertEquals("false", parameter("showDetailsInJson").defaultValue());
+        assertFalse(parameter("showDetailsInJson").bindingAllowed());
     }
 
     @Test
@@ -106,6 +108,40 @@ class SqlWatchAlertTemplateTest {
     }
 
     @Test
+    void keepsCountsButOmitsRowAndColumnDetailsWhenDisabled() throws Exception {
+        DatabaseCredentials credentials = databaseWithRows();
+        SqlWatchAlertTemplate first = new SqlWatchAlertTemplate(
+                credentials, "SELECT id, name FROM watched", "[]", "[\"id\"]", new byte[0], 20, false, null, 10);
+        first.evaluate(new AlertExecutionContext());
+
+        execute(credentials, "UPDATE watched SET name = 'changed' WHERE id = 1");
+        execute(credentials, "DELETE FROM watched WHERE id = 2");
+        execute(credentials, "INSERT INTO watched(id, name, payload) VALUES (3, 'new', X'03')");
+
+        SqlWatchAlertTemplate changed = new SqlWatchAlertTemplate(
+                credentials, "SELECT id, name FROM watched", "[]", "[\"id\"]", snapshot(first), 20, false, null, 10);
+        AlertResult rowDifference = changed.evaluate(new AlertExecutionContext());
+
+        assertEquals(AlertExecutionStatus.WARN, rowDifference.status());
+        assertEquals(1L, rowDifference.statusMessage().get("addedRows"));
+        assertEquals(1L, rowDifference.statusMessage().get("removedRows"));
+        assertEquals(1L, rowDifference.statusMessage().get("modifiedRows"));
+        assertFalse(rowDifference.statusMessage().containsKey("samples"));
+        assertFalse(rowDifference.statusMessage().containsKey("truncatedSampleValues"));
+
+        SqlWatchAlertTemplate structural = new SqlWatchAlertTemplate(
+                credentials, "SELECT id, name, 1 AS extra FROM watched", "[]", "[\"id\"]", snapshot(changed), 20, false, null, 10);
+        AlertResult structureDifference = structural.evaluate(new AlertExecutionContext());
+
+        assertEquals(AlertExecutionStatus.WARN, structureDifference.status());
+        assertEquals(true, structureDifference.statusMessage().get("structuralChange"));
+        assertEquals(false, structureDifference.statusMessage().get("keyColumnsChanged"));
+        assertFalse(structureDifference.statusMessage().containsKey("addedColumns"));
+        assertFalse(structureDifference.statusMessage().containsKey("removedColumns"));
+        assertFalse(structureDifference.statusMessage().containsKey("changedColumns"));
+    }
+
+    @Test
     void rejectsDuplicateKeysCorruptSnapshotsAndInvalidLimits() throws Exception {
         DatabaseCredentials credentials = databaseWithRows();
         SqlWatchAlertTemplate duplicate = template(credentials, "SELECT 1 AS id, 'a' AS name UNION ALL SELECT 1 AS id, 'b' AS name", new byte[0], 20);
@@ -114,22 +150,22 @@ class SqlWatchAlertTemplateTest {
         assertThrows(IllegalArgumentException.class, () -> duplicate.evaluate(new AlertExecutionContext()));
         assertThrows(IllegalArgumentException.class, () -> corrupt.evaluate(new AlertExecutionContext()));
         assertThrows(IllegalArgumentException.class, () -> new SqlWatchAlertTemplate(
-                credentials, "SELECT id FROM watched", "[]", "[]", new byte[0], 20, null, 10));
+                credentials, "SELECT id FROM watched", "[]", "[]", new byte[0], 20, true, null, 10));
         assertThrows(IllegalArgumentException.class, () -> template(credentials, "SELECT id FROM watched", new byte[0], 101));
         assertThrows(IllegalArgumentException.class, () -> new SqlWatchAlertTemplate(
-                credentials, "SELECT id FROM watched", "[]", "[\"id\"]", new byte[0], 20, null, 604_801));
+                credentials, "SELECT id FROM watched", "[]", "[\"id\"]", new byte[0], 20, true, null, 604_801));
     }
 
     @Test
     void reportsBinaryValuesOnlyAsLengthAndDigest() throws Exception {
         DatabaseCredentials credentials = databaseWithRows();
         SqlWatchAlertTemplate first = new SqlWatchAlertTemplate(
-                credentials, "SELECT id, payload FROM watched WHERE id = 1", "[]", "[\"id\"]", new byte[0], 20, null, 10);
+                credentials, "SELECT id, payload FROM watched WHERE id = 1", "[]", "[\"id\"]", new byte[0], 20, true, null, 10);
         first.evaluate(new AlertExecutionContext());
         execute(credentials, "UPDATE watched SET payload = X'01020304' WHERE id = 1");
 
         SqlWatchAlertTemplate changed = new SqlWatchAlertTemplate(
-                credentials, "SELECT id, payload FROM watched WHERE id = 1", "[]", "[\"id\"]", snapshot(first), 20, null, 10);
+                credentials, "SELECT id, payload FROM watched WHERE id = 1", "[]", "[\"id\"]", snapshot(first), 20, true, null, 10);
         AlertResult result = changed.evaluate(new AlertExecutionContext());
 
         assertEquals(AlertExecutionStatus.WARN, result.status());
@@ -149,7 +185,7 @@ class SqlWatchAlertTemplateTest {
                 DatabaseEngine.OTHER, "db.local", 1, "alertify", "app", "password-marker",
                 "jdbc:nonexistent-sql-watch://db.local/alertify");
         SqlWatchAlertTemplate template = new SqlWatchAlertTemplate(
-                credentials, "SELECT 'sql-marker'", "[\"parameter-marker\"]", "[\"id\"]", new byte[0], 20, null, 3);
+                credentials, "SELECT 'sql-marker'", "[\"parameter-marker\"]", "[\"id\"]", new byte[0], 20, true, null, 3);
 
         IllegalStateException exception = assertThrows(IllegalStateException.class, () -> template.evaluate(new AlertExecutionContext()));
 
@@ -160,7 +196,7 @@ class SqlWatchAlertTemplateTest {
 
     private static SqlWatchAlertTemplate template(DatabaseCredentials credentials, String sql, byte[] snapshot, int maximumRows) {
         return new SqlWatchAlertTemplate(
-                credentials, sql, "[]", "[\"id\"]", snapshot, maximumRows, "Watch test", 10);
+                credentials, sql, "[]", "[\"id\"]", snapshot, maximumRows, true, "Watch test", 10);
     }
 
     private static DatabaseCredentials databaseWithRows() throws Exception {

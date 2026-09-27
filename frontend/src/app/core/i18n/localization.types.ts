@@ -1019,6 +1019,8 @@ export type TranslationKey =
   | 'alerts.template.sqlWatch.snapshotDescription'
   | 'alerts.template.sqlWatch.maxReportedRows'
   | 'alerts.template.sqlWatch.maxReportedRowsDescription'
+  | 'alerts.template.sqlWatch.showDetailsInJson'
+  | 'alerts.template.sqlWatch.showDetailsInJsonDescription'
   | 'alerts.template.sqlWatch.alertDescription'
   | 'alerts.template.sqlWatch.alertDescriptionDescription'
   | 'alerts.template.sqlWatch.timeout'

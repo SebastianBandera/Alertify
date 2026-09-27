@@ -119,10 +119,20 @@ public final class SqlWatchAlertTemplate implements AlertEvaluator {
     private final int maxReportedRows;
 
     @AlertParameter(
+        labelKey = "alerts.template.sqlWatch.showDetailsInJson",
+        descriptionKey = "alerts.template.sqlWatch.showDetailsInJsonDescription",
+        options = { "false", "true" },
+        bindingAllowed = false,
+        defaultValue = "false",
+        order = 7
+    )
+    private final boolean showDetailsInJson;
+
+    @AlertParameter(
         labelKey = "alerts.template.sqlWatch.alertDescription",
         descriptionKey = "alerts.template.sqlWatch.alertDescriptionDescription",
         required = false,
-        order = 7,
+        order = 8,
         allowedSources = { AlertParameterSource.TEXT, AlertParameterSource.CONFIGURATION }
     )
     private final String description;
@@ -132,14 +142,14 @@ public final class SqlWatchAlertTemplate implements AlertEvaluator {
         descriptionKey = "alerts.template.sqlWatch.timeoutDescription",
         options = { "1", "3", "5", "10", "30", "300", "3600", "86400", "604800" },
         defaultValue = "10",
-        order = 8
+        order = 9
     )
     private final int timeoutSeconds;
 
     private final JsonNode sqlParameters;
     private final List<String> keyColumns;
 
-    public SqlWatchAlertTemplate(DatabaseCredentials credentials, String sql, String sqlParametersJson, String keyColumnsJson, byte[] snapshot, int maxReportedRows, String description, int timeoutSeconds) {
+    public SqlWatchAlertTemplate(DatabaseCredentials credentials, String sql, String sqlParametersJson, String keyColumnsJson, byte[] snapshot, int maxReportedRows, boolean showDetailsInJson, String description, int timeoutSeconds) {
         if (credentials == null)
             throw new IllegalArgumentException("credentials must not be null");
 
@@ -157,6 +167,7 @@ public final class SqlWatchAlertTemplate implements AlertEvaluator {
             throw new IllegalArgumentException("maxReportedRows must be between 0 and " + MAX_REPORTED_ROWS);
 
         this.maxReportedRows = maxReportedRows;
+        this.showDetailsInJson = showDetailsInJson;
         this.description = optionalText(description);
         if (timeoutSeconds <= 0 || timeoutSeconds > MAX_TIMEOUT_SECONDS)
             throw new IllegalArgumentException("timeoutSeconds must be between 1 and " + MAX_TIMEOUT_SECONDS);
@@ -188,10 +199,12 @@ public final class SqlWatchAlertTemplate implements AlertEvaluator {
                 replaceSnapshot(currentPath);
                 status.put("structuralChange", true);
                 status.put("previousRows", previous.rowCount());
-                status.put("addedColumns", structure.addedColumns());
-                status.put("removedColumns", structure.removedColumns());
-                status.put("changedColumns", structure.changedColumns());
                 status.put("keyColumnsChanged", structure.keyColumnsChanged());
+                if (showDetailsInJson) {
+                    status.put("addedColumns", structure.addedColumns());
+                    status.put("removedColumns", structure.removedColumns());
+                    status.put("changedColumns", structure.changedColumns());
+                }
                 context.setState(state(current.rowCount(), 0, 0, 0, true));
                 return AlertResult.warn(status);
             }
@@ -202,9 +215,11 @@ public final class SqlWatchAlertTemplate implements AlertEvaluator {
             status.put("modifiedRows", difference.modified());
             if (difference.changed()) {
                 replaceSnapshot(currentPath);
-                status.put("samples", difference.samples());
-                if (difference.truncatedValues() > 0)
-                    status.put("truncatedSampleValues", difference.truncatedValues());
+                if (showDetailsInJson) {
+                    status.put("samples", difference.samples());
+                    if (difference.truncatedValues() > 0)
+                        status.put("truncatedSampleValues", difference.truncatedValues());
+                }
 
                 context.setState(state(current.rowCount(), difference.added(), difference.removed(), difference.modified(), false));
                 return AlertResult.warn(status);
@@ -343,13 +358,13 @@ public final class SqlWatchAlertTemplate implements AlertEvaluator {
             long modified = count(connection, "SELECT COUNT(*) FROM current_snapshot.snapshot_rows current JOIN snapshot_rows previous ON previous.key_json = current.key_json WHERE previous.row_json <> current.row_json");
             int[] truncated = { 0 };
             Map<String, Object> samples = new LinkedHashMap<>();
-            if (maxReportedRows > 0 && added > 0)
+            if (showDetailsInJson && maxReportedRows > 0 && added > 0)
                 samples.put("added", sampleRows(connection, "SELECT current.row_json FROM current_snapshot.snapshot_rows current LEFT JOIN snapshot_rows previous ON previous.key_json = current.key_json WHERE previous.key_json IS NULL ORDER BY current.key_json LIMIT ?", truncated));
 
-            if (maxReportedRows > 0 && removed > 0)
+            if (showDetailsInJson && maxReportedRows > 0 && removed > 0)
                 samples.put("removed", sampleRows(connection, "SELECT previous.row_json FROM snapshot_rows previous LEFT JOIN current_snapshot.snapshot_rows current ON current.key_json = previous.key_json WHERE current.key_json IS NULL ORDER BY previous.key_json LIMIT ?", truncated));
 
-            if (maxReportedRows > 0 && modified > 0)
+            if (showDetailsInJson && maxReportedRows > 0 && modified > 0)
                 samples.put("modified", sampleChanges(connection, truncated));
 
             return new Difference(added, removed, modified, samples, truncated[0]);
