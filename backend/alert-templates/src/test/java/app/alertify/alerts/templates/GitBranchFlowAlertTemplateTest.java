@@ -2,10 +2,15 @@ package app.alertify.alerts.templates;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.IOException;
+import java.lang.reflect.UndeclaredThrowableException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -135,6 +140,23 @@ class GitBranchFlowAlertTemplateTest {
         assertEquals(10L, last.get("oldestPendingAgeDays"));
         assertEquals(true, last.get("delayed"));
         assertEquals(false, merge(result).get("conflict"));
+    }
+
+    @Test
+    void rejectsCommitWithoutCommitterWithAnExplicitError() {
+        RevCommit commit = RevCommit.parse("""
+                tree 0000000000000000000000000000000000000000
+                author Tester <tester@example.org> 2147483648 +0000
+
+                Missing committer
+                """.getBytes(StandardCharsets.UTF_8));
+        assertNull(commit.getCommitterIdent());
+
+        UndeclaredThrowableException failure = assertThrows(UndeclaredThrowableException.class,
+                () -> ReflectionTestUtils.invokeMethod(GitBranchFlowAlertTemplate.class, "describeCommit", commit));
+
+        IOException cause = assertInstanceOf(IOException.class, failure.getCause());
+        assertEquals("Commit " + commit.getName() + " has no committer", cause.getMessage());
     }
 
     @ParameterizedTest
