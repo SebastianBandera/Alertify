@@ -138,6 +138,7 @@ export class LogsComponent implements OnInit {
   protected readonly levels: readonly ApplicationLogLevel[] = ['INFO', 'WARN', 'ERROR'];
   protected readonly outcomes: readonly ApplicationLogOutcome[] = ['SUCCESS', 'FAILURE'];
   protected readonly pageSizeOptions = PAGE_SIZE_OPTIONS;
+  protected readonly eventOptions = signal<readonly string[]>(Object.keys(EVENT_TRANSLATION_KEYS).sort());
   private readonly api = inject(LogApiService);
   protected readonly logs = signal<readonly ApplicationLog[]>([]);
   protected readonly loading = signal(true);
@@ -150,7 +151,16 @@ export class LogsComponent implements OnInit {
   protected readonly totalPages = signal(0);
 
   async ngOnInit(): Promise<void> {
+    void this.loadEventOptions();
     await this.load();
+  }
+
+  private async loadEventOptions(): Promise<void> {
+    try {
+      this.eventOptions.set(await this.api.listEvents());
+    } catch {
+      // Keep the known event codes available when the catalog cannot be loaded.
+    }
   }
 
   protected patchFilters(patch: Partial<ApplicationLogFilters>): void {

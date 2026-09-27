@@ -1330,6 +1330,7 @@ export type TranslationKey =
   | 'logs.filter.user'
   | 'logs.filter.subject'
   | 'logs.filter.event'
+  | 'logs.filter.eventPlaceholder'
   | 'logs.filter.path'
   | 'logs.filter.level'
   | 'logs.filter.outcome'

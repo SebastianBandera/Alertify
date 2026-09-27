@@ -1,5 +1,6 @@
 package app.alertify.logging;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -13,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.MultiValueMap;
 
 import app.alertify.jpa.entity.ApplicationLog;
+import app.alertify.jpa.repository.ApplicationLogEventRepository;
 import app.alertify.jpa.repository.ApplicationLogRepository;
 import app.alertify.jpa.specification.DynamicSpecification;
 import app.alertify.jpa.specification.InvalidFilterException;
@@ -57,9 +59,16 @@ public class ApplicationLogService {
     );
 
     private final ApplicationLogRepository repository;
+    private final ApplicationLogEventRepository eventRepository;
 
-    public ApplicationLogService(ApplicationLogRepository repository) {
+    public ApplicationLogService(ApplicationLogRepository repository, ApplicationLogEventRepository eventRepository) {
         this.repository = repository;
+        this.eventRepository = eventRepository;
+    }
+
+    @Transactional(readOnly = true)
+    public List<String> eventCodes() {
+        return eventRepository.findAllCodesOrderByCode();
     }
 
     @Transactional(readOnly = true)

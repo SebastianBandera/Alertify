@@ -1,6 +1,7 @@
 package app.alertify.controller;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 import org.springframework.data.domain.Page;
@@ -41,6 +42,12 @@ public class ApplicationLogController {
     @PreAuthorize("hasRole('ADMIN')")
     public Page<ApplicationLogResponse> search(@RequestParam MultiValueMap<String, String> params, @PageableDefault(size = 25, sort = "eventAt", direction = Sort.Direction.DESC) Pageable pageable) {
         return service.search(params, pageable);
+    }
+
+    @GetMapping("/events")
+    @PreAuthorize("hasRole('ADMIN')")
+    public List<String> events() {
+        return service.eventCodes();
     }
 
     @PostMapping("/login")

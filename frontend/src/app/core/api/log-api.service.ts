@@ -37,6 +37,15 @@ export class LogApiService {
   private readonly authService = inject(AuthService);
   private readonly apiBaseUrl = inject(RUNTIME_CONFIG).apiBaseUrl;
 
+  async listEvents(): Promise<readonly string[]> {
+    const token = await this.authService.getAccessToken();
+    const response = await fetch(`${this.apiBaseUrl}/api/logs/events`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) throw new Error(`Request failed with status ${response.status}.`);
+    return (await response.json()) as string[];
+  }
+
   async list(
     filters: ApplicationLogFilters,
     pageNumber: number,

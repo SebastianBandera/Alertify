@@ -848,6 +848,7 @@ export const EN_TRANSLATIONS = {
   'logs.filter.user': 'User',
   'logs.filter.subject': 'Subject',
   'logs.filter.event': 'Event',
+  'logs.filter.eventPlaceholder': 'Type or choose an event',
   'logs.filter.path': 'Path',
   'logs.filter.level': 'Level',
   'logs.filter.outcome': 'Outcome',

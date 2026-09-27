@@ -39,7 +39,7 @@ while IFS= read -r -d '' path; do
 
     if [[ -z "$reason" ]]; then
         case "/$path/" in
-            */.alertify/*|*/target/*|*/node_modules/*|*/dist/*|*/build/*|*/out/*|*/coverage/*|*/tmp/*|*/logs/*|*/.angular/cache/*)
+            */.alertify/*|*/target/*|*/node_modules/*|*/dist/*|*/build/*|*/out/*|*/coverage/*|*/tmp/*|/logs/*|*/.angular/cache/*)
                 reason='generated or local directory'
                 ;;
             */frontend/public/config/*|*/backend/alert-templates/src/main/java/app/alertify/alerts/templates/custom/*)

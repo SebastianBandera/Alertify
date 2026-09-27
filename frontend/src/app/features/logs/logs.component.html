@@ -32,10 +32,18 @@
       <span>{{ localization.translate('logs.filter.event') }}</span>
       <input
         type="search"
+        list="log-event-options"
+        autocomplete="off"
+        [placeholder]="localization.translate('logs.filter.eventPlaceholder')"
         [ngModel]="filters().event"
         (ngModelChange)="patchFilters({ event: $event })"
         name="event"
       >
+      <datalist id="log-event-options">
+        @for (event of eventOptions(); track event) {
+          <option [value]="event" [label]="eventMessage(event)"></option>
+        }
+      </datalist>
     </label>
     <label>
       <span>{{ localization.translate('logs.filter.path') }}</span>

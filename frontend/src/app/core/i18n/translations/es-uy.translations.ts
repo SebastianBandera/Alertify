@@ -848,6 +848,7 @@ export const ES_UY_TRANSLATIONS = {
   'logs.filter.user': 'Usuario',
   'logs.filter.subject': 'Subject',
   'logs.filter.event': 'Evento',
+  'logs.filter.eventPlaceholder': 'Escribí o elegí un evento',
   'logs.filter.path': 'Ruta',
   'logs.filter.level': 'Nivel',
   'logs.filter.outcome': 'Resultado',
