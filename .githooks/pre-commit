@@ -66,3 +66,4 @@ if (( blocked )); then
     printf 'Commit blocked: remove the listed files from the staging area.\n' >&2
     exit 1
 fi
+
