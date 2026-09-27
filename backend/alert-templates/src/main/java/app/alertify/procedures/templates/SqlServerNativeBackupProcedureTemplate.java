@@ -459,8 +459,9 @@ public final class SqlServerNativeBackupProcedureTemplate implements ProcedureEv
     private static boolean deleteServerFiles(Connection connection, List<String> serverFiles) {
         boolean deleted = true;
         for (String serverFile : serverFiles) {
-            try (Statement statement = connection.createStatement()) {
-                drain(statement, statement.execute("EXEC master.dbo.xp_delete_file 0, " + quoteLiteral(serverFile)));
+            try (PreparedStatement statement = connection.prepareStatement("EXEC master.dbo.xp_delete_file 0, ?")) {
+                statement.setString(1, serverFile);
+                drain(statement, statement.execute());
             } catch (SQLException exception) {
                 // Best effort: a failed deletion leaves this execution's unique backup file on the server.
                 deleted = false;

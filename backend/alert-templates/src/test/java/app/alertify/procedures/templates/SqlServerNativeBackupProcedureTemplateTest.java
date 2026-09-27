@@ -2,10 +2,59 @@ package app.alertify.procedures.templates;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.List;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
 
 class SqlServerNativeBackupProcedureTemplateTest {
+
+    @Test
+    void deletesServerFileAsBoundDataAndDrainsResults() throws SQLException {
+        Connection connection = mock(Connection.class);
+        PreparedStatement statement = mock(PreparedStatement.class);
+        ResultSet resultSet = mock(ResultSet.class);
+        String serverFile = "D:\\Backups\\night'ly; --.bak";
+        when(connection.prepareStatement("EXEC master.dbo.xp_delete_file 0, ?")).thenReturn(statement);
+        when(statement.execute()).thenReturn(true);
+        when(statement.getResultSet()).thenReturn(resultSet);
+        when(statement.getUpdateCount()).thenReturn(0, -1);
+
+        Boolean deleted = ReflectionTestUtils.invokeMethod(SqlServerNativeBackupProcedureTemplate.class,
+                "deleteServerFiles", connection, List.of(serverFile));
+
+        assertThat(deleted).isTrue();
+        verify(statement).setString(1, serverFile);
+        verify(resultSet).close();
+        verify(statement).close();
+    }
+
+    @Test
+    void continuesDeletingOtherFilesAfterSqlFailure() throws SQLException {
+        Connection connection = mock(Connection.class);
+        PreparedStatement failed = mock(PreparedStatement.class);
+        PreparedStatement successful = mock(PreparedStatement.class);
+        when(connection.prepareStatement("EXEC master.dbo.xp_delete_file 0, ?")).thenReturn(failed, successful);
+        when(failed.execute()).thenThrow(new SQLException("Deletion denied"));
+        when(successful.getUpdateCount()).thenReturn(-1);
+
+        Boolean deleted = ReflectionTestUtils.invokeMethod(SqlServerNativeBackupProcedureTemplate.class,
+                "deleteServerFiles", connection, List.of("/backup/first.bak", "/backup/second.bak"));
+
+        assertThat(deleted).isFalse();
+        verify(successful).setString(1, "/backup/second.bak");
+        verify(successful).execute();
+        verify(failed).close();
+        verify(successful).close();
+    }
 
     @Test
     void buildsNativeBackupStatementWithRequestedOptions() {
