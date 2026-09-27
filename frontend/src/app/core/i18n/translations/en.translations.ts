@@ -665,7 +665,7 @@ export const EN_TRANSLATIONS = {
   'configs.field.tags': 'Tags',
   'configs.field.writable': 'Writable',
   'configs.field.writableHelp': 'Allow alerts bound to this configuration to persist a changed final value.',
-  'configs.status.writable': 'System-writable',
+  'configs.status.writable': 'Writable',
   'configs.field.noTags': 'No tags have been defined.',
   'binary.fileLabel': 'Binary file (maximum {maximum})',
   'binary.selectReplacement': 'saving without a file replaces it with an empty binary',

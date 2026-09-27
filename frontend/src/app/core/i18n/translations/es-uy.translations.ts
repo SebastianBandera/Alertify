@@ -665,7 +665,7 @@ export const ES_UY_TRANSLATIONS = {
   'configs.field.tags': 'Tags',
   'configs.field.writable': 'Permitir escritura',
   'configs.field.writableHelp': 'Permite que las alertas vinculadas a esta configuración persistan un valor final modificado.',
-  'configs.status.writable': 'Actualizable por sistema',
+  'configs.status.writable': 'Escribible',
   'configs.field.noTags': 'No hay tags definidos.',
   'binary.fileLabel': 'Archivo binario (maximo {maximum})',
   'binary.selectReplacement': 'guardar sin archivo lo reemplaza por un binario vacío',
