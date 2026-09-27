@@ -106,11 +106,9 @@ public final class PostgresBackupProcedureTemplate implements ProcedureEvaluator
         String logicalName = fileName(fileName, gzipCompressionLevel > 0);
         String mediaType = gzipCompressionLevel == 0 ? SQL_MEDIA_TYPE : GZIP_MEDIA_TYPE;
         Map<String, String> options = options(credentials.options());
-        Path passwordFile = Files.createTempFile("alertify-pgpass-", ".conf");
-        Path errorFile = Files.createTempFile("alertify-pg-dump-", ".err");
+        Path passwordFile = Files.createTempFile("alertify-pgpass-", ".conf", PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")));
+        Path errorFile = Files.createTempFile("alertify-pg-dump-", ".err", PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")));
         try {
-            Files.setPosixFilePermissions(passwordFile, PosixFilePermissions.fromString("rw-------"));
-            Files.setPosixFilePermissions(errorFile, PosixFilePermissions.fromString("rw-------"));
             Files.writeString(passwordFile, pgPass(credentials), StandardCharsets.UTF_8);
 
             List<String> command = pgDumpCommand(credentials, excludePrivileges, discardOwnership);

@@ -5,6 +5,7 @@ import java.io.InputStream;
 import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.sql.Connection;
@@ -168,7 +169,7 @@ public final class SqlWatchAlertTemplate implements AlertEvaluator {
         Path directory = null;
         long startedNanos = System.nanoTime();
         try {
-            directory = Files.createTempDirectory("alertify-sql-watch-");
+            directory = Files.createTempDirectory("alertify-sql-watch-", PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")));
             Path currentPath = directory.resolve("current.sqlite");
             SnapshotMetadata current = createCurrentSnapshot(currentPath);
             Map<String, Object> status = baseStatus(current.rowCount(), elapsedMillis(startedNanos));

@@ -3,6 +3,7 @@ package app.alertify.alerts.templates;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -173,7 +174,7 @@ public final class GitBranchFlowAlertTemplate implements AlertEvaluator {
             return AlertResult.warn(statusMessage);
         }
 
-        Path workspace = Files.createTempDirectory("alertify-git-");
+        Path workspace = Files.createTempDirectory("alertify-git-", PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")));
         long startedNanos = System.nanoTime();
         try (Git git = Git.init().setBare(true).setDirectory(workspace.toFile()).call()) {
             try {

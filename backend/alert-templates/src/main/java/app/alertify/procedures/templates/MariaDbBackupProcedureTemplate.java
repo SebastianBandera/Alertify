@@ -106,11 +106,9 @@ public final class MariaDbBackupProcedureTemplate implements ProcedureEvaluator 
         String logicalName = fileName(fileName, gzipCompressionLevel > 0);
         String mediaType = gzipCompressionLevel == 0 ? SQL_MEDIA_TYPE : GZIP_MEDIA_TYPE;
         Map<String, String> options = options(credentials.options());
-        Path defaultsFile = Files.createTempFile("alertify-mariadb-", ".cnf");
-        Path errorFile = Files.createTempFile("alertify-mariadb-dump-", ".err");
+        Path defaultsFile = Files.createTempFile("alertify-mariadb-", ".cnf", PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")));
+        Path errorFile = Files.createTempFile("alertify-mariadb-dump-", ".err", PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")));
         try {
-            Files.setPosixFilePermissions(defaultsFile, PosixFilePermissions.fromString("rw-------"));
-            Files.setPosixFilePermissions(errorFile, PosixFilePermissions.fromString("rw-------"));
             Files.writeString(defaultsFile, defaults(credentials), StandardCharsets.UTF_8);
 
             List<String> command = dumpCommand(credentials, defaultsFile, options, singleTransaction, includeRoutines);
