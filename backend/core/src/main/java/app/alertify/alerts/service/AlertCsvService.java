@@ -146,7 +146,8 @@ public class AlertCsvService {
                 alertManagementService.create(
                         new AlertCreateRequest(
                                 template.getId(), row.name(), row.description(), row.cronExpression(),
-                                row.enabled(), row.allowConcurrentExecutions(), parameters, tagIds
+                                row.enabled(), row.allowConcurrentExecutions(), parameters, tagIds, null,
+                                row.smartExecutionEnabled(), row.smartExecutionIntervalHours(), row.smartExecutionPolicy()
                         )
                 );
                 created++;
@@ -170,7 +171,8 @@ public class AlertCsvService {
                     alert.getId(),
                     new AlertUpdateRequest(
                             alert.getVersion(), row.name(), row.description(), row.cronExpression(),
-                            row.enabled(), row.allowConcurrentExecutions(), parameters, tagIds
+                            row.enabled(), row.allowConcurrentExecutions(), parameters, tagIds, null,
+                            row.smartExecutionEnabled(), row.smartExecutionIntervalHours(), row.smartExecutionPolicy()
                     )
             );
             updated++;
@@ -226,6 +228,11 @@ public class AlertCsvService {
                 || !alert.getCronExpression().equals(row.cronExpression())
                 || alert.isEnabled() != row.enabled()
                 || alert.isConcurrentExecutionAllowed() != row.allowConcurrentExecutions()) {
+            return false;
+        }
+        if (alert.isSmartExecutionEnabled() != row.smartExecutionEnabled()
+                || !Objects.equals(alert.getSmartExecutionIntervalHours(), row.smartExecutionIntervalHours())
+                || alert.getSmartExecutionPolicy() != row.smartExecutionPolicy()) {
             return false;
         }
 

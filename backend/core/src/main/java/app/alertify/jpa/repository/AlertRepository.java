@@ -27,6 +27,9 @@ public interface AlertRepository extends JpaRepository<Alert, Long>, JpaSpecific
     @EntityGraph(attributePaths = "template")
     List<Alert> findAllByEnabledTrue();
 
+    @EntityGraph(attributePaths = "template")
+    List<Alert> findAllByEnabledTrueAndSmartExecutionEnabledTrue();
+
     @Override
     @EntityGraph(attributePaths = "template")
     Page<Alert> findAll(Pageable pageable);

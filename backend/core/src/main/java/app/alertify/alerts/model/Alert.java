@@ -17,6 +17,8 @@ import app.alertify.jpa.entity.Tag;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -72,6 +74,16 @@ public class Alert {
 
     @Column(name = "allow_concurrent_executions", nullable = false)
     private boolean allowConcurrentExecutions;
+
+    @Column(name = "smart_execution_enabled", nullable = false)
+    private boolean smartExecutionEnabled;
+
+    @Column(name = "smart_execution_interval_hours")
+    private Integer smartExecutionIntervalHours;
+
+    @Column(name = "smart_execution_policy", length = 32)
+    @Enumerated(EnumType.STRING)
+    private SmartExecutionPolicy smartExecutionPolicy;
 
     /** When issues started persisting until seen; null while the option is off. */
     @Column(name = "persistent_issues_since")
@@ -154,6 +166,18 @@ public class Alert {
         return allowConcurrentExecutions;
     }
 
+    public boolean isSmartExecutionEnabled() {
+        return smartExecutionEnabled;
+    }
+
+    public Integer getSmartExecutionIntervalHours() {
+        return smartExecutionIntervalHours;
+    }
+
+    public SmartExecutionPolicy getSmartExecutionPolicy() {
+        return smartExecutionPolicy;
+    }
+
     public Instant getCreatedAt() {
         return createdAt;
     }
@@ -188,6 +212,21 @@ public class Alert {
 
     public void changeConcurrentExecution(boolean allowConcurrentExecutions) {
         this.allowConcurrentExecutions = allowConcurrentExecutions;
+    }
+
+    public void changeSmartExecution(boolean enabled, Integer intervalHours, SmartExecutionPolicy policy) {
+        if (!enabled) {
+            smartExecutionEnabled = false;
+            smartExecutionIntervalHours = null;
+            smartExecutionPolicy = null;
+            return;
+        }
+        if (intervalHours == null || intervalHours < 1)
+            throw new IllegalArgumentException("smartExecutionIntervalHours must be greater than or equal to 1");
+
+        smartExecutionEnabled = true;
+        smartExecutionIntervalHours = intervalHours;
+        smartExecutionPolicy = Objects.requireNonNull(policy, "smartExecutionPolicy must not be null");
     }
 
     public Instant getPersistentIssuesSince() {

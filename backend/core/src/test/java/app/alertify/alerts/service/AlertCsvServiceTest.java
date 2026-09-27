@@ -54,7 +54,7 @@ class AlertCsvServiceTest {
 
     private static final String TEMPLATE_KEY = "app.alertify.alerts.templates.HttpsCertificateExpiryAlertTemplate";
     private static final String HEADER =
-            "name,description,templateKey,cronExpression,enabled,allowConcurrentExecutions,parameters,tags";
+            "name,description,templateKey,cronExpression,enabled,allowConcurrentExecutions,smartExecutionEnabled,smartExecutionIntervalHours,smartExecutionPolicy,parameters,tags";
 
     @Mock private AlertRepository alertRepository;
     @Mock private AlertParameterValueRepository parameterValueRepository;
@@ -73,7 +73,7 @@ class AlertCsvServiceTest {
         when(alertRepository.findAll()).thenReturn(List.of());
 
         AlertImportResult result = service().importCsv(
-                file("nueva,Chequeo diario," + TEMPLATE_KEY + ",0 0 8 * * *,true,false,"
+                file("nueva,Chequeo diario," + TEMPLATE_KEY + ",0 0 8 * * *,true,false,false,,,"
                         + "\"[{\"\"key\"\":\"\"endpoint\"\",\"\"source\"\":\"\"TEXT\"\",\"\"value\"\":\"\"https://ejemplo.com.uy\"\"}]\",[]")
         );
 
@@ -102,7 +102,7 @@ class AlertCsvServiceTest {
         when(parameterValueRepository.findAllByAlertIdOrdered(1L)).thenReturn(List.of());
 
         AlertImportResult result = service().importCsv(
-                file("nueva,," + TEMPLATE_KEY + ",0 0 9 * * *,true,false,[],[]")
+                file("nueva,," + TEMPLATE_KEY + ",0 0 9 * * *,true,false,false,,,[],[]")
         );
 
         assertThat(result).isEqualTo(new AlertImportResult(1, 0, 1, 0, 0));
@@ -124,7 +124,7 @@ class AlertCsvServiceTest {
         when(parameterValueRepository.findAllByAlertIdOrdered(1L)).thenReturn(List.of(value));
 
         AlertImportResult result = service().importCsv(
-                file("nueva,Chequeo," + TEMPLATE_KEY + ",0 0 8 * * *,true,false,"
+                file("nueva,Chequeo," + TEMPLATE_KEY + ",0 0 8 * * *,true,false,false,,,"
                         + "\"[{\"\"key\"\":\"\"warningDays\"\",\"\"source\"\":\"\"CONFIGURATION\"\",\"\"value\"\":\"\"DIAS_AVISO\"\"}]\",[]")
         );
 
@@ -145,7 +145,7 @@ class AlertCsvServiceTest {
         });
 
         AlertImportResult result = service().importCsv(
-                file("nueva,," + TEMPLATE_KEY + ",0 0 8 * * *,true,false,[],"
+                file("nueva,," + TEMPLATE_KEY + ",0 0 8 * * *,true,false,false,,,[],"
                         + "\"[{\"\"name\"\":\"\"prod\"\",\"\"color\"\":\"\"#FF0000\"\"}]\"")
         );
 
@@ -162,7 +162,7 @@ class AlertCsvServiceTest {
         when(alertRepository.findAll()).thenReturn(List.of());
 
         assertThatThrownBy(() -> service().importCsv(
-                file("nueva,,app.alertify.alerts.templates.NoExiste,0 0 8 * * *,true,false,[],[]")
+                file("nueva,,app.alertify.alerts.templates.NoExiste,0 0 8 * * *,true,false,false,,,[],[]")
         ))
                 .isInstanceOf(InvalidAlertImportException.class)
                 .hasMessage("CSV row 2: template 'app.alertify.alerts.templates.NoExiste' was not found");
@@ -176,7 +176,7 @@ class AlertCsvServiceTest {
         when(alertRepository.findAll()).thenReturn(List.of(alert("nueva", null, "0 0 8 * * *", true, false)));
 
         assertThatThrownBy(() -> service().importCsv(
-                file("nueva,,app.alertify.alerts.templates.InternetConnectionAlertTemplate,0 0 8 * * *,true,false,[],[]")
+                file("nueva,,app.alertify.alerts.templates.InternetConnectionAlertTemplate,0 0 8 * * *,true,false,false,,,[],[]")
         ))
                 .isInstanceOf(InvalidAlertImportException.class)
                 .hasMessageContaining("CSV row 2: alert 'nueva' already uses template '" + TEMPLATE_KEY + "'")
@@ -189,14 +189,14 @@ class AlertCsvServiceTest {
         when(alertRepository.findAll()).thenReturn(List.of());
 
         assertThatThrownBy(() -> service().importCsv(
-                file("nueva,," + TEMPLATE_KEY + ",0 0 8 * * *,true,false,"
+                file("nueva,," + TEMPLATE_KEY + ",0 0 8 * * *,true,false,false,,,"
                         + "\"[{\"\"key\"\":\"\"warningDays\"\",\"\"source\"\":\"\"CONFIGURATION\"\",\"\"value\"\":\"\"NO_EXISTE\"\"}]\",[]")
         ))
                 .isInstanceOf(InvalidAlertImportException.class)
                 .hasMessage("CSV row 2: configuration 'NO_EXISTE' was not found");
 
         assertThatThrownBy(() -> service().importCsv(
-                file("nueva,," + TEMPLATE_KEY + ",0 0 8 * * *,true,false,"
+                file("nueva,," + TEMPLATE_KEY + ",0 0 8 * * *,true,false,false,,,"
                         + "\"[{\"\"key\"\":\"\"apiToken\"\",\"\"source\"\":\"\"SECRET\"\",\"\"value\"\":\"\"NO_EXISTE\"\"}]\",[]")
         ))
                 .isInstanceOf(InvalidAlertImportException.class)

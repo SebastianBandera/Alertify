@@ -38,6 +38,7 @@ import app.alertify.alerts.model.AlertParameterValue;
 import app.alertify.alerts.model.AlertState;
 import app.alertify.alerts.model.AlertTemplateDefinition;
 import app.alertify.alerts.model.AlertTemplateParameterDefinition;
+import app.alertify.alerts.model.SmartExecutionPolicy;
 import app.alertify.alerts.template.ParameterValueTypeCompatibility;
 import app.alertify.alerts.template.annotation.AlertParameterSource;
 import app.alertify.api.error.ConflictException;
@@ -160,6 +161,7 @@ public class AlertManagementService {
                 request.allowConcurrentExecutions(), tags
         );
         newAlert.changePersistentIssues(Boolean.TRUE.equals(request.persistentIssues()), Instant.now());
+        changeSmartExecution(newAlert, request.smartExecutionEnabled(), request.smartExecutionIntervalHours(), request.smartExecutionPolicy(), false);
         Alert alert = alertRepository.saveAndFlush(newAlert);
         List<AlertParameterValue> values = synchronizeParameters(alert, request.parameters(), List.of());
         eventLogger.successAfterCommit("ALERT_CREATED", Map.of(ALERT_ID, alert.getId(), "name", alert.getName(), "templateId", template.getId(), ALLOW_CONCURRENT_EXECUTIONS, alert.isConcurrentExecutionAllowed(), PERSISTENT_ISSUES, alert.getPersistentIssuesSince() != null));
@@ -186,6 +188,7 @@ public class AlertManagementService {
         /* Omitted by clients that do not know the option: leave it as it is. */
         if (request.persistentIssues() != null)
             alert.changePersistentIssues(request.persistentIssues(), Instant.now());
+        changeSmartExecution(alert, request.smartExecutionEnabled(), request.smartExecutionIntervalHours(), request.smartExecutionPolicy(), true);
         alert.replaceTags(resolveAlertTags(request.tagIds()));
 
         List<AlertParameterValue> existing = parameterValueRepository.findAllByAlertIdOrdered(id);
@@ -492,6 +495,26 @@ public class AlertManagementService {
 
     private static String normalizeOptional(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private static void changeSmartExecution(Alert alert, Boolean requestedEnabled, Integer requestedHours, SmartExecutionPolicy requestedPolicy, boolean preserveWhenOmitted) {
+        if (preserveWhenOmitted && requestedEnabled == null && requestedHours == null && requestedPolicy == null)
+            return;
+
+        boolean enabled = requestedEnabled == null ? alert.isSmartExecutionEnabled() : requestedEnabled;
+        if (!enabled) {
+            alert.changeSmartExecution(false, null, null);
+            return;
+        }
+
+        Integer hours = requestedHours == null ? alert.getSmartExecutionIntervalHours() : requestedHours;
+        SmartExecutionPolicy policy = requestedPolicy == null ? alert.getSmartExecutionPolicy() : requestedPolicy;
+        if (policy == null)
+            policy = SmartExecutionPolicy.NORMAL;
+        if (hours == null || hours < 1)
+            throw invalid("smartExecutionIntervalHours must be greater than or equal to 1 when smart execution is enabled");
+
+        alert.changeSmartExecution(true, hours, policy);
     }
 
     private static void ensureVersion(Alert alert, long requestedVersion) {

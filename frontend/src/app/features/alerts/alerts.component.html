@@ -483,10 +483,72 @@
             <span>{{ localization.translate('alerts.form.alertDescription') }}</span>
             <textarea [ngModel]="form().description" (ngModelChange)="patchForm({ description: $event })" name="description" maxlength="2000" rows="3"></textarea>
           </label>
-          <label class="checkbox full">
-            <input type="checkbox" [ngModel]="form().enabled" (ngModelChange)="patchForm({ enabled: $event })" name="enabled">
-            <span>{{ localization.translate('alerts.form.enabled') }}</span>
+          <label class="checkbox checkbox--with-help full">
+            <input
+              type="checkbox"
+              [ngModel]="form().enabled"
+              (ngModelChange)="patchForm({ enabled: $event })"
+              name="enabled"
+              aria-describedby="alert-enabled-help"
+            >
+            <span>
+              {{ localization.translate('alerts.form.enabled') }}
+              <small id="alert-enabled-help">{{ localization.translate('alerts.form.enabledHelp') }}</small>
+            </span>
           </label>
+          <label class="checkbox checkbox--with-help full">
+            <input
+              type="checkbox"
+              [ngModel]="form().smartExecutionEnabled"
+              (ngModelChange)="patchForm({ smartExecutionEnabled: $event })"
+              name="smartExecutionEnabled"
+              aria-describedby="alert-smart-help"
+            >
+            <span>
+              {{ localization.translate('alerts.form.smartExecution') }}
+              <small id="alert-smart-help">{{ localization.translate('alerts.form.smartExecutionHelp') }}</small>
+            </span>
+          </label>
+          @if (form().smartExecutionEnabled) {
+            <section class="smart-execution full" aria-labelledby="alert-smart-title">
+              <h3 id="alert-smart-title">{{ localization.translate('alerts.form.smartSettings') }}</h3>
+              <div class="smart-execution__fields">
+                <label>
+                  <span>{{ localization.translate('alerts.form.smartInterval') }}</span>
+                  <input
+                    id="alert-smart-interval"
+                    type="number"
+                    min="1"
+                    step="1"
+                    [ngModel]="form().smartExecutionIntervalHours"
+                    (ngModelChange)="patchForm({ smartExecutionIntervalHours: $event })"
+                    [attr.aria-invalid]="formFieldErrors().smartInterval ? true : null"
+                    [attr.aria-describedby]="formFieldErrors().smartInterval ? 'alert-smart-interval-help alert-smart-interval-error' : 'alert-smart-interval-help'"
+                    [class.field-invalid]="formFieldErrors().smartInterval"
+                    name="smartExecutionIntervalHours"
+                    required
+                  >
+                  <small id="alert-smart-interval-help">{{ localization.translate('alerts.form.smartIntervalHelp') }}</small>
+                  @if (formFieldErrors().smartInterval; as smartIntervalError) {
+                    <small class="field-error" id="alert-smart-interval-error" role="alert">{{ smartIntervalError }}</small>
+                  }
+                </label>
+                <label>
+                  <span>{{ localization.translate('alerts.form.smartPolicy') }}</span>
+                  <select [ngModel]="form().smartExecutionPolicy" (ngModelChange)="patchForm({ smartExecutionPolicy: $event })" name="smartExecutionPolicy">
+                    <option value="NORMAL">{{ localization.translate('alerts.form.smartPolicy.NORMAL') }}</option>
+                    <option value="ON_ERROR">{{ localization.translate('alerts.form.smartPolicy.ON_ERROR') }}</option>
+                    <option value="ON_WARN">{{ localization.translate('alerts.form.smartPolicy.ON_WARN') }}</option>
+                    <option value="ON_ERROR_OR_WARN">{{ localization.translate('alerts.form.smartPolicy.ON_ERROR_OR_WARN') }}</option>
+                  </select>
+                  <small>{{ smartPolicyHelp() }}</small>
+                </label>
+              </div>
+              <aside class="smart-execution__warning" id="alert-smart-warning" role="note">
+                <span>{{ localization.translate('alerts.form.smartBestEffortHelp') }}</span>
+              </aside>
+            </section>
+          }
           <label class="checkbox checkbox--with-help full">
             <input
               type="checkbox"

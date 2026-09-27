@@ -23,6 +23,7 @@ import app.alertify.grpc.WorkerTemplateSynchronizationException;
 import app.alertify.grpc.discovery.SelectedWorker;
 import app.alertify.grpc.discovery.WorkerEndpoint;
 import app.alertify.grpc.discovery.WorkerStatusService;
+import app.alertify.grpc.discovery.WorkerStatusService.CapacityReservation;
 import app.alertify.grpc.discovery.WorkerReservation;
 import app.alertify.logging.ApplicationEventLogger;
 import app.alertify.procedures.execution.ProcedureInvocationRegistry;
@@ -30,6 +31,7 @@ import app.alertify.procedures.execution.ProcedureInvocationTokenService;
 import app.alertify.procedures.execution.ProcedureExecutionOrchestrator;
 import app.alertify.system.SystemStatusEventPublisher;
 import app.alertify.worker.contract.SecretValueSanitizer;
+import app.alertify.worker.contract.WorkerCapability;
 import app.alertify.worker.grpc.AlertExecutionResult;
 import app.alertify.worker.grpc.AlertParameter;
 import app.alertify.worker.grpc.AlertParameterValueSource;
@@ -114,8 +116,36 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
         }
         eventLogger.success("ALERT_EXECUTION_TRIGGERED", data(alertId, alertName, source, triggeredBy));
         UUID executionId = UUID.randomUUID();
-        executor.submit(() -> execute(alertId, source, triggeredBy, executionId));
+        executor.submit(() -> execute(alertId, source, triggeredBy, executionId, null));
         return true;
+    }
+
+    /** Admits a smart execution only after reserving a currently free compatible worker slot. */
+    public SmartTriggerResult triggerSmart(long alertId, String alertName, WorkerCapability capability) {
+        if (quietHoursService.isQuietNow() || maintenanceModeService.isActive())
+            return SmartTriggerResult.BLOCKED;
+
+        if (!enter(alertId, false))
+            return SmartTriggerResult.ALERT_BUSY;
+
+        CapacityReservation capacity = workerStatusService.tryReserveAvailable(capability);
+        if (capacity.status() != WorkerStatusService.CapacityStatus.AVAILABLE) {
+            leave(alertId);
+            return capacity.status() == WorkerStatusService.CapacityStatus.FULL
+                    ? SmartTriggerResult.CAPACITY_FULL
+                    : SmartTriggerResult.NO_WORKER;
+        }
+
+        UUID executionId = UUID.randomUUID();
+        eventLogger.success("ALERT_EXECUTION_TRIGGERED", data(alertId, alertName, AlertExecutionTrigger.SMART, null));
+        try {
+            executor.submit(() -> execute(alertId, AlertExecutionTrigger.SMART, null, executionId, capacity.reservation()));
+        } catch (RuntimeException exception) {
+            capacity.reservation().close();
+            leave(alertId);
+            throw exception;
+        }
+        return SmartTriggerResult.ACCEPTED;
     }
 
     public AlertHookExecution executeHook(long alertId, String alertName, boolean allowConcurrentExecutions, Duration busyWaitTimeout, String triggeredBy, Runnable waitingCallback, Runnable acquiredCallback) {
@@ -138,7 +168,7 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
         runCallback(acquiredCallback);
         UUID executionId = UUID.randomUUID();
         eventLogger.success("ALERT_EXECUTION_TRIGGERED", data(alertId, alertName, AlertExecutionTrigger.HOOK, triggeredBy));
-        AlertExecutionStatus status = execute(alertId, AlertExecutionTrigger.HOOK, triggeredBy, executionId);
+        AlertExecutionStatus status = execute(alertId, AlertExecutionTrigger.HOOK, triggeredBy, executionId, null);
         return new AlertHookExecution(status == null ? null : executionId, status, status == null, false, false);
     }
 
@@ -159,7 +189,7 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
         return gate != null && gate.isActive();
     }
 
-    private AlertExecutionStatus execute(long alertId, AlertExecutionTrigger source, String triggeredBy, UUID executionId) {
+    private AlertExecutionStatus execute(long alertId, AlertExecutionTrigger source, String triggeredBy, UUID executionId, WorkerReservation preReservedWorker) {
         Instant startedAt = Instant.now();
         WorkerEndpoint endpoint = null;
         String workerName = null;
@@ -175,7 +205,10 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
             if (execution == null)
                 return null;
 
-            try (WorkerReservation reservation = workerStatusService.reserve(execution.requiredCapability())) {
+            WorkerReservation selectedReservation = preReservedWorker == null
+                    ? workerStatusService.reserve(execution.requiredCapability())
+                    : preReservedWorker;
+            try (WorkerReservation reservation = selectedReservation) {
                 SelectedWorker worker = reservation.worker();
                 endpoint = worker.endpoint();
                 workerName = worker.status().getWorkerName();
@@ -229,6 +262,9 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
             }
             return AlertExecutionStatus.ERROR;
         } finally {
+            if (preReservedWorker != null)
+                preReservedWorker.close();
+
             procedureInvocationRegistry.unregister(executionId);
             persistenceService.clearTrigger(executionId);
             leave(alertId);
@@ -342,6 +378,14 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
     }
 
     public record AlertHookExecution(UUID executionId, AlertExecutionStatus status, boolean disabled, boolean busyTimeout, boolean maintenance) { }
+
+    public enum SmartTriggerResult {
+        ACCEPTED,
+        ALERT_BUSY,
+        CAPACITY_FULL,
+        NO_WORKER,
+        BLOCKED
+    }
 
     static final class AlertGate {
         private int active;

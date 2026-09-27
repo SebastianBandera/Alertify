@@ -3,6 +3,8 @@ package app.alertify.alerts.api;
 import java.util.List;
 import java.util.Set;
 
+import app.alertify.alerts.model.SmartExecutionPolicy;
+
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -19,15 +21,18 @@ public record AlertCreateRequest(
     @NotNull @Size(max = 100) List<@Valid AlertParameterValueRequest> parameters,
     @NotNull @Size(max = 100) Set<@Positive Long> tagIds,
     /** Keeps past WARN/ERROR results on the dashboard until each user marks them as seen; off when omitted. */
-    Boolean persistentIssues
+    Boolean persistentIssues,
+    Boolean smartExecutionEnabled,
+    @Positive Integer smartExecutionIntervalHours,
+    SmartExecutionPolicy smartExecutionPolicy
 ) {
     public AlertCreateRequest(Long templateId, String name, String description, String cronExpression,
             boolean enabled, List<AlertParameterValueRequest> parameters, Set<Long> tagIds) {
-        this(templateId, name, description, cronExpression, enabled, false, parameters, tagIds);
+        this(templateId, name, description, cronExpression, enabled, false, parameters, tagIds, null, null, null, null);
     }
 
     public AlertCreateRequest(Long templateId, String name, String description, String cronExpression,
             boolean enabled, boolean allowConcurrentExecutions, List<AlertParameterValueRequest> parameters, Set<Long> tagIds) {
-        this(templateId, name, description, cronExpression, enabled, allowConcurrentExecutions, parameters, tagIds, null);
+        this(templateId, name, description, cronExpression, enabled, allowConcurrentExecutions, parameters, tagIds, null, null, null, null);
     }
 }

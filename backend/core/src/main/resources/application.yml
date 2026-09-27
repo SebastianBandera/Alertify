@@ -100,6 +100,11 @@ binary:
 configuration-expressions:
   allowed-environment-variables: ${CONFIGURATION_EXPRESSION_ALLOWED_ENVIRONMENT_VARIABLES:}
 
+alert:
+  smart-execution:
+    scan-interval: ${ALERT_SMART_EXECUTION_SCAN_INTERVAL:10m}
+    capacity-wait-timeout: ${ALERT_SMART_EXECUTION_CAPACITY_WAIT_TIMEOUT:10m}
+
 worker:
   grpc:
     host: ${WORKER_GRPC_HOST:localhost}

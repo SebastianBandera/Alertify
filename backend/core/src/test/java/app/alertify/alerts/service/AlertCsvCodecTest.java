@@ -16,6 +16,7 @@ import app.alertify.alerts.model.Alert;
 import app.alertify.alerts.model.AlertParameterValue;
 import app.alertify.alerts.model.AlertTemplateDefinition;
 import app.alertify.alerts.model.AlertTemplateParameterDefinition;
+import app.alertify.alerts.model.SmartExecutionPolicy;
 import app.alertify.alerts.template.annotation.AlertParameterSource;
 import app.alertify.api.error.InvalidAlertImportException;
 import app.alertify.jpa.entity.ApplicationConfiguration;
@@ -29,8 +30,7 @@ class AlertCsvCodecTest {
 
     private static final String TEMPLATE_KEY = "app.alertify.alerts.templates.HttpsCertificateExpiryAlertTemplate";
     private static final String HEADER =
-            "name,description,templateKey,cronExpression,enabled,allowConcurrentExecutions,parameters,tags";
-
+            "name,description,templateKey,cronExpression,enabled,allowConcurrentExecutions,smartExecutionEnabled,smartExecutionIntervalHours,smartExecutionPolicy,parameters,tags";
     private final AlertCsvCodec codec = new AlertCsvCodec(JsonMapper.builder().build());
 
     @Test
@@ -41,7 +41,7 @@ class AlertCsvCodecTest {
         String csv = new String(codec.write(List.of(alert), Map.of()), StandardCharsets.UTF_8);
 
         assertThat(csv).startsWith("\uFEFF" + HEADER + "\r\n");
-        assertThat(csv).contains("cert-check,Vencimiento," + TEMPLATE_KEY + ",0 0 8 * * *,true,false,[],[]");
+        assertThat(csv).contains("cert-check,Vencimiento," + TEMPLATE_KEY + ",0 0 8 * * *,true,false,false,,,[],[]");
         assertThat(csv).endsWith("\r\n");
     }
 
@@ -100,9 +100,21 @@ class AlertCsvCodecTest {
     }
 
     @Test
+    void roundTripsSmartExecutionSettings() {
+        Alert alert = alert(template(), "smart", null, "-", true, false);
+        alert.changeSmartExecution(true, 2, SmartExecutionPolicy.ON_ERROR_OR_WARN);
+
+        AlertCsvCodec.ImportRow row = codec.read(codec.write(List.of(alert), Map.of())).getFirst();
+
+        assertThat(row.smartExecutionEnabled()).isTrue();
+        assertThat(row.smartExecutionIntervalHours()).isEqualTo(2);
+        assertThat(row.smartExecutionPolicy()).isEqualTo(SmartExecutionPolicy.ON_ERROR_OR_WARN);
+    }
+
+    @Test
     void readsTagsAndBlankDescriptionAsNull() {
         List<AlertCsvCodec.ImportRow> rows = codec.read(
-                csv("alpha,," + TEMPLATE_KEY + ",0 0 * * * *,true,false,[],\"[{\"\"name\"\":\"\"prod\"\",\"\"color\"\":\"\"#ff0000\"\"}]\"")
+                csv("alpha,," + TEMPLATE_KEY + ",0 0 * * * *,true,false,false,,,[],\"[{\"\"name\"\":\"\"prod\"\",\"\"color\"\":\"\"#ff0000\"\"}]\"")
         );
 
         assertThat(rows.getFirst().description()).isNull();
@@ -124,18 +136,28 @@ class AlertCsvCodecTest {
     }
 
     @Test
+    void rejectsPreviousHeader() {
+        byte[] content = "name,description,templateKey,cronExpression,enabled,allowConcurrentExecutions,parameters,tags\r\n"
+                .getBytes(StandardCharsets.UTF_8);
+
+        assertThatThrownBy(() -> codec.read(content))
+                .isInstanceOf(InvalidAlertImportException.class)
+                .hasMessageStartingWith("CSV header must be exactly: " + HEADER);
+    }
+
+    @Test
     void rejectsRowWithWrongColumnCount() {
         assertThatThrownBy(() -> codec.read(csv("alpha,,x,0 0 * * * *,true,false,[]")))
                 .isInstanceOf(InvalidAlertImportException.class)
-                .hasMessage("CSV row 2: expected 8 columns");
+                .hasMessage("CSV row 2: expected 11 columns");
     }
 
     @Test
     void rejectsDuplicateNameIgnoringCase() {
         assertThatThrownBy(() -> codec.read(
                 csv(
-                        "alpha,," + TEMPLATE_KEY + ",0 0 * * * *,true,false,[],[]",
-                        "ALPHA,," + TEMPLATE_KEY + ",0 0 * * * *,true,false,[],[]"
+                        "alpha,," + TEMPLATE_KEY + ",0 0 * * * *,true,false,false,,,[],[]",
+                        "ALPHA,," + TEMPLATE_KEY + ",0 0 * * * *,true,false,false,,,[],[]"
                 )
         ))
                 .isInstanceOf(InvalidAlertImportException.class)
@@ -144,18 +166,18 @@ class AlertCsvCodecTest {
 
     @Test
     void rejectsMissingTemplateKeyAndCron() {
-        assertThatThrownBy(() -> codec.read(csv("alpha,,,0 0 * * * *,true,false,[],[]")))
+        assertThatThrownBy(() -> codec.read(csv("alpha,,,0 0 * * * *,true,false,false,,,[],[]")))
                 .isInstanceOf(InvalidAlertImportException.class)
                 .hasMessage("CSV row 2: templateKey is required");
 
-        assertThatThrownBy(() -> codec.read(csv("alpha,," + TEMPLATE_KEY + ",,true,false,[],[]")))
+        assertThatThrownBy(() -> codec.read(csv("alpha,," + TEMPLATE_KEY + ",,true,false,false,,,[],[]")))
                 .isInstanceOf(InvalidAlertImportException.class)
                 .hasMessage("CSV row 2: cronExpression is required");
     }
 
     @Test
     void rejectsNonBooleanFlags() {
-        assertThatThrownBy(() -> codec.read(csv("alpha,," + TEMPLATE_KEY + ",0 0 * * * *,yes,false,[],[]")))
+        assertThatThrownBy(() -> codec.read(csv("alpha,," + TEMPLATE_KEY + ",0 0 * * * *,yes,false,false,,,[],[]")))
                 .isInstanceOf(InvalidAlertImportException.class)
                 .hasMessage("CSV row 2: enabled must be true or false");
     }
@@ -164,7 +186,7 @@ class AlertCsvCodecTest {
     void rejectsInvalidParameterSource() {
         assertThatThrownBy(() -> codec.read(
                 csv(
-                        "alpha,," + TEMPLATE_KEY + ",0 0 * * * *,true,false,"
+                        "alpha,," + TEMPLATE_KEY + ",0 0 * * * *,true,false,false,,,"
                                 + "\"[{\"\"key\"\":\"\"endpoint\"\",\"\"source\"\":\"\"ENV\"\",\"\"value\"\":\"\"x\"\"}]\",[]"
                 )
         ))
@@ -176,7 +198,7 @@ class AlertCsvCodecTest {
     void rejectsDuplicateParameterKey() {
         assertThatThrownBy(() -> codec.read(
                 csv(
-                        "alpha,," + TEMPLATE_KEY + ",0 0 * * * *,true,false,"
+                        "alpha,," + TEMPLATE_KEY + ",0 0 * * * *,true,false,false,,,"
                                 + "\"[{\"\"key\"\":\"\"endpoint\"\",\"\"source\"\":\"\"TEXT\"\",\"\"value\"\":\"\"a\"\"},"
                                 + "{\"\"key\"\":\"\"endpoint\"\",\"\"source\"\":\"\"TEXT\"\",\"\"value\"\":\"\"b\"\"}]\",[]"
                 )
@@ -189,7 +211,7 @@ class AlertCsvCodecTest {
     void rejectsBoundParameterWithoutReferencedName() {
         assertThatThrownBy(() -> codec.read(
                 csv(
-                        "alpha,," + TEMPLATE_KEY + ",0 0 * * * *,true,false,"
+                        "alpha,," + TEMPLATE_KEY + ",0 0 * * * *,true,false,false,,,"
                                 + "\"[{\"\"key\"\":\"\"endpoint\"\",\"\"source\"\":\"\"CONFIGURATION\"\",\"\"value\"\":\"\" \"\"}]\",[]"
                 )
         ))
@@ -199,11 +221,11 @@ class AlertCsvCodecTest {
 
     @Test
     void rejectsParametersThatAreNotAJsonArray() {
-        assertThatThrownBy(() -> codec.read(csv("alpha,," + TEMPLATE_KEY + ",0 0 * * * *,true,false,{},[]")))
+        assertThatThrownBy(() -> codec.read(csv("alpha,," + TEMPLATE_KEY + ",0 0 * * * *,true,false,false,,,{},[]")))
                 .isInstanceOf(InvalidAlertImportException.class)
                 .hasMessage("CSV row 2: parameters must be a JSON array");
 
-        assertThatThrownBy(() -> codec.read(csv("alpha,," + TEMPLATE_KEY + ",0 0 * * * *,true,false,nope,[]")))
+        assertThatThrownBy(() -> codec.read(csv("alpha,," + TEMPLATE_KEY + ",0 0 * * * *,true,false,false,,,nope,[]")))
                 .isInstanceOf(InvalidAlertImportException.class)
                 .hasMessage("CSV row 2: parameters is not valid JSON");
     }
@@ -212,7 +234,7 @@ class AlertCsvCodecTest {
     void rejectsInvalidTagColor() {
         assertThatThrownBy(() -> codec.read(
                 csv(
-                        "alpha,," + TEMPLATE_KEY + ",0 0 * * * *,true,false,[],"
+                        "alpha,," + TEMPLATE_KEY + ",0 0 * * * *,true,false,false,,,[],"
                                 + "\"[{\"\"name\"\":\"\"prod\"\",\"\"color\"\":\"\"red\"\"}]\""
                 )
         ))
@@ -224,7 +246,7 @@ class AlertCsvCodecTest {
     void rejectsMoreRowsThanTheLimit() {
         StringBuilder csv = new StringBuilder(HEADER).append("\r\n");
         for (int index = 0; index < 10_001; index++)
-            csv.append("alert-").append(index).append(",,").append(TEMPLATE_KEY).append(",0 0 * * * *,true,false,[],[]\r\n");
+            csv.append("alert-").append(index).append(",,").append(TEMPLATE_KEY).append(",0 0 * * * *,true,false,false,,,[],[]\r\n");
 
         byte[] content = csv.toString().getBytes(StandardCharsets.UTF_8);
 

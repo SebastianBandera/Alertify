@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -308,6 +309,42 @@ class AlertExecutionOrchestratorTest {
         verify(persistenceService, org.mockito.Mockito.timeout(5000)).persistWorkerResult(
                 eq(7L), any(UUID.class), eq(ENDPOINT), any(AlertExecutionResult.class), any(PreparedAlertExecution.class)
         );
+    }
+
+    @Test
+    void smartTriggerReservesFreeCapacityBeforeItCreatesAnExecution() {
+        when(workerStatusService.tryReserveAvailable(WorkerCapability.STANDARD)).thenReturn(
+                WorkerStatusService.CapacityReservation.available(reservation)
+        );
+        when(preparationService.prepare(7L, false)).thenReturn(Optional.of(prepared()));
+        when(workerClient.executeAlert(eq(ENDPOINT), any(), any(), any(Duration.class), any())).thenReturn(successfulResult());
+
+        AlertExecutionOrchestrator.SmartTriggerResult accepted = orchestrator.triggerSmart(
+                7L, "Sample alert", WorkerCapability.STANDARD
+        );
+
+        assertThat(accepted).isEqualTo(AlertExecutionOrchestrator.SmartTriggerResult.ACCEPTED);
+        verify(persistenceService, org.mockito.Mockito.timeout(5000)).persistWorkerResult(
+                eq(7L), any(UUID.class), eq(ENDPOINT), any(AlertExecutionResult.class), any(PreparedAlertExecution.class)
+        );
+        ArgumentCaptor<java.util.Map<String, Object>> triggered = ArgumentCaptor.captor();
+        verify(eventLogger).success(eq("ALERT_EXECUTION_TRIGGERED"), triggered.capture());
+        assertThat(triggered.getValue()).containsEntry("trigger", "SMART");
+        verify(workerStatusService, never()).reserve(WorkerCapability.STANDARD);
+    }
+
+    @Test
+    void smartTriggerLeavesNoAuditOrExecutionWhenCompatibleWorkersAreFull() {
+        when(workerStatusService.tryReserveAvailable(WorkerCapability.STANDARD)).thenReturn(
+                WorkerStatusService.CapacityReservation.full()
+        );
+
+        AlertExecutionOrchestrator.SmartTriggerResult result = orchestrator.triggerSmart(
+                7L, "Sample alert", WorkerCapability.STANDARD
+        );
+
+        assertThat(result).isEqualTo(AlertExecutionOrchestrator.SmartTriggerResult.CAPACITY_FULL);
+        org.mockito.Mockito.verifyNoInteractions(preparationService, persistenceService, workerClient, eventLogger);
     }
 
     private static PreparedAlertExecution prepared() {

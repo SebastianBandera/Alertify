@@ -90,6 +90,40 @@ public class WorkerStatusService implements AutoCloseable {
         return new WorkerReservation(selected, () -> release(selected.endpoint()));
     }
 
+    /**
+     * Reserves a worker only when a compatible, reachable node has an alert
+     * semaphore slot available. Normal cron/manual dispatch deliberately keeps
+     * using {@link #reserve(WorkerCapability)} and may queue on the worker.
+     */
+    public synchronized CapacityReservation tryReserveAvailable(WorkerCapability capability) {
+        Set<AvailableWorker> discovered = availabilityService.availableWorkersWith(capability);
+        if (discovered.isEmpty())
+            return CapacityReservation.unavailable();
+
+        List<WorkerStatusResult> reachable = statusFor(discovered).stream()
+                .filter(WorkerStatusResult::available)
+                .toList();
+        if (reachable.isEmpty())
+            return CapacityReservation.unavailable();
+
+        List<SelectedWorker> workers = reachable.stream()
+                .filter(this::hasFreeAlertCapacity)
+                .map(result -> new SelectedWorker(result.endpoint(), result.status()))
+                .sorted(Comparator.comparingInt(this::effectiveLoad).thenComparing(worker -> worker.endpoint().toString()))
+                .toList();
+        if (workers.isEmpty())
+            return CapacityReservation.full();
+
+        int lowestLoad = effectiveLoad(workers.getFirst());
+        List<SelectedWorker> leastLoadedWorkers = workers.stream()
+                .takeWhile(worker -> effectiveLoad(worker) == lowestLoad)
+                .toList();
+        SelectedWorker selected = nextWorker(capability, leastLoadedWorkers);
+        lastSelectedWorkers.put(capability, selected.endpoint());
+        reservations.computeIfAbsent(selected.endpoint(), key -> new AtomicInteger()).incrementAndGet();
+        return CapacityReservation.available(new WorkerReservation(selected, () -> release(selected.endpoint())));
+    }
+
     private SelectedWorker nextWorker(WorkerCapability capability, List<SelectedWorker> workers) {
         WorkerEndpoint lastSelected = lastSelectedWorkers.get(capability);
         for (int index = 0; index < workers.size(); index++) {
@@ -154,6 +188,13 @@ public class WorkerStatusService implements AutoCloseable {
     private int effectiveLoad(SelectedWorker worker) {
         AtomicInteger reserved = reservations.get(worker.endpoint());
         return worker.currentLoad() + (reserved == null ? 0 : reserved.get());
+    }
+
+    private boolean hasFreeAlertCapacity(WorkerStatusResult worker) {
+        AtomicInteger reserved = reservations.get(worker.endpoint());
+        int pendingReservations = reserved == null ? 0 : reserved.get();
+        return worker.status().getRunningCount() + worker.status().getWaitingCount() + pendingReservations
+                < worker.status().getMaxConcurrentAlerts();
     }
 
     private void release(WorkerEndpoint endpoint) {
@@ -237,6 +278,27 @@ public class WorkerStatusService implements AutoCloseable {
 
         boolean available() {
             return status != null;
+        }
+    }
+
+    public enum CapacityStatus {
+        AVAILABLE,
+        FULL,
+        UNAVAILABLE
+    }
+
+    public record CapacityReservation(CapacityStatus status, WorkerReservation reservation) {
+
+        public static CapacityReservation available(WorkerReservation reservation) {
+            return new CapacityReservation(CapacityStatus.AVAILABLE, reservation);
+        }
+
+        public static CapacityReservation full() {
+            return new CapacityReservation(CapacityStatus.FULL, null);
+        }
+
+        public static CapacityReservation unavailable() {
+            return new CapacityReservation(CapacityStatus.UNAVAILABLE, null);
         }
     }
 }

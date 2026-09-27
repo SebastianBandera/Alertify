@@ -15,6 +15,7 @@ import org.springframework.stereotype.Component;
 
 import app.alertify.alerts.model.Alert;
 import app.alertify.alerts.model.AlertParameterValue;
+import app.alertify.alerts.model.SmartExecutionPolicy;
 import app.alertify.alerts.template.annotation.AlertParameterSource;
 import app.alertify.api.csv.CsvSupport;
 import app.alertify.api.error.InvalidAlertImportException;
@@ -31,7 +32,8 @@ class AlertCsvCodec {
 
     private static final List<String> HEADER = List.of(
             "name", "description", "templateKey", "cronExpression",
-            "enabled", "allowConcurrentExecutions", "parameters", "tags"
+            "enabled", "allowConcurrentExecutions", "smartExecutionEnabled",
+            "smartExecutionIntervalHours", "smartExecutionPolicy", "parameters", "tags"
     );
     private static final int MAX_ROWS = 10_000;
     private static final String PARAMETER_PREFIX = "parameter '";
@@ -67,6 +69,9 @@ class AlertCsvCodec {
                             alert.getCronExpression(),
                             Boolean.toString(alert.isEnabled()),
                             Boolean.toString(alert.isConcurrentExecutionAllowed()),
+                            Boolean.toString(alert.isSmartExecutionEnabled()),
+                            alert.getSmartExecutionIntervalHours() == null ? "" : alert.getSmartExecutionIntervalHours().toString(),
+                            alert.getSmartExecutionPolicy() == null ? "" : alert.getSmartExecutionPolicy().name(),
                             writeJson(parameters),
                             writeJson(tags)
                     )
@@ -145,12 +150,16 @@ class AlertCsvCodec {
 
             boolean enabled = parseBoolean(fields.get(4), "enabled", rowNumber);
             boolean allowConcurrentExecutions = parseBoolean(fields.get(5), "allowConcurrentExecutions", rowNumber);
-            List<ImportParameter> parameters = parseParameters(fields.get(6), rowNumber);
-            List<ImportTag> tags = parseTags(fields.get(7), rowNumber);
+            boolean smartExecutionEnabled = parseBoolean(fields.get(6), "smartExecutionEnabled", rowNumber);
+            Integer smartExecutionIntervalHours = parseSmartInterval(fields.get(7), smartExecutionEnabled, rowNumber);
+            SmartExecutionPolicy smartExecutionPolicy = parseSmartPolicy(fields.get(8), smartExecutionEnabled, rowNumber);
+            List<ImportParameter> parameters = parseParameters(fields.get(9), rowNumber);
+            List<ImportTag> tags = parseTags(fields.get(10), rowNumber);
             result.add(
                     new ImportRow(
                             rowNumber, name, description, templateKey, cronExpression,
-                            enabled, allowConcurrentExecutions, parameters, tags
+                            enabled, allowConcurrentExecutions, smartExecutionEnabled,
+                            smartExecutionIntervalHours, smartExecutionPolicy, parameters, tags
                     )
             );
         }
@@ -263,6 +272,40 @@ class AlertCsvCodec {
         };
     }
 
+    private static Integer parseSmartInterval(String rawValue, boolean enabled, int rowNumber) {
+        String value = rawValue.trim();
+        if (!enabled) {
+            if (!value.isEmpty())
+                throw rowError(rowNumber, "smartExecutionIntervalHours must be empty while smart execution is disabled");
+
+            return null;
+        }
+        try {
+            int hours = Integer.parseInt(value);
+            if (hours < 1)
+                throw rowError(rowNumber, "smartExecutionIntervalHours must be greater than or equal to 1");
+
+            return hours;
+        } catch (NumberFormatException exception) {
+            throw rowError(rowNumber, "smartExecutionIntervalHours must be a whole number greater than or equal to 1", exception);
+        }
+    }
+
+    private static SmartExecutionPolicy parseSmartPolicy(String rawValue, boolean enabled, int rowNumber) {
+        String value = rawValue.trim();
+        if (!enabled) {
+            if (!value.isEmpty())
+                throw rowError(rowNumber, "smartExecutionPolicy must be empty while smart execution is disabled");
+
+            return null;
+        }
+        try {
+            return SmartExecutionPolicy.valueOf(value);
+        } catch (IllegalArgumentException exception) {
+            throw rowError(rowNumber, "smartExecutionPolicy must be NORMAL, ON_ERROR, ON_WARN, or ON_ERROR_OR_WARN", exception);
+        }
+    }
+
     private String writeJson(Object value) {
         try {
             return jsonMapper.writeValueAsString(value);
@@ -295,6 +338,9 @@ class AlertCsvCodec {
         String cronExpression,
         boolean enabled,
         boolean allowConcurrentExecutions,
+        boolean smartExecutionEnabled,
+        Integer smartExecutionIntervalHours,
+        SmartExecutionPolicy smartExecutionPolicy,
         List<ImportParameter> parameters,
         List<ImportTag> tags
     ) {

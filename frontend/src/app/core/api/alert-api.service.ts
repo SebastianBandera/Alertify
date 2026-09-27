@@ -6,6 +6,7 @@ import { ApiRequestError, PageResponse, SortDirection, TagMatchMode } from './co
 
 export type AlertParameterSource = 'TEXT' | 'CONFIGURATION' | 'SECRET' | 'PROCEDURE' | 'PIPE' | 'PIPE_OUTPUT';
 export type AlertExecutionStatus = 'SUCCESS' | 'WARN' | 'ERROR';
+export type SmartExecutionPolicy = 'NORMAL' | 'ON_ERROR' | 'ON_WARN' | 'ON_ERROR_OR_WARN';
 export type WorkerCapability = 'STANDARD' | 'PLAYWRIGHT';
 
 export interface AlertTag {
@@ -85,6 +86,9 @@ export interface Alert {
   readonly cronExpression: string;
   readonly enabled: boolean;
   readonly allowConcurrentExecutions: boolean;
+  readonly smartExecutionEnabled: boolean;
+  readonly smartExecutionIntervalHours: number | null;
+  readonly smartExecutionPolicy: SmartExecutionPolicy | null;
   readonly tags: readonly AlertTag[];
   readonly parameters: readonly AlertParameterValue[];
   readonly createdAt: string;
@@ -110,6 +114,9 @@ export interface AlertWriteRequest {
   readonly cronExpression: string;
   readonly enabled: boolean;
   readonly allowConcurrentExecutions: boolean;
+  readonly smartExecutionEnabled: boolean;
+  readonly smartExecutionIntervalHours: number | null;
+  readonly smartExecutionPolicy: SmartExecutionPolicy | null;
   readonly persistentIssues: boolean;
   readonly tagIds: readonly number[];
   readonly parameters: readonly AlertParameterWriteRequest[];
@@ -150,7 +157,7 @@ export interface AlertExecution {
   readonly templateId: number;
   readonly templateNameKey: string;
   readonly status: AlertExecutionStatus;
-  readonly trigger: 'CRON' | 'MANUAL' | 'HOOK' | null;
+  readonly trigger: 'CRON' | 'MANUAL' | 'HOOK' | 'SMART' | null;
   readonly triggeredBy: string | null;
   readonly startedAt: string;
   readonly workStartedAt: string;

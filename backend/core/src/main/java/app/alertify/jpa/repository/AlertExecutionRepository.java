@@ -1,6 +1,8 @@
 package app.alertify.jpa.repository;
 
+import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.data.domain.Page;
@@ -12,11 +14,18 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import app.alertify.alerts.execution.AlertExecutionStatus;
+import app.alertify.alerts.execution.AlertExecutionTrigger;
 import app.alertify.alerts.model.AlertExecution;
 
 public interface AlertExecutionRepository extends JpaRepository<AlertExecution, Long> {
 
     long countByAlert_Id(Long alertId);
+
+    boolean existsByAlert_IdAndStatusAndFinishedAtGreaterThanEqual(Long alertId, AlertExecutionStatus status, Instant finishedAt);
+
+    Optional<AlertExecution> findFirstByAlert_IdAndFinishedAtIsNotNullOrderByFinishedAtDescIdDesc(Long alertId);
+
+    Optional<AlertExecution> findFirstByAlert_IdAndTriggerAndFinishedAtIsNotNullOrderByFinishedAtDescIdDesc(Long alertId, AlertExecutionTrigger trigger);
 
     /**
      * Bulk delete, because one alert can accumulate thousands of executions and

@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Set;
 
+import app.alertify.alerts.model.SmartExecutionPolicy;
 import app.alertify.configuration.api.TagResponse;
 
 public record AlertResponse(
@@ -22,7 +23,10 @@ public record AlertResponse(
     Instant createdAt,
     Instant updatedAt,
     /** Since when past WARN/ERROR results persist until seen; null while the option is off. */
-    Instant persistentIssuesSince
+    Instant persistentIssuesSince,
+    boolean smartExecutionEnabled,
+    Integer smartExecutionIntervalHours,
+    SmartExecutionPolicy smartExecutionPolicy
 ) {
     public AlertResponse(
         Long id, long version, Long templateId, String templateKey, String templateNameKey,
@@ -32,7 +36,8 @@ public record AlertResponse(
     ) {
         this(
             id, version, templateId, templateKey, templateNameKey, name, description,
-            cronExpression, enabled, allowConcurrentExecutions, tags, parameters, createdAt, updatedAt, null
+            cronExpression, enabled, allowConcurrentExecutions, tags, parameters, createdAt, updatedAt, null,
+            false, null, null
         );
     }
 

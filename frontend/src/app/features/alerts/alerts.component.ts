@@ -17,6 +17,7 @@ import {
   AlertTemplateParameter,
   AlertTemplateTag,
   AlertTag,
+  SmartExecutionPolicy,
 } from '../../core/api/alert-api.service';
 import { ApiRequestError, SortDirection, TagMatchMode } from '../../core/api/configuration-api.service';
 import { LocalizationService } from '../../core/i18n/localization.service';
@@ -25,7 +26,7 @@ import { templateClassName } from '../../core/utils/template-key';
 import { SearchableSelectComponent, SearchableSelectOption } from '../../shared/searchable-select/searchable-select.component';
 
 type AlertTab = 'alerts' | 'templates' | 'history';
-type AlertFormField = 'template' | 'name' | 'cron';
+type AlertFormField = 'template' | 'name' | 'cron' | 'smartInterval';
 type ParameterFormSource = AlertParameterSource | 'OPTION' | '';
 type AlertFormErrors = Partial<Record<AlertFormField, string>>;
 
@@ -45,6 +46,9 @@ interface AlertForm {
   cronExpression: string;
   enabled: boolean;
   allowConcurrentExecutions: boolean;
+  smartExecutionEnabled: boolean;
+  smartExecutionIntervalHours: number | null;
+  smartExecutionPolicy: SmartExecutionPolicy;
   persistentIssues: boolean;
   tagIds: number[];
   parameters: Readonly<Record<string, ParameterForm>>;
@@ -587,6 +591,9 @@ export class AlertsComponent implements OnInit {
       cronExpression: alert.cronExpression,
       enabled: alert.enabled,
       allowConcurrentExecutions: alert.allowConcurrentExecutions,
+      smartExecutionEnabled: alert.smartExecutionEnabled,
+      smartExecutionIntervalHours: alert.smartExecutionIntervalHours,
+      smartExecutionPolicy: alert.smartExecutionPolicy ?? 'NORMAL',
       persistentIssues: alert.persistentIssuesSince !== null,
       tagIds: alert.tags.map((tag) => tag.id),
       parameters,
@@ -616,6 +623,9 @@ export class AlertsComponent implements OnInit {
       cronExpression: current.cronExpression,
       enabled: current.enabled,
       allowConcurrentExecutions: current.allowConcurrentExecutions,
+      smartExecutionEnabled: current.smartExecutionEnabled,
+      smartExecutionIntervalHours: current.smartExecutionIntervalHours,
+      smartExecutionPolicy: current.smartExecutionPolicy,
       persistentIssues: current.persistentIssues,
       tagIds: current.tagIds,
     });
@@ -626,6 +636,8 @@ export class AlertsComponent implements OnInit {
     this.form.update((form) => ({ ...form, ...patch }));
     if (patch.name !== undefined) this.clearFieldError('name');
     if (patch.cronExpression !== undefined) this.clearFieldError('cron');
+    if (patch.smartExecutionIntervalHours !== undefined || patch.smartExecutionEnabled === false)
+      this.clearFieldError('smartInterval');
   }
 
   protected patchParameter(key: string, patch: Partial<ParameterForm>): void {
@@ -664,6 +676,12 @@ export class AlertsComponent implements OnInit {
       validationErrors.template = this.localization.translate('alerts.form.templateRequired');
     if (!form.name.trim())
       validationErrors.name = this.localization.translate('alerts.form.nameRequired');
+    if (form.smartExecutionEnabled
+        && (form.smartExecutionIntervalHours === null
+          || !Number.isInteger(Number(form.smartExecutionIntervalHours))
+          || Number(form.smartExecutionIntervalHours) < 1)) {
+      validationErrors.smartInterval = this.localization.translate('alerts.form.smartIntervalRequired');
+    }
     if (Object.keys(validationErrors).length) {
       this.showFieldErrors(validationErrors);
       return;
@@ -707,6 +725,9 @@ export class AlertsComponent implements OnInit {
         cronExpression,
         enabled: form.enabled,
         allowConcurrentExecutions: form.allowConcurrentExecutions,
+        smartExecutionEnabled: form.smartExecutionEnabled,
+        smartExecutionIntervalHours: form.smartExecutionEnabled ? Number(form.smartExecutionIntervalHours) : null,
+        smartExecutionPolicy: form.smartExecutionEnabled ? form.smartExecutionPolicy : null,
         persistentIssues: form.persistentIssues,
         tagIds: form.tagIds,
         parameters,
@@ -952,6 +973,9 @@ export class AlertsComponent implements OnInit {
       cronExpression: '-',
       enabled: true,
       allowConcurrentExecutions: false,
+      smartExecutionEnabled: false,
+      smartExecutionIntervalHours: null,
+      smartExecutionPolicy: 'NORMAL',
       persistentIssues: false,
       tagIds: [],
       parameters: {},
@@ -988,6 +1012,7 @@ export class AlertsComponent implements OnInit {
       if (error.fieldErrors['templateId']) errors.template = error.fieldErrors['templateId'];
       if (error.fieldErrors['name']) errors.name = error.fieldErrors['name'];
       if (error.fieldErrors['cronExpression']) errors.cron = error.fieldErrors['cronExpression'];
+      if (error.fieldErrors['smartExecutionIntervalHours']) errors.smartInterval = error.fieldErrors['smartExecutionIntervalHours'];
     }
     const message = this.errorMessage(error);
     if (!errors.cron && message.toLocaleLowerCase().startsWith('invalid cron expression:'))
@@ -998,13 +1023,14 @@ export class AlertsComponent implements OnInit {
   private showFieldErrors(errors: AlertFormErrors): void {
     this.formError.set(null);
     this.formFieldErrors.set(errors);
-    const firstField = (['template', 'name', 'cron'] as const).find((field) => errors[field]);
+    const firstField = (['template', 'name', 'cron', 'smartInterval'] as const).find((field) => errors[field]);
     if (!firstField) return;
 
     const fieldIds: Record<AlertFormField, string> = {
       template: 'alert-template-search',
       name: 'alert-name',
       cron: 'alert-cron',
+      smartInterval: 'alert-smart-interval',
     };
     requestAnimationFrame(() => {
       const field = this.elementRef.nativeElement.querySelector<HTMLElement>(`#${fieldIds[firstField]}`);
@@ -1020,6 +1046,15 @@ export class AlertsComponent implements OnInit {
       delete updated[field];
       return updated;
     });
+  }
+
+  protected smartPolicyHelp(): string {
+    switch (this.form().smartExecutionPolicy) {
+      case 'NORMAL': return this.localization.translate('alerts.form.smartPolicyHelp.NORMAL');
+      case 'ON_ERROR': return this.localization.translate('alerts.form.smartPolicyHelp.ON_ERROR');
+      case 'ON_WARN': return this.localization.translate('alerts.form.smartPolicyHelp.ON_WARN');
+      case 'ON_ERROR_OR_WARN': return this.localization.translate('alerts.form.smartPolicyHelp.ON_ERROR_OR_WARN');
+    }
   }
 
   private errorMessage(error: unknown): string {

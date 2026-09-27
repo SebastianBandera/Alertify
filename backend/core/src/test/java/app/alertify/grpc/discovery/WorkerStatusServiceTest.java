@@ -135,6 +135,37 @@ class WorkerStatusServiceTest {
     }
 
     @Test
+    void smartReservationUsesOnlyWorkersWithFreeAlertCapacity() {
+        when(client.status(FIRST, TIMEOUT)).thenReturn(status(4, 0));
+        when(client.status(SECOND, TIMEOUT)).thenReturn(status(3, 0));
+
+        WorkerStatusService.CapacityReservation result = service.tryReserveAvailable(WorkerCapability.STANDARD);
+
+        assertThat(result.status()).isEqualTo(WorkerStatusService.CapacityStatus.AVAILABLE);
+        assertThat(result.reservation().worker().endpoint()).isEqualTo(SECOND);
+        result.reservation().close();
+    }
+
+    @Test
+    void smartReservationReportsFullWhenCompatibleWorkersAreReachableButBusy() {
+        when(client.status(FIRST, TIMEOUT)).thenReturn(status(4, 0));
+        when(client.status(SECOND, TIMEOUT)).thenReturn(status(4, 1));
+
+        WorkerStatusService.CapacityReservation result = service.tryReserveAvailable(WorkerCapability.STANDARD);
+
+        assertThat(result.status()).isEqualTo(WorkerStatusService.CapacityStatus.FULL);
+        assertThat(result.reservation()).isNull();
+    }
+
+    @Test
+    void smartReservationReportsUnavailableWithoutACompatibleWorker() {
+        WorkerStatusService.CapacityReservation result = service.tryReserveAvailable(WorkerCapability.PLAYWRIGHT);
+
+        assertThat(result.status()).isEqualTo(WorkerStatusService.CapacityStatus.UNAVAILABLE);
+        assertThat(result.reservation()).isNull();
+    }
+
+    @Test
     void reportsLiveTasksWithTheShortKindsTheApiPromises() {
         WorkerTask alert = WorkerTask.newBuilder()
                 .setExecutionId("alert-execution")
