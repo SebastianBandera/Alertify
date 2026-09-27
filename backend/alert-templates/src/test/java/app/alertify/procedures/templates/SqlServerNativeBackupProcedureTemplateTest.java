@@ -36,6 +36,16 @@ class SqlServerNativeBackupProcedureTemplateTest {
     }
 
     @Test
+    void usesDistinctServerFileNamesForRepeatedBackups() {
+        String first = SqlServerNativeBackupProcedureTemplate.uniqueServerBaseName("nightly");
+        String second = SqlServerNativeBackupProcedureTemplate.uniqueServerBaseName("nightly");
+
+        assertThat(first).startsWith("nightly-").isNotEqualTo(second);
+        assertThat(SqlServerNativeBackupProcedureTemplate.serverFiles("/var/opt/mssql/backup", first, 1))
+                .containsExactly("/var/opt/mssql/backup/" + first + ".bak");
+    }
+
+    @Test
     void normalizesLogicalFileNames() {
         assertThat(SqlServerNativeBackupProcedureTemplate.baseName("nightly")).isEqualTo("nightly");
         assertThat(SqlServerNativeBackupProcedureTemplate.baseName(" nightly.bak ")).isEqualTo("nightly");
@@ -51,11 +61,41 @@ class SqlServerNativeBackupProcedureTemplateTest {
     @Test
     void rejectsUnsafeServerDirectoriesAndQuotesLiterals() {
         assertThat(SqlServerNativeBackupProcedureTemplate.validateDirectory(" /var/opt/mssql/backup ")).isEqualTo("/var/opt/mssql/backup");
+        assertThat(SqlServerNativeBackupProcedureTemplate.validateDirectory("D:\\Backups")).isEqualTo("D:\\Backups");
+        assertThat(SqlServerNativeBackupProcedureTemplate.validateDirectory("\\\\sql-host\\share\\backups")).isEqualTo("\\\\sql-host\\share\\backups");
+        assertThatThrownBy(() -> SqlServerNativeBackupProcedureTemplate.validateDirectory("relative/backups"))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> SqlServerNativeBackupProcedureTemplate.validateDirectory("D:relative"))
+                .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> SqlServerNativeBackupProcedureTemplate.validateDirectory("/var/opt/../etc"))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> SqlServerNativeBackupProcedureTemplate.validateDirectory("/var/opt/mssql'; DROP DATABASE x; --"))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThat(SqlServerNativeBackupProcedureTemplate.quoteLiteral("it's")).isEqualTo("N'it''s'");
         assertThat(SqlServerNativeBackupProcedureTemplate.quoteIdentifier("a]b")).isEqualTo("[a]]b]");
+    }
+
+    @Test
+    void allowsCustomDirectoryOnlyForTheConfiguredServerAndExactPath() {
+        String allowed = "sql.example.org:1433=/var/opt/mssql/backup;win-sql:1433=D:\\Backups";
+
+        assertThat(SqlServerNativeBackupProcedureTemplate.allowedBackupDirectory("/var/opt/mssql/backup", "sql.example.org", 1433, allowed))
+                .isEqualTo("/var/opt/mssql/backup");
+        assertThat(SqlServerNativeBackupProcedureTemplate.allowedBackupDirectory("D:\\Backups", "WIN-SQL", 1433, allowed))
+                .isEqualTo("D:\\Backups");
+        assertThatThrownBy(() -> SqlServerNativeBackupProcedureTemplate.allowedBackupDirectory("/var/opt/mssql/backup", "other.example.org", 1433, allowed))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> SqlServerNativeBackupProcedureTemplate.allowedBackupDirectory("/var/opt/mssql/backup-old", "sql.example.org", 1433, allowed))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void rejectsCustomDirectoryWithoutAValidWorkerAllowlist() {
+        assertThatThrownBy(() -> SqlServerNativeBackupProcedureTemplate.allowedBackupDirectory("/var/opt/mssql/backup", "sql.example.org", 1433, null))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> SqlServerNativeBackupProcedureTemplate.allowedBackupDirectory("/var/opt/mssql/backup", "sql.example.org", 1433, "sql.example.org:1433=relative"))
+                .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> SqlServerNativeBackupProcedureTemplate.allowedBackupDirectory("/var/opt/mssql/backup", "sql.example.org", 1433, "sql.example.org:1433="))
+                .isInstanceOf(IllegalStateException.class);
     }
 }

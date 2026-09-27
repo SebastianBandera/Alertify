@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
+import java.util.UUID;
 import java.util.zip.Deflater;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -63,6 +64,7 @@ public final class SqlServerNativeBackupProcedureTemplate implements ProcedureEv
     private static final int CANNOT_OPEN_BACKUP_DEVICE = 3201;
     private static final int BULK_PERMISSION_DENIED = 4834;
     private static final int BULK_FILE_NOT_FOUND = 4860;
+    private static final String ALLOWED_DIRECTORIES_ENV = "SQL_SERVER_BACKUP_ALLOWED_DIRECTORIES";
 
     @ProcedureParameter(
         labelKey = "procedures.template.sqlServerNativeBackup.credentials",
@@ -178,47 +180,60 @@ public final class SqlServerNativeBackupProcedureTemplate implements ProcedureEv
         String backupName = "Alertify " + credentials.database() + " " + DateTimeFormatter.ISO_INSTANT.format(context.now());
         try (Connection connection = DatabaseConnections.open(credentials, LOGIN_TIMEOUT)) {
             String directory = serverBackupDirectory == null || serverBackupDirectory.isBlank()
-                    ? defaultBackupDirectory(connection) : validateDirectory(serverBackupDirectory);
-            List<String> serverFiles = serverFiles(directory, baseName, stripes);
+                    ? defaultBackupDirectory(connection)
+                    : allowedBackupDirectory(serverBackupDirectory, credentials.host(), credentials.port(), System.getenv(ALLOWED_DIRECTORIES_ENV));
+            List<String> serverFiles = serverFiles(directory, uniqueServerBaseName(baseName), stripes);
 
-            String serverMessage = runBackup(connection, backupName, serverFiles);
-            BackupSet backupSet = backupSet(connection, backupName);
-            if (backupSet != null && backupSet.sizeOnDisk() / stripes > SINGLE_BLOB_LIMIT)
-                throw new IllegalStateException("BACKUP_FILE_TOO_LARGE: the backup occupies " + backupSet.sizeOnDisk()
-                        + " bytes across " + stripes + " file(s); OPENROWSET reads at most 2 GB per file, increase stripes");
+            try {
+                String serverMessage = runBackup(connection, backupName, serverFiles);
+                BackupSet backupSet = backupSet(connection, backupName);
+                if (backupSet != null && backupSet.sizeOnDisk() / stripes > SINGLE_BLOB_LIMIT)
+                    throw new IllegalStateException("BACKUP_FILE_TOO_LARGE: the backup occupies " + backupSet.sizeOnDisk()
+                            + " bytes across " + stripes + " file(s); OPENROWSET reads at most 2 GB per file, increase stripes");
 
-            boolean zipped = stripes > 1 || zipCompressionLevel > 0;
-            String artifactName = baseName + (zipped ? ".zip" : ".bak");
-            String mediaType = zipped ? ZIP_MEDIA_TYPE : BAK_MEDIA_TYPE;
-            Transfer transfer;
-            try (OutputStream artifact = backup.openStream(artifactName, mediaType)) {
-                transfer = zipped
-                        ? transferZip(connection, serverFiles, artifact)
-                        : transferSingle(connection, serverFiles.getFirst(), artifact);
+                boolean zipped = stripes > 1 || zipCompressionLevel > 0;
+                String artifactName = baseName + (zipped ? ".zip" : ".bak");
+                String mediaType = zipped ? ZIP_MEDIA_TYPE : BAK_MEDIA_TYPE;
+                Transfer transfer;
+                try (OutputStream artifact = backup.openStream(artifactName, mediaType)) {
+                    transfer = zipped
+                            ? transferZip(connection, serverFiles, artifact)
+                            : transferSingle(connection, serverFiles.getFirst(), artifact);
+                }
+                // Backup files are written in whole blocks, so the on-disk size is at least msdb's compressed_backup_size.
+                if (transfer.serverBytes() <= 0 || (backupSet != null && transfer.serverBytes() < backupSet.sizeOnDisk()))
+                    throw new IllegalStateException("BACKUP_SIZE_MISMATCH: read " + transfer.serverBytes()
+                            + " bytes from the server but msdb reports " + (backupSet == null ? "unknown" : backupSet.sizeOnDisk()));
+
+                boolean deleted = deleteFromServer && deleteServerFiles(connection, serverFiles);
+
+                ObjectNode result = JSON.createObjectNode().put("fileName", artifactName).put("mediaType", mediaType)
+                        .put("size", transfer.artifactBytes()).put("sha256", transfer.sha256())
+                        .put("databaseName", credentials.database()).put("serverBackupDirectory", directory)
+                        .put("stripes", stripes).put("zipCompressionLevel", zipCompressionLevel)
+                        .put("compression", compression).put("checksum", checksum)
+                        .put("copyOnly", copyOnly).put("serverFileDeleted", deleted).put("serverMessage", serverMessage);
+                ArrayNode files = result.putArray("serverFiles");
+                serverFiles.forEach(files::add);
+                if (backupSet != null) {
+                    result.put("serverName", backupSet.serverName()).put("serverVersion", backupSet.serverVersion())
+                            .put("backupFinishedAt", backupSet.finishedAt()).put("backupSize", backupSet.size())
+                            .put("sizeOnDisk", backupSet.sizeOnDisk());
+                } else {
+                    result.putNull("backupFinishedAt");
+                }
+                return result;
+            } catch (Exception exception) {
+                if (deleteFromServer) {
+                    try {
+                        deleteServerFiles(connection, serverFiles);
+                    } catch (RuntimeException cleanupException) {
+                        exception.addSuppressed(cleanupException);
+                    }
+                }
+
+                throw exception;
             }
-            // Backup files are written in whole blocks, so the on-disk size is at least msdb's compressed_backup_size.
-            if (transfer.serverBytes() <= 0 || (backupSet != null && transfer.serverBytes() < backupSet.sizeOnDisk()))
-                throw new IllegalStateException("BACKUP_SIZE_MISMATCH: read " + transfer.serverBytes()
-                        + " bytes from the server but msdb reports " + (backupSet == null ? "unknown" : backupSet.sizeOnDisk()));
-
-            boolean deleted = deleteFromServer && deleteServerFiles(connection, serverFiles);
-
-            ObjectNode result = JSON.createObjectNode().put("fileName", artifactName).put("mediaType", mediaType)
-                    .put("size", transfer.artifactBytes()).put("sha256", transfer.sha256())
-                    .put("databaseName", credentials.database()).put("serverBackupDirectory", directory)
-                    .put("stripes", stripes).put("zipCompressionLevel", zipCompressionLevel)
-                    .put("compression", compression).put("checksum", checksum)
-                    .put("copyOnly", copyOnly).put("serverFileDeleted", deleted).put("serverMessage", serverMessage);
-            ArrayNode files = result.putArray("serverFiles");
-            serverFiles.forEach(files::add);
-            if (backupSet != null) {
-                result.put("serverName", backupSet.serverName()).put("serverVersion", backupSet.serverVersion())
-                        .put("backupFinishedAt", backupSet.finishedAt()).put("backupSize", backupSet.size())
-                        .put("sizeOnDisk", backupSet.sizeOnDisk());
-            } else {
-                result.putNull("backupFinishedAt");
-            }
-            return result;
         }
     }
 
@@ -265,12 +280,16 @@ public final class SqlServerNativeBackupProcedureTemplate implements ProcedureEv
         return "N'" + value.replace("'", "''") + "'";
     }
 
+    static String uniqueServerBaseName(String baseName) {
+        return baseName + "-" + UUID.randomUUID();
+    }
+
     private static String defaultBackupDirectory(Connection connection) throws SQLException {
         try (Statement statement = connection.createStatement();
              ResultSet rows = statement.executeQuery("SELECT CONVERT(NVARCHAR(4000), SERVERPROPERTY('InstanceDefaultBackupPath'))")) {
             String value = rows.next() ? rows.getString(1) : null;
             if (value == null || value.isBlank())
-                throw new IllegalStateException("BACKUP_DIRECTORY_UNKNOWN: the instance does not expose a default backup path; set serverBackupDirectory");
+                throw new IllegalStateException("BACKUP_DIRECTORY_UNKNOWN: the instance does not expose a default backup path; configure an approved serverBackupDirectory");
 
             return validateDirectory(value);
         }
@@ -279,10 +298,53 @@ public final class SqlServerNativeBackupProcedureTemplate implements ProcedureEv
     static String validateDirectory(String value) {
         String normalized = value.trim();
         if (normalized.isEmpty() || normalized.length() > 1024 || normalized.contains("..") || normalized.contains("'")
-                || normalized.chars().anyMatch(Character::isISOControl))
+                || normalized.chars().anyMatch(Character::isISOControl) || !isAbsoluteServerPath(normalized))
             throw new IllegalArgumentException("serverBackupDirectory must be an absolute server path without '..' or quotes");
 
         return normalized;
+    }
+
+    private static boolean isAbsoluteServerPath(String value) {
+        if (value.startsWith("/") && !value.startsWith("//"))
+            return true;
+
+        if (value.length() >= 3 && Character.isLetter(value.charAt(0)) && value.charAt(1) == ':'
+                && (value.charAt(2) == '\\' || value.charAt(2) == '/'))
+            return true;
+
+        if (value.startsWith("\\\\")) {
+            int shareSeparator = value.indexOf('\\', 2);
+            return shareSeparator > 2 && shareSeparator < value.length() - 1 && value.charAt(shareSeparator + 1) != '\\';
+        }
+        return false;
+    }
+
+    static String allowedBackupDirectory(String requested, String host, int port, String allowedEntries) {
+        String directory = validateDirectory(requested);
+        if (allowedEntries == null || allowedEntries.isBlank())
+            throw new IllegalArgumentException("serverBackupDirectory is not approved for this SQL Server instance");
+
+        String server = host + ":" + port;
+        boolean approved = false;
+        for (String entry : allowedEntries.split(";", -1)) {
+            int separator = entry.indexOf('=');
+            if (separator <= 0 || separator == entry.length() - 1)
+                throw new IllegalStateException(ALLOWED_DIRECTORIES_ENV + " must contain host:port=absolute-directory entries");
+
+            String configuredServer = entry.substring(0, separator).trim();
+            String configuredDirectory;
+            try {
+                configuredDirectory = validateDirectory(entry.substring(separator + 1));
+            } catch (IllegalArgumentException exception) {
+                throw new IllegalStateException(ALLOWED_DIRECTORIES_ENV + " contains an invalid directory", exception);
+            }
+            if (configuredServer.equalsIgnoreCase(server) && configuredDirectory.equals(directory))
+                approved = true;
+        }
+        if (!approved)
+            throw new IllegalArgumentException("serverBackupDirectory is not approved for this SQL Server instance");
+
+        return directory;
     }
 
     static List<String> serverFiles(String directory, String baseName, int stripes) {
@@ -400,7 +462,7 @@ public final class SqlServerNativeBackupProcedureTemplate implements ProcedureEv
             try (Statement statement = connection.createStatement()) {
                 drain(statement, statement.execute("EXEC master.dbo.xp_delete_file 0, " + quoteLiteral(serverFile)));
             } catch (SQLException exception) {
-                // Best effort: the next run overwrites the file thanks to WITH INIT, FORMAT.
+                // Best effort: a failed deletion leaves this execution's unique backup file on the server.
                 deleted = false;
             }
         }
