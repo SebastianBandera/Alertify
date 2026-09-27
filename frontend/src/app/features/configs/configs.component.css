@@ -513,6 +513,38 @@ td small {
   white-space: nowrap;
 }
 
+.configs--configurations .updated-column,
+.configs--configurations .date-cell {
+  width: 145px;
+  max-width: 145px;
+  white-space: normal;
+}
+
+.configs--configurations .uses-column,
+.configs--configurations .uses-cell {
+  width: 72px;
+  text-align: center;
+}
+
+.usage-count {
+  min-width: 34px;
+  min-height: 30px;
+  padding: 4px 8px;
+  border: 1px solid #d9d4ff;
+  border-radius: 999px;
+  background: #f4f2ff;
+  color: var(--primary-strong);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 750;
+}
+
+.usage-count:hover,
+.usage-count:focus-visible {
+  border-color: var(--primary);
+  outline: 2px solid rgb(109 93 252 / 18%);
+}
+
 .row-actions {
   justify-content: flex-end;
 }
@@ -642,6 +674,73 @@ td small {
 
 .modal--tags {
   width: min(620px, 100%);
+}
+
+.modal--usages {
+  width: min(600px, 100%);
+}
+
+.usage-summary {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.usage-group {
+  display: grid;
+  gap: 10px;
+}
+
+.usage-group h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 14px;
+}
+
+.usage-group h3 span {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.usage-group p {
+  margin: 0;
+  font-size: 13px;
+}
+
+.usage-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.usage-list li {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+
+.usage-type {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.usage-disabled {
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: #f2f4f7;
+  color: #667085;
+  font-size: 11px;
 }
 
 .modal__header {

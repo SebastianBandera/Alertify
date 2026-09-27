@@ -1,4 +1,4 @@
-<article class="configs">
+<article class="configs configs--configurations">
   <header class="configs__header">
     <div>
       <h1>{{ localization.translate('configs.title') }}</h1>
@@ -144,7 +144,8 @@
             <th>{{ localization.translate('configs.column.type') }}</th>
             <th>{{ localization.translate('configs.column.value') }}</th>
             <th>{{ localization.translate('configs.column.tags') }}</th>
-            <th>{{ localization.translate('configs.column.updatedAt') }}</th>
+            <th class="updated-column">{{ localization.translate('configs.column.updatedAt') }}</th>
+            <th class="uses-column">{{ localization.translate('configs.column.usages') }}</th>
             <th class="actions-column">{{ localization.translate('configs.column.actions') }}</th>
           </tr>
         </thead>
@@ -175,6 +176,15 @@
                 </div>
               </td>
               <td class="date-cell">{{ formatDate(configuration.updatedAt) }}</td>
+              <td class="uses-cell">
+                <button
+                  class="usage-count"
+                  type="button"
+                  [attr.aria-label]="localization.translate('configs.usages.open').replace('{name}', configuration.name).replace('{count}', configuration.usageCount.toString())"
+                  [title]="localization.translate('configs.usages.open').replace('{name}', configuration.name).replace('{count}', configuration.usageCount.toString())"
+                  (click)="openUsages(configuration)"
+                >{{ configuration.usageCount }}</button>
+              </td>
               <td>
                 <div class="row-actions">
                   <button class="text-button" type="button" (click)="openEdit(configuration)">
@@ -240,6 +250,54 @@
     </footer>
   }
 </article>
+
+@if (usageConfiguration(); as configuration) {
+  <div class="modal-backdrop" (mousedown)="closeUsages()">
+    <section class="modal modal--usages" role="dialog" aria-modal="true" aria-labelledby="configuration-usages-title" (mousedown)="$event.stopPropagation()">
+      <header class="modal__header">
+        <h2 id="configuration-usages-title">{{ localization.translate('configs.usages.title').replace('{name}', configuration.name) }}</h2>
+        <button class="icon-button" type="button" [attr.aria-label]="localization.translate('configs.usages.close')" (click)="closeUsages()">×</button>
+      </header>
+      <div class="modal__body">
+        @if (usagesLoading()) {
+          <p class="muted" role="status">{{ localization.translate('configs.usages.loading') }}</p>
+        } @else if (usagesError()) {
+          <div class="alert alert--error" role="alert">{{ usagesError() }}</div>
+        } @else if (usages(); as usageDetails) {
+          <p class="usage-summary">{{ localization.translate('configs.usages.total').replace('{count}', usageDetails.totalCount.toString()) }}</p>
+          @if (usageDetails.totalCount === 0) {
+            <p class="muted">{{ localization.translate('configs.usages.empty') }}</p>
+          } @else {
+            <section class="usage-group" [attr.aria-label]="localization.translate('configs.usages.direct')">
+              <h3>{{ localization.translate('configs.usages.direct') }} <span>{{ usageDetails.direct.length }}</span></h3>
+              @if (usageDetails.direct.length === 0) {
+                <p class="muted">{{ localization.translate('configs.usages.none') }}</p>
+              } @else {
+                <ul class="usage-list">
+                  @for (usage of usageDetails.direct; track usage.type + ':' + usage.id) {
+                    <li><span class="usage-type">{{ usageTypeLabel(usage.type) }}</span><strong>{{ usage.name }}</strong>@if (usage.enabled === false) { <span class="usage-disabled">{{ localization.translate('configs.usages.disabled') }}</span> }</li>
+                  }
+                </ul>
+              }
+            </section>
+            <section class="usage-group" [attr.aria-label]="localization.translate('configs.usages.indirect')">
+              <h3>{{ localization.translate('configs.usages.indirect') }} <span>{{ usageDetails.indirect.length }}</span></h3>
+              @if (usageDetails.indirect.length === 0) {
+                <p class="muted">{{ localization.translate('configs.usages.none') }}</p>
+              } @else {
+                <ul class="usage-list">
+                  @for (usage of usageDetails.indirect; track usage.type + ':' + usage.id) {
+                    <li><span class="usage-type">{{ usageTypeLabel(usage.type) }}</span><strong>{{ usage.name }}</strong>@if (usage.enabled === false) { <span class="usage-disabled">{{ localization.translate('configs.usages.disabled') }}</span> }</li>
+                  }
+                </ul>
+              }
+            </section>
+          }
+        }
+      </div>
+    </section>
+  </div>
+}
 
 @if (editorOpen()) {
   <div class="modal-backdrop" (mousedown)="closeEditor()">

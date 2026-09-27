@@ -33,11 +33,13 @@ import app.alertify.configuration.api.ConfigurationExpressionEvaluationResponse;
 import app.alertify.configuration.api.ConfigurationExpressionSuggestionsResponse;
 import app.alertify.configuration.api.ConfigurationImportResult;
 import app.alertify.configuration.api.ConfigurationResponse;
+import app.alertify.configuration.api.ConfigurationUsagesResponse;
 import app.alertify.configuration.api.ConfigurationUpdateRequest;
 import app.alertify.configuration.api.BinaryConfigurationCreateRequest;
 import app.alertify.configuration.api.BinaryConfigurationUpdateRequest;
 import app.alertify.configuration.service.ApplicationConfigurationService;
 import app.alertify.configuration.service.ConfigurationExpressionService;
+import app.alertify.configuration.service.ConfigurationUsageService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.PositiveOrZero;
 
@@ -53,15 +55,19 @@ public class ApplicationConfigurationController {
 
     private final ApplicationConfigurationService service;
     private final ConfigurationExpressionService expressionService;
+    private final ConfigurationUsageService usageService;
 
-    public ApplicationConfigurationController(ApplicationConfigurationService service, ConfigurationExpressionService expressionService) {
+    public ApplicationConfigurationController(ApplicationConfigurationService service, ConfigurationExpressionService expressionService, ConfigurationUsageService usageService) {
         this.service = service;
         this.expressionService = expressionService;
+        this.usageService = usageService;
     }
 
     @GetMapping
     public Page<ConfigurationResponse> search(@RequestParam MultiValueMap<String, String> params, @PageableDefault(size = 20, sort = "name") Pageable pageable) {
-        return service.search(params, pageable);
+        Page<ConfigurationResponse> page = service.search(params, pageable);
+        var usages = usageService.getForIds(page.getContent().stream().map(ConfigurationResponse::id).toList());
+        return page.map(configuration -> configuration.withUsageCount(usages.get(configuration.id()).totalCount()));
     }
 
     @GetMapping(value = "/export", produces = "text/csv")
@@ -95,31 +101,36 @@ public class ApplicationConfigurationController {
 
     @GetMapping("/{id}")
     public ConfigurationResponse get(@PathVariable Long id) {
-        return service.get(id);
+        return withUsageCount(service.get(id));
+    }
+
+    @GetMapping("/{id}/usages")
+    public ConfigurationUsagesResponse usages(@PathVariable Long id) {
+        return usageService.get(id);
     }
 
     @PostMapping
     public ResponseEntity<ConfigurationResponse> create(@Valid @RequestBody ConfigurationCreateRequest request) {
-        ConfigurationResponse response = service.create(request);
+        ConfigurationResponse response = withUsageCount(service.create(request));
         URI location = ServletUriComponentsBuilder.fromCurrentRequest().path("/{id}").buildAndExpand(response.id()).toUri();
         return ResponseEntity.created(location).body(response);
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ConfigurationResponse> createBinary(@Valid @RequestPart("metadata") BinaryConfigurationCreateRequest request, @RequestPart(value = "file", required = false) MultipartFile file) {
-        ConfigurationResponse response = service.createBinary(request, file);
+        ConfigurationResponse response = withUsageCount(service.createBinary(request, file));
         URI location = ServletUriComponentsBuilder.fromCurrentRequest().path("/{id}").buildAndExpand(response.id()).toUri();
         return ResponseEntity.created(location).body(response);
     }
 
     @PutMapping("/{id}")
     public ConfigurationResponse update(@PathVariable Long id, @Valid @RequestBody ConfigurationUpdateRequest request) {
-        return service.update(id, request);
+        return withUsageCount(service.update(id, request));
     }
 
     @PutMapping(value = "/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ConfigurationResponse updateBinary(@PathVariable Long id, @Valid @RequestPart("metadata") BinaryConfigurationUpdateRequest request, @RequestPart(value = "file", required = false) MultipartFile file) {
-        return service.updateBinary(id, request, file);
+        return withUsageCount(service.updateBinary(id, request, file));
     }
 
     @GetMapping("/{id}/binary")
@@ -135,5 +146,9 @@ public class ApplicationConfigurationController {
     public ResponseEntity<Void> delete(@PathVariable Long id, @RequestParam @PositiveOrZero long version) {
         service.delete(id, version);
         return ResponseEntity.noContent().build();
+    }
+
+    private ConfigurationResponse withUsageCount(ConfigurationResponse response) {
+        return response.withUsageCount(usageService.getForIds(java.util.List.of(response.id())).get(response.id()).totalCount());
     }
 }

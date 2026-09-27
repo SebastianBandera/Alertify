@@ -7,6 +7,8 @@ import {
   ConfigurationApiService,
   ConfigurationImportResult,
   ConfigurationTag,
+  ConfigurationUsageType,
+  ConfigurationUsages,
   ConfigurationValueType,
   TagMatchMode,
 } from '../../core/api/configuration-api.service';
@@ -88,6 +90,11 @@ export class ConfigsComponent implements OnInit {
   protected readonly pageSize = signal(readStoredPageSize());
   protected readonly totalElements = signal(0);
   protected readonly totalPages = signal(0);
+  protected readonly usageConfiguration = signal<ApplicationConfiguration | null>(null);
+  protected readonly usages = signal<ConfigurationUsages | null>(null);
+  protected readonly usagesLoading = signal(false);
+  protected readonly usagesError = signal<string | null>(null);
+  private usageRequestId = 0;
   protected readonly selectedFilterTags = computed(() => {
     const tagsById = new Map(this.tags().map((tag) => [tag.id, tag]));
     return this.selectedTagIds().flatMap((tagId) => {
@@ -324,6 +331,40 @@ export class ConfigsComponent implements OnInit {
     this.formError.set(null);
     this.resetExpressionEditorState();
     this.editorOpen.set(true);
+  }
+
+  protected async openUsages(configuration: ApplicationConfiguration): Promise<void> {
+    const requestId = ++this.usageRequestId;
+    this.usageConfiguration.set(configuration);
+    this.usages.set(null);
+    this.usagesError.set(null);
+    this.usagesLoading.set(true);
+    try {
+      const usages = await this.api.getConfigurationUsages(configuration.id);
+      if (requestId === this.usageRequestId) this.usages.set(usages);
+    } catch (error) {
+      if (requestId === this.usageRequestId) this.usagesError.set(this.errorMessage(error));
+    } finally {
+      if (requestId === this.usageRequestId) this.usagesLoading.set(false);
+    }
+  }
+
+  protected closeUsages(): void {
+    ++this.usageRequestId;
+    this.usageConfiguration.set(null);
+    this.usages.set(null);
+    this.usagesError.set(null);
+    this.usagesLoading.set(false);
+  }
+
+  protected usageTypeLabel(type: ConfigurationUsageType): string {
+    switch (type) {
+      case 'ALERT': return this.localization.translate('configs.usages.type.alert');
+      case 'PROCEDURE': return this.localization.translate('configs.usages.type.procedure');
+      case 'HOOK': return this.localization.translate('configs.usages.type.hook');
+      case 'CONFIGURATION': return this.localization.translate('configs.usages.type.configuration');
+      case 'SECRET': return this.localization.translate('configs.usages.type.secret');
+    }
   }
 
   protected closeEditor(): void {

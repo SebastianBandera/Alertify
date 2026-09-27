@@ -43,6 +43,22 @@ export interface ApplicationConfiguration {
   readonly tags: readonly ConfigurationTag[];
   readonly createdAt: string;
   readonly updatedAt: string;
+  readonly usageCount: number;
+}
+
+export type ConfigurationUsageType = 'ALERT' | 'PROCEDURE' | 'HOOK' | 'CONFIGURATION' | 'SECRET';
+
+export interface ConfigurationUsage {
+  readonly type: ConfigurationUsageType;
+  readonly id: number;
+  readonly name: string;
+  readonly enabled: boolean | null;
+}
+
+export interface ConfigurationUsages {
+  readonly totalCount: number;
+  readonly direct: readonly ConfigurationUsage[];
+  readonly indirect: readonly ConfigurationUsage[];
 }
 
 export interface ConfigurationImportResult {
@@ -148,6 +164,10 @@ export class ConfigurationApiService {
     return this.request<PageResponse<ApplicationConfiguration>>(
       `/api/configurations?${params.toString()}`,
     );
+  }
+
+  async getConfigurationUsages(id: number): Promise<ConfigurationUsages> {
+    return this.request(`/api/configurations/${id}/usages`);
   }
 
   async exportConfigurations(): Promise<Blob> {
