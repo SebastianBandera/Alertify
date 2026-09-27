@@ -11,11 +11,19 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 
 import app.alertify.jpa.audit.AuditRevisionEntity;
 import app.alertify.jpa.entity.ApplicationSecret;
+import app.alertify.jpa.entity.ApplicationLog;
+import app.alertify.jpa.entity.ApplicationLogEvent;
+import app.alertify.jpa.entity.ApplicationLogLevelDefinition;
+import app.alertify.jpa.entity.ApplicationLogSource;
 import app.alertify.jpa.entity.ApplicationConfiguration;
 import app.alertify.jpa.entity.SystemConfiguration;
 import app.alertify.jpa.entity.Tag;
 import app.alertify.jpa.entity.SecretBinaryValue;
 import app.alertify.jpa.repository.ApplicationSecretRepository;
+import app.alertify.jpa.repository.ApplicationLogEventRepository;
+import app.alertify.jpa.repository.ApplicationLogLevelDefinitionRepository;
+import app.alertify.jpa.repository.ApplicationLogRepository;
+import app.alertify.jpa.repository.ApplicationLogSourceRepository;
 import app.alertify.jpa.repository.ApplicationConfigurationRepository;
 import app.alertify.jpa.repository.SystemConfigurationRepository;
 import app.alertify.jpa.repository.TagRepository;
@@ -25,6 +33,7 @@ import app.alertify.configuration.service.ConfigurationExpressionParser;
 import app.alertify.configuration.service.ConfigurationExpressionUtilityResolver;
 import app.alertify.configuration.service.EnvironmentVariableResolver;
 import app.alertify.services.secret.ApplicationSecretService;
+import app.alertify.services.secret.DatabaseSecretProbeService;
 import app.alertify.services.secret.SecretAccessService;
 import app.alertify.services.secret.SecretExpressionService;
 import app.alertify.services.secret.SecretTagService;
@@ -60,7 +69,7 @@ import app.alertify.services.secret.WritableSecretService;
  * which is the only place that activates it.
  *
  * <p>{@code app.alertify.services.secret} also holds
- * {@code ApplicationSecretService}, {@code WritableSecretService},
+ * {@code ApplicationSecretService}, {@code DatabaseSecretProbeService}, {@code WritableSecretService},
  * {@code SecretTagService}, {@code SecretAccessService} and the full
  * {@code SecretExpressionService}, which need
  * {@code ApplicationEventLogger} (and the audit-log subsystem behind it).
@@ -84,20 +93,24 @@ import app.alertify.services.secret.WritableSecretService;
 @Configuration
 @Profile(SecretExportImportConfiguration.PROFILE)
 @EnableAutoConfiguration
-@EntityScan(basePackageClasses = { ApplicationSecret.class, ApplicationConfiguration.class, SecretBinaryValue.class, Tag.class, SystemConfiguration.class, AuditRevisionEntity.class })
+@EntityScan(basePackageClasses = { ApplicationSecret.class, ApplicationConfiguration.class, SecretBinaryValue.class, Tag.class,
+        SystemConfiguration.class, AuditRevisionEntity.class, ApplicationLog.class, ApplicationLogEvent.class,
+        ApplicationLogLevelDefinition.class, ApplicationLogSource.class })
 @EnableJpaRepositories(
         basePackageClasses = ApplicationSecretRepository.class,
         includeFilters = @ComponentScan.Filter(
                 type = FilterType.ASSIGNABLE_TYPE,
                 classes = { ApplicationSecretRepository.class, ApplicationConfigurationRepository.class,
-                        SecretBinaryValueRepository.class, TagRepository.class, SystemConfigurationRepository.class }
+                        SecretBinaryValueRepository.class, TagRepository.class, SystemConfigurationRepository.class,
+                        ApplicationLogRepository.class, ApplicationLogEventRepository.class,
+                        ApplicationLogLevelDefinitionRepository.class, ApplicationLogSourceRepository.class }
         )
 )
 @Import({ BinaryPayloadService.class, ConfigurationExpressionParser.class,
         EnvironmentVariableResolver.class, ConfigurationExpressionUtilityResolver.class })
 @ComponentScan(basePackageClasses = { SymmetricKeyService.class, SecretExportImportConfiguration.class }, excludeFilters = @ComponentScan.Filter(
         type = FilterType.ASSIGNABLE_TYPE,
-        classes = { ApplicationSecretService.class, WritableSecretService.class, SecretTagService.class,
+        classes = { ApplicationSecretService.class, DatabaseSecretProbeService.class, WritableSecretService.class, SecretTagService.class,
                 SecretAccessService.class, SecretExpressionService.class }
 ))
 class SecretExportImportConfiguration {

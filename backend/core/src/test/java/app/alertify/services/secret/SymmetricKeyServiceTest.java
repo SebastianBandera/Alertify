@@ -38,9 +38,7 @@ class SymmetricKeyServiceTest {
         digest.update(ByteBuffer.allocate(Integer.BYTES).putInt(environmentKeyPart.length).array());
         digest.update(environmentKeyPart);
 
-        try (SymmetricKeyRotation rotation = service.readRotation()) {
-            service.activate(rotation.newKey());
-        }
+        service.initializeTargetKey();
 
         assertEquals("AES", service.getKey().getAlgorithm());
         assertEquals(32, service.getKey().getEncoded().length);

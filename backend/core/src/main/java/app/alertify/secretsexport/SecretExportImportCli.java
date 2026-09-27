@@ -8,6 +8,8 @@ import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
 
+import app.alertify.services.secret.SymmetricKeyService;
+
 /**
  * Standalone entry point for the secrets export/import tool (see
  * {@code secrets-tool.sh}). It is never wired into the running application
@@ -37,10 +39,22 @@ public final class SecretExportImportCli {
                 .profiles(SecretExportImportConfiguration.PROFILE)
                 .run(args)) {
             SecretExportImportService service = context.getBean(SecretExportImportService.class);
-            if (isImport)
-                runImport(service, Path.of(args[1]), password);
-            else
-                runExport(service);
+            SecretExportImportAuditService auditService = context.getBean(SecretExportImportAuditService.class);
+            try {
+                context.getBean(SymmetricKeyService.class).initializeTargetKey();
+                if (isImport)
+                    runImport(service, Path.of(args[1]), password);
+                else
+                    runExport(service);
+            } catch (RuntimeException operationFailure) {
+                try {
+                    auditService.recordFailure(isExport);
+                } catch (RuntimeException auditFailure) {
+                    auditFailure.addSuppressed(operationFailure);
+                    throw auditFailure;
+                }
+                throw operationFailure;
+            }
         } catch (RuntimeException exception) {
             printErrorLine("ERROR: " + exception.getMessage());
             System.exit(1);

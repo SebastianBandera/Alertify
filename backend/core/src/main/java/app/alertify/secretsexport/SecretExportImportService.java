@@ -74,13 +74,15 @@ class SecretExportImportService {
     private final SecretExpressionDependencySynchronizer expressionDependencySynchronizer;
     private final SecretBinaryValueRepository binaryRepository;
     private final BinaryPayloadService binaryPayloadService;
+    private final SecretExportImportAuditService auditService;
     private final JsonMapper jsonMapper;
     private final SecureRandom secureRandom = new SecureRandom();
 
     SecretExportImportService(ApplicationSecretRepository secretRepository, SystemConfigurationRepository systemConfigurationRepository,
             TagRepository tagRepository, SecretEncryptionService encryptionService,
             SecretExpressionDependencySynchronizer expressionDependencySynchronizer,
-            JsonMapper jsonMapper, SecretBinaryValueRepository binaryRepository, BinaryPayloadService binaryPayloadService) {
+            JsonMapper jsonMapper, SecretBinaryValueRepository binaryRepository, BinaryPayloadService binaryPayloadService,
+            SecretExportImportAuditService auditService) {
         this.secretRepository = secretRepository;
         this.systemConfigurationRepository = systemConfigurationRepository;
         this.tagRepository = tagRepository;
@@ -89,6 +91,7 @@ class SecretExportImportService {
         this.jsonMapper = jsonMapper;
         this.binaryRepository = binaryRepository;
         this.binaryPayloadService = binaryPayloadService;
+        this.auditService = auditService;
     }
 
     @Transactional(readOnly = true)
@@ -123,9 +126,13 @@ class SecretExportImportService {
                 new SystemConfigurationExportPayload(exportedAt, List.copyOf(systemConfigurationEntries));
 
         char[] password = generatePassword();
+        Path file = null;
+        boolean fileCreated = false;
         try {
             Files.createDirectories(directory);
-            Path file = directory.resolve("alertify-secrets-" + FILE_TIMESTAMP.format(exportedAt) + ".zip");
+            file = directory.resolve("alertify-secrets-" + FILE_TIMESTAMP.format(exportedAt) + ".zip");
+            Files.createFile(file);
+            fileCreated = true;
             try (ZipFile zipFile = new ZipFile(file.toFile(), password)) {
                 writeEntry(zipFile, SECRETS_ENTRY_NAME, secretsPayload);
                 writeEntry(zipFile, SYSTEM_CONFIGURATIONS_ENTRY_NAME, systemConfigurationsPayload);
@@ -140,9 +147,15 @@ class SecretExportImportService {
                     }
                 }
             }
+            auditService.recordExportSuccess(secretEntries.size(), systemConfigurationEntries.size());
             return new ExportResult(file, new String(password), secretEntries.size(), systemConfigurationEntries.size());
         } catch (IOException exception) {
-            throw new IllegalStateException("Unable to write the secrets export archive", exception);
+            IllegalStateException failure = new IllegalStateException("Unable to write the secrets export archive", exception);
+            deleteFailedExport(file, fileCreated, failure);
+            throw failure;
+        } catch (RuntimeException exception) {
+            deleteFailedExport(file, fileCreated, exception);
+            throw exception;
         } finally {
             Arrays.fill(password, '\0');
         }
@@ -162,6 +175,8 @@ class SecretExportImportService {
 
             SecretImportResult secretResult = importSecrets(zipFile, secretsPayload);
             SystemConfigurationImportResult systemConfigurationResult = importSystemConfigurations(systemConfigurationEntries);
+            auditService.recordImportSuccess(secretResult.created().size(), secretResult.skipped().size(),
+                    systemConfigurationResult.created().size(), systemConfigurationResult.skipped().size());
             return new ImportResult(secretResult, systemConfigurationResult);
         } catch (ZipException exception) {
             throw new IllegalStateException("Incorrect password or corrupted archive", exception);
@@ -316,6 +331,17 @@ class SecretExportImportService {
             return Base64.getUrlEncoder().withoutPadding().encodeToString(random).toCharArray();
         } finally {
             Arrays.fill(random, (byte) 0);
+        }
+    }
+
+    private void deleteFailedExport(Path file, boolean fileCreated, RuntimeException failure) {
+        if (!fileCreated)
+            return;
+
+        try {
+            Files.deleteIfExists(file);
+        } catch (IOException cleanupException) {
+            failure.addSuppressed(cleanupException);
         }
     }
 

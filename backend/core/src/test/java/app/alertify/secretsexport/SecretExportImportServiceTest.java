@@ -1,7 +1,10 @@
 package app.alertify.secretsexport;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.nio.file.Path;
@@ -38,6 +41,7 @@ class SecretExportImportServiceTest {
         SecretEncryptionService encryptionService = mock(SecretEncryptionService.class);
         SecretExpressionDependencySynchronizer dependencySynchronizer = mock(SecretExpressionDependencySynchronizer.class);
         SecretBinaryValueRepository binaryRepository = mock(SecretBinaryValueRepository.class);
+        SecretExportImportAuditService auditService = mock(SecretExportImportAuditService.class);
 
         ApplicationSecret secret = new ApplicationSecret(
                 "database.file", null, SecretValueType.BINARY, new byte[] { 1 }, new byte[12], new byte[32],
@@ -57,7 +61,7 @@ class SecretExportImportServiceTest {
         SecretExportImportService service = new SecretExportImportService(
                 secretRepository, systemConfigurationRepository, tagRepository, encryptionService,
                 dependencySynchronizer, JsonMapper.builder().build(), binaryRepository,
-                new BinaryPayloadService(104857600)
+                new BinaryPayloadService(104857600), auditService
         );
 
         SecretExportImportService.ExportResult result = service.export(directory);
@@ -68,6 +72,31 @@ class SecretExportImportServiceTest {
             assertThat(header.isEncrypted()).isTrue();
             assertThat(header.getAesExtraDataRecord().getCompressionMethod()).isEqualTo(CompressionMethod.STORE);
             assertThat(archive.getInputStream(header).readAllBytes()).isEqualTo(storedZip);
+        }
+        verify(auditService).recordExportSuccess(1, 0);
+    }
+
+    @Test
+    void deletesTheArchiveWhenMandatoryAuditPersistenceFails(@TempDir Path directory) throws Exception {
+        ApplicationSecretRepository secretRepository = mock(ApplicationSecretRepository.class);
+        SystemConfigurationRepository systemConfigurationRepository = mock(SystemConfigurationRepository.class);
+        SecretExportImportAuditService auditService = mock(SecretExportImportAuditService.class);
+        when(secretRepository.findAll()).thenReturn(List.of());
+        when(systemConfigurationRepository.findAll()).thenReturn(List.of());
+        doThrow(new IllegalStateException("audit unavailable")).when(auditService).recordExportSuccess(0, 0);
+
+        SecretExportImportService service = new SecretExportImportService(
+                secretRepository, systemConfigurationRepository, mock(TagRepository.class),
+                mock(SecretEncryptionService.class), mock(SecretExpressionDependencySynchronizer.class),
+                JsonMapper.builder().build(), mock(SecretBinaryValueRepository.class),
+                new BinaryPayloadService(104857600), auditService
+        );
+
+        assertThatThrownBy(() -> service.export(directory))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("audit unavailable");
+        try (var files = java.nio.file.Files.list(directory)) {
+            assertThat(files).isEmpty();
         }
     }
 }

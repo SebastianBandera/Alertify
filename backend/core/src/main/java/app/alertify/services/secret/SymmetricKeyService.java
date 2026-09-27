@@ -38,6 +38,13 @@ public class SymmetricKeyService {
         return current.revealKey();
     }
 
+    /** Initializes this process with the target key without rotating persisted values. */
+    public void initializeTargetKey() {
+        try (SymmetricKeyRotation rotation = readRotation()) {
+            activate(rotation.newKey());
+        }
+    }
+
     SymmetricKeyRotation readRotation() {
         KeyPart database = parse(databaseKeyPartSource.read(), "database", false);
         KeyPart privateClass = parse(privateClassKeyPartSource.read(), "private class", true);
