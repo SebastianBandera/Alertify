@@ -133,23 +133,9 @@ public final class CopyFileToNfsProcedureTemplate implements ProcedureEvaluator 
 
         String targetName = logicalFileName(fileName == null || fileName.isBlank() ? input.fileName() : fileName.trim());
         Path relativeDirectory = relativeDirectory(directory);
-        Mount mount = Helper.mount(server, export, version);
-        Exception failure = null;
-        CopyResult result = null;
-        try {
+        CopyResult result;
+        try (Mount mount = Helper.mount(server, export, version)) {
             result = copy(mount.path(), relativeDirectory, targetName);
-        } catch (Exception exception) {
-            failure = exception;
-            throw exception;
-        } finally {
-            try {
-                Helper.unmount(mount.token());
-            } catch (Exception unmountFailure) {
-                if (failure != null)
-                    failure.addSuppressed(unmountFailure);
-                else
-                    throw unmountFailure;
-            }
         }
 
         return JSON.createObjectNode().put("fileName", targetName)
@@ -286,6 +272,11 @@ public final class CopyFileToNfsProcedureTemplate implements ProcedureEvaluator 
         }
     }
 
-    private record Mount(String token, Path path) { }
+    private record Mount(String token, Path path) implements AutoCloseable {
+        @Override
+        public void close() throws IOException {
+            Helper.unmount(token);
+        }
+    }
     private record CopyResult(long size, String sha256, boolean overwritten) { }
 }
