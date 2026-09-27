@@ -81,6 +81,8 @@ public class SecretUsageService {
 
         Map<Long, List<Usage>> direct = new HashMap<>();
         Map<Long, List<Usage>> indirect = new HashMap<>();
+        // PostgreSQL overestimates recursive paths and spends more time compiling JIT code than running this query.
+        jdbcTemplate.getJdbcTemplate().execute("set local jit = off");
         jdbcTemplate.query(USAGES_SQL, new MapSqlParameterSource("ids", ids), result -> {
             Long rootId = result.getLong("root_id");
             Boolean enabled = (Boolean) result.getObject("enabled");
