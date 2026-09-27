@@ -62,6 +62,9 @@ class WebRequestAlertTemplateTest {
         assertEquals(7, parameter("responseBodyRegexes").order());
         assertEquals(8, parameter("jsonAssertions").order());
         assertEquals(9, parameter("timeoutSeconds").order());
+        assertFalse(parameter("slowResponseWarningSeconds").required());
+        assertEquals("", parameter("slowResponseWarningSeconds").defaultValue());
+        assertEquals(10, parameter("slowResponseWarningSeconds").order());
     }
 
     @Test
@@ -80,7 +83,7 @@ class WebRequestAlertTemplateTest {
                 "http://127.0.0.1:" + server.getAddress().getPort() + "/", "GET", "200", null,
                 "[\"Accept: application/json\", \"authorization: Basic invalid\", \"X-Multi: a\", \"X-Multi: b\"]",
                 "[\"Authorization: Basic dXNlcjpwYXNz\"]",
-                null, null, 3
+                null, null, 3, null
             ).evaluate(new AlertExecutionContext());
 
             assertEquals(AlertExecutionStatus.SUCCESS, result.status());
@@ -100,10 +103,10 @@ class WebRequestAlertTemplateTest {
         HttpServer server = server(exchange -> respond(exchange, 200, "ok"));
         try {
             AlertResult blank = new WebRequestAlertTemplate(
-                "http://127.0.0.1:" + server.getAddress().getPort() + "/", "GET", "200", null, "", null, null, null, 3
+                "http://127.0.0.1:" + server.getAddress().getPort() + "/", "GET", "200", null, "", null, null, null, 3, null
             ).evaluate(new AlertExecutionContext());
             AlertResult nulls = new WebRequestAlertTemplate(
-                "http://127.0.0.1:" + server.getAddress().getPort() + "/", "GET", "200", null, null, "  ", null, null, 3
+                "http://127.0.0.1:" + server.getAddress().getPort() + "/", "GET", "200", null, null, "  ", null, null, 3, null
             ).evaluate(new AlertExecutionContext());
 
             assertEquals(AlertExecutionStatus.SUCCESS, blank.status());
@@ -179,6 +182,31 @@ class WebRequestAlertTemplateTest {
             assertEquals(AlertExecutionStatus.WARN, result.status());
             assertEquals("timeout", result.statusMessage().get("failureReason"));
             assertEquals(1L, result.statusMessage().get("timeoutSeconds"));
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void warnsWhenAnOtherwiseValidResponseExceedsTheConfiguredLatency() throws Exception {
+        HttpServer server = server(exchange -> {
+            try {
+                Thread.sleep(1_200);
+                respond(exchange, 200, "ok");
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        try {
+            AlertResult result = new WebRequestAlertTemplate(
+                "http://127.0.0.1:" + server.getAddress().getPort() + "/", "GET", "200", null,
+                "[]", null, null, null, 3, 1
+            ).evaluate(new AlertExecutionContext());
+
+            assertEquals(AlertExecutionStatus.WARN, result.status());
+            assertEquals("slowResponse", result.statusMessage().get("failureReason"));
+            assertEquals(1L, result.statusMessage().get("slowResponseWarningSeconds"));
+            assertTrue((Long) result.statusMessage().get("latencyMs") > 1_000);
         } finally {
             server.stop(0);
         }
@@ -301,25 +329,28 @@ class WebRequestAlertTemplateTest {
     @Test
     void rejectsInvalidConfigurationBeforeSendingTheRequest() {
         WebRequestAlertTemplate invalidHeaders = new WebRequestAlertTemplate(
-            "https://example.test", "GET", "200", null, "[1]", null, null, null, 3
+            "https://example.test", "GET", "200", null, "[1]", null, null, null, 3, null
         );
         WebRequestAlertTemplate invalidRegex = new WebRequestAlertTemplate(
-            "https://example.test", "GET", "200", null, "[]", null, "[", null, 3
+            "https://example.test", "GET", "200", null, "[]", null, "[", null, 3, null
         );
         WebRequestAlertTemplate invalidPointer = new WebRequestAlertTemplate(
-            "https://example.test", "GET", "200", null, "[]", null, null, "bad-pointer exists", 3
+            "https://example.test", "GET", "200", null, "[]", null, null, "bad-pointer exists", 3, null
         );
         WebRequestAlertTemplate unknownOperator = new WebRequestAlertTemplate(
-            "https://example.test", "GET", "200", null, "[]", null, null, "/status isUp", 3
+            "https://example.test", "GET", "200", null, "[]", null, null, "/status isUp", 3, null
         );
         WebRequestAlertTemplate nonNumericValue = new WebRequestAlertTemplate(
-            "https://example.test", "GET", "200", null, "[]", null, null, "/count gt abc", 3
+            "https://example.test", "GET", "200", null, "[]", null, null, "/count gt abc", 3, null
         );
         WebRequestAlertTemplate negativeSizeValue = new WebRequestAlertTemplate(
-            "https://example.test", "GET", "200", null, "[]", null, null, "/items sizeLt -1", 3
+            "https://example.test", "GET", "200", null, "[]", null, null, "/items sizeLt -1", 3, null
         );
         WebRequestAlertTemplate missingValue = new WebRequestAlertTemplate(
-            "https://example.test", "GET", "200", null, "[]", null, null, "/status equals", 3
+            "https://example.test", "GET", "200", null, "[]", null, null, "/status equals", 3, null
+        );
+        WebRequestAlertTemplate invalidSlowResponseWarning = new WebRequestAlertTemplate(
+            "https://example.test", "GET", "200", null, "[]", null, null, null, 3, 0
         );
 
         assertThrows(IllegalArgumentException.class, () -> invalidHeaders.evaluate(new AlertExecutionContext()));
@@ -329,6 +360,7 @@ class WebRequestAlertTemplateTest {
         assertThrows(IllegalArgumentException.class, () -> nonNumericValue.evaluate(new AlertExecutionContext()));
         assertThrows(IllegalArgumentException.class, () -> negativeSizeValue.evaluate(new AlertExecutionContext()));
         assertThrows(IllegalArgumentException.class, () -> missingValue.evaluate(new AlertExecutionContext()));
+        assertThrows(IllegalArgumentException.class, () -> invalidSlowResponseWarning.evaluate(new AlertExecutionContext()));
     }
 
     private static WebRequestAlertTemplate template(
@@ -373,7 +405,8 @@ class WebRequestAlertTemplateTest {
             null,
             responseBodyRegexes,
             jsonAssertions,
-            timeoutSeconds
+            timeoutSeconds,
+            null
         );
     }
 

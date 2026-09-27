@@ -135,6 +135,15 @@ public final class WebRequestAlertTemplate implements AlertEvaluator {
     )
     private final int timeoutSeconds;
 
+    @AlertParameter(
+        labelKey = "alerts.template.webRequest.slowResponseWarning",
+        descriptionKey = "alerts.template.webRequest.slowResponseWarningDescription",
+        options = { "1", "3", "5", "10", "30" },
+        required = false,
+        order = 10
+    )
+    private final Integer slowResponseWarningSeconds;
+
     public WebRequestAlertTemplate(
         String url,
         String method,
@@ -144,7 +153,8 @@ public final class WebRequestAlertTemplate implements AlertEvaluator {
         String headersOverrideJson,
         String responseBodyRegexes,
         String jsonAssertions,
-        int timeoutSeconds
+        int timeoutSeconds,
+        Integer slowResponseWarningSeconds
     ) {
         this.url = url;
         this.method = method;
@@ -155,6 +165,7 @@ public final class WebRequestAlertTemplate implements AlertEvaluator {
         this.responseBodyRegexes = responseBodyRegexes;
         this.jsonAssertions = jsonAssertions;
         this.timeoutSeconds = timeoutSeconds;
+        this.slowResponseWarningSeconds = slowResponseWarningSeconds;
     }
 
     @Override
@@ -166,6 +177,7 @@ public final class WebRequestAlertTemplate implements AlertEvaluator {
         List<Pattern> bodyPatterns = parsePatterns(responseBodyRegexes);
         List<JsonAssertion> assertions = parseJsonAssertions(jsonAssertions);
         Duration timeout = timeout(timeoutSeconds);
+        Duration slowResponseWarning = slowResponseWarning(slowResponseWarningSeconds);
         byte[] requestBody = requestBody(body, requestMethod);
         String endpoint = safeEndpoint(uri);
 
@@ -194,7 +206,7 @@ public final class WebRequestAlertTemplate implements AlertEvaluator {
             ResponseBody responseBody = readResponseBody(response);
             long latencyMs = elapsedMillis(startedNanos);
             Map<String, Object> statusMessage = statusMessage(
-                endpoint, requestMethod, expectedCodes, timeout, latencyMs
+                endpoint, requestMethod, expectedCodes, timeout, slowResponseWarning, latencyMs
             );
             statusMessage.put("headerCount", headers.size());
             statusMessage.put("statusCode", response.statusCode());
@@ -229,17 +241,20 @@ public final class WebRequestAlertTemplate implements AlertEvaluator {
                 }
             }
 
+            if (slowResponseWarning != null && latencyMs > slowResponseWarning.toMillis())
+                return warn(context, statusMessage, "slowResponse", endpoint, requestMethod);
+
             context.setState("method=" + requestMethod + ";endpoint=" + endpoint + ";status=SUCCESS");
             return AlertResult.success(statusMessage);
         } catch (HttpTimeoutException exception) {
-            return connectionWarning(context, endpoint, requestMethod, expectedCodes, timeout, startedNanos, "timeout");
+            return connectionWarning(context, endpoint, requestMethod, expectedCodes, timeout, slowResponseWarning, startedNanos, "timeout");
         } catch (ResponseBodyTooLargeException exception) {
-            return connectionWarning(context, endpoint, requestMethod, expectedCodes, timeout, startedNanos, "responseBodyTooLarge");
+            return connectionWarning(context, endpoint, requestMethod, expectedCodes, timeout, slowResponseWarning, startedNanos, "responseBodyTooLarge");
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw exception;
         } catch (IOException exception) {
-            return connectionWarning(context, endpoint, requestMethod, expectedCodes, timeout, startedNanos, "connectionFailure");
+            return connectionWarning(context, endpoint, requestMethod, expectedCodes, timeout, slowResponseWarning, startedNanos, "connectionFailure");
         }
     }
 
@@ -249,11 +264,12 @@ public final class WebRequestAlertTemplate implements AlertEvaluator {
         String method,
         List<Integer> expectedCodes,
         Duration timeout,
+        Duration slowResponseWarning,
         long startedNanos,
         String failureReason
     ) {
         Map<String, Object> statusMessage = statusMessage(
-            endpoint, method, expectedCodes, timeout, elapsedMillis(startedNanos)
+            endpoint, method, expectedCodes, timeout, slowResponseWarning, elapsedMillis(startedNanos)
         );
         return warn(context, statusMessage, failureReason, endpoint, method);
     }
@@ -392,6 +408,16 @@ public final class WebRequestAlertTemplate implements AlertEvaluator {
         return Duration.ofSeconds(seconds);
     }
 
+    private static Duration slowResponseWarning(Integer seconds) {
+        if (seconds == null)
+            return null;
+
+        if (seconds <= 0)
+            throw new IllegalArgumentException("slowResponseWarningSeconds must be positive");
+
+        return Duration.ofSeconds(seconds);
+    }
+
     private static byte[] requestBody(String configured, String method) {
         String value = configured == null ? "" : configured;
         byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
@@ -428,6 +454,7 @@ public final class WebRequestAlertTemplate implements AlertEvaluator {
         String method,
         List<Integer> expectedStatusCodes,
         Duration timeout,
+        Duration slowResponseWarning,
         long latencyMs
     ) {
         Map<String, Object> statusMessage = new LinkedHashMap<>();
@@ -435,6 +462,9 @@ public final class WebRequestAlertTemplate implements AlertEvaluator {
         statusMessage.put("method", method);
         statusMessage.put("expectedStatusCodes", expectedStatusCodes);
         statusMessage.put("timeoutSeconds", timeout.toSeconds());
+        if (slowResponseWarning != null)
+            statusMessage.put("slowResponseWarningSeconds", slowResponseWarning.toSeconds());
+
         statusMessage.put("latencyMs", latencyMs);
         statusMessage.put("checkedAt", Instant.now().toString());
         return statusMessage;
