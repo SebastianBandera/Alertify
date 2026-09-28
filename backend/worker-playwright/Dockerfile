@@ -27,7 +27,10 @@ ENV PATH="${JAVA_HOME}/bin:${PATH}"
 
 COPY --from=java-runtime /opt/java/openjdk /opt/java/openjdk
 
-RUN groupadd --system application \
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --system application \
     && useradd --system --gid application --create-home --home-dir /home/application application
 
 WORKDIR /application
