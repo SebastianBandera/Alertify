@@ -86,6 +86,11 @@ td small { display: block; max-width: 330px; margin-top: 4px; overflow: hidden; 
 .template-cell small { max-width: 258px; }
 .updated-at span, .updated-at small { white-space: nowrap; }
 code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.schedule-value { display: inline-flex; align-items: center; gap: 7px; }
+.smart-indicator { position: relative; width: 18px; height: 16px; flex: 0 0 18px; color: var(--primary-strong); }
+.smart-indicator::before, .smart-indicator::after { position: absolute; background: currentColor; content: ""; clip-path: polygon(50% 0, 61% 38%, 100% 50%, 61% 62%, 50% 100%, 39% 62%, 0 50%, 39% 38%); }
+.smart-indicator::before { width: 12px; height: 12px; bottom: 0; left: 0; }
+.smart-indicator::after { width: 7px; height: 7px; top: 0; right: 0; opacity: .72; }
 .template-class-cell { width: 220px; max-width: 220px; }
 .template-key { display: block; max-width: 100%; overflow: hidden; color: #344054; text-overflow: ellipsis; white-space: nowrap; }
 .badge { display: inline-flex; padding: 4px 8px; border-radius: 999px; background: #ecfdf3; color: #027a48; font-size: 10px; font-weight: 750; }

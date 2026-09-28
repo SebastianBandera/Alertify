@@ -783,6 +783,7 @@ export type TranslationKey =
   | 'alerts.column.actions'
   | 'alerts.status.enabled'
   | 'alerts.status.disabled'
+  | 'alerts.smartExecutionIndicator'
   | 'alerts.history'
   | 'alerts.historyHint'
   | 'alerts.edit'

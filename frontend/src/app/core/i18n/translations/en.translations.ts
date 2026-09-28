@@ -297,6 +297,7 @@ export const EN_TRANSLATIONS = {
   'alerts.column.actions': 'Actions',
   'alerts.status.enabled': 'Enabled',
   'alerts.status.disabled': 'Disabled',
+  'alerts.smartExecutionIndicator': 'Smart execution enabled: every {hours} h · {policy}.',
   'alerts.history': 'History',
   'alerts.historyHint': 'View the execution history of this alert',
   'alerts.edit': 'Edit',

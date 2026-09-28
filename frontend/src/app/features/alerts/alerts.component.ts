@@ -1079,6 +1079,25 @@ export class AlertsComponent implements OnInit {
     }
   }
 
+  protected smartExecutionTooltip(alert: Alert): string {
+    if (alert.smartExecutionIntervalHours === null || alert.smartExecutionPolicy === null)
+      return this.localization.translate('alerts.form.smartExecution');
+
+    return this.localization.translate('alerts.smartExecutionIndicator')
+      .replace('{hours}', alert.smartExecutionIntervalHours.toString())
+      .replace('{policy}', this.smartPolicyLabel(alert.smartExecutionPolicy));
+  }
+
+  private smartPolicyLabel(policy: SmartExecutionPolicy): string {
+    switch (policy) {
+      case 'ONCE_PER_INTERVAL': return this.localization.translate('alerts.form.smartPolicy.ONCE_PER_INTERVAL');
+      case 'NORMAL': return this.localization.translate('alerts.form.smartPolicy.NORMAL');
+      case 'ON_ERROR': return this.localization.translate('alerts.form.smartPolicy.ON_ERROR');
+      case 'ON_WARN': return this.localization.translate('alerts.form.smartPolicy.ON_WARN');
+      case 'ON_ERROR_OR_WARN': return this.localization.translate('alerts.form.smartPolicy.ON_ERROR_OR_WARN');
+    }
+  }
+
   private errorMessage(error: unknown): string {
     return error instanceof Error ? error.message : this.localization.translate('alerts.error');
   }

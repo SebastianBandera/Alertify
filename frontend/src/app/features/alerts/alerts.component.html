@@ -168,7 +168,19 @@
                     }
                   </div>
                 </td>
-                <td><code>{{ alert.cronExpression }}</code></td>
+                <td>
+                  <span class="schedule-value">
+                    <code>{{ alert.cronExpression }}</code>
+                    @if (alert.smartExecutionEnabled) {
+                      <span
+                        class="smart-indicator"
+                        role="img"
+                        [attr.aria-label]="smartExecutionTooltip(alert)"
+                        [title]="smartExecutionTooltip(alert)"
+                      ></span>
+                    }
+                  </span>
+                </td>
                 <td>
                   <span class="badge" [class.badge--disabled]="!alert.enabled">
                     {{ localization.translate(alert.enabled ? 'alerts.status.enabled' : 'alerts.status.disabled') }}

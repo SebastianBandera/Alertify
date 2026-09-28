@@ -297,6 +297,7 @@ export const ES_UY_TRANSLATIONS = {
   'alerts.column.actions': 'Acciones',
   'alerts.status.enabled': 'Habilitada',
   'alerts.status.disabled': 'Deshabilitada',
+  'alerts.smartExecutionIndicator': 'Ejecución inteligente activa: cada {hours} h · {policy}.',
   'alerts.history': 'Historial',
   'alerts.historyHint': 'Ver el historial de ejecuciones de esta alerta',
   'alerts.edit': 'Editar',
