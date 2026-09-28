@@ -61,6 +61,7 @@ interface TagForm {
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100, 250, 500, 1000] as const;
 const PAGE_SIZE_STORAGE_KEY = 'alertify.alerts.page-size';
+const UPDATED_AT_SORT_STORAGE_KEY = 'alertify.alerts.updated-at-sort';
 const EMPTY_BINDINGS: AlertBindingOptions = { configurations: [], secrets: [], procedures: [] };
 const NOTICE_TIMEOUT_SECONDS = 8;
 
@@ -70,6 +71,24 @@ function readStoredPageSize(): number {
     return PAGE_SIZE_OPTIONS.some((pageSize) => pageSize === storedValue) ? storedValue : 10;
   } catch {
     return 10;
+  }
+}
+
+function readStoredUpdatedAtSort(): SortDirection | null {
+  try {
+    const storedValue = localStorage.getItem(UPDATED_AT_SORT_STORAGE_KEY);
+    return storedValue === 'asc' || storedValue === 'desc' ? storedValue : null;
+  } catch {
+    return null;
+  }
+}
+
+function persistUpdatedAtSort(sort: SortDirection | null): void {
+  try {
+    if (sort === null) localStorage.removeItem(UPDATED_AT_SORT_STORAGE_KEY);
+    else localStorage.setItem(UPDATED_AT_SORT_STORAGE_KEY, sort);
+  } catch {
+    // The sort still applies to this page when browser storage is unavailable.
   }
 }
 
@@ -116,7 +135,7 @@ export class AlertsComponent implements OnInit {
   protected readonly templateFilterId = signal<number | null>(null);
   protected readonly selectedTagIds = signal<readonly number[]>([]);
   protected readonly tagMatchMode = signal<TagMatchMode>('OR');
-  protected readonly updatedAtSort = signal<SortDirection | null>(null);
+  protected readonly updatedAtSort = signal<SortDirection | null>(readStoredUpdatedAtSort());
   protected readonly pageSize = signal(readStoredPageSize());
   protected readonly alertPage = signal(0);
   protected readonly alertTotalPages = signal(0);
@@ -417,7 +436,9 @@ export class AlertsComponent implements OnInit {
 
   protected toggleUpdatedAtSort(): void {
     const current = this.updatedAtSort();
-    this.updatedAtSort.set(current === null ? 'desc' : current === 'desc' ? 'asc' : null);
+    const next = current === null ? 'desc' : current === 'desc' ? 'asc' : null;
+    this.updatedAtSort.set(next);
+    persistUpdatedAtSort(next);
     this.alertPage.set(0);
     void this.loadAlerts();
   }
