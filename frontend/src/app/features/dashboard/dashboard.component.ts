@@ -32,7 +32,6 @@ import {
   DashboardAlertCard,
   effectiveStatus,
   PendingIssue,
-  stateChangedAt,
 } from './dashboard-card';
 import { DashboardDeck } from './dashboard-deck';
 import { DashboardChange, DashboardLiveService } from './dashboard-live.service';
@@ -580,7 +579,9 @@ export class DashboardComponent {
     const state = this.cardState(card);
     const { flatGreens, minified } = this.settings();
     let tone = '';
-    if (state === 'success') tone = flatGreens ? ' alert-card--success-flat' : ` alert-card--success-${this.successAge(card)}`;
+    if (state === 'success' && card.lastExecution !== null)
+      tone = flatGreens ? ' alert-card--success-flat' : ` alert-card--success-${this.successAge(card.lastExecution.finishedAt)}`;
+
     return `alert-card alert-card--${state}`
       + tone
       + (minified ? ' alert-card--mini' : '')
@@ -588,10 +589,10 @@ export class DashboardComponent {
       + (this.changedIds().has(card.alert.id) ? ' alert-card--changed' : '');
   }
 
-  /* Green tiles darken the longer the alert has stayed green. */
-  protected successAge(card: DashboardAlertCard): SuccessAge {
+  /* Green tiles darken as the latest successful execution gets older. */
+  protected successAge(finishedAt: string): SuccessAge {
     const now = Date.now();
-    const since = stateChangedAt(card);
+    const since = Date.parse(finishedAt);
     if (now - since <= HOUR_MILLIS) return 'very-fresh';
     const days = calendarDaysBetween(since, now);
     if (days === 0) return 'fresh';

@@ -287,7 +287,7 @@ p {
   --card-chip-base: #f6fef9;
 }
 
-/* The green deepens with the age of the current success streak:
+/* The green deepens with the age of the latest successful execution:
    within the hour, today, 1-2 days, 3-4 days, 5-7 days, over a week. */
 .alert-card--success-very-fresh { --card-bg: #b7e4c7; --card-border: #9acfae; }
 .alert-card--success-fresh { --card-bg: #9acfae; --card-border: #7dba95; }
