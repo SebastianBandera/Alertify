@@ -1,6 +1,9 @@
 package app.alertify.procedures.execution;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.nio.charset.StandardCharsets;
@@ -20,6 +23,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import app.alertify.alerts.template.annotation.AlertParameterSource;
 import app.alertify.configuration.service.ConfigurationExpressionService;
 import app.alertify.grpc.WorkerGrpcProperties;
+import app.alertify.jpa.entity.ApplicationSecret;
 import app.alertify.jpa.repository.ProcedureParameterValueRepository;
 import app.alertify.jpa.repository.ProcedureRepository;
 import app.alertify.jpa.repository.ProcedureTemplateParameterDefinitionRepository;
@@ -28,6 +32,7 @@ import app.alertify.procedures.model.ProcedureParameterValue;
 import app.alertify.procedures.model.ProcedureTemplateDefinition;
 import app.alertify.procedures.model.ProcedureTemplateParameterDefinition;
 import app.alertify.services.secret.SecretAccessService;
+import app.alertify.services.secret.SecretAccessContext;
 import app.alertify.binary.BinaryBindingService;
 import app.alertify.worker.contract.WorkerCapability;
 
@@ -75,6 +80,43 @@ class ProcedureExecutionPreparationServiceTest {
             assertThat(parameter.nullValue()).isFalse();
             assertThat(parameter.procedureId()).isEqualTo(42L);
         });
+    }
+
+    @Test
+    void identifiesTheProcedureThatConsumesASecret() throws Exception {
+        ProcedureTemplateDefinition template = new ProcedureTemplateDefinition(
+                "dynamic.SecretProcedure", "name", "description", "SecretProcedure.java",
+                WorkerCapability.STANDARD, false, List.of());
+        ReflectionTestUtils.setField(template, "id", 12L);
+        ProcedureTemplateParameterDefinition definition = new ProcedureTemplateParameterDefinition(
+                template, "token", "token", "token", String.class.getName(),
+                List.of(), true, null, false, 1, false, List.of(AlertParameterSource.SECRET), List.of(), List.of());
+        ReflectionTestUtils.setField(definition, "id", 13L);
+        app.alertify.procedures.model.Procedure owner = new app.alertify.procedures.model.Procedure(
+                template, "Secret procedure", null, "-", true, true, Set.of());
+        ReflectionTestUtils.setField(owner, "id", 17L);
+        ApplicationSecret secret = new ApplicationSecret(
+                "api.token", null, "cipher-value-here".getBytes(StandardCharsets.UTF_8),
+                new byte[12], new byte[32], new byte[16], (short) 1, Set.of(), false);
+        ReflectionTestUtils.setField(secret, "id", 73L);
+        ProcedureParameterValue configured = ProcedureParameterValue.secret(owner, definition, secret);
+        Files.writeString(sourceRoot.resolve("SecretProcedure.java"), "source", StandardCharsets.UTF_8);
+
+        when(procedureRepository.findById(17L)).thenReturn(Optional.of(owner));
+        when(parameterValueRepository.findAllByOwnerIdOrdered(17L)).thenReturn(List.of(configured));
+        when(definitionRepository.findAllByTemplate_IdOrderByParameterOrderAscIdAsc(12L)).thenReturn(List.of(definition));
+        when(secretAccessService.getValueByName(eq("api.token"), any(SecretAccessContext.class))).thenReturn("decrypted-token");
+
+        PreparedProcedureExecution execution = service().prepare(17L, false);
+
+        assertThat(execution.parameters()).singleElement().satisfies(parameter -> {
+            assertThat(parameter.value()).isEqualTo("decrypted-token");
+            assertThat(parameter.secretId()).isEqualTo(73L);
+        });
+        verify(secretAccessService).getValueByName(eq("api.token"), org.mockito.ArgumentMatchers.argThat(context ->
+                context.consumerType() == SecretAccessContext.ConsumerType.PROCEDURE
+                        && context.consumerId() == 17L
+                        && context.consumerName().equals("Secret procedure")));
     }
 
     private ProcedureExecutionPreparationService service() {

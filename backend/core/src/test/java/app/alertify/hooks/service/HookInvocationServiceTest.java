@@ -23,12 +23,13 @@ import app.alertify.hooks.model.HookTarget;
 import app.alertify.jpa.entity.ApplicationSecret;
 import app.alertify.jpa.repository.HookRepository;
 import app.alertify.logging.ApplicationEventLogger;
-import app.alertify.services.secret.SecretEncryptionService;
+import app.alertify.services.secret.SecretAccessContext;
+import app.alertify.services.secret.SecretAccessService;
 
 class HookInvocationServiceTest {
 
     private final HookRepository hooks = mock(HookRepository.class);
-    private final SecretEncryptionService encryption = mock(SecretEncryptionService.class);
+    private final SecretAccessService secretAccessService = mock(SecretAccessService.class);
     private final HookAdmissionService admission = mock(HookAdmissionService.class);
     private final HookInvocationPersistenceService persistence = mock(HookInvocationPersistenceService.class);
     private final HookCoordinator coordinator = mock(HookCoordinator.class);
@@ -37,7 +38,7 @@ class HookInvocationServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new HookInvocationService(hooks, encryption, admission, persistence, coordinator, eventLogger);
+        service = new HookInvocationService(hooks, secretAccessService, admission, persistence, coordinator, eventLogger);
     }
 
     @Test
@@ -47,7 +48,7 @@ class HookInvocationServiceTest {
         ApplicationSecret secret = mock(ApplicationSecret.class);
         when(hook.getTokenSecret()).thenReturn(secret);
         when(hooks.findByPublicIdAndEnabledTrue(publicId)).thenReturn(Optional.of(hook));
-        when(encryption.decrypt(secret)).thenReturn("correct-token");
+        when(secretAccessService.getValue(eq(secret), any(SecretAccessContext.class))).thenReturn("correct-token");
 
         assertThatThrownBy(() -> service.invoke(publicId, null))
                 .isInstanceOfSatisfying(HookInvocationRejectedException.class, exception -> {
@@ -66,7 +67,7 @@ class HookInvocationServiceTest {
         ApplicationSecret secret = mock(ApplicationSecret.class);
         when(hook.getTokenSecret()).thenReturn(secret);
         when(hooks.findByPublicIdAndEnabledTrue(publicId)).thenReturn(Optional.of(hook));
-        when(encryption.decrypt(secret)).thenReturn("correct-token");
+        when(secretAccessService.getValue(eq(secret), any(SecretAccessContext.class))).thenReturn("correct-token");
         when(admission.limited(hook)).thenReturn(true);
 
         UUID invocationId = service.invoke(publicId, "correct-token").invocationId();
@@ -74,6 +75,10 @@ class HookInvocationServiceTest {
         verify(admission).admit(hook, invocationId);
         verify(persistence).accept(hook, invocationId);
         verify(coordinator).submit(invocationId, 42L, true);
+        verify(secretAccessService).getValue(eq(secret), org.mockito.ArgumentMatchers.argThat(context ->
+                context.consumerType() == SecretAccessContext.ConsumerType.HOOK
+                        && context.consumerId() == 42L
+                        && context.consumerName().equals("Deployment hook")));
     }
 
     @Test

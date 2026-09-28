@@ -19,22 +19,23 @@ import app.alertify.hooks.model.Hook;
 import app.alertify.hooks.model.HookTargetType;
 import app.alertify.jpa.repository.HookRepository;
 import app.alertify.logging.ApplicationEventLogger;
-import app.alertify.services.secret.SecretEncryptionService;
+import app.alertify.services.secret.SecretAccessContext;
+import app.alertify.services.secret.SecretAccessService;
 import app.alertify.services.secret.SecretNotRecoverableException;
 
 @Service
 public class HookInvocationService {
 
     private final HookRepository hookRepository;
-    private final SecretEncryptionService encryptionService;
+    private final SecretAccessService secretAccessService;
     private final HookAdmissionService admission;
     private final HookInvocationPersistenceService persistence;
     private final HookCoordinator coordinator;
     private final ApplicationEventLogger eventLogger;
 
-    public HookInvocationService(HookRepository hookRepository, SecretEncryptionService encryptionService, HookAdmissionService admission, HookInvocationPersistenceService persistence, HookCoordinator coordinator, ApplicationEventLogger eventLogger) {
+    public HookInvocationService(HookRepository hookRepository, SecretAccessService secretAccessService, HookAdmissionService admission, HookInvocationPersistenceService persistence, HookCoordinator coordinator, ApplicationEventLogger eventLogger) {
         this.hookRepository = hookRepository;
-        this.encryptionService = encryptionService;
+        this.secretAccessService = secretAccessService;
         this.admission = admission;
         this.persistence = persistence;
         this.coordinator = coordinator;
@@ -98,7 +99,7 @@ public class HookInvocationService {
 
         String expected;
         try {
-            expected = encryptionService.decrypt(hook.getTokenSecret());
+            expected = secretAccessService.getValue(hook.getTokenSecret(), SecretAccessContext.hook(hook.getId(), hook.getName()));
         } catch (SecretNotRecoverableException exception) {
             reject(hook, "TOKEN_UNRECOVERABLE");
             throw new HookInvocationRejectedException(HttpStatus.SERVICE_UNAVAILABLE, "HOOK_TOKEN_UNAVAILABLE", "Hook token validation is temporarily unavailable");

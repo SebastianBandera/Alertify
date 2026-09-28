@@ -1,6 +1,7 @@
 package app.alertify.services.secret;
 
 import java.time.ZonedDateTime;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -69,7 +70,12 @@ public class SecretExpressionService {
     /** Decrypts the secret and, for expression secrets, evaluates it. */
     @Transactional(readOnly = true)
     public String resolve(ApplicationSecret secret) {
-        return resolveSecret(secret, new LinkedHashSet<>(), 0, utilities.snapshot());
+        return resolve(secret, null);
+    }
+
+    @Transactional(readOnly = true)
+    public String resolve(ApplicationSecret secret, SecretAccessContext context) {
+        return resolveSecret(secret, new LinkedHashSet<>(), 0, utilities.snapshot(), context);
     }
 
     @Transactional(readOnly = true)
@@ -133,7 +139,7 @@ public class SecretExpressionService {
         );
     }
 
-    private String resolveSecret(ApplicationSecret secret, Set<String> path, int depth, ZonedDateTime now) {
+    private String resolveSecret(ApplicationSecret secret, Set<String> path, int depth, ZonedDateTime now, SecretAccessContext context) {
         if (secret.getValueType() == SecretValueType.BINARY)
             throw new InvalidConfigurationExpressionException("BINARY secret '" + secret.getName() + "' cannot be used in an expression");
         String key = normalizedKey(secret.getName());
@@ -150,7 +156,7 @@ public class SecretExpressionService {
 
             ParsedExpression parsed = parser.parse(plaintext, ExpressionScope.SECRET);
             return ExpressionEvaluator.evaluate(parsed, (reference, argument, currentDepth) -> switch (reference.type()) {
-                case SECRET -> resolveSecretReference(reference.name(), path, currentDepth + 1, now);
+                case SECRET -> resolveSecretReference(reference.name(), path, currentDepth + 1, now, context);
                 case CONFIGURATION -> configurationExpressionService.getResolvedValueByName(reference.name());
                 case ENVIRONMENT -> environmentVariables.resolve(reference.name());
                 case UTILITY -> reference.isFunction()
@@ -162,12 +168,20 @@ public class SecretExpressionService {
         }
     }
 
-    private String resolveSecretReference(String name, Set<String> path, int depth, ZonedDateTime now) {
+    private String resolveSecretReference(String name, Set<String> path, int depth, ZonedDateTime now, SecretAccessContext context) {
         ApplicationSecret referenced = secretRepository.findByNameIgnoreCase(name).orElseThrow(
                 () -> new ResourceNotFoundException("Secret '" + name + NOT_FOUND_SUFFIX)
         );
-        String value = resolveSecret(referenced, path, depth, now);
-        eventLogger.success("SECRET_VALUE_ACCESSED", Map.of("secretId", referenced.getId(), "name", referenced.getName(), "reason", "EXPRESSION_REFERENCE"));
+        String value = resolveSecret(referenced, path, depth, now, context);
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("secretId", referenced.getId());
+        data.put("name", referenced.getName());
+        data.put("valueType", referenced.getValueType().name());
+        data.put("reason", "EXPRESSION_REFERENCE");
+        if (context != null)
+            context.addTo(data);
+
+        eventLogger.success("SECRET_VALUE_ACCESSED", data);
         return value;
     }
 

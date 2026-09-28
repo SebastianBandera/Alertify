@@ -34,6 +34,7 @@ import app.alertify.jpa.repository.AlertStateRepository;
 import app.alertify.jpa.repository.AlertTemplateParameterDefinitionRepository;
 import app.alertify.jpa.repository.ApplicationConfigurationRepository;
 import app.alertify.jpa.repository.ApplicationSecretRepository;
+import app.alertify.services.secret.SecretAccessContext;
 import app.alertify.services.secret.SecretAccessService;
 import app.alertify.binary.BinaryBindingService;
 import app.alertify.jpa.entity.ConfigurationValueType;
@@ -93,9 +94,10 @@ public class AlertExecutionPreparationService {
      */
     public PreparedAlertExecution prepareAdHoc(AlertTemplateDefinition template, String executionName, List<ResolvedAlertParameter> parameters) {
         Source source = source(template.getSourcePath());
+        SecretAccessContext accessContext = SecretAccessContext.alert(0, executionName);
         return new PreparedAlertExecution(0, executionName, template.getTemplateKey(),
                 template.getRequiredCapability(), source.checksum(), source.content(), "", List.copyOf(parameters),
-                prepareValues(template.getTemplateKey(), parameters));
+                prepareValues(template.getTemplateKey(), parameters, accessContext));
     }
 
     private Optional<PreparedAlertExecution> prepareInternal(Long alertId, boolean includeDisabled) {
@@ -104,6 +106,7 @@ public class AlertExecutionPreparationService {
             return Optional.empty();
 
         AlertTemplateDefinition template = alert.getTemplate();
+        SecretAccessContext accessContext = SecretAccessContext.alert(alert.getId(), alert.getName());
         Source source = source(template.getSourcePath());
         Map<Long, AlertParameterValue> configuredValues = new HashMap<>();
         for (AlertParameterValue value : parameterValueRepository.findAllByAlertIdOrdered(alertId))
@@ -112,17 +115,17 @@ public class AlertExecutionPreparationService {
         List<ResolvedAlertParameter> parameters = definitionRepository
                 .findAllByTemplate_IdOrderByParameterOrderAscIdAsc(template.getId())
                 .stream()
-                .map(definition -> resolve(definition, configuredValues.get(definition.getId())))
+                .map(definition -> resolve(definition, configuredValues.get(definition.getId()), accessContext))
                 .toList();
         String state = stateRepository.findById(alertId).map(AlertState::getState).orElse("");
         return Optional.of(new PreparedAlertExecution(
                 alert.getId(), alert.getName(), template.getTemplateKey(),
                 template.getRequiredCapability(), source.checksum(), source.content(), state,
-                parameters, prepareValues(template.getTemplateKey(), parameters)
+                parameters, prepareValues(template.getTemplateKey(), parameters, accessContext)
         ));
     }
 
-    private List<AlertExecutionValue> prepareValues(String templateClassName, List<ResolvedAlertParameter> parameters) {
+    private List<AlertExecutionValue> prepareValues(String templateClassName, List<ResolvedAlertParameter> parameters, SecretAccessContext accessContext) {
         if (!PlaywrightPageAlertTemplate.class.getName().equals(templateClassName))
             return List.of();
 
@@ -132,11 +135,11 @@ public class AlertExecutionPreparationService {
                 .map(ResolvedAlertParameter::value)
                 .orElse(null);
         return PlaywrightPageAlertTemplate.requiredValues(steps).stream()
-                .map(this::resolveValue)
+                .map(reference -> resolveValue(reference, accessContext))
                 .toList();
     }
 
-    private AlertExecutionValue resolveValue(PlaywrightPageAlertTemplate.ValueReference reference) {
+    private AlertExecutionValue resolveValue(PlaywrightPageAlertTemplate.ValueReference reference, SecretAccessContext accessContext) {
         return switch (reference.source()) {
             case CONFIGURATION -> {
                 var configuration = configurationRepository.findByNameIgnoreCase(reference.name()).orElseThrow(
@@ -154,12 +157,12 @@ public class AlertExecutionPreparationService {
                 if (secret.getValueType() != SecretValueType.STRING && secret.getValueType() != SecretValueType.EXPRESSION)
                     throw new IllegalArgumentException("Secret '" + secret.getName() + "' cannot be used by FILL because it is not textual");
 
-                yield new AlertExecutionValue(AlertExecutionValueSource.SECRET, secret.getName(), secretAccessService.getValueByName(secret.getName()));
+                yield new AlertExecutionValue(AlertExecutionValueSource.SECRET, secret.getName(), secretAccessService.getValueByName(secret.getName(), accessContext));
             }
         };
     }
 
-    private ResolvedAlertParameter resolve(AlertTemplateParameterDefinition definition, AlertParameterValue configured) {
+    private ResolvedAlertParameter resolve(AlertTemplateParameterDefinition definition, AlertParameterValue configured, SecretAccessContext accessContext) {
         if (configured == null) {
             String defaultValue = definition.getDefaultValue();
             return new ResolvedAlertParameter(
@@ -172,13 +175,13 @@ public class AlertExecutionPreparationService {
         String value = binary ? null : switch (configured.getSource()) {
             case TEXT -> configured.getTextValue();
             case CONFIGURATION -> configurationExpressionService.getResolvedValueByName(configured.getConfiguration().getName());
-            case SECRET -> secretAccessService.getValueByName(configured.getSecret().getName());
+            case SECRET -> secretAccessService.getValueByName(configured.getSecret().getName(), accessContext);
             case PROCEDURE -> null;
             case PIPE, PIPE_OUTPUT -> throw new IllegalArgumentException("Pipe sources are not valid for Alert parameters");
         };
         byte[] binaryZip = binary ? switch (configured.getSource()) {
             case CONFIGURATION -> binaryBindingService.configurationZip(configured.getConfiguration().getId());
-            case SECRET -> binaryBindingService.secretZip(configured.getSecret().getId());
+            case SECRET -> secretAccessService.getBinaryValue(configured.getSecret(), accessContext);
             default -> null;
         } : null;
         validateResolvedBinding(definition, configured);

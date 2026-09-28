@@ -26,6 +26,7 @@ import app.alertify.procedures.model.Procedure;
 import app.alertify.procedures.model.ProcedureParameterValue;
 import app.alertify.procedures.model.ProcedureTemplateDefinition;
 import app.alertify.procedures.model.ProcedureTemplateParameterDefinition;
+import app.alertify.services.secret.SecretAccessContext;
 import app.alertify.services.secret.SecretAccessService;
 import app.alertify.binary.BinaryBindingService;
 import app.alertify.jpa.entity.ConfigurationValueType;
@@ -80,6 +81,7 @@ public class ProcedureExecutionPreparationService {
         if (!procedure.isEnabled() && !includeDisabled)
             throw new ProcedureDisabledException("Procedure '" + procedure.getName() + "' is disabled");
 
+        SecretAccessContext accessContext = SecretAccessContext.procedure(procedure.getId(), procedure.getName());
         ProcedureTemplateDefinition template = procedure.getTemplate();
         Source source = source(template.getSourcePath());
         Map<Long, ProcedureParameterValue> configured = new HashMap<>();
@@ -110,14 +112,14 @@ public class ProcedureExecutionPreparationService {
                         case TEXT -> value.getTextValue();
                         case CONFIGURATION -> configurationExpressionService
                                 .getResolvedValueByName(value.getConfiguration().getName());
-                        case SECRET -> secretAccessService.getValueByName(value.getSecret().getName());
+                        case SECRET -> secretAccessService.getValueByName(value.getSecret().getName(), accessContext);
                         case PROCEDURE -> null;
                         case PIPE -> null;
                         case PIPE_OUTPUT -> throw new IllegalStateException("PIPE_OUTPUT cannot be stored as a configured procedure value");
                     };
                     byte[] binaryZip = binary ? switch (value.getSource()) {
                         case CONFIGURATION -> binaryBindingService.configurationZip(value.getConfiguration().getId());
-                        case SECRET -> binaryBindingService.secretZip(value.getSecret().getId());
+                        case SECRET -> secretAccessService.getBinaryValue(value.getSecret(), accessContext);
                         default -> null;
                     } : null;
                     validateResolvedBinding(definition, value);

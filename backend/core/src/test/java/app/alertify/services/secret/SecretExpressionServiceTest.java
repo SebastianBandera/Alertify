@@ -84,10 +84,14 @@ class SecretExpressionServiceTest {
         when(encryptionService.decrypt(headers)).thenReturn("[\"Authorization: {{secrets.API_BASIC}}\", \"X-Realm: {{configs.REALM}}\"]");
         when(configurationExpressionService.getResolvedValueByName("REALM")).thenReturn("prod");
 
-        String value = service.resolve(headers);
+        String value = service.resolve(headers, SecretAccessContext.procedure(27L, "Build headers"));
 
         assertThat(value).isEqualTo("[\"Authorization: Basic dXNlcjpwYXNz\", \"X-Realm: prod\"]");
-        verify(eventLogger).success(eq("SECRET_VALUE_ACCESSED"), org.mockito.ArgumentMatchers.argThat(data -> data.get("name").equals("API_PASS")));
+        verify(eventLogger).success(eq("SECRET_VALUE_ACCESSED"), org.mockito.ArgumentMatchers.argThat(data ->
+                data.get("name").equals("API_PASS")
+                        && data.get("consumerType").equals("PROCEDURE")
+                        && data.get("consumerId").equals(27L)
+                        && data.get("consumerName").equals("Build headers")));
     }
 
     @Test

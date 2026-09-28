@@ -1,6 +1,10 @@
 package app.alertify.alerts.execution;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.nio.charset.StandardCharsets;
@@ -36,6 +40,7 @@ import app.alertify.jpa.repository.AlertTemplateParameterDefinitionRepository;
 import app.alertify.jpa.repository.ApplicationConfigurationRepository;
 import app.alertify.jpa.repository.ApplicationSecretRepository;
 import app.alertify.services.secret.SecretAccessService;
+import app.alertify.services.secret.SecretAccessContext;
 import app.alertify.binary.BinaryBindingService;
 import app.alertify.worker.contract.WorkerCapability;
 import app.alertify.configuration.service.ConfigurationExpressionService;
@@ -85,7 +90,7 @@ class AlertExecutionPreparationServiceTest {
         when(definitionRepository.findAllByTemplate_IdOrderByParameterOrderAscIdAsc(2L))
                 .thenReturn(List.of(definition));
         when(stateRepository.findById(7L)).thenReturn(Optional.empty());
-        when(secretAccessService.getValueByName("api.token")).thenReturn("decrypted-token");
+        when(secretAccessService.getValueByName(eq("api.token"), any(SecretAccessContext.class))).thenReturn("decrypted-token");
 
         PreparedAlertExecution execution = service().prepare(7L).orElseThrow();
 
@@ -97,6 +102,49 @@ class AlertExecutionPreparationServiceTest {
             assertThat(parameter.configurationId()).isNull();
             assertThat(parameter.bindingVersion()).isEqualTo(0L);
         });
+        verify(secretAccessService).getValueByName(eq("api.token"), org.mockito.ArgumentMatchers.argThat(context ->
+                context.consumerType() == SecretAccessContext.ConsumerType.ALERT
+                        && context.consumerId() == 7L
+                        && context.consumerName().equals("Secret alert")));
+    }
+
+    @Test
+    void resolvesBinarySecretsThroughTheAuditedAccessBoundary() throws Exception {
+        AlertTemplateDefinition template = new AlertTemplateDefinition(
+                "dynamic.BinaryAlert", "name", "description", "BinaryAlert.java",
+                WorkerCapability.STANDARD);
+        ReflectionTestUtils.setField(template, "id", 22L);
+        AlertTemplateParameterDefinition definition = new AlertTemplateParameterDefinition(
+                template, "certificate", "certificate", "certificate", byte[].class.getName(),
+                List.of(), true, null, false, 0, false, List.of(AlertParameterSource.SECRET), List.of(), List.of());
+        ReflectionTestUtils.setField(definition, "id", 23L);
+        Alert alert = new Alert(template, "Certificate alert", null, "0 0 * * * *", true);
+        ReflectionTestUtils.setField(alert, "id", 27L);
+        ApplicationSecret secret = new ApplicationSecret(
+                "client.certificate", null, SecretValueType.BINARY, "cipher-value-here".getBytes(StandardCharsets.UTF_8),
+                new byte[12], new byte[32], new byte[16], (short) 1, Set.of(), false);
+        ReflectionTestUtils.setField(secret, "id", 83L);
+        AlertParameterValue configured = AlertParameterValue.secret(alert, definition, secret);
+        byte[] binaryValue = { 1, 2, 3 };
+        Files.writeString(sourceRoot.resolve("BinaryAlert.java"), "source", StandardCharsets.UTF_8);
+
+        when(alertRepository.findById(27L)).thenReturn(Optional.of(alert));
+        when(parameterValueRepository.findAllByAlertIdOrdered(27L)).thenReturn(List.of(configured));
+        when(definitionRepository.findAllByTemplate_IdOrderByParameterOrderAscIdAsc(22L)).thenReturn(List.of(definition));
+        when(stateRepository.findById(27L)).thenReturn(Optional.empty());
+        when(secretAccessService.getBinaryValue(eq(secret), any(SecretAccessContext.class))).thenReturn(binaryValue);
+
+        PreparedAlertExecution execution = service().prepare(27L).orElseThrow();
+
+        assertThat(execution.parameters()).singleElement().satisfies(parameter -> {
+            assertThat(parameter.value()).isNull();
+            assertThat(parameter.binaryZip()).isSameAs(binaryValue);
+            assertThat(parameter.secretId()).isEqualTo(83L);
+        });
+        verify(secretAccessService).getBinaryValue(eq(secret), org.mockito.ArgumentMatchers.argThat(context ->
+                context.consumerType() == SecretAccessContext.ConsumerType.ALERT
+                        && context.consumerId() == 27L
+                        && context.consumerName().equals("Certificate alert")));
     }
 
     @Test
@@ -139,7 +187,7 @@ class AlertExecutionPreparationServiceTest {
         when(configurationRepository.findByNameIgnoreCase("Login User")).thenReturn(Optional.of(configuration));
         when(secretRepository.findByNameIgnoreCase("Login Password")).thenReturn(Optional.of(secret));
         when(configurationExpressionService.getResolvedValueByName("LOGIN USER")).thenReturn("user-one", "user-two");
-        when(secretAccessService.getValueByName("LOGIN PASSWORD")).thenReturn("password-one", "password-two");
+        when(secretAccessService.getValueByName(eq("LOGIN PASSWORD"), any(SecretAccessContext.class))).thenReturn("password-one", "password-two");
 
         PreparedAlertExecution first = service().prepare(17L).orElseThrow();
         PreparedAlertExecution second = service().prepare(17L).orElseThrow();
@@ -150,6 +198,10 @@ class AlertExecutionPreparationServiceTest {
         );
         assertThat(second.preparedValues()).extracting(app.alertify.alerts.AlertExecutionValue::value)
                 .containsExactly("user-two", "password-two");
+        verify(secretAccessService, times(2)).getValueByName(eq("LOGIN PASSWORD"), org.mockito.ArgumentMatchers.argThat(context ->
+                context.consumerType() == SecretAccessContext.ConsumerType.ALERT
+                        && context.consumerId() == 17L
+                        && context.consumerName().equals("Form alert")));
     }
 
     private AlertExecutionPreparationService service() {
