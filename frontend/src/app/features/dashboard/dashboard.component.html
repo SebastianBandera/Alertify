@@ -103,27 +103,29 @@
   </span>
 </ng-template>
 
-<!-- A row of overlapping cards: the greens, and the ignored or silenced alerts at the end. -->
+<!-- Rows of overlapping cards: the greens, and the ignored or silenced alerts at the end. -->
 <ng-template #deckTemplate let-hand let-label="label">
-  <div
-    #deck
-    class="deck"
-    [attr.role]="label ? 'group' : null"
-    [attr.aria-label]="label"
-    (pointermove)="hand.scrub($event)"
-    (pointerleave)="hand.leave()">
-    @for (card of hand.cards(); track card.alert.id; let index = $index) {
-      <div
-        class="deck__slot"
-        [class.deck__slot--active]="hand.activeIndex() === index"
-        [style.margin-left.px]="hand.slotLeft(index)"
-        [style.width.px]="hand.cardWidth()"
-        [style.z-index]="hand.slotZ(index)"
-        (focusin)="hand.focus(index)">
-        <ng-container *ngTemplateOutlet="cardTemplate; context: { $implicit: card }" />
-      </div>
-    }
-  </div>
+  @for (row of hand.rows(); track row.startIndex) {
+    <div
+      #deck
+      class="deck"
+      [attr.role]="label ? 'group' : null"
+      [attr.aria-label]="label"
+      (pointermove)="hand.scrub($event, row)"
+      (pointerleave)="hand.leave()">
+      @for (card of row.cards; track card.alert.id; let index = $index) {
+        <div
+          class="deck__slot"
+          [class.deck__slot--active]="hand.activeIndex() === row.startIndex + index"
+          [style.margin-left.px]="hand.slotLeft(index, row)"
+          [style.width.px]="hand.cardWidth()"
+          [style.z-index]="hand.slotZ(row.startIndex + index)"
+          (focusin)="hand.focus(row.startIndex + index)">
+          <ng-container *ngTemplateOutlet="cardTemplate; context: { $implicit: card }" />
+        </div>
+      }
+    </div>
+  }
 </ng-template>
 
 <article class="dashboard" [attr.aria-label]="localization.translate('navigation.dashboard')">

@@ -147,10 +147,9 @@ p {
   font-size: 11px;
 }
 
-/* Collapsed greens: one full-width row where the cards overlap like a hand
-   of playing cards. Slots share a single grid cell, so the row is as tall as
-   the tallest card and the offsets come from margins instead of absolute
-   positioning. */
+/* Collapsed cards: full-width rows where cards overlap like hands of playing
+   cards. Slots share one grid cell per row, so each row is as tall as its
+   tallest card and offsets come from margins instead of absolute positioning. */
 .deck {
   display: grid;
   grid-column: 1 / -1;

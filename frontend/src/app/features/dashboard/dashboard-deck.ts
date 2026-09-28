@@ -4,19 +4,43 @@ import { DashboardAlertCard } from './dashboard-card';
 
 /* Gap between deck cards when the row is wide enough for them not to overlap. */
 const DECK_GAP_PIXELS = 14;
+/* Minimum visible strip between overlapping cards before another row is dealt. */
+const MIN_DECK_STEP_PIXELS = 36;
+
+interface DashboardDeckRow {
+  readonly cards: readonly DashboardAlertCard[];
+  readonly startIndex: number;
+  readonly step: number;
+}
 
 /**
- * One row of overlapping cards, like a hand of playing cards. Every deck spans
- * the full grid row, so all of them share the row and card widths the board
- * measures; each keeps its own cards and the one brought to the front.
+ * One or more rows of overlapping cards, like hands of playing cards. Every
+ * row spans the grid, and another row is dealt whenever fitting more cards
+ * would leave less than MIN_DECK_STEP_PIXELS visible between them.
  */
 export class DashboardDeck {
   readonly activeIndex = signal<number | null>(null);
-  readonly step = computed(() => {
-    const count = this.cards().length;
-    if (count <= 1) return 0;
+  readonly rows = computed<readonly DashboardDeckRow[]>(() => {
+    const cards = this.cards();
+    if (cards.length === 0) return [];
+
+    const width = this.width();
     const cardWidth = this.cardWidth();
-    return Math.max(0, Math.min(cardWidth + DECK_GAP_PIXELS, (this.width() - cardWidth) / (count - 1)));
+    /* Keep one measurable row in the DOM until ResizeObserver supplies dimensions. */
+    if (width <= 0 || cardWidth <= 0) return [{ cards, startIndex: 0, step: 0 }];
+
+    const availableWidth = Math.max(0, width - cardWidth);
+    const cardsPerRow = Math.max(1, Math.floor(availableWidth / MIN_DECK_STEP_PIXELS) + 1);
+    const rows: DashboardDeckRow[] = [];
+    for (let startIndex = 0; startIndex < cards.length; startIndex += cardsPerRow) {
+      const rowCards = cards.slice(startIndex, startIndex + cardsPerRow);
+      const step = rowCards.length <= 1
+        ? 0
+        : Math.min(cardWidth + DECK_GAP_PIXELS, availableWidth / (rowCards.length - 1));
+      rows.push({ cards: rowCards, startIndex, step });
+    }
+
+    return rows;
   });
 
   constructor(
@@ -25,8 +49,8 @@ export class DashboardDeck {
     readonly cardWidth: Signal<number>,
   ) {}
 
-  slotLeft(index: number): number {
-    return index * this.step();
+  slotLeft(index: number, row: DashboardDeckRow): number {
+    return index * row.step;
   }
 
   slotZ(index: number): number {
@@ -34,12 +58,12 @@ export class DashboardDeck {
   }
 
   /* Whichever card sits under the pointer comes to the front, like fanning a hand of cards. */
-  scrub(event: PointerEvent): void {
+  scrub(event: PointerEvent, row: DashboardDeckRow): void {
     const deck = event.currentTarget;
-    const step = this.step();
-    if (!(deck instanceof HTMLElement) || step === 0) return;
+    if (!(deck instanceof HTMLElement) || row.step === 0) return;
     const x = event.clientX - deck.getBoundingClientRect().left;
-    this.activeIndex.set(Math.max(0, Math.min(this.cards().length - 1, Math.floor(x / step))));
+    const rowIndex = Math.max(0, Math.min(row.cards.length - 1, Math.floor(x / row.step)));
+    this.activeIndex.set(row.startIndex + rowIndex);
   }
 
   leave(): void {
