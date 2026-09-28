@@ -70,6 +70,52 @@ class SmartAlertExecutionCoordinatorTest {
     }
 
     @Test
+    void oncePerIntervalRunsWithoutHistory() {
+        smartAlert(SmartExecutionPolicy.ONCE_PER_INTERVAL);
+        when(orchestrator.triggerSmart(7L, "Sample", WorkerCapability.STANDARD))
+                .thenReturn(AlertExecutionOrchestrator.SmartTriggerResult.ACCEPTED);
+
+        coordinator.runCycle();
+
+        verify(orchestrator).triggerSmart(7L, "Sample", WorkerCapability.STANDARD);
+    }
+
+    @Test
+    void oncePerIntervalWaitsAfterAnyRecentCompletedExecution() {
+        smartAlert(SmartExecutionPolicy.ONCE_PER_INTERVAL);
+        when(latest.getFinishedAt()).thenReturn(NOW.minus(Duration.ofHours(1)));
+        when(executionRepository.findFirstByAlert_IdAndFinishedAtIsNotNullOrderByFinishedAtDescIdDesc(7L)).thenReturn(Optional.of(latest));
+
+        coordinator.runCycle();
+
+        verify(orchestrator, never()).triggerSmart(7L, "Sample", WorkerCapability.STANDARD);
+    }
+
+    @Test
+    void oncePerIntervalWaitsAtTheExactIntervalBoundary() {
+        smartAlert(SmartExecutionPolicy.ONCE_PER_INTERVAL);
+        when(latest.getFinishedAt()).thenReturn(NOW.minus(Duration.ofHours(2)));
+        when(executionRepository.findFirstByAlert_IdAndFinishedAtIsNotNullOrderByFinishedAtDescIdDesc(7L)).thenReturn(Optional.of(latest));
+
+        coordinator.runCycle();
+
+        verify(orchestrator, never()).triggerSmart(7L, "Sample", WorkerCapability.STANDARD);
+    }
+
+    @Test
+    void oncePerIntervalRunsAfterTheLatestCompletedExecutionExpires() {
+        smartAlert(SmartExecutionPolicy.ONCE_PER_INTERVAL);
+        when(latest.getFinishedAt()).thenReturn(NOW.minus(Duration.ofHours(2)).minusSeconds(1));
+        when(executionRepository.findFirstByAlert_IdAndFinishedAtIsNotNullOrderByFinishedAtDescIdDesc(7L)).thenReturn(Optional.of(latest));
+        when(orchestrator.triggerSmart(7L, "Sample", WorkerCapability.STANDARD))
+                .thenReturn(AlertExecutionOrchestrator.SmartTriggerResult.ACCEPTED);
+
+        coordinator.runCycle();
+
+        verify(orchestrator).triggerSmart(7L, "Sample", WorkerCapability.STANDARD);
+    }
+
+    @Test
     void conditionalPolicyWaitsForItsFirstResult() {
         smartAlert(SmartExecutionPolicy.ON_ERROR_OR_WARN);
         when(executionRepository.findFirstByAlert_IdAndFinishedAtIsNotNullOrderByFinishedAtDescIdDesc(7L)).thenReturn(Optional.empty());

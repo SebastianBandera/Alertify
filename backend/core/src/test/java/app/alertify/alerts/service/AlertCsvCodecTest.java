@@ -102,13 +102,13 @@ class AlertCsvCodecTest {
     @Test
     void roundTripsSmartExecutionSettings() {
         Alert alert = alert(template(), "smart", null, "-", true, false);
-        alert.changeSmartExecution(true, 2, SmartExecutionPolicy.ON_ERROR_OR_WARN);
+        alert.changeSmartExecution(true, 2, SmartExecutionPolicy.ONCE_PER_INTERVAL);
 
         AlertCsvCodec.ImportRow row = codec.read(codec.write(List.of(alert), Map.of())).getFirst();
 
         assertThat(row.smartExecutionEnabled()).isTrue();
         assertThat(row.smartExecutionIntervalHours()).isEqualTo(2);
-        assertThat(row.smartExecutionPolicy()).isEqualTo(SmartExecutionPolicy.ON_ERROR_OR_WARN);
+        assertThat(row.smartExecutionPolicy()).isEqualTo(SmartExecutionPolicy.ONCE_PER_INTERVAL);
     }
 
     @Test

@@ -510,7 +510,7 @@ public class AlertManagementService {
         Integer hours = requestedHours == null ? alert.getSmartExecutionIntervalHours() : requestedHours;
         SmartExecutionPolicy policy = requestedPolicy == null ? alert.getSmartExecutionPolicy() : requestedPolicy;
         if (policy == null)
-            policy = SmartExecutionPolicy.NORMAL;
+            policy = SmartExecutionPolicy.ONCE_PER_INTERVAL;
         if (hours == null || hours < 1)
             throw invalid("smartExecutionIntervalHours must be greater than or equal to 1 when smart execution is enabled");
 

@@ -6,7 +6,7 @@ import { ApiRequestError, PageResponse, SortDirection, TagMatchMode } from './co
 
 export type AlertParameterSource = 'TEXT' | 'CONFIGURATION' | 'SECRET' | 'PROCEDURE' | 'PIPE' | 'PIPE_OUTPUT';
 export type AlertExecutionStatus = 'SUCCESS' | 'WARN' | 'ERROR';
-export type SmartExecutionPolicy = 'NORMAL' | 'ON_ERROR' | 'ON_WARN' | 'ON_ERROR_OR_WARN';
+export type SmartExecutionPolicy = 'ONCE_PER_INTERVAL' | 'NORMAL' | 'ON_ERROR' | 'ON_WARN' | 'ON_ERROR_OR_WARN';
 export type WorkerCapability = 'STANDARD' | 'PLAYWRIGHT';
 
 export interface AlertTag {

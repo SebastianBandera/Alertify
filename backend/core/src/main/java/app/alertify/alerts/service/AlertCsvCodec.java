@@ -302,7 +302,7 @@ class AlertCsvCodec {
         try {
             return SmartExecutionPolicy.valueOf(value);
         } catch (IllegalArgumentException exception) {
-            throw rowError(rowNumber, "smartExecutionPolicy must be NORMAL, ON_ERROR, ON_WARN, or ON_ERROR_OR_WARN", exception);
+            throw rowError(rowNumber, "smartExecutionPolicy must be ONCE_PER_INTERVAL, NORMAL, ON_ERROR, ON_WARN, or ON_ERROR_OR_WARN", exception);
         }
     }
 

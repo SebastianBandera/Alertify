@@ -536,6 +536,7 @@
                 <label>
                   <span>{{ localization.translate('alerts.form.smartPolicy') }}</span>
                   <select [ngModel]="form().smartExecutionPolicy" (ngModelChange)="patchForm({ smartExecutionPolicy: $event })" name="smartExecutionPolicy">
+                    <option value="ONCE_PER_INTERVAL">{{ localization.translate('alerts.form.smartPolicy.ONCE_PER_INTERVAL') }}</option>
                     <option value="NORMAL">{{ localization.translate('alerts.form.smartPolicy.NORMAL') }}</option>
                     <option value="ON_ERROR">{{ localization.translate('alerts.form.smartPolicy.ON_ERROR') }}</option>
                     <option value="ON_WARN">{{ localization.translate('alerts.form.smartPolicy.ON_WARN') }}</option>

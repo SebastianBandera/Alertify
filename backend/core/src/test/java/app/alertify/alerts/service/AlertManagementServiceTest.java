@@ -26,11 +26,15 @@ import org.mockito.quality.Strictness;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import app.alertify.alerts.api.AlertDeletionImpactResponse;
+import app.alertify.alerts.api.AlertCreateRequest;
+import app.alertify.alerts.api.AlertResponse;
+import app.alertify.alerts.api.AlertUpdateRequest;
 import app.alertify.alerts.execution.AlertExecutionOrchestrator;
 import app.alertify.alerts.execution.AlertExecutionTrigger;
 import app.alertify.alerts.execution.AlertScheduleService;
 import app.alertify.alerts.model.Alert;
 import app.alertify.alerts.model.AlertTemplateDefinition;
+import app.alertify.alerts.model.SmartExecutionPolicy;
 import app.alertify.api.error.ConflictException;
 import app.alertify.api.error.ResourceNotFoundException;
 import app.alertify.dashboard.DashboardEventPublisher;
@@ -65,6 +69,40 @@ class AlertManagementServiceTest {
     @Mock private AlertScheduleService scheduleService;
     @Mock private AlertExecutionOrchestrator executionOrchestrator;
     @Mock private DashboardEventPublisher dashboardEventPublisher;
+
+    @Test
+    void defaultsNewSmartAlertsToOncePerInterval() {
+        AlertTemplateDefinition template = alert("template-holder").getTemplate();
+        when(templateRepository.findById(7L)).thenReturn(Optional.of(template));
+        when(alertRepository.saveAndFlush(any(Alert.class))).thenAnswer(invocation -> {
+            Alert saved = invocation.getArgument(0);
+            ReflectionTestUtils.setField(saved, "id", 5L);
+            return saved;
+        });
+
+        AlertResponse response = service().create(new AlertCreateRequest(
+                7L, "smart", null, "-", true, false, List.of(), Set.of(), null,
+                true, 23, null
+        ));
+
+        assertThat(response.smartExecutionPolicy()).isEqualTo(SmartExecutionPolicy.ONCE_PER_INTERVAL);
+        assertThat(response.smartExecutionIntervalHours()).isEqualTo(23);
+    }
+
+    @Test
+    void preservesAnExistingSmartPolicyWhenAnUpdateOmitsSmartFields() {
+        Alert alert = alert("smart");
+        alert.changeSmartExecution(true, 23, SmartExecutionPolicy.NORMAL);
+        when(alertRepository.findById(5L)).thenReturn(Optional.of(alert));
+
+        AlertResponse response = service().update(5L, new AlertUpdateRequest(
+                0L, "smart", null, "-", true, false, List.of(), Set.of(), null,
+                null, null, null
+        ));
+
+        assertThat(response.smartExecutionPolicy()).isEqualTo(SmartExecutionPolicy.NORMAL);
+        assertThat(response.smartExecutionIntervalHours()).isEqualTo(23);
+    }
 
     @Test
     void deletesTheExecutionHistoryBeforeTheAlertItself() {

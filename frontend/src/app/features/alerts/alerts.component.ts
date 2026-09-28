@@ -614,7 +614,7 @@ export class AlertsComponent implements OnInit {
       allowConcurrentExecutions: alert.allowConcurrentExecutions,
       smartExecutionEnabled: alert.smartExecutionEnabled,
       smartExecutionIntervalHours: alert.smartExecutionIntervalHours,
-      smartExecutionPolicy: alert.smartExecutionPolicy ?? 'NORMAL',
+      smartExecutionPolicy: alert.smartExecutionPolicy ?? 'ONCE_PER_INTERVAL',
       persistentIssues: alert.persistentIssuesSince !== null,
       tagIds: alert.tags.map((tag) => tag.id),
       parameters,
@@ -996,7 +996,7 @@ export class AlertsComponent implements OnInit {
       allowConcurrentExecutions: false,
       smartExecutionEnabled: false,
       smartExecutionIntervalHours: null,
-      smartExecutionPolicy: 'NORMAL',
+      smartExecutionPolicy: 'ONCE_PER_INTERVAL',
       persistentIssues: false,
       tagIds: [],
       parameters: {},
@@ -1071,6 +1071,7 @@ export class AlertsComponent implements OnInit {
 
   protected smartPolicyHelp(): string {
     switch (this.form().smartExecutionPolicy) {
+      case 'ONCE_PER_INTERVAL': return this.localization.translate('alerts.form.smartPolicyHelp.ONCE_PER_INTERVAL');
       case 'NORMAL': return this.localization.translate('alerts.form.smartPolicyHelp.NORMAL');
       case 'ON_ERROR': return this.localization.translate('alerts.form.smartPolicyHelp.ON_ERROR');
       case 'ON_WARN': return this.localization.translate('alerts.form.smartPolicyHelp.ON_WARN');

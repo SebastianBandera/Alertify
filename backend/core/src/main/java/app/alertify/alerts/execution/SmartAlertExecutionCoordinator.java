@@ -138,14 +138,15 @@ public class SmartAlertExecutionCoordinator implements AutoCloseable {
             if (!eligible(alert, now))
                 continue;
 
-            Instant lastSmartExecution = executionRepository
-                    .findFirstByAlert_IdAndTriggerAndFinishedAtIsNotNullOrderByFinishedAtDescIdDesc(alert.getId(), AlertExecutionTrigger.SMART)
+            Instant lastRelevantExecution = (alert.getSmartExecutionPolicy() == SmartExecutionPolicy.ONCE_PER_INTERVAL
+                    ? executionRepository.findFirstByAlert_IdAndFinishedAtIsNotNullOrderByFinishedAtDescIdDesc(alert.getId())
+                    : executionRepository.findFirstByAlert_IdAndTriggerAndFinishedAtIsNotNullOrderByFinishedAtDescIdDesc(alert.getId(), AlertExecutionTrigger.SMART))
                     .map(AlertExecution::getFinishedAt)
                     .orElse(null);
-            candidates.add(new Candidate(alert.getId(), lastSmartExecution));
+            candidates.add(new Candidate(alert.getId(), lastRelevantExecution));
         }
         candidates.sort(Comparator
-                .comparing(Candidate::lastSmartExecution, Comparator.nullsFirst(Comparator.naturalOrder()))
+                .comparing(Candidate::lastRelevantExecution, Comparator.nullsFirst(Comparator.naturalOrder()))
                 .thenComparing(Candidate::alertId));
         return candidates;
     }
@@ -160,6 +161,12 @@ public class SmartAlertExecutionCoordinator implements AutoCloseable {
             return false;
 
         Instant threshold = now.minus(Duration.ofHours(intervalHours.longValue()));
+        if (policy == SmartExecutionPolicy.ONCE_PER_INTERVAL) {
+            return executionRepository.findFirstByAlert_IdAndFinishedAtIsNotNullOrderByFinishedAtDescIdDesc(alert.getId())
+                    .map(execution -> execution.getFinishedAt().isBefore(threshold))
+                    .orElse(true);
+        }
+
         if (executionRepository.existsByAlert_IdAndStatusAndFinishedAtGreaterThanEqual(alert.getId(), AlertExecutionStatus.SUCCESS, threshold))
             return false;
 
@@ -171,7 +178,7 @@ public class SmartAlertExecutionCoordinator implements AutoCloseable {
             return false;
 
         return switch (policy) {
-            case NORMAL -> true;
+            case ONCE_PER_INTERVAL, NORMAL -> true;
             case ON_ERROR -> latest.get().getStatus() == AlertExecutionStatus.ERROR;
             case ON_WARN -> latest.get().getStatus() == AlertExecutionStatus.WARN;
             case ON_ERROR_OR_WARN -> latest.get().getStatus() == AlertExecutionStatus.ERROR
@@ -196,6 +203,6 @@ public class SmartAlertExecutionCoordinator implements AutoCloseable {
         executor.close();
     }
 
-    private record Candidate(Long alertId, Instant lastSmartExecution) {
+    private record Candidate(Long alertId, Instant lastRelevantExecution) {
     }
 }
