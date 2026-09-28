@@ -38,7 +38,25 @@ class PlaywrightPageAlertTemplateTest {
         assertEquals("10", parameter("loadTimeoutSeconds").defaultValue());
         assertEquals("5", parameter("elementTimeoutSeconds").defaultValue());
         assertTrue(parameter("steps").multiline());
-        assertFalse(parameter("steps").required());
+        assertTrue(parameter("steps").required());
+    }
+
+    @Test
+    void emptyStepsOnlyValidateNavigation() throws Exception {
+        FakeBrowserSession session = new FakeBrowserSession();
+
+        AlertResult result = template("https://example.test", "", session).evaluate(new AlertExecutionContext());
+        Map<?, ?> browserResult = browserResult(result, 0);
+
+        assertEquals(AlertExecutionStatus.SUCCESS, result.status());
+        assertEquals(0, result.statusMessage().get("commandCount"));
+        assertEquals(0, browserResult.get("completedCommandCount"));
+        assertEquals(List.of("navigate", "close"), session.operations);
+    }
+
+    @Test
+    void blankStepsDoNotRequirePreparedValues() {
+        assertTrue(PlaywrightPageAlertTemplate.requiredValues(" \n\t").isEmpty());
     }
 
     @Test

@@ -27,14 +27,18 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import app.alertify.alerts.api.AlertDeletionImpactResponse;
 import app.alertify.alerts.api.AlertCreateRequest;
+import app.alertify.alerts.api.AlertParameterValueRequest;
 import app.alertify.alerts.api.AlertResponse;
 import app.alertify.alerts.api.AlertUpdateRequest;
 import app.alertify.alerts.execution.AlertExecutionOrchestrator;
 import app.alertify.alerts.execution.AlertExecutionTrigger;
 import app.alertify.alerts.execution.AlertScheduleService;
 import app.alertify.alerts.model.Alert;
+import app.alertify.alerts.model.AlertParameterValue;
 import app.alertify.alerts.model.AlertTemplateDefinition;
+import app.alertify.alerts.model.AlertTemplateParameterDefinition;
 import app.alertify.alerts.model.SmartExecutionPolicy;
+import app.alertify.alerts.template.annotation.AlertParameterSource;
 import app.alertify.api.error.ConflictException;
 import app.alertify.api.error.ResourceNotFoundException;
 import app.alertify.dashboard.DashboardEventPublisher;
@@ -69,6 +73,48 @@ class AlertManagementServiceTest {
     @Mock private AlertScheduleService scheduleService;
     @Mock private AlertExecutionOrchestrator executionOrchestrator;
     @Mock private DashboardEventPublisher dashboardEventPublisher;
+
+    @Test
+    void acceptsAnEmptyTextValueForARequiredStringParameter() {
+        AlertTemplateDefinition template = alert("template-holder").getTemplate();
+        AlertTemplateParameterDefinition steps = requiredSteps(template);
+        when(templateRepository.findById(7L)).thenReturn(Optional.of(template));
+        when(templateParameterRepository.findAllByTemplate_IdOrderByParameterOrderAscIdAsc(7L)).thenReturn(List.of(steps));
+        when(alertRepository.saveAndFlush(any(Alert.class))).thenAnswer(invocation -> {
+            Alert saved = invocation.getArgument(0);
+            ReflectionTestUtils.setField(saved, "id", 5L);
+            return saved;
+        });
+        when(parameterValueRepository.save(any(AlertParameterValue.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        AlertResponse response = service().create(new AlertCreateRequest(
+                7L, "playwright", null, "-", true,
+                List.of(new AlertParameterValueRequest("steps", AlertParameterSource.TEXT, "", null, null)), Set.of()
+        ));
+
+        assertThat(response.parameters()).singleElement().satisfies(value -> {
+            assertThat(value.parameterKey()).isEqualTo("steps");
+            assertThat(value.source()).isEqualTo(AlertParameterSource.TEXT);
+            assertThat(value.textValue()).isEmpty();
+        });
+    }
+
+    @Test
+    void rejectsAnOmittedRequiredStringParameter() {
+        AlertTemplateDefinition template = alert("template-holder").getTemplate();
+        AlertTemplateParameterDefinition steps = requiredSteps(template);
+        when(templateRepository.findById(7L)).thenReturn(Optional.of(template));
+        when(templateParameterRepository.findAllByTemplate_IdOrderByParameterOrderAscIdAsc(7L)).thenReturn(List.of(steps));
+        when(alertRepository.saveAndFlush(any(Alert.class))).thenAnswer(invocation -> {
+            Alert saved = invocation.getArgument(0);
+            ReflectionTestUtils.setField(saved, "id", 5L);
+            return saved;
+        });
+
+        assertThatThrownBy(() -> service().create(new AlertCreateRequest(
+                7L, "playwright", null, "-", true, List.of(), Set.of()
+        ))).hasMessageContaining("Required parameter 'steps' has no value");
+    }
 
     @Test
     void defaultsNewSmartAlertsToOncePerInterval() {
@@ -230,5 +276,14 @@ class AlertManagementServiceTest {
         Alert alert = new Alert(template, name, null, "0 0 8 * * *", true, false, Set.of());
         ReflectionTestUtils.setField(alert, "id", 5L);
         return alert;
+    }
+
+    private static AlertTemplateParameterDefinition requiredSteps(AlertTemplateDefinition template) {
+        return new AlertTemplateParameterDefinition(
+                template, "steps", "steps.label", "steps.description", String.class.getName(), List.of(), true,
+                null, true, 7, true,
+                List.of(AlertParameterSource.TEXT, AlertParameterSource.CONFIGURATION, AlertParameterSource.SECRET),
+                List.of(), List.of()
+        );
     }
 }

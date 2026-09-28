@@ -111,7 +111,6 @@ public final class PlaywrightPageAlertTemplate implements AlertEvaluator {
         labelKey = "alerts.template.playwrightPage.steps",
         descriptionKey = "alerts.template.playwrightPage.stepsDescription",
         multiline = true,
-        required = false,
         order = 7
     )
     private final String steps;

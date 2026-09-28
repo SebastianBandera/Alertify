@@ -241,7 +241,7 @@ class AlertTemplateRegistrationServiceTest {
         assertEquals("5", playwrightPageParameters.get(5).getDefaultValue());
         assertEquals("steps", playwrightPageParameters.get(6).getParameterKey());
         assertTrue(playwrightPageParameters.get(6).isMultiline());
-        assertFalse(playwrightPageParameters.get(6).isRequired());
+        assertTrue(playwrightPageParameters.get(6).isRequired());
 
         List<AlertTemplateParameterDefinition> tcpParameters = parametersOf(parameterCaptor, tcpTemplate);
         assertEquals(3, tcpParameters.size());
