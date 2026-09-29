@@ -534,6 +534,7 @@ function buildPlan(environment, options = {}) {
   const backendMode = mode(environment, 'BACKEND_MODE');
   const frontendMode = mode(environment, 'FRONTEND_MODE');
   const publicPort = portValue(environment, 'PUBLIC_PORT');
+  const publishAdditionalPorts = booleanValue(environment, 'PUBLISH_ADDITIONAL_PORTS');
   const appPublicUrl = parsedUrl(environment, 'APP_PUBLIC_URL');
   const publisherTlsEnabled = !isLocalhostHostname(appPublicUrl.hostname);
   const skipKeycloak = options.skipKeycloak === true;
@@ -559,6 +560,7 @@ function buildPlan(environment, options = {}) {
     frontendUrl: required(environment, 'APP_PUBLIC_URL'),
     skipFrontend,
     publicPort,
+    publishAdditionalPorts,
     publicHttpPort: null,
     publisherUrl: required(environment, 'APP_PUBLIC_URL'),
     publisherTlsEnabled,
@@ -567,7 +569,10 @@ function buildPlan(environment, options = {}) {
     publisherTlsCaValidityDays: null,
     rotatePublisherTlsCertificate: false,
     skipPublisher,
+    identityDatabaseHostPort: null,
+    keycloakAdminPort: null,
     keycloakAdminUrl: null,
+    applicationDatabaseHostPort: null,
     backendDebugEnabled: false,
     backendDebugPort: null,
     backendDebugSuspend: null,
@@ -650,9 +655,14 @@ function buildPlan(environment, options = {}) {
     required(environment, 'IDENTITY_DB_USER');
     required(environment, 'IDENTITY_DB_PASSWORD');
     required(environment, 'OIDC_REALM');
-    const keycloakAdminPort = portValue(environment, 'KEYCLOAK_HTTP_PORT');
-    plan.keycloakAdminUrl = required(environment, 'KEYCLOAK_ADMIN_URL');
-    validateUrlPort(environment, 'KEYCLOAK_ADMIN_URL', keycloakAdminPort);
+    if (publishAdditionalPorts) {
+      plan.keycloakAdminPort = portValue(environment, 'KEYCLOAK_HTTP_PORT');
+      plan.keycloakAdminUrl = required(environment, 'KEYCLOAK_ADMIN_URL');
+      validateUrlPort(environment, 'KEYCLOAK_ADMIN_URL', plan.keycloakAdminPort);
+      if (plan.identityDatabaseMode === 'local') {
+        plan.identityDatabaseHostPort = portValue(environment, 'IDENTITY_DB_HOST_PORT');
+      }
+    }
     validateUrlPort(environment, 'KEYCLOAK_PUBLIC_URL', publicPort);
 
     if (plan.identityDatabaseMode === 'local' && !skipKeycloak) {
@@ -712,12 +722,17 @@ function buildPlan(environment, options = {}) {
       validateUrlPort(environment, 'OIDC_ISSUER_URI', publicPort);
     }
     plan.backendDebugEnabled = booleanValue(environment, 'BACKEND_DEBUG_ENABLED');
-    plan.backendDebugPort = required(environment, 'BACKEND_DEBUG_PORT');
+    plan.backendDebugPort = portValue(environment, 'BACKEND_DEBUG_PORT');
     plan.backendDebugSuspend = allowedValue(
       environment,
       'BACKEND_DEBUG_SUSPEND',
       ['y', 'n'],
     );
+    if (plan.backendDebugEnabled && !publishAdditionalPorts) {
+      throw new Error(
+        'BACKEND_DEBUG_ENABLED=true requires PUBLISH_ADDITIONAL_PORTS=true so the debugger is reachable from the host.',
+      );
+    }
 
     if (plan.applicationDatabaseMode === 'local') {
       required(environment, 'DATABASE_IMAGE');
@@ -726,6 +741,9 @@ function buildPlan(environment, options = {}) {
       required(environment, 'DATABASE_BOOTSTRAP_PASSWORD');
       if (bootstrapUser === required(environment, 'DATABASE_USER')) {
         throw new Error('DATABASE_BOOTSTRAP_USER must be different from DATABASE_USER.');
+      }
+      if (publishAdditionalPorts) {
+        plan.applicationDatabaseHostPort = portValue(environment, 'DATABASE_HOST_PORT');
       }
       if (!skipDatabase) {
         plan.services.push({ name: 'database', build: true });
@@ -910,6 +928,11 @@ function printPlan(plan, environment) {
     console.log(
       `  - Keycloak master administration: direct local access (${redactUrl(plan.keycloakAdminUrl)})`,
     );
+  }
+  if (plan.publishAdditionalPorts) {
+    console.log('  - Additional host ports: enabled for local services');
+  } else {
+    console.log('  - Additional host ports: disabled; only public HTTP/HTTPS ports will be published');
   }
 }
 
@@ -1099,7 +1122,15 @@ function createRuntimeComposeOverride(plan, projectDirectory) {
     { baseService: 'worker-standard', instances: plan.workerStandardInstances },
     { baseService: 'worker-playwright', instances: plan.workerPlaywrightInstances },
   ].filter((group) => group.instances.length > 0);
-  if (workerGroups.length === 0 && !plan.publisherTlsEnabled) {
+  const publishIdentityDatabasePort = plan.identityDatabaseHostPort != null;
+  const publishKeycloakAdminPort = plan.keycloakAdminPort != null;
+  const publishApplicationDatabasePort = plan.applicationDatabaseHostPort != null;
+  const publishBackendDebugPort = plan.publishAdditionalPorts === true && plan.backendDebugEnabled === true;
+  const hasAdditionalPortOverrides = publishIdentityDatabasePort
+    || publishKeycloakAdminPort
+    || publishApplicationDatabasePort
+    || publishBackendDebugPort;
+  if (workerGroups.length === 0 && !plan.publisherTlsEnabled && !hasAdditionalPortOverrides) {
     return null;
   }
 
@@ -1118,6 +1149,34 @@ function createRuntimeComposeOverride(plan, projectDirectory) {
       '      - "${BIND_ADDRESS:?Set BIND_ADDRESS in .env}:${PUBLIC_PORT:?Set PUBLIC_PORT in .env}:8443"',
       '    volumes: !override',
       '      - publisher_tls:/run/alertify-publisher-tls:ro',
+    );
+  }
+  if (publishIdentityDatabasePort) {
+    lines.push(
+      '  identity-database:',
+      '    ports:',
+      '      - "${BIND_ADDRESS:?Set BIND_ADDRESS in .env}:${IDENTITY_DB_HOST_PORT:?Set IDENTITY_DB_HOST_PORT in .env}:5432"',
+    );
+  }
+  if (publishKeycloakAdminPort) {
+    lines.push(
+      '  identity:',
+      '    ports:',
+      '      - "127.0.0.1:${KEYCLOAK_HTTP_PORT:?Set KEYCLOAK_HTTP_PORT in .env}:8080"',
+    );
+  }
+  if (publishApplicationDatabasePort) {
+    lines.push(
+      '  database:',
+      '    ports:',
+      '      - "${BIND_ADDRESS:?Set BIND_ADDRESS in .env}:${DATABASE_HOST_PORT:?Set DATABASE_HOST_PORT in .env}:5432"',
+    );
+  }
+  if (publishBackendDebugPort) {
+    lines.push(
+      '  backend:',
+      '    ports:',
+      '      - "${BIND_ADDRESS:?Set BIND_ADDRESS in .env}:${BACKEND_DEBUG_PORT:?Set BACKEND_DEBUG_PORT in .env}:${BACKEND_DEBUG_PORT:?Set BACKEND_DEBUG_PORT in .env}"',
     );
   }
   for (const group of workerGroups) {
