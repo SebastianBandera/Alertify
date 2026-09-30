@@ -35,8 +35,7 @@
             <span class="running__icon" aria-hidden="true"></span>
             {{ localization.translate('dashboard.card.running') }}
           </span>
-        }
-        @if (card.lastExecution; as execution) {
+        } @else if (card.lastExecution; as execution) {
           <time class="alert-card__time" [attr.datetime]="execution.finishedAt" [title]="execution.finishedAt">
             {{ relativeTime(execution.finishedAt) }}
           </time>
