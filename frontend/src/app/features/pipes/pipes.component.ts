@@ -18,6 +18,7 @@ import {
   PipeStepWriteRequest,
 } from '../../core/api/pipe-api.service';
 import { LocalizationService } from '../../core/i18n/localization.service';
+import { EditorViewportService } from '../../shared/editor-viewport/editor-viewport.service';
 
 type PipeTab = 'pipes' | 'history';
 
@@ -68,6 +69,7 @@ function readStoredPageSize(): number {
   templateUrl: './pipes.component.html',
   styleUrl: './pipes.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  providers: [EditorViewportService],
 })
 export class PipesComponent implements OnInit, OnDestroy {
   protected readonly localization = inject(LocalizationService);
@@ -76,6 +78,7 @@ export class PipesComponent implements OnInit, OnDestroy {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
+  private readonly editorViewport = inject(EditorViewportService);
 
   protected readonly activeTab = signal<PipeTab>('pipes');
   protected readonly pipes = signal<readonly Pipe[]>([]);
@@ -211,6 +214,7 @@ export class PipesComponent implements OnInit, OnDestroy {
   }
 
   protected openEdit(pipe: Pipe): void {
+    this.editorViewport.capture(`pipe-${pipe.id}`);
     this.editing.set(pipe);
     this.form.set({
       name: pipe.name,
@@ -238,7 +242,10 @@ export class PipesComponent implements OnInit, OnDestroy {
   }
 
   protected closeEditor(): void {
-    if (!this.saving()) this.editorOpen.set(false);
+    if (!this.saving()) {
+      this.editorOpen.set(false);
+      this.editorViewport.restore();
+    }
   }
 
   protected patchForm<K extends keyof Omit<PipeForm, 'steps'>>(key: K, value: PipeForm[K]): void {
@@ -413,6 +420,7 @@ export class PipesComponent implements OnInit, OnDestroy {
       this.editorOpen.set(false);
       this.notice.set(this.dynamic(editing ? 'pipes.updated' : 'pipes.created'));
       await this.loadAll(false);
+      this.editorViewport.restore();
     } catch (error) {
       this.formError.set(this.errorMessage(error));
     } finally {

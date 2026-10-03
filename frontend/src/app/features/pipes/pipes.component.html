@@ -90,7 +90,7 @@
                       {{ dynamic(runningId() === pipe.id ? 'pipes.runStarting' : 'pipes.run') }}
                     </button>
                     <span class="actions__divider" aria-hidden="true"></span>
-                    <button type="button" (click)="openEdit(pipe)">{{ dynamic('pipes.edit') }}</button>
+                    <button type="button" [attr.data-editor-viewport]="'pipe-' + pipe.id" (click)="openEdit(pipe)">{{ dynamic('pipes.edit') }}</button>
                     <button class="danger" type="button" (click)="remove(pipe)">{{ dynamic('pipes.delete') }}</button>
                   </div>
                 </td>

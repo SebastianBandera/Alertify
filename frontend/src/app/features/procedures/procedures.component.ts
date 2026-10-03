@@ -22,6 +22,7 @@ import { LocalizationService } from '../../core/i18n/localization.service';
 import { TranslationKey } from '../../core/i18n/localization.types';
 import { isCompatibleConfigurationValueType, isCompatibleSecretValueType } from '../../core/utils/parameter-binding-compatibility';
 import { templateClassName } from '../../core/utils/template-key';
+import { EditorViewportService } from '../../shared/editor-viewport/editor-viewport.service';
 import { SearchableSelectComponent, SearchableSelectOption } from '../../shared/searchable-select/searchable-select.component';
 
 type ProcedureTab = 'procedures' | 'templates' | 'wizards' | 'history';
@@ -106,6 +107,7 @@ function procedureTab(value: string | null): ProcedureTab {
   templateUrl: './procedures.component.html',
   styleUrl: './procedures.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  providers: [EditorViewportService],
 })
 export class ProceduresComponent implements OnInit {
   protected readonly localization = inject(LocalizationService);
@@ -115,6 +117,7 @@ export class ProceduresComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly editorViewport = inject(EditorViewportService);
 
   protected readonly activeTab = signal<ProcedureTab>('procedures');
   protected readonly procedures = signal<readonly Procedure[]>([]);
@@ -425,6 +428,7 @@ export class ProceduresComponent implements OnInit {
   }
 
   protected openEdit(procedure: Procedure): void {
+    this.editorViewport.capture(`procedure-${procedure.id}`);
     const template = this.templates().find((candidate) => candidate.id === procedure.templateId) ?? null;
     const form = this.formForTemplate(template);
     const parameters = { ...form.parameters };
@@ -458,7 +462,10 @@ export class ProceduresComponent implements OnInit {
   }
 
   protected closeEditor(): void {
-    if (!this.saving()) this.editorOpen.set(false);
+    if (!this.saving()) {
+      this.editorOpen.set(false);
+      this.editorViewport.restore();
+    }
   }
 
   protected selectTemplateId(templateId: number | null): void {
@@ -585,6 +592,7 @@ export class ProceduresComponent implements OnInit {
       else await this.api.createProcedure(request);
       this.editorOpen.set(false);
       await this.loadAll(false);
+      this.editorViewport.restore();
     } catch (error) {
       const cronError = this.cronError(error);
       if (cronError) this.showCronError(cronError);

@@ -201,7 +201,7 @@
                     </button>
                     <span class="actions__divider" aria-hidden="true"></span>
                     <button type="button" [title]="localization.translate('alerts.historyHint')" (click)="showAlertHistory(alert)">{{ localization.translate('alerts.history') }}</button>
-                    <button type="button" (click)="openEdit(alert)">{{ localization.translate('alerts.edit') }}</button>
+                    <button type="button" [attr.data-editor-viewport]="'alert-' + alert.id" (click)="openEdit(alert)">{{ localization.translate('alerts.edit') }}</button>
                     <button class="danger" type="button" (click)="deleteAlert(alert)">{{ localization.translate('alerts.delete') }}</button>
                   </div>
                 </td>

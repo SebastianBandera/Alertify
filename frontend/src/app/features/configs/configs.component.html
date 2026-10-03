@@ -189,7 +189,7 @@
               </td>
               <td>
                 <div class="row-actions">
-                  <button class="text-button" type="button" (click)="openEdit(configuration)">
+                  <button class="text-button" type="button" [attr.data-editor-viewport]="'configuration-' + configuration.id" (click)="openEdit(configuration)">
                     {{ localization.translate('configs.edit') }}
                   </button>
                   @if (configuration.valueType === 'BINARY') { <button class="text-button" type="button" (click)="downloadBinary(configuration)">{{ localization.translate('binary.download') }}</button> }

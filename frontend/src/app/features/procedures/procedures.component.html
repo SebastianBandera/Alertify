@@ -145,7 +145,7 @@
                     </button>
                     <span class="actions__divider" aria-hidden="true"></span>
                     <button type="button" [title]="localization.translate('procedures.historyHint')" (click)="showProcedureHistory(procedure)">{{ localization.translate('procedures.history') }}</button>
-                    <button type="button" (click)="openEdit(procedure)">{{ localization.translate('procedures.edit') }}</button>
+                    <button type="button" [attr.data-editor-viewport]="'procedure-' + procedure.id" (click)="openEdit(procedure)">{{ localization.translate('procedures.edit') }}</button>
                     <button class="danger" type="button" (click)="remove(procedure)">{{ localization.translate('procedures.delete') }}</button>
                   </div>
                 </td>

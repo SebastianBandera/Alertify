@@ -20,6 +20,7 @@ import {
 } from '../../core/api/hook-api.service';
 import { SecretApiService } from '../../core/api/secret-api.service';
 import { LocalizationService } from '../../core/i18n/localization.service';
+import { EditorViewportService } from '../../shared/editor-viewport/editor-viewport.service';
 
 type HookTab = 'hooks' | 'history';
 
@@ -74,6 +75,7 @@ function hookTab(value: string | null): HookTab {
   templateUrl: './hooks.component.html',
   styleUrl: './hooks.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  providers: [EditorViewportService],
 })
 export class HooksComponent implements OnInit, OnDestroy {
   protected readonly localization = inject(LocalizationService);
@@ -84,6 +86,7 @@ export class HooksComponent implements OnInit, OnDestroy {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly editorViewport = inject(EditorViewportService);
 
   protected readonly activeTab = signal<HookTab>('hooks');
   protected readonly hooks = signal<readonly Hook[]>([]);
@@ -230,6 +233,7 @@ export class HooksComponent implements OnInit, OnDestroy {
   }
 
   protected openEdit(hook: Hook): void {
+    this.editorViewport.capture(`hook-${hook.id}`);
     this.editing.set(hook);
     this.form.set({
       name: hook.name,
@@ -257,7 +261,10 @@ export class HooksComponent implements OnInit, OnDestroy {
   }
 
   protected closeEditor(): void {
-    if (!this.saving()) this.editorOpen.set(false);
+    if (!this.saving()) {
+      this.editorOpen.set(false);
+      this.editorViewport.restore();
+    }
   }
 
   protected patchForm<K extends keyof Omit<HookForm, 'targets'>>(key: K, value: HookForm[K]): void {
@@ -435,6 +442,7 @@ export class HooksComponent implements OnInit, OnDestroy {
       this.editorOpen.set(false);
       this.notice.set(this.dynamic(editing ? 'hooks.updated' : 'hooks.created'));
       await this.loadAll(false);
+      this.editorViewport.restore();
     } catch (error) {
       this.formError.set(this.errorMessage(error));
     } finally {

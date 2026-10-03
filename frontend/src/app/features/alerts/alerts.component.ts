@@ -23,6 +23,7 @@ import { ApiRequestError, SortDirection, TagMatchMode } from '../../core/api/con
 import { LocalizationService } from '../../core/i18n/localization.service';
 import { isCompatibleConfigurationValueType, isCompatibleSecretValueType } from '../../core/utils/parameter-binding-compatibility';
 import { templateClassName } from '../../core/utils/template-key';
+import { EditorViewportService } from '../../shared/editor-viewport/editor-viewport.service';
 import { SearchableSelectComponent, SearchableSelectOption } from '../../shared/searchable-select/searchable-select.component';
 
 type AlertTab = 'alerts' | 'templates' | 'history';
@@ -103,6 +104,7 @@ function alertTab(value: string | null): AlertTab {
   templateUrl: './alerts.component.html',
   styleUrl: './alerts.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  providers: [EditorViewportService],
 })
 export class AlertsComponent implements OnInit {
   protected readonly localization = inject(LocalizationService);
@@ -112,6 +114,7 @@ export class AlertsComponent implements OnInit {
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
   private readonly elementRef: ElementRef<HTMLElement> = inject(ElementRef);
+  private readonly editorViewport = inject(EditorViewportService);
 
   protected readonly activeTab = signal<AlertTab>('alerts');
   protected readonly alerts = signal<readonly Alert[]>([]);
@@ -588,6 +591,7 @@ export class AlertsComponent implements OnInit {
   }
 
   protected openEdit(alert: Alert): void {
+    this.editorViewport.capture(`alert-${alert.id}`);
     const template = this.templates().find((item) => item.id === alert.templateId) ?? null;
     const form = this.formForTemplate(template);
     const parameters = { ...form.parameters };
@@ -627,6 +631,7 @@ export class AlertsComponent implements OnInit {
   protected closeEditor(): void {
     if (!this.saving()) {
       this.editorOpen.set(false);
+      this.editorViewport.restore();
     }
   }
 
@@ -757,6 +762,7 @@ export class AlertsComponent implements OnInit {
       else await this.api.createAlert(request);
       this.editorOpen.set(false);
       await Promise.all([this.loadAlerts(), this.loadTemplates()]);
+      this.editorViewport.restore();
     } catch (error) {
       const fieldErrors = this.alertFieldErrors(error);
       if (Object.keys(fieldErrors).length) this.showFieldErrors(fieldErrors);

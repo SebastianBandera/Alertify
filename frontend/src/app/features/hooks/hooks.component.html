@@ -89,7 +89,7 @@
                 </td>
                 <td><span class="badge" [class.badge--disabled]="!hook.enabled">{{ dynamic(hook.enabled ? 'hooks.enabled' : 'hooks.disabled') }}</span></td>
                 <td class="actions">
-                  <button type="button" (click)="openEdit(hook)">{{ dynamic('hooks.edit') }}</button>
+                  <button type="button" [attr.data-editor-viewport]="'hook-' + hook.id" (click)="openEdit(hook)">{{ dynamic('hooks.edit') }}</button>
                   <button type="button" (click)="rotate(hook)">{{ dynamic('hooks.rotate') }}</button>
                   <button class="danger" type="button" (click)="remove(hook)">{{ dynamic('hooks.delete') }}</button>
                 </td>

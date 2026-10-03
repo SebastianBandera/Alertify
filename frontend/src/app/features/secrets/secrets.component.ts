@@ -19,6 +19,7 @@ import {
   SecretValueType,
 } from '../../core/api/secret-api.service';
 import { LocalizationService } from '../../core/i18n/localization.service';
+import { EditorViewportService } from '../../shared/editor-viewport/editor-viewport.service';
 import { ExpressionEditorComponent } from '../../shared/expression-editor/expression-editor.component';
 
 /** Editor state for a DB_SECRET; every field is kept as text and parsed on save, like configs' rawValue. */
@@ -107,6 +108,7 @@ function readStoredPageSize(): number {
   templateUrl: './secrets.component.html',
   styleUrl: '../configs/configs.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  providers: [EditorViewportService],
 })
 export class SecretsComponent implements OnInit {
   protected readonly localization = inject(LocalizationService);
@@ -124,6 +126,7 @@ export class SecretsComponent implements OnInit {
   protected readonly testingSecretId = signal<number | null>(null);
   protected readonly storedTestResults = signal<Readonly<Record<number, DatabaseSecretTestResult>>>({});
   private readonly api = inject(SecretApiService);
+  private readonly editorViewport = inject(EditorViewportService);
 
   protected readonly secrets = signal<readonly ApplicationSecret[]>([]);
   protected readonly tags = signal<readonly SecretTag[]>([]);
@@ -268,6 +271,7 @@ export class SecretsComponent implements OnInit {
   }
 
   protected openEdit(secret: ApplicationSecret): void {
+    this.editorViewport.capture(`secret-${secret.id}`);
     this.editingSecret.set(secret);
     this.replacingValue.set(false);
     this.secretForm.set({
@@ -320,7 +324,10 @@ export class SecretsComponent implements OnInit {
   }
 
   protected closeEditor(): void {
-    if (!this.saving()) this.editorOpen.set(false);
+    if (!this.saving()) {
+      this.editorOpen.set(false);
+      this.editorViewport.restore();
+    }
   }
 
   protected startValueReplacement(): void {
@@ -503,6 +510,7 @@ export class SecretsComponent implements OnInit {
         this.editorOpen.set(false);
         this.notice.set(this.localization.translate('secrets.saved'));
         await Promise.all([this.loadSecrets(), this.loadExpressionSuggestions()]);
+        this.editorViewport.restore();
       } catch (error) {
         this.formError.set(this.errorMessage(error, 'rename'));
       } finally {
@@ -518,8 +526,10 @@ export class SecretsComponent implements OnInit {
         const metadata = { name: form.name.trim(), description: form.description.trim() || null, tagIds: form.tagIds, writable: form.writable };
         if (editing) await this.api.updateBinarySecret(editing.id, { ...metadata, version: editing.version }, form.binaryFile);
         else await this.api.createBinarySecret(metadata, form.binaryFile);
-        this.editorOpen.set(false); this.notice.set(this.localization.translate('secrets.saved'));
+        this.editorOpen.set(false);
+        this.notice.set(this.localization.translate('secrets.saved'));
         await Promise.all([this.loadSecrets(), this.loadExpressionSuggestions()]);
+        this.editorViewport.restore();
       } catch (error) { this.formError.set(this.errorMessage(error, this.editingSecret() ? 'rename' : undefined)); }
       finally { this.saving.set(false); }
       return;
@@ -544,6 +554,7 @@ export class SecretsComponent implements OnInit {
       this.editorOpen.set(false);
       this.notice.set(this.localization.translate('secrets.saved'));
       await Promise.all([this.loadSecrets(), this.loadExpressionSuggestions()]);
+      this.editorViewport.restore();
     } catch (error) {
       this.formError.set(this.errorMessage(error, this.editingSecret() ? 'rename' : undefined));
     } finally {
