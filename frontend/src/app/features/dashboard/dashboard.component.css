@@ -153,6 +153,7 @@ p {
 .deck {
   display: grid;
   grid-column: 1 / -1;
+  isolation: isolate;
 }
 
 .deck__slot {
