@@ -394,6 +394,8 @@
             <th>{{ localization.translate('alerts.history.startedFinishedAt') }}</th>
             <th>{{ localization.translate('alerts.history.name') }}</th>
             <th>{{ localization.translate('alerts.history.status') }}</th>
+            <th>{{ localization.translate('alerts.history.origin') }}</th>
+            <th>{{ localization.translate('alerts.history.parent') }}</th>
             <th>{{ localization.translate('alerts.history.duration') }}</th>
             <th>{{ localization.translate('alerts.history.message') }}</th>
           </tr></thead>
@@ -403,6 +405,19 @@
                 <td><strong>{{ execution.startedAt | date:'medium' }}</strong><small>{{ execution.finishedAt | date:'medium' }}</small></td>
                 <td><button class="history-name-link" type="button" (click)="showAlertByName(execution.alertName)">{{ execution.alertName }}</button><small>{{ dynamic(execution.templateNameKey) }}</small></td>
                 <td><span class="badge" [class.badge--warn]="execution.status === 'WARN'" [class.badge--error]="execution.status === 'ERROR'">{{ execution.status }}</span></td>
+                <td>
+                  <strong>{{ execution.trigger || '—' }}</strong>
+                  @if (execution.trigger === 'MANUAL' && execution.triggeredBy) { <small>{{ execution.triggeredBy }}</small> }
+                </td>
+                <td>
+                  @if (execution.parentPipeExecutionId) {
+                    <strong>{{ execution.parentStepKey || '—' }}</strong>
+                    <small><code>{{ execution.parentPipeExecutionId }}</code></small>
+                  } @else if (execution.parentHookInvocationId) {
+                    <strong>{{ execution.parentHookName || '—' }}</strong>
+                    <small><code>{{ execution.parentHookInvocationId }}</code></small>
+                  } @else { <span>—</span> }
+                </td>
                 <td>{{ execution.durationMillis }} ms</td>
                 <td class="execution-message">{{ statusMessage(execution) }}</td>
               </tr>

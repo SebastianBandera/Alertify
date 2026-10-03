@@ -128,6 +128,7 @@ const TRIGGER_LABEL_KEYS: Readonly<Record<ExecutionTrigger, TranslationKey>> = {
   MANUAL: 'dashboard.detail.trigger.MANUAL',
   HOOK: 'dashboard.detail.trigger.HOOK',
   SMART: 'dashboard.detail.trigger.SMART',
+  PIPE: 'dashboard.detail.trigger.PIPE',
 };
 
 @Component({

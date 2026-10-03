@@ -59,7 +59,15 @@ public class AlertExecutionPersistenceService {
     }
 
     public void registerTrigger(UUID executionId, AlertExecutionTrigger trigger, String triggeredBy) {
-        triggerContexts.put(executionId, new TriggerContext(trigger, triggeredBy));
+        triggerContexts.put(executionId, new TriggerContext(trigger, triggeredBy, null, null, null, null));
+    }
+
+    public void registerPipeParent(UUID executionId, String triggeredBy, UUID parentPipeExecutionId, String parentStepKey) {
+        triggerContexts.put(executionId, new TriggerContext(AlertExecutionTrigger.PIPE, triggeredBy, parentPipeExecutionId, parentStepKey, null, null));
+    }
+
+    public void registerHookParent(UUID executionId, String triggeredBy, UUID parentHookInvocationId, String parentHookName) {
+        triggerContexts.put(executionId, new TriggerContext(AlertExecutionTrigger.HOOK, triggeredBy, null, null, parentHookInvocationId, parentHookName));
     }
 
     public void clearTrigger(UUID executionId) { triggerContexts.remove(executionId); }
@@ -87,6 +95,7 @@ public class AlertExecutionPersistenceService {
             );
         }
 
+        recordParent(execution, context);
         executionRepository.save(execution);
         AlertState state = stateRepository.findById(alertId).orElseThrow(() -> new IllegalStateException("Alert state " + alertId + " was not found"));
         state.replaceState(SecretValueSanitizer.sanitize(result.getState(), secretValues(prepared)));
@@ -131,6 +140,7 @@ public class AlertExecutionPersistenceService {
                 executionId, alert(alertId), worker, timestamps.startedAt(), timestamps.workStartedAt(), timestamps.finishedAt(),
                 errorType, errorMessage, errorStackTrace, trigger(context), actor(context)
         );
+        recordParent(execution, context);
         executionRepository.save(execution);
         logResult(execution);
     }
@@ -253,5 +263,12 @@ public class AlertExecutionPersistenceService {
 
     private static AlertExecutionTrigger trigger(TriggerContext context) { return context == null ? null : context.trigger(); }
     private static String actor(TriggerContext context) { return context == null ? null : context.triggeredBy(); }
-    private record TriggerContext(AlertExecutionTrigger trigger, String triggeredBy) { }
+    private static void recordParent(AlertExecution execution, TriggerContext context) {
+        if (context != null) {
+            execution.recordPipeParent(context.parentPipeExecutionId(), context.parentStepKey());
+            execution.recordHookParent(context.parentHookInvocationId(), context.parentHookName());
+        }
+    }
+
+    private record TriggerContext(AlertExecutionTrigger trigger, String triggeredBy, UUID parentPipeExecutionId, String parentStepKey, UUID parentHookInvocationId, String parentHookName) { }
 }

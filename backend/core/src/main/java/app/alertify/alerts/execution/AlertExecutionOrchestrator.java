@@ -151,6 +151,18 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
     }
 
     public AlertHookExecution executeHook(long alertId, String alertName, boolean allowConcurrentExecutions, Duration busyWaitTimeout, String triggeredBy, Runnable waitingCallback, Runnable acquiredCallback) {
+        return executeHook(alertId, alertName, allowConcurrentExecutions, busyWaitTimeout, triggeredBy, waitingCallback, acquiredCallback, null, null);
+    }
+
+    public AlertHookExecution executeHook(long alertId, String alertName, boolean allowConcurrentExecutions, Duration busyWaitTimeout, String triggeredBy, Runnable waitingCallback, Runnable acquiredCallback, UUID parentHookInvocationId, String parentHookName) {
+        return executeTriggered(alertId, alertName, allowConcurrentExecutions, busyWaitTimeout, triggeredBy, waitingCallback, acquiredCallback, AlertExecutionTrigger.HOOK, null, null, parentHookInvocationId, parentHookName);
+    }
+
+    public AlertHookExecution executePipe(long alertId, String alertName, boolean allowConcurrentExecutions, Duration busyWaitTimeout, String triggeredBy, Runnable waitingCallback, Runnable acquiredCallback, UUID parentPipeExecutionId, String parentStepKey) {
+        return executeTriggered(alertId, alertName, allowConcurrentExecutions, busyWaitTimeout, triggeredBy, waitingCallback, acquiredCallback, AlertExecutionTrigger.PIPE, parentPipeExecutionId, parentStepKey, null, null);
+    }
+
+    private AlertHookExecution executeTriggered(long alertId, String alertName, boolean allowConcurrentExecutions, Duration busyWaitTimeout, String triggeredBy, Runnable waitingCallback, Runnable acquiredCallback, AlertExecutionTrigger source, UUID parentPipeExecutionId, String parentStepKey, UUID parentHookInvocationId, String parentHookName) {
         if (maintenanceModeService.isActive())
             return new AlertHookExecution(null, null, false, false, true);
 
@@ -169,8 +181,8 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
 
         runCallback(acquiredCallback);
         UUID executionId = UUID.randomUUID();
-        eventLogger.success("ALERT_EXECUTION_TRIGGERED", data(alertId, alertName, AlertExecutionTrigger.HOOK, triggeredBy));
-        AlertExecutionStatus status = execute(alertId, AlertExecutionTrigger.HOOK, triggeredBy, executionId, null);
+        eventLogger.success("ALERT_EXECUTION_TRIGGERED", data(alertId, alertName, source, triggeredBy));
+        AlertExecutionStatus status = execute(alertId, source, triggeredBy, executionId, null, parentPipeExecutionId, parentStepKey, parentHookInvocationId, parentHookName);
         return new AlertHookExecution(status == null ? null : executionId, status, status == null, false, false);
     }
 
@@ -192,6 +204,10 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
     }
 
     private AlertExecutionStatus execute(long alertId, AlertExecutionTrigger source, String triggeredBy, UUID executionId, WorkerReservation preReservedWorker) {
+        return execute(alertId, source, triggeredBy, executionId, preReservedWorker, null, null, null, null);
+    }
+
+    private AlertExecutionStatus execute(long alertId, AlertExecutionTrigger source, String triggeredBy, UUID executionId, WorkerReservation preReservedWorker, UUID parentPipeExecutionId, String parentStepKey, UUID parentHookInvocationId, String parentHookName) {
         Instant startedAt = Instant.now();
         WorkerEndpoint endpoint = null;
         String workerName = null;
@@ -199,6 +215,12 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
         PreparedAlertExecution execution = null;
         Instant deadline = startedAt.plus(properties.execution().timeout());
         persistenceService.registerTrigger(executionId, source, triggeredBy);
+        if (parentPipeExecutionId != null)
+            persistenceService.registerPipeParent(executionId, triggeredBy, parentPipeExecutionId, parentStepKey);
+
+        if (parentHookInvocationId != null)
+            persistenceService.registerHookParent(executionId, triggeredBy, parentHookInvocationId, parentHookName);
+
         try {
             // A manual run also covers alerts that are currently disabled.
             execution = preparationService

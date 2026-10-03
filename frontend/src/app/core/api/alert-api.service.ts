@@ -157,8 +157,12 @@ export interface AlertExecution {
   readonly templateId: number;
   readonly templateNameKey: string;
   readonly status: AlertExecutionStatus;
-  readonly trigger: 'CRON' | 'MANUAL' | 'HOOK' | 'SMART' | null;
+  readonly trigger: 'CRON' | 'MANUAL' | 'HOOK' | 'SMART' | 'PIPE' | null;
   readonly triggeredBy: string | null;
+  readonly parentPipeExecutionId: string | null;
+  readonly parentStepKey: string | null;
+  readonly parentHookInvocationId: string | null;
+  readonly parentHookName: string | null;
   readonly startedAt: string;
   readonly workStartedAt: string;
   readonly finishedAt: string;

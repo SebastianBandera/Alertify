@@ -71,10 +71,11 @@ class DashboardEventPublisherTest {
     @Test
     void viewersReceiveTheTileWithoutInternalDiagnostics() {
         Instant at = Instant.parse("2026-09-24T12:00:00Z");
+        UUID hookInvocationId = UUID.randomUUID();
         AlertExecutionResponse execution = new AlertExecutionResponse(
                 1L, UUID.randomUUID(), 1L, "Alert", 2L, "template.name", AlertExecutionStatus.ERROR,
-                AlertExecutionTrigger.CRON, null, at, at, at, 0, 0, 0, null, "example.Failure", "internal detail",
-                "worker-standard-2", "172.18.0.4", 9090, UUID.randomUUID()
+                AlertExecutionTrigger.HOOK, "hook:" + hookInvocationId, at, at, at, 0, 0, 0, null, "example.Failure", "internal detail",
+                "worker-standard-2", "172.18.0.4", 9090, UUID.randomUUID(), null, null, hookInvocationId, "Snapshot hook"
         );
         DashboardCardResponse card = new DashboardCardResponse(null, execution, null, null, null, 10, null);
         when(eventPublisher.hasAuthenticatedSessions()).thenReturn(true);
@@ -91,6 +92,10 @@ class DashboardEventPublisherTest {
         assertThat(card.forViewer().lastExecution().workerPort()).isNull();
         assertThat(card.forViewer().lastExecution().errorMessage()).isNull();
         assertThat(card.forViewer().lastExecution().workerName()).isEqualTo("worker-standard-2");
+        assertThat(card.forViewer().lastExecution().parentHookInvocationId()).isEqualTo(hookInvocationId);
+        assertThat(card.forViewer().lastExecution().parentHookName()).isEqualTo("Snapshot hook");
+        assertThat(execution.withoutWorkerAddress().parentHookInvocationId()).isEqualTo(hookInvocationId);
+        assertThat(execution.withoutWorkerAddress().parentHookName()).isEqualTo("Snapshot hook");
     }
 
     @Test

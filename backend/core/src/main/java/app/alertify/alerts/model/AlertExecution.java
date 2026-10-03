@@ -86,6 +86,40 @@ public class AlertExecution {
     @Column(name = "triggered_by", columnDefinition = "text", updatable = false)
     private String triggeredBy;
 
+    @Column(name = "parent_pipe_execution_id", updatable = false)
+    private UUID parentPipeExecutionId;
+
+    @Column(name = "parent_step_key", columnDefinition = "text", updatable = false)
+    private String parentStepKey;
+
+    @Column(name = "parent_hook_invocation_id", updatable = false)
+    private UUID parentHookInvocationId;
+
+    @Column(name = "parent_hook_name", columnDefinition = "text", updatable = false)
+    private String parentHookName;
+
+    public void recordPipeParent(UUID executionId, String stepKey) {
+        if ((executionId == null) != (stepKey == null) || executionId != null && (trigger != AlertExecutionTrigger.PIPE || stepKey.isBlank() || parentHookInvocationId != null))
+            throw new IllegalArgumentException("Pipe parent requires PIPE origin and a step key");
+
+        parentPipeExecutionId = executionId;
+        parentStepKey = stepKey;
+    }
+
+    public UUID getParentPipeExecutionId() { return parentPipeExecutionId; }
+    public String getParentStepKey() { return parentStepKey; }
+
+    public void recordHookParent(UUID invocationId, String hookName) {
+        if ((invocationId == null) != (hookName == null) || invocationId != null && (trigger != AlertExecutionTrigger.HOOK || hookName.isBlank() || parentPipeExecutionId != null))
+            throw new IllegalArgumentException("Hook parent requires HOOK origin and a hook name");
+
+        parentHookInvocationId = invocationId;
+        parentHookName = hookName;
+    }
+
+    public UUID getParentHookInvocationId() { return parentHookInvocationId; }
+    public String getParentHookName() { return parentHookName; }
+
     protected AlertExecution() {
     }
 

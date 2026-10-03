@@ -100,7 +100,7 @@ public class HookCoordinator implements AutoCloseable {
     private void parallel(HookInvocation invocation) throws InterruptedException, ExecutionException {
         List<Future<TargetResult>> results = new ArrayList<>();
         for (HookInvocationTarget target : invocation.getTargets())
-            results.add(executor.submit(() -> executeSafely(target, invocation.getInvocationId())));
+            results.add(executor.submit(() -> executeSafely(target, invocation.getInvocationId(), invocation.getHookName())));
 
         ExecutionException failure = null;
         for (Future<TargetResult> result : results) {
@@ -128,7 +128,7 @@ public class HookCoordinator implements AutoCloseable {
                 continue;
             }
 
-            TargetResult result = executeSafely(target, invocation.getInvocationId());
+            TargetResult result = executeSafely(target, invocation.getInvocationId(), invocation.getHookName());
             if (result.disabled())
                 continue;
 
@@ -136,7 +136,7 @@ public class HookCoordinator implements AutoCloseable {
         }
     }
 
-    private TargetResult execute(HookInvocationTarget target, UUID invocationId) {
+    private TargetResult execute(HookInvocationTarget target, UUID invocationId, String hookName) {
         String actor = "hook:" + invocationId;
         if (target.getTargetType() == HookTargetType.ALERT) {
             Alert alert = alertRepository.findById(target.getResourceId()).orElse(null);
@@ -149,7 +149,7 @@ public class HookCoordinator implements AutoCloseable {
                     alert.getId(), target.getResourceName(), alert.isConcurrentExecutionAllowed(),
                     Duration.ofMillis(target.getBusyWaitTimeoutMillis()), actor,
                     () -> persistence.transitionTarget(target.getId(), HookTargetStatus.WAITING_ALERT),
-                    () -> persistence.transitionTarget(target.getId(), HookTargetStatus.RUNNING)
+                    () -> persistence.transitionTarget(target.getId(), HookTargetStatus.RUNNING), invocationId, hookName
             );
             if (execution.busyTimeout()) {
                 persistence.completeTarget(target.getId(), HookTargetStatus.ALERT_BUSY_TIMEOUT, HookOutcome.ERROR, null, "ALERT_BUSY_TIMEOUT");
@@ -237,9 +237,9 @@ public class HookCoordinator implements AutoCloseable {
         return new TargetResult(outcome, false);
     }
 
-    private TargetResult executeSafely(HookInvocationTarget target, UUID invocationId) {
+    private TargetResult executeSafely(HookInvocationTarget target, UUID invocationId, String hookName) {
         try {
-            return execute(target, invocationId);
+            return execute(target, invocationId, hookName);
         } catch (Throwable exception) {
             if (exception instanceof InterruptedException)
                 Thread.currentThread().interrupt();

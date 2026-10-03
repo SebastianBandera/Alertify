@@ -12,6 +12,8 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.ArgumentCaptor;
 
 import app.alertify.alerts.AlertExecutionValue;
@@ -137,5 +139,60 @@ class AlertExecutionPersistenceServiceTest {
 
     private static Timestamp timestamp(Instant value) {
         return Timestamp.newBuilder().setSeconds(value.getEpochSecond()).setNanos(value.getNano()).build();
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = WorkerExecutionStatus.class, names = {
+            "WORKER_EXECUTION_STATUS_SUCCESS", "WORKER_EXECUTION_STATUS_WARN", "WORKER_EXECUTION_STATUS_ERROR"
+    })
+    void preservesHookParentAcrossTerminalWorkerResults(WorkerExecutionStatus status) {
+        AlertRepository alerts = mock(AlertRepository.class);
+        AlertExecutionRepository executions = mock(AlertExecutionRepository.class);
+        AlertStateRepository states = mock(AlertStateRepository.class);
+        Alert alert = mock(Alert.class);
+        when(alerts.findById(2L)).thenReturn(Optional.of(alert));
+        when(states.findById(2L)).thenReturn(Optional.of(mock(AlertState.class)));
+        AlertExecutionPersistenceService service = new AlertExecutionPersistenceService(alerts, executions,
+                states, mock(ApplicationEventLogger.class), JsonMapper.builder().build(),
+                mock(WritableConfigurationService.class), mock(WritableSecretService.class));
+        UUID executionId = UUID.randomUUID();
+        UUID invocationId = UUID.randomUUID();
+        Instant now = Instant.now();
+        service.registerTrigger(executionId, AlertExecutionTrigger.HOOK, "hook:" + invocationId);
+        service.registerHookParent(executionId, "hook:" + invocationId, invocationId, "Hook at invocation");
+        AlertExecutionResult result = AlertExecutionResult.newBuilder().setStatus(status)
+                .setStartedAt(timestamp(now)).setWorkStartedAt(timestamp(now)).setFinishedAt(timestamp(now))
+                .setError(ExecutionError.newBuilder().setType("example.Failure")).build();
+
+        service.persistWorkerResult(2L, executionId, null, result, null);
+
+        ArgumentCaptor<AlertExecution> saved = ArgumentCaptor.forClass(AlertExecution.class);
+        verify(executions).save(saved.capture());
+        assertThat(saved.getValue().getTrigger()).isEqualTo(AlertExecutionTrigger.HOOK);
+        assertThat(saved.getValue().getParentHookInvocationId()).isEqualTo(invocationId);
+        assertThat(saved.getValue().getParentHookName()).isEqualTo("Hook at invocation");
+        assertThat(saved.getValue().getParentPipeExecutionId()).isNull();
+    }
+
+    @Test
+    void preservesHookParentWhenDispatchFailsLocally() {
+        AlertRepository alerts = mock(AlertRepository.class);
+        AlertExecutionRepository executions = mock(AlertExecutionRepository.class);
+        when(alerts.findById(2L)).thenReturn(Optional.of(mock(Alert.class)));
+        AlertExecutionPersistenceService service = new AlertExecutionPersistenceService(alerts, executions,
+                mock(AlertStateRepository.class), mock(ApplicationEventLogger.class), JsonMapper.builder().build(),
+                mock(WritableConfigurationService.class), mock(WritableSecretService.class));
+        UUID executionId = UUID.randomUUID();
+        UUID invocationId = UUID.randomUUID();
+        service.registerHookParent(executionId, "hook:" + invocationId, invocationId, "Hook before failure");
+
+        service.persistLocalFailure(2L, executionId, null, null, null, Instant.now(),
+                new IllegalStateException("No worker"), null);
+
+        ArgumentCaptor<AlertExecution> saved = ArgumentCaptor.forClass(AlertExecution.class);
+        verify(executions).save(saved.capture());
+        assertThat(saved.getValue().getStatus()).isEqualTo(AlertExecutionStatus.ERROR);
+        assertThat(saved.getValue().getParentHookInvocationId()).isEqualTo(invocationId);
+        assertThat(saved.getValue().getParentHookName()).isEqualTo("Hook before failure");
     }
 }

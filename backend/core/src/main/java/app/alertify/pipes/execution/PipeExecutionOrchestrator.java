@@ -232,8 +232,8 @@ public class PipeExecutionOrchestrator implements AutoCloseable {
         Duration remaining = Duration.between(Instant.now(), deadline);
         if (remaining.compareTo(timeout) < 0)
             timeout = remaining;
-        var execution = alertOrchestrator.executeHook(step.getAlert().getId(), step.getAlert().getName(),
-                step.getAlert().isConcurrentExecutionAllowed(), timeout, "pipe:" + pipeExecutionId, () -> { }, () -> { });
+        var execution = alertOrchestrator.executePipe(step.getAlert().getId(), step.getAlert().getName(),
+                step.getAlert().isConcurrentExecutionAllowed(), timeout, "pipe:" + pipeExecutionId, () -> { }, () -> { }, pipeExecutionId, step.getStepKey());
         if (execution.busyTimeout())
             return new StepRun(PipeOutcome.ERROR, PipeStepStatus.ERROR, null, "ALERT_BUSY_TIMEOUT");
         if (execution.disabled())
