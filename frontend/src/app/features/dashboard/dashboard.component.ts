@@ -667,14 +667,29 @@ export class DashboardComponent {
 
   private matchesSearch(card: DashboardAlertCard, searchTerms: readonly string[]): boolean {
     if (searchTerms.length === 0) return true;
+    const searchableText = this.normalizeSearch(this.searchableCardText(card));
+    return searchTerms.every((term) => searchableText.includes(term));
+  }
+
+  private searchableCardText(card: DashboardAlertCard): string {
     const execution = card.lastExecution;
-    const searchableText = this.normalizeSearch([
+    const stability = this.stability(card);
+    const mutedState = this.mute.isSilenced(card.alert.id)
+      ? this.localization.translate('dashboard.card.silenced')
+      : this.mute.isIgnored(card.alert.id) ? this.localization.translate('dashboard.card.ignored') : '';
+    return [
       card.alert.name,
-      execution === null ? '' : this.alertMessages.tileMessage(card.alert.templateKey, execution),
+      this.dynamic(card.alert.templateNameKey),
+      ...card.alert.tags.map((tag) => tag.name),
+      this.statusLabel(card),
+      stability?.label ?? '',
+      execution === null ? this.localization.translate('dashboard.card.neverExecuted') : this.alertMessages.tileMessage(card.alert.templateKey, execution),
       execution?.errorMessage ?? '',
       execution?.errorType ?? '',
-    ].join(' '));
-    return searchTerms.every((term) => searchableText.includes(term));
+      card.runningSince ? this.localization.translate('dashboard.card.running') : '',
+      card.alert.enabled ? '' : this.localization.translate('dashboard.card.disabled'),
+      mutedState,
+    ].join(' ');
   }
 
   private normalizeSearch(value: string): string {

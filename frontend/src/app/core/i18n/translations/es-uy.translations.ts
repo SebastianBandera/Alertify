@@ -59,7 +59,7 @@ export const ES_UY_TRANSLATIONS = {
   'dashboard.ribbon.advanced': 'Avanzado',
   'dashboard.ribbon.search': 'Buscar alertas en el tablero',
   'dashboard.ribbon.searchClose': 'Cerrar búsqueda del tablero',
-  'dashboard.ribbon.searchPlaceholder': 'Buscar por título o último resultado',
+  'dashboard.ribbon.searchPlaceholder': 'Buscar por nombre, tipo, tag, estado o resultado',
   'dashboard.ribbon.ungroupGreens': 'Desagrupar verdes',
   'dashboard.ribbon.minified': 'Minificado',
   'dashboard.ribbon.flatGreens': 'Verdes sin gradiente',

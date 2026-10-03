@@ -59,7 +59,7 @@ export const EN_TRANSLATIONS = {
   'dashboard.ribbon.advanced': 'Advanced',
   'dashboard.ribbon.search': 'Search dashboard alerts',
   'dashboard.ribbon.searchClose': 'Close dashboard search',
-  'dashboard.ribbon.searchPlaceholder': 'Search by title or latest result',
+  'dashboard.ribbon.searchPlaceholder': 'Search by name, type, tag, status, or result',
   'dashboard.ribbon.ungroupGreens': 'Ungroup greens',
   'dashboard.ribbon.minified': 'Minified',
   'dashboard.ribbon.flatGreens': 'Greens without gradient',
