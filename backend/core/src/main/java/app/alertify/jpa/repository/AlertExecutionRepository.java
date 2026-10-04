@@ -23,6 +23,10 @@ public interface AlertExecutionRepository extends JpaRepository<AlertExecution, 
     @Query("select execution from AlertExecution execution where execution.id = :id")
     Optional<AlertExecution> lockById(@Param("id") Long id);
 
+    @EntityGraph(attributePaths = { "alert", "alert.template" })
+    @Query("select execution from AlertExecution execution where execution.alert.id = :alertId and execution.closed = false and execution.finishedAt >= :from and execution.finishedAt <= :to")
+    List<AlertExecution> chartHistory(@Param("alertId") long alertId, @Param("from") Instant from, @Param("to") Instant to, Pageable pageable);
+
     long countByAlert_Id(Long alertId);
 
     boolean existsByAlert_IdAndStatusAndFinishedAtGreaterThanEqual(Long alertId, AlertExecutionStatus status, Instant finishedAt);

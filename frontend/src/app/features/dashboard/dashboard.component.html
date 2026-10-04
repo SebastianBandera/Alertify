@@ -358,6 +358,7 @@
       </header>
 
       <div class="modal__body">
+        <app-alert-chart [card]="card" />
         <section class="detail-section">
           <h3>{{ localization.translate('dashboard.detail.definition') }}</h3>
           @if (card.alert.description) {

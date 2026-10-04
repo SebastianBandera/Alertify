@@ -322,6 +322,11 @@ export class AlertApiService {
     return this.request(`/api/alert-executions?${params.toString()}`);
   }
 
+  async chartExecutions(alertId: number, from: string, to: string): Promise<readonly AlertExecution[]> {
+    const params = new URLSearchParams({ from, to, limit: '2000' });
+    return this.request(`/api/dashboard/alerts/${alertId}/chart-executions?${params}`);
+  }
+
   async createAlert(request: AlertWriteRequest): Promise<Alert> {
     return this.request('/api/alerts', { method: 'POST', body: JSON.stringify(request) });
   }

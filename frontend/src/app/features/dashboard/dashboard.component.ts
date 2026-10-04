@@ -26,6 +26,7 @@ import { SessionActionsService } from '../../core/auth/session-actions.service';
 import { LocalizationService } from '../../core/i18n/localization.service';
 import { TranslationKey } from '../../core/i18n/localization.types';
 import { DragScrollDirective } from '../../shared/drag-scroll/drag-scroll.directive';
+import { AlertChartComponent } from './alert-chart.component';
 import { DashboardAcknowledgementService } from './dashboard-acknowledgement.service';
 import {
   compareDashboardCards,
@@ -133,7 +134,7 @@ const TRIGGER_LABEL_KEYS: Readonly<Record<ExecutionTrigger, TranslationKey>> = {
 
 @Component({
   selector: 'app-dashboard',
-  imports: [DatePipe, FormsModule, NgTemplateOutlet, DragScrollDirective, DashboardRibbonComponent, DashboardConnectionOverlayComponent],
+  imports: [AlertChartComponent, DatePipe, FormsModule, NgTemplateOutlet, DragScrollDirective, DashboardRibbonComponent, DashboardConnectionOverlayComponent],
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
