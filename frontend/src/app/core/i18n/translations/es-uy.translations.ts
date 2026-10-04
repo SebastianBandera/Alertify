@@ -89,6 +89,7 @@ export const ES_UY_TRANSLATIONS = {
   'dashboard.menu.silence': 'Silenciar hasta que se recupere',
   'dashboard.menu.unsilence': 'Quitar silencio',
   'dashboard.menu.history': 'Ver historial',
+  'dashboard.menu.definition': 'Ver definición',
   'dashboard.disconnected.title': 'Sin conexión con el servidor',
   'dashboard.disconnected.hint': 'Reintentando… Hacé clic para ver los últimos datos cargados.',
   'dashboard.pending.WARN': 'Advertencia sin revisar · hace {elapsed}',

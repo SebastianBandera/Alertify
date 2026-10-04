@@ -319,6 +319,7 @@ export type TranslationKey =
   | 'dashboard.menu.silence'
   | 'dashboard.menu.unsilence'
   | 'dashboard.menu.history'
+  | 'dashboard.menu.definition'
   | 'dashboard.disconnected.title'
   | 'dashboard.disconnected.hint'
   | 'dashboard.pending.WARN'

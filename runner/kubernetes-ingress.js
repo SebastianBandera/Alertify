@@ -34,13 +34,23 @@ function createIngressResources(environment, namespace, templates, renderTemplat
     '--providers.kubernetesingress=true', `--providers.kubernetesingress.namespaces=${namespace}`,
     `--providers.kubernetesingress.ingressclass=${options.ingressClass}`,
     `--providers.kubernetesingress.ingressendpoint.publishedservice=${namespace}/traefik`,
-    '--providers.file.filename=/etc/traefik/dynamic/config.yaml', '--api.dashboard=false',
+    '--providers.file.directory=/etc/traefik/dynamic', '--providers.file.watch=true', '--api.dashboard=false',
     '--global.checknewversion=false', '--global.sendanonymoususage=false',
   ];
   if (secure) args.push('--entrypoints.web.http.redirections.entrypoint.scheme=https',
     `--entrypoints.web.http.redirections.entrypoint.to=:${value('PUBLIC_PORT') || '443'}`);
-  const volumes = [{ name: 'dynamic', configMap: { name: 'traefik-config' } }];
-  const volumeMounts = [{ name: 'dynamic', mountPath: '/etc/traefik/dynamic', readOnly: true }];
+  // Local routes and leaf certificates are owned outside the Alertify deployment.
+  const volumes = [
+    { name: 'dynamic', projected: { sources: [
+      { configMap: { name: 'traefik-config' } },
+      { configMap: { name: 'traefik-custom-routes', optional: true } },
+    ] } },
+    { name: 'custom-tls', secret: { secretName: 'traefik-custom-tls', optional: true, defaultMode: 292 } },
+  ];
+  const volumeMounts = [
+    { name: 'dynamic', mountPath: '/etc/traefik/dynamic', readOnly: true },
+    { name: 'custom-tls', mountPath: '/etc/traefik/custom-tls', readOnly: true },
+  ];
   if (secure) {
     volumes.push({ name: 'publisher-ca', secret: { secretName: 'traefik-publisher-ca', defaultMode: 292 } });
     volumeMounts.push({ name: 'publisher-ca', mountPath: '/etc/traefik/ca', readOnly: true });

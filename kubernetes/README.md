@@ -96,3 +96,12 @@ Kubernetes must remain running for local publication.
 With local public URL verification enabled, the runner waits for the anonymous
 API to return 401 or 403 over trusted TLS before reporting success. Verify fresh
 frontend login and WebSocket traffic when changing publication settings.
+
+The file provider also reads an optional, separately managed ConfigMap named
+`traefik-custom-routes` in the application namespace. Give each YAML/TOML key
+a distinct filename; `config.yaml` is reserved for the runner. An optional
+Secret named `traefik-custom-tls` supplies leaf certificates and keys under
+`/etc/traefik/custom-tls`. Never put a private CA key in that Secret. Routes can
+reference services by their cluster DNS names without broadening the Ingress
+controller's namespace permissions. The runner neither creates nor overwrites
+these custom resources, so local host routes survive subsequent deployments.

@@ -142,6 +142,12 @@ public class AlertManagementService {
     }
 
     @Transactional(readOnly = true)
+    public AlertResponse get(Long id) {
+        Alert alert = alertRepository.findById(id).orElseThrow(() -> notFound(ALERT, id));
+        return AlertMapper.toAlert(alert, parameterValueRepository.findAllByAlertIdOrdered(id));
+    }
+
+    @Transactional(readOnly = true)
     public AlertStateResponse state(Long alertId) {
         if (!alertRepository.existsById(alertId))
             throw notFound(ALERT, alertId);

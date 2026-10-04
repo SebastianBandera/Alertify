@@ -69,6 +69,11 @@ public class AlertController {
         );
     }
 
+    @GetMapping("/{id}")
+    public AlertResponse get(@PathVariable @Positive Long id) {
+        return service.get(id);
+    }
+
     @GetMapping(value = "/export", produces = "text/csv")
     public ResponseEntity<byte[]> exportCsv() {
         byte[] csv = csvService.exportCsv();

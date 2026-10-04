@@ -431,6 +431,11 @@ export class DashboardComponent {
     void this.router.navigate(['/alerts'], { queryParams: { tab: 'history', alertId: card.alert.id } });
   }
 
+  protected openCardDefinition(card: DashboardAlertCard): void {
+    this.closeCardMenu();
+    void this.router.navigate(['/alerts'], { queryParams: { tab: 'alerts', editAlertId: card.alert.id } });
+  }
+
   private showNotice(message: string, error: boolean): void {
     this.clearNoticeTimer();
     this.notice.set({ message, error });

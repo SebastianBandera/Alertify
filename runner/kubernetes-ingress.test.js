@@ -25,12 +25,26 @@ test('Ingress routes root and contextual paths without rewriting and verifies pu
   const pod = find('Deployment', 'traefik').spec.template.spec;
   assert.equal(pod.containers[0].args.includes('--providers.kubernetesingress.namespaces=demo'), true);
   assert.equal(pod.containers[0].args.includes('--api.dashboard=false'), true);
-  assert.deepEqual(pod.volumes.filter((volume) => volume.secret).map((volume) => volume.secret.secretName), ['traefik-publisher-ca']);
+  assert.deepEqual(pod.volumes.filter((volume) => volume.secret).map((volume) => volume.secret.secretName), ['traefik-custom-tls', 'traefik-publisher-ca']);
   const transport = JSON.parse(find('ConfigMap', 'traefik-config').data['config.yaml']).http.serversTransports.publisher;
   assert.equal(transport.serverName, 'alertify.dev');
   assert.equal(transport.insecureSkipVerify, undefined);
   assert.equal(find('Role', 'traefik').metadata.namespace, 'demo');
   assert.equal(find('ClusterRole', 'demo-traefik').rules.some((rule) => rule.resources.includes('secrets')), false);
+});
+
+test('local routes and leaf certificates remain independently owned across deployments', () => {
+  const resources = createIngressResources(environment(), 'demo', templates, renderTemplate);
+  const pod = resources.find((resource) => resource.kind === 'Deployment').spec.template.spec;
+  const dynamic = pod.volumes.find((volume) => volume.name === 'dynamic');
+  assert.deepEqual(dynamic.projected.sources, [
+    { configMap: { name: 'traefik-config' } },
+    { configMap: { name: 'traefik-custom-routes', optional: true } },
+  ]);
+  assert.equal(pod.volumes.find((volume) => volume.name === 'custom-tls').secret.optional, true);
+  assert.equal(pod.containers[0].args.includes('--providers.file.directory=/etc/traefik/dynamic'), true);
+  assert.equal(pod.containers[0].args.some((arg) => arg.startsWith('--providers.file.filename=')), false);
+  assert.equal(resources.some((resource) => ['traefik-custom-routes', 'traefik-custom-tls'].includes(resource.metadata.name)), false);
 });
 
 test('Ingress preserves localhost HTTP and supports custom class, image and public ports', () => {

@@ -89,6 +89,7 @@ export const EN_TRANSLATIONS = {
   'dashboard.menu.silence': 'Silence until it recovers',
   'dashboard.menu.unsilence': 'Unsilence',
   'dashboard.menu.history': 'View history',
+  'dashboard.menu.definition': 'View definition',
   'dashboard.disconnected.title': 'Connection to the server lost',
   'dashboard.disconnected.hint': 'Reconnecting… Click to view the last loaded data.',
   'dashboard.pending.WARN': 'Unreviewed warning · {elapsed} ago',

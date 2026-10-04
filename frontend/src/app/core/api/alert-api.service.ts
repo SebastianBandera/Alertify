@@ -226,6 +226,10 @@ export class AlertApiService {
     return this.request(`/api/alerts?${params.toString()}`);
   }
 
+  async getAlert(id: number): Promise<Alert> {
+    return this.request(`/api/alerts/${id}`);
+  }
+
   async alertDeletionImpact(id: number): Promise<AlertDeletionImpact> {
     return this.request(`/api/alerts/${id}/deletion-impact`);
   }

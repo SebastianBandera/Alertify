@@ -285,12 +285,14 @@ export class AlertsComponent implements OnInit {
     this.destroyRef.onDestroy(() => this.clearNoticeTimer());
     const requestedTab = this.route.snapshot.queryParamMap.get('tab');
     const requestedExecutionId = this.route.snapshot.queryParamMap.get('executionId');
+    const requestedEditAlertId = Number(this.route.snapshot.queryParamMap.get('editAlertId'));
+    const hasRequestedDefinition = Number.isSafeInteger(requestedEditAlertId) && requestedEditAlertId > 0;
     /* The dashboard card menu links here with ?alertId=<id> to show that alert's history. */
     const requestedAlertId = Number(this.route.snapshot.queryParamMap.get('alertId'));
     const hasRequestedAlert = Number.isInteger(requestedAlertId) && requestedAlertId > 0;
     if (hasRequestedAlert) this.historyAlertId.set(requestedAlertId);
     this.historyExecutionId.set(requestedExecutionId);
-    this.activeTab.set(requestedExecutionId || hasRequestedAlert ? 'history' : alertTab(requestedTab));
+    this.activeTab.set(hasRequestedDefinition ? 'alerts' : requestedExecutionId || hasRequestedAlert ? 'history' : alertTab(requestedTab));
     this.route.queryParamMap
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((parameters) => {
@@ -300,10 +302,10 @@ export class AlertsComponent implements OnInit {
         this.activeTab.set(tab);
         void this.loadTab(tab);
       });
-    if (requestedTab !== this.activeTab() || hasRequestedAlert) {
+    if (requestedTab !== this.activeTab() || hasRequestedAlert || this.route.snapshot.queryParamMap.has('editAlertId')) {
       void this.router.navigate([], {
         relativeTo: this.route,
-        queryParams: { tab: this.activeTab(), alertId: null },
+        queryParams: { tab: this.activeTab(), alertId: null, editAlertId: null },
         queryParamsHandling: 'merge',
         replaceUrl: true,
       });
@@ -311,6 +313,14 @@ export class AlertsComponent implements OnInit {
 
     try {
       await Promise.all([this.loadAlerts(), this.loadTemplates(), this.loadTags(), this.loadBindings(), this.loadHistory()]);
+      if (hasRequestedDefinition) {
+        try {
+          const alert = await this.api.getAlert(requestedEditAlertId);
+          if (!this.destroyRef.destroyed) this.openEdit(alert);
+        } catch (error) {
+          if (!this.destroyRef.destroyed) this.error.set(this.errorMessage(error));
+        }
+      }
     } finally {
       this.countsLoaded.set(true);
     }
