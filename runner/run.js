@@ -1453,10 +1453,14 @@ function cleanupDockerResources(projectDirectory, imagePatterns = []) {
 
 function printHelp() {
   console.log(`Usage: run.bat [options]\n       ./run.sh [options]\n\n` +
-    '  No options          Show an interactive checklist to choose the options below.\n' +
+    '  No options          Choose Compose, Kubernetes deployment, or Kubernetes validation.\n' +
+    '                     Compose then shows its interactive component checklist.\n' +
     '  --non-interactive  Skip the interactive checklist; required in automation when every\n' +
     '                     other option is also omitted.\n' +
     '  --configure-only   Reconcile .env and show the plan without starting services.\n' +
+    '  --deploy-kubernetes  Build and deploy the complete application with local kubectl.\n' +
+    '  --kubeconfig=PATH    Select kubeconfig (Kubernetes mode only).\n' +
+    '  --kube-context=NAME  Select context (Kubernetes mode only).\n' +
     '  --skip-keycloak    Do not rebuild or restart Keycloak or its local database.\n' +
     '  --skip-redis       Do not rebuild or restart the local Redis service.\n' +
     '  --skip-database    Do not rebuild or restart the local application database.\n' +
@@ -1471,7 +1475,8 @@ function printHelp() {
     '                     semicolon-separated reference globs are also preserved.\n' +
     '                     Example: "--cleanup-docker-preserve-images=maven:*;mcr.microsoft.com/playwright:*;monitoring-*"\n' +
     '  --help             Show this help.\n\n' +
-    '  Passing any option above without --non-interactive runs non-interactively, exactly as\n' +
+    '  Kubernetes mode asks before applying unless --non-interactive is passed.\n' +
+    '  Passing any Compose option above without --non-interactive runs non-interactively, exactly as\n' +
     '  if --non-interactive had also been passed.\n\n' +
     '  --replace-stale-runner  Handled by run.bat/run.sh before this program starts: automatically\n' +
     '                          removes a leftover runner container from a previous run without\n' +
@@ -1629,6 +1634,7 @@ async function main(argv = process.argv.slice(2), projectDirectory = path.resolv
     '--non-interactive',
     '--replace-stale-runner',
     '--configure-only',
+    '--deploy-kubernetes',
     '--skip-keycloak',
     '--skip-redis',
     '--skip-database',
@@ -1639,7 +1645,7 @@ async function main(argv = process.argv.slice(2), projectDirectory = path.resolv
     '--skip-worker-playwright',
     '--help',
   ]);
-  const unknown = argv.filter((argument) => !allowed.has(argument) && !argument.startsWith('--cleanup-docker-preserve-images='));
+  const unknown = argv.filter((argument) => !allowed.has(argument) && !['--cleanup-docker-preserve-images=', '--kubeconfig=', '--kube-context='].some((prefix) => argument.startsWith(prefix)));
   if (unknown.length > 0) {
     throw new Error(`Unknown option: ${unknown.join(', ')}. Use --help to list the available options.`);
   }
@@ -1685,6 +1691,21 @@ async function main(argv = process.argv.slice(2), projectDirectory = path.resolv
   }
 
   const effectiveEnvironment = applyApplicationContext(result.environment);
+
+  if (argv.includes('--deploy-kubernetes')) {
+    const kubernetes = require('./kubernetes');
+    const options = kubernetes.parseOptions(argv);
+    const plan = buildPlan(effectiveEnvironment);
+    const privateKeyPartClassResult = ensurePrivateKeyPartClass(effectiveEnvironment, projectDirectory);
+    printPrivateKeyPartClassResult(privateKeyPartClassResult, projectDirectory);
+    await kubernetes.deploy(effectiveEnvironment, plan, options, projectDirectory, {
+      preparePublisherTlsCertificate, prepareGrpcCertificates,
+    });
+    return;
+  }
+  if (argv.some((argument) => argument.startsWith('--kubeconfig=') || argument.startsWith('--kube-context='))) {
+    throw new Error('--kubeconfig and --kube-context require --deploy-kubernetes.');
+  }
 
   let skipOptions;
   let configureOnlySelected;

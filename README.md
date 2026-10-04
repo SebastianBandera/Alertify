@@ -21,10 +21,16 @@ repository, then open a terminal in the project folder.
 sh ./run.sh
 ```
 
-The launcher opens an interactive checklist. **For your first run, leave every
-option unchecked and press Enter.** This starts the complete application.
-Use the arrow keys to move and Space to toggle an option when you need a different
-setup.
+The launcher first asks where to deploy: Docker Compose (the default), Kubernetes,
+or Kubernetes configuration validation. **For your first Compose run, press Enter
+to choose Compose, then leave every checklist option unchecked and press Enter.**
+This starts the complete application. Use the arrow keys to move and Space to
+toggle a checklist option when you need a different setup.
+
+Kubernetes selections require local Node.js 18+ and kubectl. The deployment option
+shows the target cluster and asks for confirmation before applying resources;
+configuration validation does not deploy. See
+[Local Kubernetes deployment](kubernetes/README.md) for requirements and settings.
 
 The first run downloads images and builds the application, so allow time for it
 to finish. The launcher creates `.env`, generates the initial credentials, and
