@@ -57,8 +57,6 @@ class AlertExecutionClosureJpaIntegrationTest {
     private EntityManager entityManager;
     private AlertExecutionClosureAuditRepository audits;
     private TransactionTemplate transactions;
-    private long originalTableOid;
-    private long originalFunctionOid;
 
     @BeforeAll
     void migrateAndInitializeJpa() throws Exception {
@@ -67,26 +65,29 @@ class AlertExecutionClosureJpaIntegrationTest {
                 environment.getOrDefault("ALERTIFY_AUDIT_TEST_DATABASE_USER", "postgres"),
                 environment.getOrDefault("ALERTIFY_AUDIT_TEST_DATABASE_PASSWORD", ""));
         jdbc = new JdbcTemplate(dataSource);
-        // Only the columns required by migration 4 and the closure state fixture are needed here.
-        jdbc.execute("""
-                CREATE SCHEMA core;
-                CREATE SCHEMA audit;
-                CREATE TABLE core.alert_executions (
-                    id bigint PRIMARY KEY, alert_id bigint NOT NULL, status varchar(16) NOT NULL,
-                    finished_at timestamptz NOT NULL
-                );
-                INSERT INTO core.alert_executions VALUES (-1, 3, 'WARN', current_timestamp);
-                """);
         Path migrations = Path.of(environment.get("ALERTIFY_AUDIT_TEST_MIGRATIONS"));
-        jdbc.execute(Files.readString(migrations.resolve("4.alert-execution-closure.sql")));
+        // Reject an existing schema before running the complete migration chain.
+        assertNull(jdbc.queryForObject("SELECT to_regnamespace('core')::text", String.class));
+        assertNull(jdbc.queryForObject("SELECT to_regnamespace('audit')::text", String.class));
+        assertNull(jdbc.queryForObject("SELECT to_regnamespace('secrets')::text", String.class));
+        jdbc.execute(Files.readString(migrations.resolve("1.initial.sql")));
+        jdbc.execute(Files.readString(migrations.resolve("2.smart-execution-once-per-interval.sql")));
+        jdbc.execute("""
+                INSERT INTO core.alert_templates (id, template_key, name_key, description_key, required_capability)
+                    VALUES (-1, 'test.ClosureAudit', 'test.name', 'test.description', 'STANDARD');
+                INSERT INTO core.alerts (id, alert_template_id, name, cron_expression, enabled)
+                    VALUES (3, -1, 'Closure audit fixture', '-', false);
+                """);
         jdbc.update("""
-                INSERT INTO core.alert_execution_closure_audit
+                INSERT INTO core.alert_executions (id, execution_id, alert_id, status, started_at, work_started_at, finished_at)
+                    VALUES (-1, ?, 3, 'WARN', current_timestamp, current_timestamp, current_timestamp)
+                """, HISTORICAL_EXECUTION);
+        jdbc.execute(Files.readString(migrations.resolve("3.alert-execution-origin.sql")));
+        jdbc.update("""
+                INSERT INTO audit.alert_execution_closure_audit
                     (id, execution_id, alert_id, closed, actor_subject, actor_name, note, changed_at)
                 VALUES (-1, ?, 3, true, 'historical-subject', 'historical-admin', 'retained', ?)
                 """, HISTORICAL_EXECUTION, java.time.OffsetDateTime.ofInstant(AT, java.time.ZoneOffset.UTC));
-        originalTableOid = jdbc.queryForObject("SELECT 'core.alert_execution_closure_audit'::regclass::oid::bigint", Long.class);
-        originalFunctionOid = jdbc.queryForObject("SELECT 'core.reject_closure_audit_mutation()'::regprocedure::oid::bigint", Long.class);
-        jdbc.execute(Files.readString(migrations.resolve("8.alert-execution-closure-audit-schema.sql")));
 
         factory = new LocalContainerEntityManagerFactoryBean();
         factory.setDataSource(dataSource);
@@ -106,9 +107,9 @@ class AlertExecutionClosureJpaIntegrationTest {
     }
 
     @Test
-    void migrationPreservesHistoricalRowsIndexesIdentityAndTrigger() {
-        assertEquals(originalTableOid, jdbc.queryForObject("SELECT 'audit.alert_execution_closure_audit'::regclass::oid::bigint", Long.class));
-        assertEquals(originalFunctionOid, jdbc.queryForObject("SELECT 'audit.reject_closure_audit_mutation()'::regprocedure::oid::bigint", Long.class));
+    void consolidatedMigrationCreatesAuditIndexesIdentityAndImmutableTrigger() {
+        assertNotNull(jdbc.queryForObject("SELECT to_regclass('audit.alert_execution_closure_audit')::text", String.class));
+        assertNotNull(jdbc.queryForObject("SELECT to_regprocedure('audit.reject_closure_audit_mutation()')::text", String.class));
         assertNull(jdbc.queryForObject("SELECT to_regclass('core.alert_execution_closure_audit')::text", String.class));
         assertNotNull(jdbc.queryForObject("SELECT to_regclass('audit.idx_alert_closure_audit_execution')::text", String.class));
         assertTrue(jdbc.queryForObject("SELECT pg_get_serial_sequence('audit.alert_execution_closure_audit', 'id')", String.class).startsWith("audit."));
