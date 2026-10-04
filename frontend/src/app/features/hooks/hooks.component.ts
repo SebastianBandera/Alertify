@@ -1,5 +1,5 @@
 import { DatePipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, OnDestroy, OnInit, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, OnDestroy, OnInit, effect, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
@@ -20,6 +20,7 @@ import {
 } from '../../core/api/hook-api.service';
 import { SecretApiService } from '../../core/api/secret-api.service';
 import { LocalizationService } from '../../core/i18n/localization.service';
+import { EditorDraftService } from '../../shared/editor-drafts/editor-draft.service';
 import { EditorViewportService } from '../../shared/editor-viewport/editor-viewport.service';
 
 type HookTab = 'hooks' | 'history';
@@ -109,6 +110,7 @@ export class HooksComponent implements OnInit, OnDestroy {
   protected readonly historyPageIndex = signal(0);
   protected readonly historyTotalPages = signal(0);
   protected readonly historyTotalElements = signal(0);
+  protected readonly drafts = inject(EditorDraftService);
   protected readonly editorOpen = signal(false);
   protected readonly editing = signal<Hook | null>(null);
   protected readonly form = signal<HookForm>(this.emptyForm());
@@ -126,6 +128,14 @@ export class HooksComponent implements OnInit, OnDestroy {
   protected readonly newTargetId = signal<number | null>(null);
   protected readonly outcomes = ALL_OUTCOMES;
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
+
+  constructor() {
+    effect(() => {
+      if (this.drafts.requestedRestore() !== 'hooks') return;
+      if (!this.editorOpen()) this.restoreDraft();
+      this.drafts.requestedRestore.set(null);
+    });
+  }
 
   async ngOnInit(): Promise<void> {
     const requestedTab = this.route.snapshot.queryParamMap.get('tab');
@@ -260,8 +270,26 @@ export class HooksComponent implements OnInit, OnDestroy {
     this.editorOpen.set(true);
   }
 
+  protected minimizeDraft(): void {
+    if (this.saving()) return;
+    this.drafts.save('hooks', this.form(), this.editing());
+    this.editorOpen.set(false);
+    this.editorViewport.restore();
+  }
+
+  protected restoreDraft(): void {
+    const draft = this.drafts.read<HookForm, Hook>('hooks');
+    if (!draft || this.saving()) return;
+    this.editorViewport.capture(draft.editing ? `hook-${draft.editing.id}` : 'hook-create');
+    this.form.set(draft.form);
+    this.editing.set(draft.editing);
+    this.formError.set(null);
+    this.editorOpen.set(true);
+  }
+
   protected closeEditor(): void {
     if (!this.saving()) {
+      this.drafts.remove('hooks');
       this.editorOpen.set(false);
       this.editorViewport.restore();
     }
@@ -439,6 +467,7 @@ export class HooksComponent implements OnInit, OnDestroy {
       };
       if (editing) await this.api.update(editing.id, request);
       else await this.api.create(request);
+      this.drafts.remove('hooks');
       this.editorOpen.set(false);
       this.notice.set(this.dynamic(editing ? 'hooks.updated' : 'hooks.created'));
       await this.loadAll(false);

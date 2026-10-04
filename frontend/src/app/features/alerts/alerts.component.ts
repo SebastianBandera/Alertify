@@ -23,6 +23,7 @@ import { ApiRequestError, SortDirection, TagMatchMode } from '../../core/api/con
 import { LocalizationService } from '../../core/i18n/localization.service';
 import { isCompatibleConfigurationValueType, isCompatibleSecretValueType } from '../../core/utils/parameter-binding-compatibility';
 import { templateClassName } from '../../core/utils/template-key';
+import { EditorDraftService } from '../../shared/editor-drafts/editor-draft.service';
 import { EditorViewportService } from '../../shared/editor-viewport/editor-viewport.service';
 import { SearchableSelectComponent, SearchableSelectOption } from '../../shared/searchable-select/searchable-select.component';
 
@@ -226,6 +227,7 @@ export class AlertsComponent implements OnInit {
     const name = this.executions().find((execution) => execution.alertId === alertId)?.alertName ?? `#${alertId}`;
     return [{ id: alertId, name }, ...alerts];
   });
+  protected readonly drafts = inject(EditorDraftService);
   protected readonly editorOpen = signal(false);
   protected readonly observerResources = signal<readonly SearchableSelectOption[]>([]);
   protected readonly observerResourcesLoading = signal(false);
@@ -268,6 +270,11 @@ export class AlertsComponent implements OnInit {
       if (!this.editorOpen() || !this.observingResource()) return;
       const kind = this.observerResourceKind();
       if (kind === 'PIPE' || kind === 'PROCEDURE' || kind === 'HOOK') void this.loadObserverResources(kind);
+    });
+    effect(() => {
+      if (this.drafts.requestedRestore() !== 'alerts') return;
+      if (!this.editorOpen()) this.restoreDraft();
+      this.drafts.requestedRestore.set(null);
     });
   }
 
@@ -648,8 +655,26 @@ export class AlertsComponent implements OnInit {
     this.editorOpen.set(true);
   }
 
+  protected minimizeDraft(): void {
+    if (this.saving()) return;
+    this.drafts.save('alerts', this.form(), this.editingAlert());
+    this.editorOpen.set(false);
+    this.editorViewport.restore();
+  }
+
+  protected restoreDraft(): void {
+    const draft = this.drafts.read<AlertForm, Alert>('alerts');
+    if (!draft || this.saving()) return;
+    this.editorViewport.capture(draft.editing ? `alert-${draft.editing.id}` : 'alert-create');
+    this.form.set(draft.form);
+    this.editingAlert.set(draft.editing);
+    this.formError.set(null);
+    this.editorOpen.set(true);
+  }
+
   protected closeEditor(): void {
     if (!this.saving()) {
+      this.drafts.remove('alerts');
       this.editorOpen.set(false);
       this.editorViewport.restore();
     }
@@ -813,6 +838,7 @@ export class AlertsComponent implements OnInit {
       };
       if (editing) await this.api.updateAlert(editing.id, request);
       else await this.api.createAlert(request);
+      this.drafts.remove('alerts');
       this.editorOpen.set(false);
       await Promise.all([this.loadAlerts(), this.loadTemplates()]);
       this.editorViewport.restore();

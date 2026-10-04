@@ -1,5 +1,5 @@
 import { DatePipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, OnInit, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, OnInit, computed, effect, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -22,6 +22,7 @@ import { LocalizationService } from '../../core/i18n/localization.service';
 import { TranslationKey } from '../../core/i18n/localization.types';
 import { isCompatibleConfigurationValueType, isCompatibleSecretValueType } from '../../core/utils/parameter-binding-compatibility';
 import { templateClassName } from '../../core/utils/template-key';
+import { EditorDraftService } from '../../shared/editor-drafts/editor-draft.service';
 import { EditorViewportService } from '../../shared/editor-viewport/editor-viewport.service';
 import { SearchableSelectComponent, SearchableSelectOption } from '../../shared/searchable-select/searchable-select.component';
 
@@ -148,6 +149,7 @@ export class ProceduresComponent implements OnInit {
   protected readonly historyProcedureId = signal<number | null>(null);
   protected readonly historyStatus = signal<ProcedureExecutionStatus | ''>('');
   protected readonly historyExecutionId = signal<string | null>(null);
+  protected readonly drafts = inject(EditorDraftService);
   protected readonly editorOpen = signal(false);
   protected readonly editing = signal<Procedure | null>(null);
   protected readonly form = signal<ProcedureForm>(this.emptyForm());
@@ -222,6 +224,14 @@ export class ProceduresComponent implements OnInit {
   protected readonly tagName = signal('');
   protected readonly tagColor = signal('#7C3AED');
   protected readonly tagError = signal<string | null>(null);
+
+  constructor() {
+    effect(() => {
+      if (this.drafts.requestedRestore() !== 'procedures') return;
+      if (!this.editorOpen()) this.restoreDraft();
+      this.drafts.requestedRestore.set(null);
+    });
+  }
 
   async ngOnInit(): Promise<void> {
     const requestedTab = this.route.snapshot.queryParamMap.get('tab');
@@ -461,8 +471,26 @@ export class ProceduresComponent implements OnInit {
     this.editorOpen.set(true);
   }
 
+  protected minimizeDraft(): void {
+    if (this.saving()) return;
+    this.drafts.save('procedures', this.form(), this.editing());
+    this.editorOpen.set(false);
+    this.editorViewport.restore();
+  }
+
+  protected restoreDraft(): void {
+    const draft = this.drafts.read<ProcedureForm, Procedure>('procedures');
+    if (!draft || this.saving()) return;
+    this.editorViewport.capture(draft.editing ? `procedure-${draft.editing.id}` : 'procedure-create');
+    this.form.set(draft.form);
+    this.editing.set(draft.editing);
+    this.formError.set(null);
+    this.editorOpen.set(true);
+  }
+
   protected closeEditor(): void {
     if (!this.saving()) {
+      this.drafts.remove('procedures');
       this.editorOpen.set(false);
       this.editorViewport.restore();
     }
@@ -590,6 +618,7 @@ export class ProceduresComponent implements OnInit {
       };
       if (editing) await this.api.updateProcedure(editing.id, request);
       else await this.api.createProcedure(request);
+      this.drafts.remove('procedures');
       this.editorOpen.set(false);
       await this.loadAll(false);
       this.editorViewport.restore();

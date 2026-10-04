@@ -1,5 +1,5 @@
 import { DatePipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, ElementRef, OnDestroy, OnInit, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, OnDestroy, OnInit, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 
@@ -19,6 +19,7 @@ import {
   PipeStepWriteRequest,
 } from '../../core/api/pipe-api.service';
 import { LocalizationService } from '../../core/i18n/localization.service';
+import { EditorDraftService } from '../../shared/editor-drafts/editor-draft.service';
 import { EditorViewportService } from '../../shared/editor-viewport/editor-viewport.service';
 
 type PipeTab = 'pipes' | 'history';
@@ -108,6 +109,7 @@ export class PipesComponent implements OnInit, OnDestroy {
   protected readonly historyPageIndex = signal(0);
   protected readonly historyTotalPages = signal(0);
   protected readonly historyTotalElements = signal(0);
+  protected readonly drafts = inject(EditorDraftService);
   protected readonly editorOpen = signal(false);
   protected readonly editing = signal<Pipe | null>(null);
   protected readonly form = signal<PipeForm>(this.emptyForm());
@@ -121,6 +123,14 @@ export class PipesComponent implements OnInit, OnDestroy {
   protected readonly newStepResourceId = signal<number | null>(null);
   protected readonly outcomes = ALL_OUTCOMES;
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
+
+  constructor() {
+    effect(() => {
+      if (this.drafts.requestedRestore() !== 'pipes') return;
+      if (!this.editorOpen()) this.restoreDraft();
+      this.drafts.requestedRestore.set(null);
+    });
+  }
 
   async ngOnInit(): Promise<void> {
     const tab = this.route.snapshot.queryParamMap.get('tab');
@@ -246,8 +256,26 @@ export class PipesComponent implements OnInit, OnDestroy {
     this.editorOpen.set(true);
   }
 
+  protected minimizeDraft(): void {
+    if (this.saving()) return;
+    this.drafts.save('pipes', this.form(), this.editing());
+    this.editorOpen.set(false);
+    this.editorViewport.restore();
+  }
+
+  protected restoreDraft(): void {
+    const draft = this.drafts.read<PipeForm, Pipe>('pipes');
+    if (!draft || this.saving()) return;
+    this.editorViewport.capture(draft.editing ? `pipe-${draft.editing.id}` : 'pipe-create');
+    this.form.set(draft.form);
+    this.editing.set(draft.editing);
+    this.formError.set(null);
+    this.editorOpen.set(true);
+  }
+
   protected closeEditor(): void {
     if (!this.saving()) {
+      this.drafts.remove('pipes');
       this.editorOpen.set(false);
       this.editorViewport.restore();
     }
@@ -426,6 +454,7 @@ export class PipesComponent implements OnInit, OnDestroy {
       };
       if (editing) await this.api.update(editing.id, request);
       else await this.api.create(request);
+      this.drafts.remove('pipes');
       this.editorOpen.set(false);
       this.notice.set(this.dynamic(editing ? 'pipes.updated' : 'pipes.created'));
       await this.loadAll(false);

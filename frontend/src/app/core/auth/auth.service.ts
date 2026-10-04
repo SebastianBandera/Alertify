@@ -55,6 +55,10 @@ export class AuthService {
       && this.keycloak.hasResourceRole('DASHBOARD', this.rolesClientId)
       && this.keycloak.hasResourceRole('DASHBOARD_RUN', this.rolesClientId);
   }
+  get userIdentifier(): string {
+    return `${this.keycloak.realm}:${String(this.keycloak.tokenParsed?.['sub'] ?? 'unknown')}`;
+  }
+
   get sessionIdentifier(): string {
     const token = this.keycloak.tokenParsed;
     const identifier = token?.['sid'] ?? token?.['session_state'];

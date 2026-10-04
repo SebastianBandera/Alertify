@@ -1,3 +1,6 @@
+@if (drafts.has('hooks') && !editorOpen()) {
+  <button class="button button--secondary" type="button" (click)="restoreDraft()">{{ localization.translateDynamic('draft.restore') }}</button>
+}
 <section class="hooks-page">
   <header class="page-header">
     <div>
@@ -180,6 +183,7 @@
     <section class="modal" role="dialog" aria-modal="true" (mousedown)="$event.stopPropagation()">
       <header>
         <h2>{{ dynamic(editing() ? 'hooks.form.editTitle' : 'hooks.form.createTitle') }}</h2>
+        <button class="button button--secondary" type="button" (click)="minimizeDraft()" [disabled]="saving()">{{ localization.translateDynamic('draft.minimize') }}</button>
         <button class="close" type="button" (click)="closeEditor()">×</button>
       </header>
       <form (ngSubmit)="save()">

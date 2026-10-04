@@ -1,3 +1,6 @@
+@if (drafts.has('procedures') && !editorOpen()) {
+  <button class="button button--secondary" type="button" (click)="restoreDraft()">{{ localization.translateDynamic('draft.restore') }}</button>
+}
 <section class="procedures-page">
   <header class="page-header">
     <div>
@@ -419,6 +422,7 @@
         <div>
           <h2>{{ localization.translate(editing() ? 'procedures.form.editTitle' : 'procedures.form.createTitle') }}</h2>
         </div>
+        <button class="button button--secondary" type="button" (click)="minimizeDraft()" [disabled]="saving()">{{ localization.translateDynamic('draft.minimize') }}</button>
         <button class="close" type="button" (click)="closeEditor()">×</button>
       </header>
       <form (ngSubmit)="save()">

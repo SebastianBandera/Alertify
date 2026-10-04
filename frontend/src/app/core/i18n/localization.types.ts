@@ -1552,6 +1552,10 @@ export type TranslationKey =
   | 'observer.resource.empty'
   | 'observer.resource.loading'
   | 'observer.resource.error'
-  | 'observer.resource.disabled';
+  | 'observer.resource.disabled'
+  | 'draft.minimize'
+  | 'draft.restore'
+  | 'draft.tray'
+  | 'draft.storage';
 
 export type TranslationDictionary = Readonly<Record<TranslationKey, string>>;

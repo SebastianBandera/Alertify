@@ -24,6 +24,7 @@ import { AdminEventChannelService } from '../../core/realtime/admin-event-channe
 import { SessionActionsService } from '../../core/auth/session-actions.service';
 import { TranslationKey } from '../../core/i18n/localization.types';
 import { DashboardLiveService } from '../../features/dashboard/dashboard-live.service';
+import { EditorDraftService } from '../../shared/editor-drafts/editor-draft.service';
 import { AdminStatusBarComponent } from '../admin-status-bar/admin-status-bar.component';
 
 interface NavigationItem {
@@ -43,6 +44,7 @@ export class AppShellComponent {
   private static readonly SIDEBAR_COLLAPSED_STORAGE_KEY = 'alertify.sidebarCollapsed';
   private static readonly NAVIGATION_ORDER_STORAGE_KEY = 'alertify.navigationOrder';
 
+  protected readonly drafts = inject(EditorDraftService);
   protected readonly authService = inject(AuthService);
   protected readonly localization = inject(LocalizationService);
   private readonly adminEventChannel = inject(AdminEventChannelService);

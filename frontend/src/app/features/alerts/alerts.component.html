@@ -1,3 +1,6 @@
+@if (drafts.has('alerts') && !editorOpen()) {
+  <button class="button button--secondary" type="button" (click)="restoreDraft()">{{ localization.translateDynamic('draft.restore') }}</button>
+}
 <section class="alerts-page">
   @if (closureExecution(); as execution) {
     <div class="modal-backdrop">
@@ -476,6 +479,7 @@
           <h2>{{ localization.translate(editingAlert() ? 'alerts.form.editTitle' : 'alerts.form.createTitle') }}</h2>
           <p>{{ localization.translate('alerts.form.description') }}</p>
         </div>
+        <button class="button button--secondary" type="button" (click)="minimizeDraft()" [disabled]="saving()">{{ localization.translateDynamic('draft.minimize') }}</button>
         <button class="close" type="button" (click)="closeEditor()" aria-label="Close">×</button>
       </header>
       <form (ngSubmit)="save()">

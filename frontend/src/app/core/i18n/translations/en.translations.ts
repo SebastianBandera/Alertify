@@ -1560,5 +1560,9 @@ export const EN_TRANSLATIONS = {
   'observer.resource.loading': 'Loading resources…',
   'observer.resource.error': 'Resources could not be loaded.',
   'observer.resource.disabled': 'Disabled; the last completed result can still be observed.',
+  'draft.minimize': 'Minimize editor',
+  'draft.restore': 'Restore draft',
+  'draft.tray': 'Minimized editors',
+  'draft.storage': 'Inline values and files are not saved across browser restarts.',
   ...EN_EXTENDED_TRANSLATIONS,
 } satisfies TranslationDictionary;

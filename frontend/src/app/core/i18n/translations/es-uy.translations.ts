@@ -1561,5 +1561,9 @@ export const ES_UY_TRANSLATIONS = {
   'observer.resource.loading': 'Cargando recursos…',
   'observer.resource.error': 'No se pudieron cargar los recursos.',
   'observer.resource.disabled': 'Deshabilitado; se puede observar el último resultado completado.',
+  'draft.minimize': 'Minimizar editor',
+  'draft.restore': 'Restaurar borrador',
+  'draft.tray': 'Editores minimizados',
+  'draft.storage': 'Los valores de texto y archivos no se guardan al reiniciar el navegador.',
   ...ES_UY_EXTENDED_TRANSLATIONS,
 } satisfies TranslationDictionary;
