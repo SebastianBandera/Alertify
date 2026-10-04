@@ -8,6 +8,7 @@ const readline = require('node:readline/promises');
 const http = require('node:http');
 const https = require('node:https');
 const { spawnSync, spawn } = require('node:child_process');
+const { ingressOptions, createIngressResources, ingressCertificateResources, stopLegacyForwarding } = require('./kubernetes-ingress');
 
 function parseOptions(argv) {
   if (argv.some((value) => value.startsWith('--skip-') || value.startsWith('--cleanup-docker'))) {
@@ -112,7 +113,7 @@ function verifyLocalPublicApi(plan, projectDirectory) {
       else reject(new Error(`Public API readiness returned HTTP ${response.statusCode}; expected an authentication challenge (401/403).`));
     });
     request.setTimeout(10000, () => request.destroy(new Error('Public API readiness timed out.')));
-    request.on('error', () => reject(new Error('Public API readiness failed; verify local forwarding, TLS trust and backend routing.')));
+    request.on('error', () => reject(new Error('Public API readiness failed; verify Ingress publication, TLS trust and backend routing.')));
   });
 }
 
@@ -254,6 +255,12 @@ function createResources(compose, environment, namespace, templates) {
     clusterIP: 'None', selector: { 'app.alertify/worker': 'true' },
     ports: [{ name: 'grpc', port: Number(value(environment, 'WORKER_GRPC_PORT')), targetPort: Number(value(environment, 'WORKER_GRPC_PORT')) }],
   } }));
+  const ingress = createIngressResources(environment, namespace, templates, renderTemplate);
+  if (ingress.length && !/^localhost$|\.localhost$/i.test(new URL(value(environment, 'APP_PUBLIC_URL')).hostname)) {
+    const publisher = resources.find((resource) => resource.kind === 'Service' && resource.metadata.name === 'publisher');
+    publisher.metadata.annotations = { 'traefik.ingress.kubernetes.io/service.serverstransport': 'publisher@file' };
+  }
+  resources.push(...ingress);
   return resources;
 }
 
@@ -263,9 +270,10 @@ async function deploy(environment, plan, options, projectDirectory, certificateH
   if (!/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/.test(value(environment, 'KUBERNETES_CLUSTER_DOMAIN') || 'cluster.local')) {
     throw new Error('KUBERNETES_CLUSTER_DOMAIN must be a DNS name.');
   }
-  for (const key of ['KUBERNETES_PUSH_IMAGES', 'KUBERNETES_PORT_FORWARD']) {
+  for (const key of ['KUBERNETES_PUSH_IMAGES', 'KUBERNETES_VERIFY_LOCAL_PUBLIC_URL']) {
     if (!['true', 'false'].includes(value(environment, key))) throw new Error(`${key} must be true or false.`);
   }
+  const ingress = ingressOptions(environment);
   if (!/^[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(value(environment, 'WORKER_GRPC_HOST'))) {
     throw new Error('WORKER_GRPC_HOST must be a Kubernetes Service DNS label in Kubernetes mode.');
   }
@@ -299,6 +307,13 @@ async function deploy(environment, plan, options, projectDirectory, certificateH
   const timeout = Number(value(environment, 'KUBERNETES_ROLLOUT_TIMEOUT_SECONDS'));
   if (!Number.isInteger(timeout) || timeout < 1) throw new Error('KUBERNETES_ROLLOUT_TIMEOUT_SECONDS must be a positive integer.');
   console.log(`Kubernetes context: ${context}\nAPI server: ${redactUrl(config.clusters[0].cluster.server)}\nNamespace: ${namespace}\nRegistry: ${registry || '(local Docker images)'}\nPublic URL: ${redactUrl(plan.publisherUrl)}`);
+  console.log(`Publication: ${ingress.enabled ? `Traefik ${ingress.image}, IngressClass ${ingress.ingressClass}, Service ${ingress.serviceType}` : 'external controller (managed Traefik disabled)'}`);
+  if (ingress.enabled) {
+    const existingClass = kubectl(['get', 'ingressclass', ingress.ingressClass, '--ignore-not-found', '-o', 'json']).trim();
+    if (existingClass && JSON.parse(existingClass).spec.controller !== 'traefik.io/ingress-controller') {
+      throw new Error(`IngressClass ${ingress.ingressClass} belongs to another controller; choose a separate KUBERNETES_INGRESS_CLASS.`);
+    }
+  }
   if (!options.nonInteractive && !options.configureOnly) {
     const prompt = readline.createInterface({ input: process.stdin, output: process.stdout });
     try { if ((await prompt.question('Apply this Kubernetes deployment? [y/N] ')).trim().toLowerCase() !== 'y') throw new Error('Deployment cancelled.'); }
@@ -307,6 +322,7 @@ async function deploy(environment, plan, options, projectDirectory, certificateH
   const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'alertify-kubernetes-'));
   try {
     const templates = Object.fromEntries(['namespace', 'configmap', 'secret', 'pvc', 'deployment', 'statefulset', 'service'].map((name) => [name, fs.readFileSync(path.join(projectDirectory, 'kubernetes', `${name}.yaml.template`), 'utf8')]));
+    for (const name of ['traefik', 'ingress']) templates[name] = fs.readFileSync(path.join(projectDirectory, 'kubernetes', `${name}.yaml.template`), 'utf8');
     templates.publisherNginx = fs.readFileSync(path.join(projectDirectory, 'publisher', 'default.conf.template'), 'utf8');
     templates.keycloakRealm = fs.readFileSync(path.join(projectDirectory, 'identity', 'realm-template.json'), 'utf8');
     templates.keycloakAdmin = fs.readFileSync(path.join(projectDirectory, 'identity', 'configure-permanent-admin.sh'), 'utf8');
@@ -315,10 +331,11 @@ async function deploy(environment, plan, options, projectDirectory, certificateH
     for (const key of ['KEYCLOAK_MODE', 'KEYCLOAK_DATABASE_MODE', 'REDIS_MODE', 'DATABASE_MODE', 'BACKEND_MODE', 'FRONTEND_MODE']) {
       if (value(environment, key) !== 'local') throw new Error(`Kubernetes all-inclusive mode requires ${key}=local.`);
     }
-    const sourceImages = [...new Set(Object.values(compose.services).map((service) => service.image))];
+    const sourceImages = [...new Set([...Object.values(compose.services).map((service) => service.image), ...(ingress.enabled ? [ingress.image] : [])])];
     const imagePairs = sourceImages.map((source) => [source, registry ? `${registry}/${source.split('/').pop()}` : source]);
     for (const service of Object.values(compose.services)) service.image = imagePairs.find(([source]) => source === service.image)[1];
     const resources = createResources(compose, environment, namespace, templates);
+    if (ingress.enabled) resources.find((resource) => resource.kind === 'Deployment' && resource.metadata.name === 'traefik').spec.template.spec.containers[0].image = imagePairs.find(([source]) => source === ingress.image)[1];
     const writeResource = (resource) => {
       const target = path.join(temporaryDirectory, `${resource.kind}-${resource.metadata.name}.yaml`);
       fs.writeFileSync(target, JSON.stringify(resource, null, 2), { mode: 0o600 });
@@ -420,6 +437,14 @@ async function deploy(environment, plan, options, projectDirectory, certificateH
       fs.mkdirSync(path.dirname(exportPath), { recursive: true });
       fs.writeFileSync(exportPath, Buffer.from(secret.data['alertify-local-ca.crt'], 'base64'));
     }
+    if (ingress.enabled && plan.publisherTlsEnabled) {
+      const certificate = (name) => {
+        const pending = path.join(temporaryDirectory, `Secret-${name}.yaml`);
+        return fs.existsSync(pending) ? JSON.parse(fs.readFileSync(pending, 'utf8'))
+          : JSON.parse(kubectl(['-n', namespace, 'get', 'secret', name, '-o', 'json']));
+      };
+      for (const resource of ingressCertificateResources(namespace, certificate('publisher-tls'), certificate('publisher-ca'))) writeResource(resource);
+    }
     // Apply only rendered manifests, never certificate files alongside them.
     const manifestPaths = fs.readdirSync(temporaryDirectory).filter((name) => name.endsWith('.yaml')).map((name) => path.join(temporaryDirectory, name));
     for (const manifestPath of manifestPaths) kubectl(['apply', '--dry-run=server', '-f', manifestPath], true);
@@ -428,43 +453,21 @@ async function deploy(environment, plan, options, projectDirectory, certificateH
       kubectl(['-n', namespace, 'rollout', 'status', `${resource.kind.toLowerCase()}/${resource.metadata.name}`, `--timeout=${timeout}s`], true);
     }
     kubectl(['-n', namespace, 'wait', '--for=condition=Ready', 'pods', '-l', 'app.kubernetes.io/part-of=alertify', `--timeout=${timeout}s`], true);
-    if (value(environment, 'KUBERNETES_PORT_FORWARD') === 'true') {
-      const stateDirectory = path.join(projectDirectory, '.alertify', 'kubernetes');
-      fs.mkdirSync(stateDirectory, { recursive: true });
-      const stateFile = path.join(stateDirectory, `${namespace}-forward.json`);
-      if (fs.existsSync(stateFile)) {
-        const previous = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
-        // Request shutdown through a unique marker; never kill a potentially reused PID.
-        if (/^[a-f0-9-]{36}$/.test(previous.marker ?? '')) {
-          fs.writeFileSync(path.join(stateDirectory, `${previous.marker}.stop`), 'stop');
-          await new Promise((resolve) => setTimeout(resolve, 1500));
+    if (await stopLegacyForwarding(projectDirectory, namespace)) console.log('Legacy publisher port-forward supervisor stopped.');
+    if (ingress.enabled && ingress.serviceType === 'LoadBalancer') {
+      kubectl(['-n', namespace, 'wait', '--for=jsonpath={.status.loadBalancer.ingress}', 'service/traefik', `--timeout=${timeout}s`], true);
+    }
+    if (value(environment, 'KUBERNETES_VERIFY_LOCAL_PUBLIC_URL') === 'true') {
+      let apiStatus;
+      const deadline = Date.now() + timeout * 1000;
+      while (!apiStatus) {
+        try { apiStatus = await verifyLocalPublicApi(plan, projectDirectory); }
+        catch (error) {
+          if (Date.now() >= deadline) throw error;
+          console.log('Waiting for local Ingress publication and backend routing...');
+          await new Promise((resolve) => setTimeout(resolve, 5000));
         }
       }
-      const ports = plan.publisherTlsEnabled ? [`${plan.publicPort}:8443`, `${plan.publicHttpPort}:8080`] : [`${plan.publicPort}:8080`];
-      const marker = crypto.randomUUID();
-      const stopFile = path.join(stateDirectory, `${marker}.stop`);
-      const helper = path.join(stateDirectory, `${namespace}-forward.cjs`);
-      fs.writeFileSync(helper, `const {spawn}=require('node:child_process');const fs=require('node:fs');let child;let stopping=false;function stop(){stopping=true;child?.kill();process.exit()}function start(){child=spawn('kubectl',${JSON.stringify([...baseArgs, '-n', namespace, 'port-forward', 'service/publisher', '--address', value(environment, 'BIND_ADDRESS') || '127.0.0.1', ...ports])},{stdio:'inherit',windowsHide:true});child.on('error',e=>{console.error(e.code);if(!stopping)setTimeout(start,2000)});child.on('exit',()=>{if(!stopping)setTimeout(start,2000)});}process.on('SIGTERM',stop);setInterval(()=>{if(fs.existsSync(${JSON.stringify(stopFile)}))stop()},500);start();`);
-      const logPath = path.join(stateDirectory, `${namespace}-forward.log`);
-      const log = fs.openSync(logPath, 'w');
-      const child = spawn(process.execPath, [helper, marker], { detached: true, windowsHide: true, stdio: ['ignore', log, log] });
-      child.unref(); fs.closeSync(log);
-      fs.writeFileSync(stateFile, JSON.stringify({ pid: child.pid, marker, ports }));
-      let forwarded = false;
-      for (let attempt = 0; attempt < 30; attempt += 1) {
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        const logContent = fs.readFileSync(logPath, 'utf8');
-        if (ports.every((mapping) => {
-          const [localPort, remotePort] = mapping.split(':');
-          return new RegExp(`Forwarding from .+:${localPort} -> ${remotePort}(?:\\r?\\n|$)`).test(logContent);
-        })) { forwarded = true; break; }
-      }
-      if (!forwarded) {
-        fs.writeFileSync(stopFile, 'stop');
-        throw new Error('Local publisher port forwarding did not start. Check .alertify/kubernetes logs and whether public ports are occupied.');
-      }
-      console.log(`Local publisher forwarding started; state and logs are in .alertify/kubernetes (${ports.join(', ')}).`);
-      const apiStatus = await verifyLocalPublicApi(plan, projectDirectory);
       console.log(`Public API routing and TLS verified: HTTP ${apiStatus} without credentials.`);
     }
     console.log(`Kubernetes deployment ready: ${redactUrl(plan.publisherUrl)}`);

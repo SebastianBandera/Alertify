@@ -81,6 +81,7 @@ test('resources isolate secrets, persist databases and discover both worker type
     WORKER_STANDARD_UNIQUE_NAMES: 'true', WORKER_PLAYWRIGHT_UNIQUE_NAMES: 'true',
     KUBERNETES_DATABASE_STORAGE: '5Gi', PUBLISHER_TLS_SERVER_NAME: 'alertify',
     KUBERNETES_CLUSTER_DNS: '10.96.0.10',
+    KUBERNETES_INGRESS_ENABLED: 'false',
   }));
   const resources = createResources({ services: {
     database: { image: 'database', environment: { POSTGRES_PASSWORD: 'private', POSTGRES_USER: 'postgres' } },

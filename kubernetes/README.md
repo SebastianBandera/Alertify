@@ -18,7 +18,8 @@ complete JSON values, escaped by the renderer. Resource configuration is derived
 from Compose so the same URLs, runtime environment and build arguments are used.
 Templates cover namespace, ConfigMaps, per-service Secrets, PostgreSQL PVCs and
 StatefulSets, Services and Deployments for Keycloak, Redis, backend, frontend,
-publisher and both worker types. The worker Service is headless so discovery
+publisher and both worker types, plus Traefik, its RBAC, IngressClass and Ingress.
+The worker Service is headless so discovery
 returns individual worker addresses. Private CA Secrets are never mounted into
 application pods; only their respective leaf Secrets are mounted.
 The publisher template uses the discovered cluster DNS Service instead of Docker
@@ -52,14 +53,46 @@ certificate copies live only in a uniquely named OS temporary directory removed
 in `finally`. Existing certificate Secrets are reused. The public publisher CA
 is exported to `.alertify/certificates/alertify-local-ca.crt` for local trust.
 
-`KUBERNETES_PORT_FORWARD=true` maintains the configured local public ports using a
-detached kubectl supervisor. Logs and helper state are ignored under
-`.alertify/kubernetes`. The helper retries after pod or connection loss and keeps
-running when Git branches change. Configure false when an ingress/load balancer
-already publishes the publisher Service. The host ports must be free; stop any
-Compose publisher using them before Kubernetes deployment. For permanent remote
-deployment, use an ingress or load balancer managed for that environment.
+Publication is handled by Traefik and a standard Kubernetes Ingress. The
+controller watches only the application namespace. Its Service defaults to
+`LoadBalancer`, exposing `PUBLIC_HTTP_PORT` and `PUBLIC_PORT`; Docker Desktop's
+load balancer integration publishes these ports on the local machine. Other
+clusters require their own load balancer integration or an explicitly exposed
+NodePort. Merely creating an Ingress does not expose host ports.
+Host listening addresses are determined by the load balancer provider, not by
+Compose's `BIND_ADDRESS`. Docker Desktop binds its LoadBalancer ports on all
+host interfaces; the hostname rule still selects the application.
 
-With local forwarding, the runner verifies the public API over the configured
-hostname and its explicit CA before reporting success. The anonymous request must
-return 401 or 403, demonstrating that routing reaches the protected backend.
+The Ingress matches the hostname from `APP_PUBLIC_URL` and forwards `/` to the
+publisher without rewriting paths. The publisher retains the root redirect,
+application context, Keycloak routing and WebSocket handling. For HTTPS,
+Traefik redirects HTTP to the configured public HTTPS port and presents a TLS
+Secret reconciled from the existing publisher leaf certificate. It also uses
+HTTPS to reach the publisher, verifying the public CA and configured hostname;
+certificate verification is never disabled. The controller mounts only a
+separate public CA Secret, never the private CA Secret.
+
+Configure publication in `.env`:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `KUBERNETES_INGRESS_ENABLED` | `true` | Deploy the managed Traefik controller and Ingress. |
+| `KUBERNETES_INGRESS_CLASS` | `alertify-traefik` | Class owned by this deployment. Use a distinct class for another installation. |
+| `KUBERNETES_TRAEFIK_IMAGE` | `traefik:v3.7.13` | Pinned controller image. |
+| `KUBERNETES_TRAEFIK_SERVICE_TYPE` | `LoadBalancer` | `LoadBalancer`, `NodePort` or `ClusterIP`, depending on external publication. |
+| `KUBERNETES_VERIFY_LOCAL_PUBLIC_URL` | `true` | Verify the public API through loopback with the exported CA. Disable for an entry point outside this PC. |
+
+Disabling managed Ingress does not delete previously applied resources. When
+moving to a separate controller, reconcile that controller and the old Ingress
+explicitly. An IngressClass owned by another controller is never overwritten.
+
+The deployment no longer starts any `kubectl port-forward` process. On upgrade,
+it stops its old publisher supervisor through the retained unique stop marker,
+after pod readiness, without killing a stored PID. Historical logs remain under
+the ignored `.alertify/kubernetes` directory. Public ports must be available;
+stop any Compose publisher using them before deployment. Docker Desktop and
+Kubernetes must remain running for local publication.
+
+With local public URL verification enabled, the runner waits for the anonymous
+API to return 401 or 403 over trusted TLS before reporting success. Verify fresh
+frontend login and WebSocket traffic when changing publication settings.
