@@ -281,12 +281,26 @@ function insertMissingAssignments(envContent, templateAssignments, missing, secr
   return rendered.endsWith(lineEnding) ? rendered : `${rendered}${lineEnding}`;
 }
 
-function reconcileEnvironment(templatePath, envPath) {
+function reconcileEnvironment(templatePath, envPath, { avoidUpdateDependencies = false } = {}) {
   const templateContent = fs.readFileSync(templatePath, 'utf8');
   const template = parseDocument(templateContent, '.env.template');
   const envExists = fs.existsSync(envPath);
   const envContent = envExists ? fs.readFileSync(envPath, 'utf8') : '';
   const existing = parseExistingEnvironment(envContent);
+  const dependencyUpdates = new Map(
+    template.assignments.filter(({ key, rawValue }) =>
+      !avoidUpdateDependencies && /_(?:IMAGE|VERSION)$/.test(key) && existing.values.has(key) &&
+      plainValue(existing.values.get(key)) !== plainValue(rawValue),
+    ).map(({ key, rawValue }) => [key, rawValue]),
+  );
+  // Update every occurrence: Docker and the runner must agree even with duplicate keys.
+  const updatedContent = envContent.split(/(\r?\n)/).map((line) => {
+    const match = line.replace(/^\uFEFF/, '').match(ASSIGNMENT_PATTERN);
+    if (!match || !dependencyUpdates.has(match[1])) {
+      return line;
+    }
+    return line.slice(0, line.indexOf('=') + 1) + line.slice(line.indexOf('=') + 1).match(/^\s*/)[0] + dependencyUpdates.get(match[1]);
+  }).join('');
   const secretResult = resolveSecretValues(template.assignments, existing.values);
   const missing = template.assignments.filter(({ key }) => !existing.values.has(key));
   const missingSecretNames = new Set(
@@ -300,13 +314,13 @@ function reconcileEnvironment(templatePath, envPath) {
       flag: 'wx',
       mode: 0o600,
     });
-  } else if (missing.length > 0) {
-    const reconciled = insertMissingAssignments(
-      envContent,
+  } else if (missing.length > 0 || dependencyUpdates.size > 0) {
+    const reconciled = missing.length > 0 ? insertMissingAssignments(
+      updatedContent,
       template.assignments,
       missing,
       secretResult.resolved,
-    );
+    ) : updatedContent;
     fs.writeFileSync(envPath, reconciled, 'utf8');
   }
 
@@ -316,6 +330,7 @@ function reconcileEnvironment(templatePath, envPath) {
   return {
     created: !envExists,
     addedKeys: missing.map(({ key }) => key),
+    updatedKeys: [...dependencyUpdates.keys()],
     duplicates: finalEnvironment.duplicates,
     environment: finalEnvironment.values,
     generatedSecrets: secretResult.generated.filter((name) => missingSecretNames.has(name)),
@@ -1458,6 +1473,9 @@ function printHelp() {
     '  --non-interactive  Skip the interactive checklist; required in automation when every\n' +
     '                     other option is also omitted.\n' +
     '  --configure-only   Reconcile .env and show the plan without starting services.\n' +
+    '  --avoid-update-dependencies  Preserve existing _IMAGE and _VERSION values in .env.\n' +
+    '                     By default, these values follow .env.template; missing variables\n' +
+    '                     are still added. Other existing settings and secrets are preserved.\n' +
     '  --deploy-kubernetes  Build and deploy the complete application with local kubectl.\n' +
     '  --kubeconfig=PATH    Select kubeconfig (Kubernetes mode only).\n' +
     '  --kube-context=NAME  Select context (Kubernetes mode only).\n' +
@@ -1634,6 +1652,7 @@ async function main(argv = process.argv.slice(2), projectDirectory = path.resolv
     '--non-interactive',
     '--replace-stale-runner',
     '--configure-only',
+    '--avoid-update-dependencies',
     '--deploy-kubernetes',
     '--skip-keycloak',
     '--skip-redis',
@@ -1665,13 +1684,19 @@ async function main(argv = process.argv.slice(2), projectDirectory = path.resolv
     throw new Error(`${templatePath} was not found.`);
   }
 
-  const result = reconcileEnvironment(templatePath, envPath);
+  const result = reconcileEnvironment(templatePath, envPath, {
+    avoidUpdateDependencies: argv.includes('--avoid-update-dependencies'),
+  });
   if (result.created) {
     console.log(`.env was created with ${result.addedKeys.length} variables.`);
   } else if (result.addedKeys.length > 0) {
     console.log(`Added to .env: ${result.addedKeys.join(', ')}.`);
-  } else {
+  } else if (result.updatedKeys.length === 0) {
     console.log('.env already contains every variable from .env.template; no changes were made.');
+  }
+
+  if (result.updatedKeys.length > 0) {
+    console.log(`Dependency variables updated from .env.template: ${result.updatedKeys.join(', ')}.`);
   }
 
   if (result.generatedSecrets.length > 0) {

@@ -13,6 +13,8 @@ const {
   dockerBuildCachePruneArguments,
   parseCleanupDockerPreserveImagesOption,
   parseExistingEnvironment,
+  reconcileEnvironment,
+  main,
   workerInstances,
 } = require('./run');
 
@@ -21,6 +23,73 @@ function templateEnvironment() {
     fs.readFileSync(path.join(__dirname, '..', '.env.template'), 'utf8'),
   ).values;
 }
+
+function environmentFixture(context, template, existing) {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'alertify-env-test-'));
+  context.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const templatePath = path.join(directory, '.env.template');
+  const envPath = path.join(directory, '.env');
+  fs.writeFileSync(templatePath, template);
+  if (existing !== undefined) {
+    fs.writeFileSync(envPath, existing);
+  }
+  return { directory, templatePath, envPath };
+}
+
+test('reconcileEnvironment updates dependency values and preserves unrelated configuration, secrets and CRLF', (context) => {
+  const fixture = environmentFixture(context,
+    'POSTGRES_IMAGE=postgres:18.6-alpine\nTOOL_VERSION=2.0\nPUBLIC_PORT=80\nAPP_ADMIN_PASSWORD=<GENERATE_APP_ADMIN_PASSWORD>\n',
+    '# My configuration\r\nexport POSTGRES_IMAGE = "custom/postgres:old"\r\nTOOL_VERSION=1.0\r\nPUBLIC_PORT=8443\r\nAPP_ADMIN_PASSWORD=keep-this-secret\r\nPRIVATE_SETTING=local\r\n',
+  );
+  const result = reconcileEnvironment(fixture.templatePath, fixture.envPath);
+  assert.deepEqual(result.updatedKeys, ['POSTGRES_IMAGE', 'TOOL_VERSION']);
+  assert.deepEqual(result.addedKeys, []);
+  assert.deepEqual(result.generatedSecrets, []);
+  assert.equal(fs.readFileSync(fixture.envPath, 'utf8'),
+    '# My configuration\r\nexport POSTGRES_IMAGE = postgres:18.6-alpine\r\nTOOL_VERSION=2.0\r\nPUBLIC_PORT=8443\r\nAPP_ADMIN_PASSWORD=keep-this-secret\r\nPRIVATE_SETTING=local\r\n');
+  assert.deepEqual(reconcileEnvironment(fixture.templatePath, fixture.envPath).updatedKeys, []);
+});
+
+test('reconcileEnvironment opt-out preserves custom dependency values while adding missing settings', (context) => {
+  const fixture = environmentFixture(context,
+    'POSTGRES_IMAGE=postgres:18.6-alpine\nTOOL_VERSION=2.0\nNEW_IMAGE=example:1.0\nPUBLIC_PORT=80\n',
+    'POSTGRES_IMAGE=custom/postgres@sha256:custom\nTOOL_VERSION=custom\nPUBLIC_PORT=8443\n',
+  );
+  const result = reconcileEnvironment(fixture.templatePath, fixture.envPath, { avoidUpdateDependencies: true });
+  assert.deepEqual(result.updatedKeys, []);
+  assert.deepEqual(result.addedKeys, ['NEW_IMAGE']);
+  assert.equal(result.environment.get('POSTGRES_IMAGE'), 'custom/postgres@sha256:custom');
+  assert.equal(result.environment.get('TOOL_VERSION'), 'custom');
+  assert.equal(result.environment.get('PUBLIC_PORT'), '8443');
+  assert.equal(result.environment.get('NEW_IMAGE'), 'example:1.0');
+});
+
+test('reconcileEnvironment applies updates to duplicate assignments without losing the BOM or final newline state', (context) => {
+  const fixture = environmentFixture(context, 'TOOL_VERSION=2.0\n', '\uFEFFTOOL_VERSION=0.9\nTOOL_VERSION=1.0');
+  const result = reconcileEnvironment(fixture.templatePath, fixture.envPath);
+  assert.deepEqual(result.duplicates, ['TOOL_VERSION']);
+  assert.equal(fs.readFileSync(fixture.envPath, 'utf8'), '\uFEFFTOOL_VERSION=2.0\nTOOL_VERSION=2.0');
+});
+
+test('reconcileEnvironment creates a complete environment even when dependency updates are disabled', (context) => {
+  const fixture = environmentFixture(context, 'TOOL_VERSION=2.0\nPASSWORD=<GENERATE_PASSWORD>\n');
+  const result = reconcileEnvironment(fixture.templatePath, fixture.envPath, { avoidUpdateDependencies: true });
+  assert.equal(result.created, true);
+  assert.deepEqual(result.updatedKeys, []);
+  assert.equal(result.environment.get('TOOL_VERSION'), '2.0');
+  assert.match(result.environment.get('PASSWORD'), /^[A-Za-z0-9_-]{43}$/);
+});
+
+test('configure-only forwards --avoid-update-dependencies before environment reconciliation', async (context) => {
+  const template = fs.readFileSync(path.join(__dirname, '..', '.env.template'), 'utf8');
+  const fixture = environmentFixture(context, template);
+  reconcileEnvironment(fixture.templatePath, fixture.envPath);
+  fs.appendFileSync(fixture.envPath, 'BACKEND_BUILD_IMAGE=custom/maven:retained\nCREATE_PRIVATE_KEY_PART_CLASS=false\n');
+  await main(['--configure-only', '--non-interactive', '--avoid-update-dependencies'], fixture.directory);
+  assert.equal(parseExistingEnvironment(fs.readFileSync(fixture.envPath, 'utf8')).values.get('BACKEND_BUILD_IMAGE'), 'custom/maven:retained');
+  await main(['--configure-only', '--non-interactive'], fixture.directory);
+  assert.equal(parseExistingEnvironment(fs.readFileSync(fixture.envPath, 'utf8')).values.get('BACKEND_BUILD_IMAGE'), templateEnvironment().get('BACKEND_BUILD_IMAGE'));
+});
 
 const SKIP_ALL_OPTIONS = {
   skipKeycloak: true,
