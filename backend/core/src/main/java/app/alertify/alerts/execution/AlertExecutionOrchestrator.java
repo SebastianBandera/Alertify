@@ -68,10 +68,11 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
     private final MaintenanceModeService maintenanceModeService;
     private final SystemStatusEventPublisher statusEventPublisher;
     private final DashboardEventPublisher dashboardEventPublisher;
+    private final app.alertify.alerts.service.ResourceResultObserverService resourceObserver;
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
     private final ConcurrentMap<Long, AlertGate> alertGates = new ConcurrentHashMap<>();
 
-    public AlertExecutionOrchestrator(AlertExecutionPreparationService preparationService, AlertExecutionPersistenceService persistenceService, WorkerStatusService workerStatusService, AlertWorkerClient workerClient, WorkerGrpcProperties properties, ApplicationEventLogger eventLogger, ProcedureInvocationTokenService procedureTokenService, ProcedureInvocationRegistry procedureInvocationRegistry, ProcedureExecutionOrchestrator procedureExecutionOrchestrator, CronQuietHoursService quietHoursService, MaintenanceModeService maintenanceModeService, SystemStatusEventPublisher statusEventPublisher, DashboardEventPublisher dashboardEventPublisher) {
+    public AlertExecutionOrchestrator(AlertExecutionPreparationService preparationService, AlertExecutionPersistenceService persistenceService, WorkerStatusService workerStatusService, AlertWorkerClient workerClient, WorkerGrpcProperties properties, ApplicationEventLogger eventLogger, ProcedureInvocationTokenService procedureTokenService, ProcedureInvocationRegistry procedureInvocationRegistry, ProcedureExecutionOrchestrator procedureExecutionOrchestrator, CronQuietHoursService quietHoursService, MaintenanceModeService maintenanceModeService, SystemStatusEventPublisher statusEventPublisher, DashboardEventPublisher dashboardEventPublisher, app.alertify.alerts.service.ResourceResultObserverService resourceObserver) {
         this.preparationService = preparationService;
         this.persistenceService = persistenceService;
         this.workerStatusService = workerStatusService;
@@ -85,6 +86,7 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
         this.maintenanceModeService = maintenanceModeService;
         this.statusEventPublisher = statusEventPublisher;
         this.dashboardEventPublisher = dashboardEventPublisher;
+        this.resourceObserver = resourceObserver;
     }
 
     /**
@@ -232,6 +234,13 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
                     .orElse(null);
             if (execution == null)
                 return null;
+
+            if (resourceObserver.supports(execution.templateClassName())) {
+                dashboardEventPublisher.executionStarted(alertId, executionId, startedAt);
+                var observed = resourceObserver.observe(alertId);
+                persistenceService.persistObserved(alertId, executionId, startedAt, observed);
+                return observed.status();
+            }
 
             WorkerReservation selectedReservation = preReservedWorker == null
                     ? workerStatusService.reserve(execution.requiredCapability())

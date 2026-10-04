@@ -97,8 +97,9 @@ public class AlertManagementService {
     private final AlertScheduleService scheduleService;
     private final AlertExecutionOrchestrator executionOrchestrator;
     private final DashboardEventPublisher dashboardEventPublisher;
+    private final ResourceResultObserverService resourceObserver;
 
-    public AlertManagementService(AlertRepository alertRepository, AlertTemplateDefinitionRepository templateRepository, AlertTemplateParameterDefinitionRepository templateParameterRepository, AlertParameterValueRepository parameterValueRepository, AlertExecutionRepository executionRepository, AlertStateRepository stateRepository, ApplicationConfigurationRepository configurationRepository, ApplicationSecretRepository secretRepository, ProcedureRepository procedureRepository, TagRepository tagRepository, ApplicationEventLogger eventLogger, AlertScheduleService scheduleService, AlertExecutionOrchestrator executionOrchestrator, DashboardEventPublisher dashboardEventPublisher) {
+    public AlertManagementService(AlertRepository alertRepository, AlertTemplateDefinitionRepository templateRepository, AlertTemplateParameterDefinitionRepository templateParameterRepository, AlertParameterValueRepository parameterValueRepository, AlertExecutionRepository executionRepository, AlertStateRepository stateRepository, ApplicationConfigurationRepository configurationRepository, ApplicationSecretRepository secretRepository, ProcedureRepository procedureRepository, TagRepository tagRepository, ApplicationEventLogger eventLogger, AlertScheduleService scheduleService, AlertExecutionOrchestrator executionOrchestrator, DashboardEventPublisher dashboardEventPublisher, ResourceResultObserverService resourceObserver) {
         this.alertRepository = alertRepository;
         this.templateRepository = templateRepository;
         this.templateParameterRepository = templateParameterRepository;
@@ -113,6 +114,7 @@ public class AlertManagementService {
         this.scheduleService = scheduleService;
         this.executionOrchestrator = executionOrchestrator;
         this.dashboardEventPublisher = dashboardEventPublisher;
+        this.resourceObserver = resourceObserver;
     }
 
     @Transactional(readOnly = true)
@@ -327,6 +329,7 @@ public class AlertManagementService {
             parameterValueRepository.deleteAll(removed);
 
         parameterValueRepository.flush();
+        resourceObserver.synchronize(alert, result);
         return result;
     }
 

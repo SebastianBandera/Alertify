@@ -73,6 +73,15 @@ public class AlertExecutionPersistenceService {
     public void clearTrigger(UUID executionId) { triggerContexts.remove(executionId); }
 
     @Transactional
+    public void persistObserved(long alertId, UUID executionId, Instant startedAt, app.alertify.alerts.service.ResourceResultObserverService.ObservedResult result) {
+        TriggerContext context = triggerContexts.get(executionId);
+        AlertExecution execution = AlertExecution.observed(executionId, alert(alertId), result.status(), startedAt, Instant.now(), result.summary(), trigger(context), actor(context));
+        recordParent(execution, context);
+        executionRepository.save(execution);
+        logResult(execution);
+    }
+
+    @Transactional
     public void persistWorkerResult(long alertId, UUID executionId, WorkerEndpoint endpoint, AlertExecutionResult result, PreparedAlertExecution prepared) {
         TriggerContext context = triggerContexts.get(executionId);
         Alert alert = alert(alertId);

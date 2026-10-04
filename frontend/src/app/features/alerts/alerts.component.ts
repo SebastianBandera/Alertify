@@ -1,5 +1,5 @@
 import { DatePipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, OnInit, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, OnInit, computed, effect, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -227,6 +227,13 @@ export class AlertsComponent implements OnInit {
     return [{ id: alertId, name }, ...alerts];
   });
   protected readonly editorOpen = signal(false);
+  protected readonly observerResources = signal<readonly SearchableSelectOption[]>([]);
+  protected readonly observerResourcesLoading = signal(false);
+  protected readonly observerResourcesError = signal(false);
+  private observerResourceRequest = 0;
+  protected readonly observingResource = computed(() =>
+    this.selectedTemplate()?.templateKey === 'app.alertify.alerts.templates.ResourceResultObserverAlertTemplate');
+  private readonly observerResourceKind = computed(() => this.form().parameters['resourceKind']?.textValue ?? '');
   protected readonly editingAlert = signal<Alert | null>(null);
   protected readonly form = signal<AlertForm>(this.emptyForm());
   protected readonly selectedTemplate = computed(() =>
@@ -255,6 +262,14 @@ export class AlertsComponent implements OnInit {
   protected readonly editingTag = signal<AlertTag | null>(null);
   protected readonly tagForm = signal<TagForm>({ name: '', color: '#6D5DFC' });
   protected readonly tagError = signal<string | null>(null);
+
+  constructor() {
+    effect(() => {
+      if (!this.editorOpen() || !this.observingResource()) return;
+      const kind = this.observerResourceKind();
+      if (kind === 'PIPE' || kind === 'PROCEDURE' || kind === 'HOOK') void this.loadObserverResources(kind);
+    });
+  }
 
   async ngOnInit(): Promise<void> {
     this.destroyRef.onDestroy(() => this.clearNoticeTimer());
@@ -640,6 +655,32 @@ export class AlertsComponent implements OnInit {
     }
   }
 
+  private async loadObserverResources(kind: string): Promise<void> {
+    const request = ++this.observerResourceRequest;
+    this.observerResourcesLoading.set(true);
+    this.observerResourcesError.set(false);
+    try {
+      const resources = await this.api.listObserverResources(kind);
+      if (request !== this.observerResourceRequest) return;
+      this.observerResources.set(resources.map((resource) => ({
+        value: resource.id,
+        label: resource.name,
+        description: resource.enabled ? undefined : this.dynamic('observer.resource.disabled'),
+      })));
+    } catch {
+      if (request === this.observerResourceRequest) {
+        this.observerResources.set([]);
+        this.observerResourcesError.set(true);
+      }
+    } finally {
+      if (request === this.observerResourceRequest) this.observerResourcesLoading.set(false);
+    }
+  }
+
+  protected selectObserverResource(id: number | null): void {
+    this.patchParameter('resourceId', { configured: true, source: 'TEXT', textValue: id === null ? '' : String(id) });
+  }
+
   protected selectTemplateId(templateId: number | null): void {
     const template = this.templates().find((item) => item.id === templateId);
     if (!template) {
@@ -672,6 +713,13 @@ export class AlertsComponent implements OnInit {
   }
 
   protected patchParameter(key: string, patch: Partial<ParameterForm>): void {
+    if (this.observingResource() && key === 'resourceKind' && patch.textValue !== undefined
+      && patch.textValue !== this.form().parameters[key]?.textValue) {
+      this.form.update((form) => ({ ...form, parameters: {
+        ...form.parameters,
+        resourceId: { ...form.parameters['resourceId'], textValue: '' },
+      } }));
+    }
     this.form.update((form) => ({
       ...form,
       parameters: { ...form.parameters, [key]: { ...form.parameters[key], ...patch } },

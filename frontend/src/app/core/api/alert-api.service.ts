@@ -326,6 +326,10 @@ export class AlertApiService {
     return this.request('/api/alerts', { method: 'POST', body: JSON.stringify(request) });
   }
 
+  async listObserverResources(kind: string): Promise<readonly { id: number; name: string; enabled: boolean }[]> {
+    return this.request(`/api/alerts/observer-resources?kind=${encodeURIComponent(kind)}`);
+  }
+
   async changeExecutionClosure(id: number, closed: boolean, note: string | null): Promise<AlertExecution> {
     return this.request(`/api/alert-executions/${id}/closure`, { method: 'POST', body: JSON.stringify({ closed, note }) });
   }

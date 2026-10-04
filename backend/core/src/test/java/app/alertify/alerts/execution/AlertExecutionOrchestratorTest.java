@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -90,7 +91,7 @@ class AlertExecutionOrchestratorTest {
         orchestrator = new AlertExecutionOrchestrator(
                 preparationService, persistenceService, workerStatusService, workerClient,
                 properties(), eventLogger, procedureTokenService, procedureInvocationRegistry, procedureExecutionOrchestrator,
-                quietHoursService, maintenanceModeService, statusEventPublisher, dashboardEventPublisher
+                quietHoursService, maintenanceModeService, statusEventPublisher, dashboardEventPublisher, mock(app.alertify.alerts.service.ResourceResultObserverService.class)
         );
     }
 

@@ -685,7 +685,19 @@
                     @if (parameterForm(parameter.key).source === 'TEXT') {
                       <label class="full">
                         <span>{{ localization.translate('alerts.form.value') }}</span>
-                        @if (parameter.multiline) {
+                        @if (observingResource() && parameter.key === 'resourceId') {
+                          <app-searchable-select
+                            [options]="observerResources()"
+                            [value]="parameterForm(parameter.key).textValue ? +parameterForm(parameter.key).textValue : null"
+                            (valueChange)="selectObserverResource($event)"
+                            [placeholder]="dynamic('observer.resource.select')"
+                            [emptyLabel]="dynamic('observer.resource.empty')"
+                            [ariaLabel]="dynamic('observer.resource.select')"
+                            [disabled]="observerResourcesLoading()"
+                          />
+                          @if (observerResourcesLoading()) { <small role="status">{{ dynamic('observer.resource.loading') }}</small> }
+                          @if (observerResourcesError()) { <small role="alert">{{ dynamic('observer.resource.error') }}</small> }
+                        } @else if (parameter.multiline) {
                           <textarea [ngModel]="parameterForm(parameter.key).textValue" (ngModelChange)="patchParameter(parameter.key, { textValue: $event })" [name]="'text-' + parameter.id" rows="5" required></textarea>
                         } @else {
                           <input type="text" [ngModel]="parameterForm(parameter.key).textValue" (ngModelChange)="patchParameter(parameter.key, { textValue: $event })" [name]="'text-' + parameter.id" required>

@@ -196,6 +196,13 @@ public class AlertExecution {
         );
     }
 
+    public static AlertExecution observed(UUID executionId, Alert alert, AlertExecutionStatus status, Instant startedAt, Instant finishedAt, JsonNode summary, AlertExecutionTrigger trigger, String triggeredBy) {
+        return new AlertExecution(executionId, alert, null, status, startedAt, startedAt, finishedAt, summary,
+                status == AlertExecutionStatus.ERROR ? "OBSERVED_RESOURCE_ERROR" : null,
+                status == AlertExecutionStatus.ERROR ? "The observed resource's latest terminal execution failed" : null,
+                null, trigger, triggeredBy);
+    }
+
     public Long getId() {
         return id;
     }

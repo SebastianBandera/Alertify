@@ -9,6 +9,7 @@ import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.mock;
 
 import java.util.List;
 import java.util.Map;
@@ -263,7 +264,7 @@ class AlertManagementServiceTest {
         return new AlertManagementService(
                 alertRepository, templateRepository, templateParameterRepository, parameterValueRepository,
                 executionRepository, stateRepository, configurationRepository, secretRepository,
-                procedureRepository, tagRepository, eventLogger, scheduleService, executionOrchestrator, dashboardEventPublisher
+                procedureRepository, tagRepository, eventLogger, scheduleService, executionOrchestrator, dashboardEventPublisher, mock(ResourceResultObserverService.class)
         );
     }
 
