@@ -63,6 +63,10 @@ public class PipeStep {
     @Column(name = "step_type", nullable = false, length = 16)
     private PipeStepType stepType;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 16)
+    private PipeStepPhase phase = PipeStepPhase.MAIN;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "alert_id")
     private Alert alert;
@@ -113,6 +117,7 @@ public class PipeStep {
         return new PipeStep(pipe, key, position, PipeStepType.PROCEDURE, null, Objects.requireNonNull(procedure), timeoutMillis, continueOn);
     }
 
+    public void setPhase(PipeStepPhase value) { phase = Objects.requireNonNull(value); }
     public void addBinding(PipeStepBinding value) { bindings.add(Objects.requireNonNull(value)); }
     public void clearBindings() { bindings.clear(); }
     public void moveTemporarily(int value) { position = value; }
@@ -120,6 +125,7 @@ public class PipeStep {
     public Pipe getPipe() { return pipe; }
     public String getStepKey() { return stepKey; }
     public int getPosition() { return position; }
+    public PipeStepPhase getPhase() { return phase; }
     public PipeStepType getStepType() { return stepType; }
     public Alert getAlert() { return alert; }
     public Procedure getProcedure() { return procedure; }

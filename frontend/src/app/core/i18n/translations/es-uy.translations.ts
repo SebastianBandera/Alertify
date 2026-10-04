@@ -1473,6 +1473,8 @@ export const ES_UY_TRANSLATIONS = {
   'pipes.form.currentlyDisabled': 'Actualmente deshabilitado',
   'pipes.form.key': 'Clave estable del paso',
   'pipes.form.timeout': 'Espera máxima (minutos)',
+  'pipes.form.phase': 'Fase',
+  'pipes.form.finallyTimeout': 'Tiempo límite de FINALLY (minutos)',
   'pipes.form.continueOn': 'Continuar con',
   'pipes.form.remove': 'Quitar',
   'pipes.form.noSteps': 'Agregá al menos un paso antes de habilitar la Pipe.',

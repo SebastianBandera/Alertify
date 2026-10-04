@@ -23,7 +23,7 @@ final class PipeMapper {
 
     static PipeResponse response(Pipe pipe) {
         return new PipeResponse(pipe.getId(), pipe.getVersion(), pipe.getName(), pipe.getDescription(), pipe.isEnabled(),
-                pipe.isConcurrentExecutionAllowed(),
+                pipe.isConcurrentExecutionAllowed(), Duration.ofMillis(pipe.getFinallyTimeoutMillis()),
                 pipe.getTags().stream().sorted(Comparator.comparing(tag -> tag.getName().toLowerCase(Locale.ROOT)))
                         .map(tag -> new TagResponse(tag.getId(), tag.getVersion(), tag.getScope(), tag.getName(), tag.getColor(), tag.getCreatedAt(), tag.getUpdatedAt()))
                         .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new)),
@@ -38,14 +38,14 @@ final class PipeMapper {
                 value.getPipeVersion(), value.getStatus(), value.getOutcome(), value.getTrigger(), value.getRootExecutionId(),
                 value.getParentProcedureExecutionId(), value.getDepth(), value.getStartedAt(), value.getFinishedAt(), duration,
                 value.getTriggeredBy(), value.getErrorCode(), value.getSteps().stream().map(step -> new PipeStepResultResponse(
-                        step.getStepKey(), step.getPosition(), step.getStepType(), step.getResourceId(), step.getResourceName(),
+                        step.getStepKey(), step.getPosition(), step.getStepType(), step.getPhase(), step.getResourceId(), step.getResourceName(),
                         step.getStatus(), step.getOutcome(), step.getResourceExecutionId(), step.getStartedAt(),
                         step.getFinishedAt(), step.getErrorCode())).toList());
     }
 
     private static PipeStepResponse step(PipeStep value) {
         boolean alert = value.getStepType() == PipeStepType.ALERT;
-        return new PipeStepResponse(value.getId(), value.getStepKey(), value.getPosition(), value.getStepType(),
+        return new PipeStepResponse(value.getId(), value.getStepKey(), value.getPosition(), value.getStepType(), value.getPhase(),
                 alert ? value.getAlert().getId() : value.getProcedure().getId(),
                 alert ? value.getAlert().getName() : value.getProcedure().getName(),
                 alert ? value.getAlert().isEnabled() : value.getProcedure().isEnabled(), Duration.ofMillis(value.getTimeoutMillis()),

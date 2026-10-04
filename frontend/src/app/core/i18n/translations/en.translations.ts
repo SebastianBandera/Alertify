@@ -1472,6 +1472,8 @@ export const EN_TRANSLATIONS = {
   'pipes.form.currentlyDisabled': 'Currently disabled',
   'pipes.form.key': 'Stable step key',
   'pipes.form.timeout': 'Maximum wait (minutes)',
+  'pipes.form.phase': 'Phase',
+  'pipes.form.finallyTimeout': 'FINALLY timeout (minutes)',
   'pipes.form.continueOn': 'Continue on',
   'pipes.form.remove': 'Remove',
   'pipes.form.noSteps': 'Add at least one step before enabling the Pipe.',

@@ -112,6 +112,7 @@ public class PipeManagementService {
         ensureNameAvailable(name, null);
         validateHasSteps(request.enabled(), request.steps());
         Pipe pipe = pipeRepository.saveAndFlush(new Pipe(name, optional(request.description()), request.enabled(), request.allowConcurrentExecutions()));
+        pipe.setFinallyTimeoutMillis(finallyTimeout(request.finallyTimeout()));
         pipe.replaceTags(resolveTags(request.tagIds()));
         List<PipeStep> steps = steps(pipe, request.steps());
         validateComplete(request.enabled(), steps);
@@ -133,6 +134,7 @@ public class PipeManagementService {
         List<PipeStep> steps = steps(pipe, request.steps());
         validateComplete(request.enabled(), steps);
         pipe.update(name, optional(request.description()), request.enabled(), request.allowConcurrentExecutions());
+        pipe.setFinallyTimeoutMillis(finallyTimeout(request.finallyTimeout()));
         pipe.replaceTags(resolveTags(request.tagIds()));
         clearBindings(pipe);
         for (int index = 0; index < pipe.getSteps().size(); index++)
@@ -197,7 +199,7 @@ public class PipeManagementService {
             if (!keys.add(key))
                 throw invalid("Step key '" + key + "' is duplicated");
             Duration timeout = request.timeout() == null ? Duration.ofMillis(PipeStep.DEFAULT_TIMEOUT_MILLIS) : request.timeout();
-            if (timeout.isZero() || timeout.isNegative())
+            if (timeout.isZero() || timeout.isNegative() || timeout.toMillis() == 0)
                 throw invalid("Step timeout must be positive");
             List<String> continueOn = request.continueOn().stream().map(Enum::name).sorted().toList();
             PipeStep step;
@@ -212,6 +214,7 @@ public class PipeManagementService {
                         .orElseThrow(() -> new ResourceNotFoundException("Procedure " + request.resourceId() + " was not found"));
                 step = PipeStep.procedure(pipe, key, position, procedure, timeout.toMillis(), continueOn);
             }
+            step.setPhase(request.phase());
             result.add(step);
             byKey.put(key, step);
             requestByKey.put(key, request);
@@ -236,7 +239,8 @@ public class PipeManagementService {
             if (parameter == null || !parameter.getJavaType().equals(ProcedureArtifactInput.class.getName()))
                 throw invalid("Target parameter '" + binding.targetParameterKey() + "' is not a ProcedureArtifactInput");
             PipeStep source = steps.get(binding.sourceStepKey());
-            if (source == null || source.getPosition() >= target.getPosition())
+            if (source == null || source.getPosition() >= target.getPosition()
+                    || target.getPhase() == app.alertify.pipes.model.PipeStepPhase.MAIN && source.getPhase() == app.alertify.pipes.model.PipeStepPhase.FINALLY)
                 throw invalid("Binding source step '" + binding.sourceStepKey() + "' must be an earlier step");
             if (source.getStepType() != PipeStepType.PROCEDURE)
                 throw invalid("Binding source step '" + binding.sourceStepKey() + "' must be a Procedure");
@@ -296,6 +300,14 @@ public class PipeManagementService {
                     throw invalid("Enabled Pipe step '" + step.getStepKey() + "' has no binding or BINARY fallback for artifact input '" + parameter.getParameterKey() + "'");
             }
         }
+    }
+
+    private static long finallyTimeout(Duration value) {
+        Duration timeout = value == null ? Duration.ofMillis(PipeStep.DEFAULT_TIMEOUT_MILLIS) : value;
+        if (timeout.isZero() || timeout.isNegative() || timeout.toMillis() == 0)
+            throw invalid("Finally timeout must be positive");
+
+        return timeout.toMillis();
     }
 
     private static String required(String value) { return value.trim(); }

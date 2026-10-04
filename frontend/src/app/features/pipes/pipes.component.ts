@@ -15,6 +15,7 @@ import {
   PipeOutcome,
   PipeTag,
   PipeStepType,
+  PipeStepPhase,
   PipeStepWriteRequest,
 } from '../../core/api/pipe-api.service';
 import { LocalizationService } from '../../core/i18n/localization.service';
@@ -25,6 +26,7 @@ type PipeTab = 'pipes' | 'history';
 interface PipeStepForm {
   key: string;
   type: PipeStepType;
+  phase: PipeStepPhase;
   resourceId: number;
   resourceName: string;
   resourceEnabled: boolean;
@@ -40,6 +42,7 @@ interface PipeForm {
   description: string;
   enabled: boolean;
   allowConcurrentExecutions: boolean;
+  finallyTimeoutMinutes: number;
   tagIds: number[];
   steps: PipeStepForm[];
 }
@@ -221,10 +224,12 @@ export class PipesComponent implements OnInit, OnDestroy {
       description: pipe.description ?? '',
       enabled: pipe.enabled,
       allowConcurrentExecutions: pipe.allowConcurrentExecutions,
+      finallyTimeoutMinutes: this.durationMinutes(pipe.finallyTimeout) ?? 30,
       tagIds: pipe.tags.map((tag) => tag.id),
       steps: pipe.steps.map((step) => ({
         key: step.key,
         type: step.type,
+        phase: step.phase,
         resourceId: step.resourceId,
         resourceName: step.resourceName,
         resourceEnabled: step.resourceEnabled,
@@ -274,6 +279,7 @@ export class PipesComponent implements OnInit, OnDestroy {
         resourceName: option.name,
         resourceEnabled: option.enabled,
         timeoutMinutes: 30,
+        phase: 'MAIN',
         continueOn: ['SUCCESS'],
         bindings: [],
         bindingTarget: '',
@@ -352,6 +358,7 @@ export class PipesComponent implements OnInit, OnDestroy {
   protected bindingSources(index: number): readonly BindingSourceOption[] {
     const sources: BindingSourceOption[] = [];
     for (const step of this.form().steps.slice(0, index)) {
+      if (this.form().steps[index].phase === 'MAIN' && step.phase === 'FINALLY') continue;
       const outputs = this.options().resources.find((option) =>
         option.type === step.type && option.id === step.resourceId)?.outputs ?? [];
       for (const output of outputs)
@@ -389,7 +396,7 @@ export class PipesComponent implements OnInit, OnDestroy {
       this.formError.set(this.dynamic('pipes.form.uniqueKeys'));
       return;
     }
-    if (form.steps.some((step) => step.timeoutMinutes < 1 || !step.continueOn.length)) {
+    if (!Number.isFinite(form.finallyTimeoutMinutes) || form.finallyTimeoutMinutes < 1 || form.steps.some((step) => !Number.isFinite(step.timeoutMinutes) || step.timeoutMinutes < 1 || !step.continueOn.length)) {
       this.formError.set(this.dynamic('pipes.form.invalidStep'));
       return;
     }
@@ -397,6 +404,7 @@ export class PipesComponent implements OnInit, OnDestroy {
     const steps: PipeStepWriteRequest[] = form.steps.map((step) => ({
       key: step.key.trim(),
       type: step.type,
+      phase: step.phase,
       resourceId: step.resourceId,
       timeout: `PT${step.timeoutMinutes}M`,
       continueOn: step.continueOn,
@@ -412,6 +420,7 @@ export class PipesComponent implements OnInit, OnDestroy {
         description: form.description.trim() || null,
         enabled: form.enabled,
         allowConcurrentExecutions: form.allowConcurrentExecutions,
+        finallyTimeout: `PT${form.finallyTimeoutMinutes}M`,
         tagIds: form.tagIds,
         steps,
       };
@@ -654,7 +663,7 @@ export class PipesComponent implements OnInit, OnDestroy {
   }
 
   private emptyForm(): PipeForm {
-    return { name: '', description: '', enabled: false, allowConcurrentExecutions: false, tagIds: [], steps: [] };
+    return { name: '', description: '', enabled: false, allowConcurrentExecutions: false, finallyTimeoutMinutes: 30, tagIds: [], steps: [] };
   }
 
   private importNotice(result: PipeImportResult): string {

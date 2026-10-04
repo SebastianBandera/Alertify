@@ -221,6 +221,8 @@ export type TranslationKey =
   | 'pipes.form.currentlyDisabled'
   | 'pipes.form.key'
   | 'pipes.form.timeout'
+  | 'pipes.form.phase'
+  | 'pipes.form.finallyTimeout'
   | 'pipes.form.continueOn'
   | 'pipes.form.remove'
   | 'pipes.form.noSteps'

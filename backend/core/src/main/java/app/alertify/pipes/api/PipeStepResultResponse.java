@@ -6,11 +6,13 @@ import java.util.UUID;
 import app.alertify.pipes.model.PipeOutcome;
 import app.alertify.pipes.model.PipeStepStatus;
 import app.alertify.pipes.model.PipeStepType;
+import app.alertify.pipes.model.PipeStepPhase;
 
 public record PipeStepResultResponse(
     String key,
     int position,
     PipeStepType type,
+    PipeStepPhase phase,
     long resourceId,
     String resourceName,
     PipeStepStatus status,

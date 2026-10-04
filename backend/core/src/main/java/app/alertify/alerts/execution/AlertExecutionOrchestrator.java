@@ -166,6 +166,7 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
         if (maintenanceModeService.isActive())
             return new AlertHookExecution(null, null, false, false, true);
 
+        Instant pipeDeadline = source == AlertExecutionTrigger.PIPE ? Instant.now().plus(busyWaitTimeout) : null;
         AlertGate gate = alertGates.computeIfAbsent(alertId, _ -> new AlertGate());
         boolean acquired;
         try {
@@ -182,7 +183,7 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
         runCallback(acquiredCallback);
         UUID executionId = UUID.randomUUID();
         eventLogger.success("ALERT_EXECUTION_TRIGGERED", data(alertId, alertName, source, triggeredBy));
-        AlertExecutionStatus status = execute(alertId, source, triggeredBy, executionId, null, parentPipeExecutionId, parentStepKey, parentHookInvocationId, parentHookName);
+        AlertExecutionStatus status = execute(alertId, source, triggeredBy, executionId, null, parentPipeExecutionId, parentStepKey, parentHookInvocationId, parentHookName, pipeDeadline);
         return new AlertHookExecution(status == null ? null : executionId, status, status == null, false, false);
     }
 
@@ -204,16 +205,19 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
     }
 
     private AlertExecutionStatus execute(long alertId, AlertExecutionTrigger source, String triggeredBy, UUID executionId, WorkerReservation preReservedWorker) {
-        return execute(alertId, source, triggeredBy, executionId, preReservedWorker, null, null, null, null);
+        return execute(alertId, source, triggeredBy, executionId, preReservedWorker, null, null, null, null, null);
     }
 
-    private AlertExecutionStatus execute(long alertId, AlertExecutionTrigger source, String triggeredBy, UUID executionId, WorkerReservation preReservedWorker, UUID parentPipeExecutionId, String parentStepKey, UUID parentHookInvocationId, String parentHookName) {
+    private AlertExecutionStatus execute(long alertId, AlertExecutionTrigger source, String triggeredBy, UUID executionId, WorkerReservation preReservedWorker, UUID parentPipeExecutionId, String parentStepKey, UUID parentHookInvocationId, String parentHookName, Instant pipeDeadline) {
         Instant startedAt = Instant.now();
         WorkerEndpoint endpoint = null;
         String workerName = null;
         String workerInstanceId = null;
         PreparedAlertExecution execution = null;
         Instant deadline = startedAt.plus(properties.execution().timeout());
+        if (pipeDeadline != null && pipeDeadline.isBefore(deadline))
+            deadline = pipeDeadline;
+
         persistenceService.registerTrigger(executionId, source, triggeredBy);
         if (parentPipeExecutionId != null)
             persistenceService.registerPipeParent(executionId, triggeredBy, parentPipeExecutionId, parentStepKey);

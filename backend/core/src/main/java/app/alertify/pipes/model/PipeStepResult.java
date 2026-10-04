@@ -37,6 +37,10 @@ public class PipeStepResult {
     @Column(name = "step_type", nullable = false, updatable = false, length = 16)
     private PipeStepType stepType;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 16)
+    private PipeStepPhase phase = PipeStepPhase.MAIN;
+
     @Column(name = "resource_id", nullable = false, updatable = false)
     private long resourceId;
 
@@ -71,6 +75,7 @@ public class PipeStepResult {
         stepKey = step.getStepKey();
         position = step.getPosition();
         stepType = step.getStepType();
+        phase = step.getPhase();
         resourceId = stepType == PipeStepType.ALERT ? step.getAlert().getId() : step.getProcedure().getId();
         resourceName = stepType == PipeStepType.ALERT ? step.getAlert().getName() : step.getProcedure().getName();
         status = PipeStepStatus.PENDING;
@@ -95,6 +100,7 @@ public class PipeStepResult {
     public Long getId() { return id; }
     public String getStepKey() { return stepKey; }
     public int getPosition() { return position; }
+    public PipeStepPhase getPhase() { return phase; }
     public PipeStepType getStepType() { return stepType; }
     public long getResourceId() { return resourceId; }
     public String getResourceName() { return resourceName; }

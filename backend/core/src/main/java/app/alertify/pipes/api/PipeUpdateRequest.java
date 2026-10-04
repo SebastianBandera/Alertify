@@ -1,6 +1,7 @@
 package app.alertify.pipes.api;
 
 import java.util.List;
+import java.time.Duration;
 import java.util.Set;
 
 import jakarta.validation.Valid;
@@ -16,6 +17,7 @@ public record PipeUpdateRequest(
     @Size(max = 4000) String description,
     boolean enabled,
     boolean allowConcurrentExecutions,
+    Duration finallyTimeout,
     @NotNull List<@Valid PipeStepRequest> steps,
     @NotNull @Size(max = 100) Set<@Positive Long> tagIds
 ) {

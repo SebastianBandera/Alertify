@@ -16,12 +16,13 @@ import app.alertify.api.error.InvalidPipeImportException;
 import app.alertify.pipes.model.Pipe;
 import app.alertify.pipes.model.PipeStep;
 import app.alertify.pipes.model.PipeStepType;
+import app.alertify.pipes.model.PipeStepPhase;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 @Component
 class PipeCsvCodec {
-    private static final List<String> HEADER = List.of("name", "description", "enabled", "allowConcurrentExecutions", "steps");
+    private static final List<String> HEADER = List.of("name", "description", "enabled", "allowConcurrentExecutions", "steps", "finallyTimeoutMillis");
     private static final int MAX_ROWS = 10_000;
     private final JsonMapper jsonMapper;
 
@@ -33,7 +34,7 @@ class PipeCsvCodec {
         for (Pipe pipe : pipes) {
             List<ExportStep> steps = pipe.getSteps().stream().map(PipeCsvCodec::exportStep).toList();
             CsvSupport.appendRow(csv, List.of(pipe.getName(), nullable(pipe.getDescription()), Boolean.toString(pipe.isEnabled()),
-                    Boolean.toString(pipe.isConcurrentExecutionAllowed()), json(steps)));
+                    Boolean.toString(pipe.isConcurrentExecutionAllowed()), json(steps), Long.toString(pipe.getFinallyTimeoutMillis())));
         }
         return csv.toString().getBytes(StandardCharsets.UTF_8);
     }
@@ -42,7 +43,7 @@ class PipeCsvCodec {
         String resource = step.getStepType() == PipeStepType.ALERT ? step.getAlert().getName() : step.getProcedure().getName();
         List<ExportBinding> bindings = step.getBindings().stream().map(value -> new ExportBinding(
                 value.getTargetParameter().getParameterKey(), value.getSourceStep().getStepKey(), value.getSourceOutput().getOutputKey())).toList();
-        return new ExportStep(step.getStepKey(), step.getStepType(), resource, step.getTimeoutMillis(), step.getContinueOn(), bindings);
+        return new ExportStep(step.getStepKey(), step.getStepType(), step.getPhase(), resource, step.getTimeoutMillis(), step.getContinueOn(), bindings);
     }
 
     List<ImportRow> read(byte[] content) {
@@ -55,8 +56,10 @@ class PipeCsvCodec {
         catch (IllegalArgumentException exception) { throw new InvalidPipeImportException(exception.getMessage(), exception); }
         if (rows.isEmpty())
             throw new InvalidPipeImportException("The CSV file is empty");
+
         if (!rows.getFirst().equals(HEADER))
             throw new InvalidPipeImportException("CSV header must be exactly: " + String.join(",", HEADER));
+
         if (rows.size() - 1 > MAX_ROWS)
             throw new InvalidPipeImportException("CSV contains more than " + MAX_ROWS + " Pipes");
 
@@ -80,7 +83,8 @@ class PipeCsvCodec {
                 throw error(row, "description exceeds 4000 characters");
 
             result.add(new ImportRow(row, name, description, parseBoolean(fields.get(2), row, "enabled"),
-                    parseBoolean(fields.get(3), row, "allowConcurrentExecutions"), steps(fields.get(4), row)));
+                    parseBoolean(fields.get(3), row, "allowConcurrentExecutions"), steps(fields.get(4), row),
+                    positiveLong(fields.get(5), row)));
         }
         return List.copyOf(result);
     }
@@ -121,7 +125,10 @@ class PipeCsvCodec {
             if (continueOn.isEmpty())
                 continueOn = Set.of("SUCCESS");
             List<ImportBinding> bindings = bindings(value.get("bindings"), row, key);
-            result.add(new ImportStep(key, type, resource, timeout, continueOn, bindings));
+            PipeStepPhase phase;
+            try { phase = value.has("phase") ? PipeStepPhase.valueOf(value.get("phase").stringValue()) : PipeStepPhase.MAIN; }
+            catch (RuntimeException exception) { throw error(row, "step phase must be MAIN or FINALLY", exception); }
+            result.add(new ImportStep(key, type, phase, resource, timeout, continueOn, bindings));
         }
         return List.copyOf(result);
     }
@@ -175,13 +182,23 @@ class PipeCsvCodec {
         catch (Exception exception) { throw new IllegalStateException("Unable to serialize Pipe CSV", exception); }
     }
 
+    private static long positiveLong(String value, int row) {
+        try {
+            long timeout = Long.parseLong(value);
+            if (timeout > 0)
+                return timeout;
+
+        } catch (NumberFormatException ignored) { }
+        throw error(row, "finallyTimeoutMillis must be positive");
+    }
+
     private static String nullable(String value) { return value == null ? "" : value; }
     private static InvalidPipeImportException error(int row, String message) { return new InvalidPipeImportException("CSV row " + row + ": " + message); }
     private static InvalidPipeImportException error(int row, String message, Exception cause) { return new InvalidPipeImportException("CSV row " + row + ": " + message, cause); }
 
-    record ImportRow(int rowNumber, String name, String description, boolean enabled, boolean allowConcurrentExecutions, List<ImportStep> steps) { }
-    record ImportStep(String key, PipeStepType type, String resource, long timeoutMillis, Set<String> continueOn, List<ImportBinding> bindings) { }
+    record ImportRow(int rowNumber, String name, String description, boolean enabled, boolean allowConcurrentExecutions, List<ImportStep> steps, long finallyTimeoutMillis) { }
+    record ImportStep(String key, PipeStepType type, PipeStepPhase phase, String resource, long timeoutMillis, Set<String> continueOn, List<ImportBinding> bindings) { }
     record ImportBinding(String targetParameterKey, String sourceStepKey, String sourceOutputKey) { }
-    private record ExportStep(String key, PipeStepType type, String resource, long timeoutMillis, List<String> continueOn, List<ExportBinding> bindings) { }
+    private record ExportStep(String key, PipeStepType type, PipeStepPhase phase, String resource, long timeoutMillis, List<String> continueOn, List<ExportBinding> bindings) { }
     private record ExportBinding(String targetParameterKey, String sourceStepKey, String sourceOutputKey) { }
 }
