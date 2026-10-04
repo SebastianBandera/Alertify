@@ -1,4 +1,21 @@
 <section class="alerts-page">
+  @if (closureExecution(); as execution) {
+    <div class="modal-backdrop">
+      <section class="modal modal--tags" role="dialog" aria-modal="true" aria-labelledby="closure-title">
+        <header class="modal__header"><h2 id="closure-title">{{ localization.translateDynamic(execution.closed ? 'alerts.history.reopen' : 'alerts.history.close') }} · {{ execution.alertName }}</h2></header>
+        <label for="execution-closure-note">{{ localization.translateDynamic('alerts.history.closureNote') }}</label>
+        <textarea id="execution-closure-note" maxlength="2000" [ngModel]="closureNote()" (ngModelChange)="closureNote.set($event)"></textarea>
+        @for (entry of closureAudit(); track $index) {
+          <p>{{ localization.translateDynamic(entry.closed ? 'alerts.history.closed' : 'alerts.history.open') }} · {{ entry.actor }} · {{ entry.at | date:'medium' }}<small>{{ entry.note }}</small></p>
+        }
+        @if (closureError()) { <p role="alert">{{ closureError() }}</p> }
+        <footer class="modal__footer">
+          <button type="button" [disabled]="closureSaving()" (click)="saveExecutionClosure()">{{ localization.translateDynamic(execution.closed ? 'alerts.history.reopen' : 'alerts.history.close') }}</button>
+          <button type="button" [disabled]="closureSaving()" (click)="closureExecution.set(null)">{{ localization.translate('alerts.cancel') }}</button>
+        </footer>
+      </section>
+    </div>
+  }
   <header class="page-header">
     <div>
       <h1>{{ localization.translate('alerts.title') }}</h1>
@@ -398,6 +415,7 @@
             <th>{{ localization.translate('alerts.history.parent') }}</th>
             <th>{{ localization.translate('alerts.history.duration') }}</th>
             <th>{{ localization.translate('alerts.history.message') }}</th>
+            <th>{{ localization.translateDynamic('alerts.history.closure') }}</th>
           </tr></thead>
           <tbody>
             @for (execution of executions(); track execution.id) {
@@ -420,6 +438,13 @@
                 </td>
                 <td>{{ execution.durationMillis }} ms</td>
                 <td class="execution-message">{{ statusMessage(execution) }}</td>
+                <td>
+                  @if (execution.status !== 'SUCCESS') {
+                    <button type="button" (click)="openExecutionClosure(execution)">{{ localization.translateDynamic(execution.closed ? 'alerts.history.reopen' : 'alerts.history.close') }}</button>
+                    <small>{{ localization.translateDynamic(execution.closed ? 'alerts.history.closed' : 'alerts.history.open') }}</small>
+                    @if (execution.closureAt) { <small>{{ execution.closureBy }} · {{ execution.closureAt | date:'medium' }}</small><small>{{ execution.closureNote }}</small> }
+                  }
+                </td>
               </tr>
             }
           </tbody>

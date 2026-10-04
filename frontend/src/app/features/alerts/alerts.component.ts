@@ -121,6 +121,11 @@ export class AlertsComponent implements OnInit {
   protected readonly templates = signal<readonly AlertTemplate[]>([]);
   protected readonly tags = signal<readonly AlertTag[]>([]);
   protected readonly executions = signal<readonly AlertExecution[]>([]);
+  protected readonly closureExecution = signal<AlertExecution | null>(null);
+  protected readonly closureNote = signal('');
+  protected readonly closureSaving = signal(false);
+  protected readonly closureError = signal<string | null>(null);
+  protected readonly closureAudit = signal<readonly { closed: boolean; actor: string; note: string | null; at: string }[]>([]);
   protected readonly bindings = signal<AlertBindingOptions>(EMPTY_BINDINGS);
   protected readonly loading = signal(true);
   protected readonly countsLoaded = signal(false);
@@ -990,6 +995,33 @@ export class AlertsComponent implements OnInit {
     if (execution.status === 'ERROR') return execution.errorMessage ?? execution.errorType ?? '—';
     if (execution.statusMessage === null) return '—';
     return JSON.stringify(execution.statusMessage);
+  }
+
+  protected async openExecutionClosure(execution: AlertExecution): Promise<void> {
+    this.closureExecution.set(execution);
+    this.closureNote.set('');
+    this.closureError.set(null);
+    this.closureAudit.set([]);
+    try {
+      this.closureAudit.set(await this.api.executionClosureAudit(execution.id));
+    } catch {
+      this.closureError.set(this.localization.translateDynamic('alerts.history.closureError'));
+    }
+  }
+
+  protected async saveExecutionClosure(): Promise<void> {
+    const execution = this.closureExecution();
+    if (!execution || this.closureSaving()) return;
+    this.closureSaving.set(true);
+    try {
+      const updated = await this.api.changeExecutionClosure(execution.id, !execution.closed, this.closureNote() || null);
+      this.executions.update((items) => items.map((item) => item.id === updated.id ? updated : item));
+      this.closureExecution.set(null);
+    } catch {
+      this.closureError.set(this.localization.translateDynamic('alerts.history.closureError'));
+    } finally {
+      this.closureSaving.set(false);
+    }
   }
 
   private emptyForm(): AlertForm {

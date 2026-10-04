@@ -75,7 +75,8 @@ class DashboardEventPublisherTest {
         AlertExecutionResponse execution = new AlertExecutionResponse(
                 1L, UUID.randomUUID(), 1L, "Alert", 2L, "template.name", AlertExecutionStatus.ERROR,
                 AlertExecutionTrigger.HOOK, "hook:" + hookInvocationId, at, at, at, 0, 0, 0, null, "example.Failure", "internal detail",
-                "worker-standard-2", "172.18.0.4", 9090, UUID.randomUUID(), null, null, hookInvocationId, "Snapshot hook"
+                "worker-standard-2", "172.18.0.4", 9090, UUID.randomUUID(), null, null, hookInvocationId, "Snapshot hook",
+                false, null, null, null
         );
         DashboardCardResponse card = new DashboardCardResponse(null, execution, null, null, null, 10, null);
         when(eventPublisher.hasAuthenticatedSessions()).thenReturn(true);

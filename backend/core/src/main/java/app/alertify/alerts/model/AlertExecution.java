@@ -98,6 +98,33 @@ public class AlertExecution {
     @Column(name = "parent_hook_name", columnDefinition = "text", updatable = false)
     private String parentHookName;
 
+    @Column(nullable = false)
+    private boolean closed;
+
+    @Column(name = "closure_at")
+    private Instant closureAt;
+
+    @Column(name = "closure_by", columnDefinition = "text")
+    private String closureBy;
+
+    @Column(name = "closure_note", columnDefinition = "text")
+    private String closureNote;
+
+    public void changeClosure(boolean closed, String actor, String note, Instant at) {
+        if (status != AlertExecutionStatus.WARN && status != AlertExecutionStatus.ERROR)
+            throw new IllegalArgumentException("Only WARN and ERROR executions may be closed or reopened");
+
+        this.closed = closed;
+        closureAt = Objects.requireNonNull(at);
+        closureBy = Objects.requireNonNull(actor);
+        closureNote = note;
+    }
+
+    public boolean isClosed() { return closed; }
+    public Instant getClosureAt() { return closureAt; }
+    public String getClosureBy() { return closureBy; }
+    public String getClosureNote() { return closureNote; }
+
     public void recordPipeParent(UUID executionId, String stepKey) {
         if ((executionId == null) != (stepKey == null) || executionId != null && (trigger != AlertExecutionTrigger.PIPE || stepKey.isBlank() || parentHookInvocationId != null))
             throw new IllegalArgumentException("Pipe parent requires PIPE origin and a step key");

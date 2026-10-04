@@ -19,6 +19,10 @@ import app.alertify.alerts.model.AlertExecution;
 
 public interface AlertExecutionRepository extends JpaRepository<AlertExecution, Long> {
 
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("select execution from AlertExecution execution where execution.id = :id")
+    Optional<AlertExecution> lockById(@Param("id") Long id);
+
     long countByAlert_Id(Long alertId);
 
     boolean existsByAlert_IdAndStatusAndFinishedAtGreaterThanEqual(Long alertId, AlertExecutionStatus status, Instant finishedAt);

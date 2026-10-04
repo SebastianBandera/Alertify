@@ -163,6 +163,10 @@ export interface AlertExecution {
   readonly parentStepKey: string | null;
   readonly parentHookInvocationId: string | null;
   readonly parentHookName: string | null;
+  readonly closed: boolean;
+  readonly closureAt: string | null;
+  readonly closureBy: string | null;
+  readonly closureNote: string | null;
   readonly startedAt: string;
   readonly workStartedAt: string;
   readonly finishedAt: string;
@@ -320,6 +324,14 @@ export class AlertApiService {
 
   async createAlert(request: AlertWriteRequest): Promise<Alert> {
     return this.request('/api/alerts', { method: 'POST', body: JSON.stringify(request) });
+  }
+
+  async changeExecutionClosure(id: number, closed: boolean, note: string | null): Promise<AlertExecution> {
+    return this.request(`/api/alert-executions/${id}/closure`, { method: 'POST', body: JSON.stringify({ closed, note }) });
+  }
+
+  async executionClosureAudit(id: number): Promise<readonly { closed: boolean; actor: string; note: string | null; at: string }[]> {
+    return this.request(`/api/alert-executions/${id}/closure-audit`);
   }
 
   async updateAlert(id: number, request: AlertWriteRequest): Promise<Alert> {

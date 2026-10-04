@@ -68,7 +68,8 @@ public final class AlertMapper {
                 execution.getStatusMessage(), execution.getErrorType(), execution.getErrorMessage(),
                 execution.getWorkerName(), execution.getWorkerIpAddress(), execution.getWorkerPort(),
                 execution.getWorkerInstanceId(), execution.getParentPipeExecutionId(), execution.getParentStepKey(),
-                execution.getParentHookInvocationId(), execution.getParentHookName()
+                execution.getParentHookInvocationId(), execution.getParentHookName(),
+                execution.isClosed(), execution.getClosureAt(), execution.getClosureBy(), execution.getClosureNote()
         );
     }
 

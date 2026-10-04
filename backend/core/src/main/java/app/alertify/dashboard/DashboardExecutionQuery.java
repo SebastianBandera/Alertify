@@ -47,7 +47,7 @@ public class DashboardExecutionQuery {
                 cross join lateral (
                     select execution.id
                     from core.alert_executions execution
-                    where execution.alert_id = alerts.alert_id
+                    where execution.closed = false and execution.alert_id = alerts.alert_id
                     order by execution.started_at desc, execution.id desc
                     limit 1
                 ) latest
@@ -82,7 +82,7 @@ public class DashboardExecutionQuery {
                 cross join lateral (
                     select execution.id
                     from core.alert_executions execution
-                    where execution.alert_id = alerts.alert_id
+                    where execution.closed = false and execution.alert_id = alerts.alert_id
                       and execution.status in ('WARN', 'ERROR')
                       and execution.id <> alerts.latest_id
                       and execution.started_at >= ?
@@ -117,7 +117,7 @@ public class DashboardExecutionQuery {
                 cross join lateral (
                     select execution.status, execution.started_at, execution.finished_at
                     from core.alert_executions execution
-                    where execution.alert_id = alerts.alert_id
+                    where execution.closed = false and execution.alert_id = alerts.alert_id
                     order by execution.started_at desc, execution.id desc
                     limit 1
                 ) last
@@ -127,7 +127,7 @@ public class DashboardExecutionQuery {
                     cross join lateral (
                         select execution.started_at
                         from core.alert_executions execution
-                        where execution.alert_id = alerts.alert_id and execution.status = kinds.status
+                        where execution.closed = false and execution.alert_id = alerts.alert_id and execution.status = kinds.status
                         order by execution.started_at desc, execution.id desc
                         limit 1
                     ) other
@@ -136,7 +136,7 @@ public class DashboardExecutionQuery {
                 left join lateral (
                     select execution.finished_at as since
                     from core.alert_executions execution
-                    where execution.alert_id = alerts.alert_id and execution.status = last.status
+                    where execution.closed = false and execution.alert_id = alerts.alert_id and execution.status = last.status
                       and (boundary.started_at is null or execution.started_at > boundary.started_at)
                     order by execution.started_at asc, execution.id asc
                     limit 1
@@ -146,7 +146,7 @@ public class DashboardExecutionQuery {
                            coalesce(
                                (select execution.finished_at
                                 from core.alert_executions execution
-                                where execution.alert_id = alerts.alert_id and execution.status = kinds.status
+                                where execution.closed = false and execution.alert_id = alerts.alert_id and execution.status = kinds.status
                                   and execution.started_at >= ?
                                 order by execution.started_at desc, execution.id desc
                                 limit 1),
@@ -191,7 +191,7 @@ public class DashboardExecutionQuery {
                 left join lateral (
                     select execution.finished_at
                     from core.alert_executions execution
-                    where execution.alert_id = alerts.alert_id and execution.status = 'WARN'
+                    where execution.closed = false and execution.alert_id = alerts.alert_id and execution.status = 'WARN'
                       and execution.started_at >= alerts.since
                     order by execution.started_at desc, execution.id desc
                     limit 1
@@ -199,7 +199,7 @@ public class DashboardExecutionQuery {
                 left join lateral (
                     select execution.finished_at
                     from core.alert_executions execution
-                    where execution.alert_id = alerts.alert_id and execution.status = 'ERROR'
+                    where execution.closed = false and execution.alert_id = alerts.alert_id and execution.status = 'ERROR'
                       and execution.started_at >= alerts.since
                     order by execution.started_at desc, execution.id desc
                     limit 1
