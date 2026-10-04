@@ -4,6 +4,7 @@ import { AuthService } from '../auth/auth.service';
 import { RUNTIME_CONFIG } from '../config/runtime-config';
 import { ApiRequestError, PageResponse } from './configuration-api.service';
 
+export type PipeStepPhase = 'MAIN' | 'FINALLY';
 export type PipeStepType = 'ALERT' | 'PROCEDURE';
 export type PipeOutcome = 'SUCCESS' | 'WARN' | 'ERROR';
 export type PipeExecutionStatus = 'RUNNING' | 'COMPLETED' | 'PARTIAL' | 'FAILED';
@@ -37,6 +38,7 @@ export interface PipeStep {
   readonly key: string;
   readonly position: number;
   readonly type: PipeStepType;
+  readonly phase: PipeStepPhase;
   readonly resourceId: number;
   readonly resourceName: string;
   readonly resourceEnabled: boolean;
@@ -52,6 +54,7 @@ export interface Pipe {
   readonly description: string | null;
   readonly enabled: boolean;
   readonly allowConcurrentExecutions: boolean;
+  readonly finallyTimeout: string | null;
   readonly tags: readonly PipeTag[];
   readonly steps: readonly PipeStep[];
   readonly createdAt: string;
@@ -74,6 +77,7 @@ export interface PipeOptions {
 export interface PipeStepWriteRequest {
   readonly key: string;
   readonly type: PipeStepType;
+  readonly phase: PipeStepPhase;
   readonly resourceId: number;
   readonly timeout: string | null;
   readonly continueOn: readonly PipeOutcome[];
@@ -86,6 +90,7 @@ export interface PipeWriteRequest {
   readonly description: string | null;
   readonly enabled: boolean;
   readonly allowConcurrentExecutions: boolean;
+  readonly finallyTimeout: string | null;
   readonly steps: readonly PipeStepWriteRequest[];
   readonly tagIds: readonly number[];
 }
@@ -94,6 +99,7 @@ export interface PipeStepResult {
   readonly key: string;
   readonly position: number;
   readonly type: PipeStepType;
+  readonly phase: PipeStepPhase;
   readonly resourceId: number;
   readonly resourceName: string;
   readonly status: PipeStepStatus;

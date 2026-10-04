@@ -1,5 +1,5 @@
 import { DatePipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, OnInit, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, Injector, OnInit, afterNextRender, computed, effect, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -23,6 +23,8 @@ import { ApiRequestError, SortDirection, TagMatchMode } from '../../core/api/con
 import { LocalizationService } from '../../core/i18n/localization.service';
 import { isCompatibleConfigurationValueType, isCompatibleSecretValueType } from '../../core/utils/parameter-binding-compatibility';
 import { templateClassName } from '../../core/utils/template-key';
+import { EditorDraftService } from '../../shared/editor-drafts/editor-draft.service';
+import { EditorViewportService } from '../../shared/editor-viewport/editor-viewport.service';
 import { SearchableSelectComponent, SearchableSelectOption } from '../../shared/searchable-select/searchable-select.component';
 
 type AlertTab = 'alerts' | 'templates' | 'history';
@@ -103,6 +105,7 @@ function alertTab(value: string | null): AlertTab {
   templateUrl: './alerts.component.html',
   styleUrl: './alerts.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  providers: [EditorViewportService],
 })
 export class AlertsComponent implements OnInit {
   protected readonly localization = inject(LocalizationService);
@@ -112,12 +115,21 @@ export class AlertsComponent implements OnInit {
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
   private readonly elementRef: ElementRef<HTMLElement> = inject(ElementRef);
+  private readonly injector = inject(Injector);
+  private readonly editorViewport = inject(EditorViewportService);
 
   protected readonly activeTab = signal<AlertTab>('alerts');
   protected readonly alerts = signal<readonly Alert[]>([]);
   protected readonly templates = signal<readonly AlertTemplate[]>([]);
   protected readonly tags = signal<readonly AlertTag[]>([]);
   protected readonly executions = signal<readonly AlertExecution[]>([]);
+  protected readonly closureExecution = signal<AlertExecution | null>(null);
+  protected readonly closureNote = signal('');
+  protected readonly closureSaving = signal(false);
+  protected readonly closureError = signal<string | null>(null);
+  protected readonly closureAuditLoading = signal(false);
+  protected readonly closureAuditError = signal<string | null>(null);
+  protected readonly closureAudit = signal<readonly { closed: boolean; actor: string; note: string | null; at: string }[]>([]);
   protected readonly bindings = signal<AlertBindingOptions>(EMPTY_BINDINGS);
   protected readonly loading = signal(true);
   protected readonly countsLoaded = signal(false);
@@ -218,7 +230,15 @@ export class AlertsComponent implements OnInit {
     const name = this.executions().find((execution) => execution.alertId === alertId)?.alertName ?? `#${alertId}`;
     return [{ id: alertId, name }, ...alerts];
   });
+  protected readonly drafts = inject(EditorDraftService);
   protected readonly editorOpen = signal(false);
+  protected readonly observerResources = signal<readonly SearchableSelectOption[]>([]);
+  protected readonly observerResourcesLoading = signal(false);
+  protected readonly observerResourcesError = signal(false);
+  private observerResourceRequest = 0;
+  protected readonly observingResource = computed(() =>
+    this.selectedTemplate()?.templateKey === 'app.alertify.alerts.templates.ResourceResultObserverAlertTemplate');
+  private readonly observerResourceKind = computed(() => this.form().parameters['resourceKind']?.textValue ?? '');
   protected readonly editingAlert = signal<Alert | null>(null);
   protected readonly form = signal<AlertForm>(this.emptyForm());
   protected readonly selectedTemplate = computed(() =>
@@ -248,16 +268,31 @@ export class AlertsComponent implements OnInit {
   protected readonly tagForm = signal<TagForm>({ name: '', color: '#6D5DFC' });
   protected readonly tagError = signal<string | null>(null);
 
+  constructor() {
+    effect(() => {
+      if (!this.editorOpen() || !this.observingResource()) return;
+      const kind = this.observerResourceKind();
+      if (kind === 'PIPE' || kind === 'PROCEDURE' || kind === 'HOOK') void this.loadObserverResources(kind);
+    });
+    effect(() => {
+      if (this.drafts.requestedRestore() !== 'alerts') return;
+      if (!this.editorOpen()) this.restoreDraft();
+      this.drafts.requestedRestore.set(null);
+    });
+  }
+
   async ngOnInit(): Promise<void> {
     this.destroyRef.onDestroy(() => this.clearNoticeTimer());
     const requestedTab = this.route.snapshot.queryParamMap.get('tab');
     const requestedExecutionId = this.route.snapshot.queryParamMap.get('executionId');
+    const requestedEditAlertId = Number(this.route.snapshot.queryParamMap.get('editAlertId'));
+    const hasRequestedDefinition = Number.isSafeInteger(requestedEditAlertId) && requestedEditAlertId > 0;
     /* The dashboard card menu links here with ?alertId=<id> to show that alert's history. */
     const requestedAlertId = Number(this.route.snapshot.queryParamMap.get('alertId'));
     const hasRequestedAlert = Number.isInteger(requestedAlertId) && requestedAlertId > 0;
     if (hasRequestedAlert) this.historyAlertId.set(requestedAlertId);
     this.historyExecutionId.set(requestedExecutionId);
-    this.activeTab.set(requestedExecutionId || hasRequestedAlert ? 'history' : alertTab(requestedTab));
+    this.activeTab.set(hasRequestedDefinition ? 'alerts' : requestedExecutionId || hasRequestedAlert ? 'history' : alertTab(requestedTab));
     this.route.queryParamMap
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((parameters) => {
@@ -267,10 +302,10 @@ export class AlertsComponent implements OnInit {
         this.activeTab.set(tab);
         void this.loadTab(tab);
       });
-    if (requestedTab !== this.activeTab() || hasRequestedAlert) {
+    if (requestedTab !== this.activeTab() || hasRequestedAlert || this.route.snapshot.queryParamMap.has('editAlertId')) {
       void this.router.navigate([], {
         relativeTo: this.route,
-        queryParams: { tab: this.activeTab(), alertId: null },
+        queryParams: { tab: this.activeTab(), alertId: null, editAlertId: null },
         queryParamsHandling: 'merge',
         replaceUrl: true,
       });
@@ -278,6 +313,14 @@ export class AlertsComponent implements OnInit {
 
     try {
       await Promise.all([this.loadAlerts(), this.loadTemplates(), this.loadTags(), this.loadBindings(), this.loadHistory()]);
+      if (hasRequestedDefinition) {
+        try {
+          const alert = await this.api.getAlert(requestedEditAlertId);
+          if (!this.destroyRef.destroyed) this.openEdit(alert);
+        } catch (error) {
+          if (!this.destroyRef.destroyed) this.error.set(this.errorMessage(error));
+        }
+      }
     } finally {
       this.countsLoaded.set(true);
     }
@@ -588,6 +631,7 @@ export class AlertsComponent implements OnInit {
   }
 
   protected openEdit(alert: Alert): void {
+    this.editorViewport.capture(`alert-${alert.id}`);
     const template = this.templates().find((item) => item.id === alert.templateId) ?? null;
     const form = this.formForTemplate(template);
     const parameters = { ...form.parameters };
@@ -624,10 +668,55 @@ export class AlertsComponent implements OnInit {
     this.editorOpen.set(true);
   }
 
+  protected minimizeDraft(): void {
+    if (this.saving()) return;
+    this.drafts.save('alerts', this.form(), this.editingAlert());
+    this.editorOpen.set(false);
+    this.editorViewport.restore();
+  }
+
+  protected restoreDraft(): void {
+    const draft = this.drafts.read<AlertForm, Alert>('alerts');
+    if (!draft || this.saving()) return;
+    this.editorViewport.capture(draft.editing ? `alert-${draft.editing.id}` : 'alert-create');
+    this.form.set(draft.form);
+    this.editingAlert.set(draft.editing);
+    this.formError.set(null);
+    this.editorOpen.set(true);
+  }
+
   protected closeEditor(): void {
     if (!this.saving()) {
+      this.drafts.remove('alerts');
       this.editorOpen.set(false);
+      this.editorViewport.restore();
     }
+  }
+
+  private async loadObserverResources(kind: string): Promise<void> {
+    const request = ++this.observerResourceRequest;
+    this.observerResourcesLoading.set(true);
+    this.observerResourcesError.set(false);
+    try {
+      const resources = await this.api.listObserverResources(kind);
+      if (request !== this.observerResourceRequest) return;
+      this.observerResources.set(resources.map((resource) => ({
+        value: resource.id,
+        label: resource.name,
+        description: resource.enabled ? undefined : this.dynamic('observer.resource.disabled'),
+      })));
+    } catch {
+      if (request === this.observerResourceRequest) {
+        this.observerResources.set([]);
+        this.observerResourcesError.set(true);
+      }
+    } finally {
+      if (request === this.observerResourceRequest) this.observerResourcesLoading.set(false);
+    }
+  }
+
+  protected selectObserverResource(id: number | null): void {
+    this.patchParameter('resourceId', { configured: true, source: 'TEXT', textValue: id === null ? '' : String(id) });
   }
 
   protected selectTemplateId(templateId: number | null): void {
@@ -662,6 +751,13 @@ export class AlertsComponent implements OnInit {
   }
 
   protected patchParameter(key: string, patch: Partial<ParameterForm>): void {
+    if (this.observingResource() && key === 'resourceKind' && patch.textValue !== undefined
+      && patch.textValue !== this.form().parameters[key]?.textValue) {
+      this.form.update((form) => ({ ...form, parameters: {
+        ...form.parameters,
+        resourceId: { ...form.parameters['resourceId'], textValue: '' },
+      } }));
+    }
     this.form.update((form) => ({
       ...form,
       parameters: { ...form.parameters, [key]: { ...form.parameters[key], ...patch } },
@@ -755,8 +851,10 @@ export class AlertsComponent implements OnInit {
       };
       if (editing) await this.api.updateAlert(editing.id, request);
       else await this.api.createAlert(request);
+      this.drafts.remove('alerts');
       this.editorOpen.set(false);
       await Promise.all([this.loadAlerts(), this.loadTemplates()]);
+      this.editorViewport.restore();
     } catch (error) {
       const fieldErrors = this.alertFieldErrors(error);
       if (Object.keys(fieldErrors).length) this.showFieldErrors(fieldErrors);
@@ -984,6 +1082,60 @@ export class AlertsComponent implements OnInit {
     if (execution.status === 'ERROR') return execution.errorMessage ?? execution.errorType ?? '—';
     if (execution.statusMessage === null) return '—';
     return JSON.stringify(execution.statusMessage);
+  }
+
+  protected async openExecutionClosure(execution: AlertExecution): Promise<void> {
+    this.editorViewport.capture(`execution-closure-${execution.id}`);
+    this.closureExecution.set(execution);
+    this.closureNote.set('');
+    this.closureError.set(null);
+    this.closureAudit.set([]);
+    this.closureAuditError.set(null);
+    this.closureAuditLoading.set(true);
+    afterNextRender(() => {
+      if (this.closureExecution()?.id !== execution.id) return;
+      this.elementRef.nativeElement.querySelector<HTMLDialogElement>('.modal--closure')?.showModal();
+      this.elementRef.nativeElement.querySelector<HTMLTextAreaElement>('#execution-closure-note')?.focus({ preventScroll: true });
+    }, { injector: this.injector });
+    try {
+      const audit = await this.api.executionClosureAudit(execution.id);
+      if (this.closureExecution() !== execution) return;
+      this.closureAudit.set([...audit].reverse());
+    } catch {
+      if (this.closureExecution() === execution) {
+        this.closureAuditError.set(this.localization.translate('alerts.history.closureAuditError'));
+      }
+    } finally {
+      if (this.closureExecution() === execution) this.closureAuditLoading.set(false);
+    }
+  }
+
+  protected closeExecutionClosure(): void {
+    if (this.closureSaving()) return;
+    this.closureExecution.set(null);
+    this.editorViewport.restore();
+  }
+
+  protected cancelExecutionClosure(event: Event): void {
+    event.preventDefault();
+    this.closeExecutionClosure();
+  }
+
+  protected async saveExecutionClosure(): Promise<void> {
+    const execution = this.closureExecution();
+    if (!execution || this.closureSaving()) return;
+    this.closureSaving.set(true);
+    this.closureError.set(null);
+    try {
+      const updated = await this.api.changeExecutionClosure(execution.id, !execution.closed, this.closureNote() || null);
+      this.executions.update((items) => items.map((item) => item.id === updated.id ? updated : item));
+      this.closureExecution.set(null);
+      this.editorViewport.restore();
+    } catch {
+      this.closureError.set(this.localization.translateDynamic('alerts.history.closureError'));
+    } finally {
+      this.closureSaving.set(false);
+    }
   }
 
   private emptyForm(): AlertForm {

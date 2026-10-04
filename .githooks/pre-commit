@@ -3,6 +3,7 @@
 
 set -euo pipefail
 
+allow_customizations="$(git config --bool --get alertify.allowCustomizations || true)"
 staged_paths="$(mktemp)"
 trap 'rm -f "$staged_paths"' EXIT
 
@@ -42,8 +43,8 @@ while IFS= read -r -d '' path; do
             */.alertify/*|*/target/*|*/node_modules/*|*/dist/*|*/build/*|*/out/*|*/coverage/*|*/tmp/*|/logs/*|*/.angular/cache/*)
                 reason='generated or local directory'
                 ;;
-            */frontend/public/config/*|*/backend/alert-templates/src/main/java/app/alertify/alerts/templates/custom/*)
-                reason='runtime file or local template'
+            */frontend/public/config/*)
+                reason='runtime file'
                 ;;
         esac
     fi
@@ -62,8 +63,29 @@ while IFS= read -r -d '' path; do
     fi
 done < "$staged_paths"
 
-if (( blocked )); then
-    printf 'Commit blocked: remove the listed files from the staging area.\n' >&2
-    exit 1
+customizations_blocked=0
+if [[ "$allow_customizations" != true ]]; then
+    # Disable rename detection so both moving a protected file away and moving
+    # another file into its place are checked. Include deletions as well.
+    git diff --cached --name-only --no-renames -z -- \
+        frontend/src/app/core/alert-charts/alert-chart-extractors.extended.ts \
+        frontend/src/app/core/alert-messages/alert-message-formatters.extended.ts \
+        frontend/src/app/core/i18n/translations/en.extended.translations.ts \
+        frontend/src/app/core/i18n/translations/es-uy.extended.translations.ts \
+        ':(glob)backend/alert-templates/src/main/java/app/alertify/alerts/templates/custom/**/*.java' > "$staged_paths"
+
+    while IFS= read -r -d '' path; do
+        printf '  - %q (customization file; must not be committed to the original repository)\n' "$path" >&2
+        blocked=1
+        customizations_blocked=1
+    done < "$staged_paths"
 fi
 
+if (( blocked )); then
+    printf 'WARNING: Commit rejected. Remove the listed files from the staging area.\n' >&2
+    if (( customizations_blocked )); then
+        printf 'Extended frontend files and custom Java templates belong to local customizations, not the original repository.\n' >&2
+        printf 'To version these customizations in a fork, run: git config --local alertify.allowCustomizations true\n' >&2
+    fi
+    exit 1
+fi

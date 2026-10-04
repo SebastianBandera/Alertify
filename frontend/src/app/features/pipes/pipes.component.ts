@@ -1,5 +1,5 @@
 import { DatePipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, ElementRef, OnDestroy, OnInit, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, OnDestroy, OnInit, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 
@@ -15,15 +15,19 @@ import {
   PipeOutcome,
   PipeTag,
   PipeStepType,
+  PipeStepPhase,
   PipeStepWriteRequest,
 } from '../../core/api/pipe-api.service';
 import { LocalizationService } from '../../core/i18n/localization.service';
+import { EditorDraftService } from '../../shared/editor-drafts/editor-draft.service';
+import { EditorViewportService } from '../../shared/editor-viewport/editor-viewport.service';
 
 type PipeTab = 'pipes' | 'history';
 
 interface PipeStepForm {
   key: string;
   type: PipeStepType;
+  phase: PipeStepPhase;
   resourceId: number;
   resourceName: string;
   resourceEnabled: boolean;
@@ -39,6 +43,7 @@ interface PipeForm {
   description: string;
   enabled: boolean;
   allowConcurrentExecutions: boolean;
+  finallyTimeoutMinutes: number;
   tagIds: number[];
   steps: PipeStepForm[];
 }
@@ -68,6 +73,7 @@ function readStoredPageSize(): number {
   templateUrl: './pipes.component.html',
   styleUrl: './pipes.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  providers: [EditorViewportService],
 })
 export class PipesComponent implements OnInit, OnDestroy {
   protected readonly localization = inject(LocalizationService);
@@ -76,6 +82,7 @@ export class PipesComponent implements OnInit, OnDestroy {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
+  private readonly editorViewport = inject(EditorViewportService);
 
   protected readonly activeTab = signal<PipeTab>('pipes');
   protected readonly pipes = signal<readonly Pipe[]>([]);
@@ -102,6 +109,7 @@ export class PipesComponent implements OnInit, OnDestroy {
   protected readonly historyPageIndex = signal(0);
   protected readonly historyTotalPages = signal(0);
   protected readonly historyTotalElements = signal(0);
+  protected readonly drafts = inject(EditorDraftService);
   protected readonly editorOpen = signal(false);
   protected readonly editing = signal<Pipe | null>(null);
   protected readonly form = signal<PipeForm>(this.emptyForm());
@@ -115,6 +123,14 @@ export class PipesComponent implements OnInit, OnDestroy {
   protected readonly newStepResourceId = signal<number | null>(null);
   protected readonly outcomes = ALL_OUTCOMES;
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
+
+  constructor() {
+    effect(() => {
+      if (this.drafts.requestedRestore() !== 'pipes') return;
+      if (!this.editorOpen()) this.restoreDraft();
+      this.drafts.requestedRestore.set(null);
+    });
+  }
 
   async ngOnInit(): Promise<void> {
     const tab = this.route.snapshot.queryParamMap.get('tab');
@@ -211,16 +227,19 @@ export class PipesComponent implements OnInit, OnDestroy {
   }
 
   protected openEdit(pipe: Pipe): void {
+    this.editorViewport.capture(`pipe-${pipe.id}`);
     this.editing.set(pipe);
     this.form.set({
       name: pipe.name,
       description: pipe.description ?? '',
       enabled: pipe.enabled,
       allowConcurrentExecutions: pipe.allowConcurrentExecutions,
+      finallyTimeoutMinutes: this.durationMinutes(pipe.finallyTimeout) ?? 30,
       tagIds: pipe.tags.map((tag) => tag.id),
       steps: pipe.steps.map((step) => ({
         key: step.key,
         type: step.type,
+        phase: step.phase,
         resourceId: step.resourceId,
         resourceName: step.resourceName,
         resourceEnabled: step.resourceEnabled,
@@ -237,8 +256,29 @@ export class PipesComponent implements OnInit, OnDestroy {
     this.editorOpen.set(true);
   }
 
+  protected minimizeDraft(): void {
+    if (this.saving()) return;
+    this.drafts.save('pipes', this.form(), this.editing());
+    this.editorOpen.set(false);
+    this.editorViewport.restore();
+  }
+
+  protected restoreDraft(): void {
+    const draft = this.drafts.read<PipeForm, Pipe>('pipes');
+    if (!draft || this.saving()) return;
+    this.editorViewport.capture(draft.editing ? `pipe-${draft.editing.id}` : 'pipe-create');
+    this.form.set(draft.form);
+    this.editing.set(draft.editing);
+    this.formError.set(null);
+    this.editorOpen.set(true);
+  }
+
   protected closeEditor(): void {
-    if (!this.saving()) this.editorOpen.set(false);
+    if (!this.saving()) {
+      this.drafts.remove('pipes');
+      this.editorOpen.set(false);
+      this.editorViewport.restore();
+    }
   }
 
   protected patchForm<K extends keyof Omit<PipeForm, 'steps'>>(key: K, value: PipeForm[K]): void {
@@ -267,6 +307,7 @@ export class PipesComponent implements OnInit, OnDestroy {
         resourceName: option.name,
         resourceEnabled: option.enabled,
         timeoutMinutes: 30,
+        phase: 'MAIN',
         continueOn: ['SUCCESS'],
         bindings: [],
         bindingTarget: '',
@@ -345,6 +386,7 @@ export class PipesComponent implements OnInit, OnDestroy {
   protected bindingSources(index: number): readonly BindingSourceOption[] {
     const sources: BindingSourceOption[] = [];
     for (const step of this.form().steps.slice(0, index)) {
+      if (this.form().steps[index].phase === 'MAIN' && step.phase === 'FINALLY') continue;
       const outputs = this.options().resources.find((option) =>
         option.type === step.type && option.id === step.resourceId)?.outputs ?? [];
       for (const output of outputs)
@@ -382,7 +424,7 @@ export class PipesComponent implements OnInit, OnDestroy {
       this.formError.set(this.dynamic('pipes.form.uniqueKeys'));
       return;
     }
-    if (form.steps.some((step) => step.timeoutMinutes < 1 || !step.continueOn.length)) {
+    if (!Number.isFinite(form.finallyTimeoutMinutes) || form.finallyTimeoutMinutes < 1 || form.steps.some((step) => !Number.isFinite(step.timeoutMinutes) || step.timeoutMinutes < 1 || !step.continueOn.length)) {
       this.formError.set(this.dynamic('pipes.form.invalidStep'));
       return;
     }
@@ -390,6 +432,7 @@ export class PipesComponent implements OnInit, OnDestroy {
     const steps: PipeStepWriteRequest[] = form.steps.map((step) => ({
       key: step.key.trim(),
       type: step.type,
+      phase: step.phase,
       resourceId: step.resourceId,
       timeout: `PT${step.timeoutMinutes}M`,
       continueOn: step.continueOn,
@@ -405,14 +448,17 @@ export class PipesComponent implements OnInit, OnDestroy {
         description: form.description.trim() || null,
         enabled: form.enabled,
         allowConcurrentExecutions: form.allowConcurrentExecutions,
+        finallyTimeout: `PT${form.finallyTimeoutMinutes}M`,
         tagIds: form.tagIds,
         steps,
       };
       if (editing) await this.api.update(editing.id, request);
       else await this.api.create(request);
+      this.drafts.remove('pipes');
       this.editorOpen.set(false);
       this.notice.set(this.dynamic(editing ? 'pipes.updated' : 'pipes.created'));
       await this.loadAll(false);
+      this.editorViewport.restore();
     } catch (error) {
       this.formError.set(this.errorMessage(error));
     } finally {
@@ -646,7 +692,7 @@ export class PipesComponent implements OnInit, OnDestroy {
   }
 
   private emptyForm(): PipeForm {
-    return { name: '', description: '', enabled: false, allowConcurrentExecutions: false, tagIds: [], steps: [] };
+    return { name: '', description: '', enabled: false, allowConcurrentExecutions: false, finallyTimeoutMinutes: 30, tagIds: [], steps: [] };
   }
 
   private importNotice(result: PipeImportResult): string {

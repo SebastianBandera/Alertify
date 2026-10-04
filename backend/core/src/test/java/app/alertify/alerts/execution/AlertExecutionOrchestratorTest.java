@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -90,13 +91,48 @@ class AlertExecutionOrchestratorTest {
         orchestrator = new AlertExecutionOrchestrator(
                 preparationService, persistenceService, workerStatusService, workerClient,
                 properties(), eventLogger, procedureTokenService, procedureInvocationRegistry, procedureExecutionOrchestrator,
-                quietHoursService, maintenanceModeService, statusEventPublisher, dashboardEventPublisher
+                quietHoursService, maintenanceModeService, statusEventPublisher, dashboardEventPublisher, mock(app.alertify.alerts.service.ResourceResultObserverService.class)
         );
     }
 
     @AfterEach
     void closeOrchestrator() {
         orchestrator.close();
+    }
+
+    @Test
+    void pipeBudgetCapsWorkerTimeoutAndNestedInvocationDeadline() {
+        when(preparationService.prepare(7L, false)).thenReturn(Optional.of(prepared()));
+        when(workerStatusService.reserve(WorkerCapability.STANDARD)).thenReturn(reservation);
+        when(workerClient.executeAlert(eq(ENDPOINT), any(), any(), any(Duration.class), any())).thenReturn(successfulResult());
+        Instant before = Instant.now();
+        orchestrator.executePipe(7L, "Sample alert", false, Duration.ofSeconds(2), "pipe",
+                () -> { }, () -> { }, UUID.randomUUID(), "cleanup");
+        ArgumentCaptor<Duration> timeout = ArgumentCaptor.forClass(Duration.class);
+        verify(workerClient).executeAlert(eq(ENDPOINT), any(), any(), timeout.capture(), any());
+        assertThat(timeout.getValue()).isPositive().isLessThanOrEqualTo(Duration.ofSeconds(2));
+        ArgumentCaptor<Instant> deadline = ArgumentCaptor.forClass(Instant.class);
+        verify(procedureInvocationRegistry).register(any(), deadline.capture());
+        assertThat(deadline.getValue()).isAfterOrEqualTo(before).isBeforeOrEqualTo(before.plusSeconds(3));
+    }
+
+    @Test
+    void hookKeepsItsParentAndDoesNotUseItsWaitTimeoutAsAnExecutionBudget() {
+        when(preparationService.prepare(7L, false)).thenReturn(Optional.of(prepared()));
+        when(workerStatusService.reserve(WorkerCapability.STANDARD)).thenReturn(reservation);
+        when(workerClient.executeAlert(eq(ENDPOINT), any(), any(), any(Duration.class), any())).thenReturn(successfulResult());
+        UUID invocationId = UUID.randomUUID();
+        Instant before = Instant.now();
+
+        AlertExecutionOrchestrator.AlertHookExecution execution = orchestrator.executeHook(7L, "Sample alert", false, Duration.ofSeconds(2), "hook:" + invocationId,
+                () -> { }, () -> { }, invocationId, "Sample hook");
+
+        assertThat(execution.status()).isEqualTo(AlertExecutionStatus.SUCCESS);
+        verify(persistenceService).registerHookParent(execution.executionId(), "hook:" + invocationId, invocationId, "Sample hook");
+        verify(persistenceService, never()).registerPipeParent(any(), any(), any(), any());
+        ArgumentCaptor<Instant> deadline = ArgumentCaptor.forClass(Instant.class);
+        verify(procedureInvocationRegistry).register(eq(execution.executionId()), deadline.capture());
+        assertThat(deadline.getValue()).isAfterOrEqualTo(before.plus(properties().execution().timeout()));
     }
 
     @Test

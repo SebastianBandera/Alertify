@@ -2,6 +2,39 @@
 setlocal EnableExtensions EnableDelayedExpansion
 
 for %%I in ("%~dp0.") do set "PROJECT_DIRECTORY=%%~fI"
+set "KUBERNETES_ARGUMENTS="
+for %%A in (%*) do if "%%~A"=="--deploy-kubernetes" goto kubernetes
+set "INTERACTIVE_MODE_REQUESTED=1"
+for %%A in (%*) do if not "%%~A"=="--replace-stale-runner" set "INTERACTIVE_MODE_REQUESTED="
+if not defined INTERACTIVE_MODE_REQUESTED goto compose
+
+powershell -NoProfile -Command "if ([Console]::IsInputRedirected -or [Console]::IsOutputRedirected) { exit 1 } else { exit 0 }"
+if errorlevel 1 (
+    echo ERROR: Interactive mode requires a terminal. Pass --non-interactive and explicit options for automation. 1>&2
+    exit /b 1
+)
+
+:deployment_menu
+echo.
+echo Select deployment mode:
+echo   1. Docker Compose ^(default^)
+echo   2. Kubernetes - deploy the complete application
+echo   3. Kubernetes - validate configuration without deploying
+set "DEPLOYMENT_SELECTION=1"
+set /p "DEPLOYMENT_SELECTION=Choice [1-3, Enter for Compose]: "
+if "!DEPLOYMENT_SELECTION!"=="1" goto compose
+if "!DEPLOYMENT_SELECTION!"=="2" (
+    set "KUBERNETES_ARGUMENTS=--deploy-kubernetes"
+    goto kubernetes
+)
+if "!DEPLOYMENT_SELECTION!"=="3" (
+    set "KUBERNETES_ARGUMENTS=--deploy-kubernetes --configure-only"
+    goto kubernetes
+)
+echo Please select 1, 2, or 3.
+goto deployment_menu
+
+:compose
 if not defined RUNNER_IMAGE set "RUNNER_IMAGE=monitoring-bootstrap-runner:local"
 
 where docker >nul 2>nul
@@ -188,3 +221,12 @@ if not "%RUN_EXIT_CODE%"=="0" if defined HOST_IS_INTERACTIVE (
     pause
 )
 exit /b %RUN_EXIT_CODE%
+
+:kubernetes
+where node >nul 2>nul
+if errorlevel 1 (
+    echo ERROR: Kubernetes deployment requires local Node.js 18 or later and kubectl. 1>&2
+    exit /b 1
+)
+node "%PROJECT_DIRECTORY%\runner\run.js" %* !KUBERNETES_ARGUMENTS!
+exit /b %ERRORLEVEL%

@@ -21,10 +21,16 @@ repository, then open a terminal in the project folder.
 sh ./run.sh
 ```
 
-The launcher opens an interactive checklist. **For your first run, leave every
-option unchecked and press Enter.** This starts the complete application.
-Use the arrow keys to move and Space to toggle an option when you need a different
-setup.
+The launcher first asks where to deploy: Docker Compose (the default), Kubernetes,
+or Kubernetes configuration validation. **For your first Compose run, press Enter
+to choose Compose, then leave every checklist option unchecked and press Enter.**
+This starts the complete application. Use the arrow keys to move and Space to
+toggle a checklist option when you need a different setup.
+
+Kubernetes selections require local Node.js 18+ and kubectl. The deployment option
+shows the target cluster and asks for confirmation before applying resources;
+configuration validation does not deploy. See
+[Local Kubernetes deployment](kubernetes/README.md) for requirements and settings.
 
 The first run downloads images and builds the application, so allow time for it
 to finish. The launcher creates `.env`, generates the initial credentials, and
@@ -250,6 +256,49 @@ Alertify uses an Angular frontend and a Java 25 backend, with PostgreSQL for
 persistence, Redis, and Keycloak for authentication. Standard workers and
 Playwright workers execute checks and operations. A publisher provides the public
 entry point. The launchers build and coordinate these components through Docker.
+
+## Development Git hook
+
+Activate the versioned `pre-commit` hook in each clone:
+
+```sh
+git config --local core.hooksPath .githooks
+```
+
+The hook rejects staged local environment files, keys, certificates, runtime
+configuration, and generated artifacts. It also prevents publishing these local
+customizations to the original repository:
+
+- `frontend/src/app/core/alert-charts/alert-chart-extractors.extended.ts`
+- `frontend/src/app/core/alert-messages/alert-message-formatters.extended.ts`
+- `frontend/src/app/core/i18n/translations/en.extended.translations.ts`
+- `frontend/src/app/core/i18n/translations/es-uy.extended.translations.ts`
+- All `.java` files under
+  `backend/alert-templates/src/main/java/app/alertify/alerts/templates/custom/`,
+  including nested packages.
+
+This check covers additions, modifications, deletions, and renames. A rejected
+commit prints a warning listing the files and explaining why they do not belong
+in the original repository. The hook leaves the index and working files
+untouched. Unstaged customizations do not prevent unrelated commits.
+
+To version these customizations in a fork, enable the exception in that clone:
+
+```sh
+git config --local alertify.allowCustomizations true
+```
+
+This exempts only the customization files listed above; the other protections
+remain active. Restore the default behavior with
+`git config --local alertify.allowCustomizations false`.
+
+Hooks do not hide changes from Git or the editor. They are a local guard and can
+be bypassed with `git commit --no-verify`. Run the hook regression checks with
+Git and Bash installed:
+
+```sh
+bash .githooks/pre-commit.test.sh
+```
 
 ## Troubleshooting
 

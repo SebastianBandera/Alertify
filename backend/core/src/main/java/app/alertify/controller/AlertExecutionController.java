@@ -21,9 +21,22 @@ import app.alertify.alerts.service.AlertExecutionQueryService;
 public class AlertExecutionController {
 
     private final AlertExecutionQueryService service;
+    private final app.alertify.alerts.service.AlertExecutionClosureService closureService;
 
-    public AlertExecutionController(AlertExecutionQueryService service) {
+    public AlertExecutionController(AlertExecutionQueryService service, app.alertify.alerts.service.AlertExecutionClosureService closureService) {
         this.service = service;
+        this.closureService = closureService;
+    }
+
+    @org.springframework.web.bind.annotation.PostMapping("/{id}/closure")
+    public AlertExecutionResponse closure(@org.springframework.web.bind.annotation.PathVariable long id, @jakarta.validation.Valid @org.springframework.web.bind.annotation.RequestBody app.alertify.alerts.api.AlertExecutionClosureRequest request, @org.springframework.security.core.annotation.AuthenticationPrincipal org.springframework.security.oauth2.jwt.Jwt jwt) {
+        String actor = jwt.getClaimAsString("preferred_username");
+        return closureService.change(id, request.closed(), request.note(), jwt.getSubject(), actor == null ? jwt.getSubject() : actor);
+    }
+
+    @GetMapping("/{id}/closure-audit")
+    public java.util.List<app.alertify.alerts.service.AlertExecutionClosureService.ClosureAudit> closureAudit(@org.springframework.web.bind.annotation.PathVariable long id) {
+        return closureService.audit(id);
     }
 
     @GetMapping

@@ -4,6 +4,39 @@ set -eu
 script_directory=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 runner_image=${RUNNER_IMAGE:-monitoring-bootstrap-runner:local}
 
+interactive_mode_requested=true
+for argument in "$@"; do
+  case "$argument" in
+    --deploy-kubernetes) exec node "$script_directory/runner/run.js" "$@" ;;
+    --replace-stale-runner) ;;
+    *) interactive_mode_requested=false ;;
+  esac
+done
+
+if [ "$interactive_mode_requested" = true ]; then
+  if [ ! -t 0 ] || [ ! -t 1 ]; then
+    echo "ERROR: Interactive mode requires a terminal. Pass --non-interactive and explicit options for automation." >&2
+    exit 1
+  fi
+  while :; do
+    printf '\nSelect deployment mode:\n'
+    printf '  1. Docker Compose (default)\n'
+    printf '  2. Kubernetes - deploy the complete application\n'
+    printf '  3. Kubernetes - validate configuration without deploying\n'
+    printf 'Choice [1-3, Enter for Compose]: '
+    if ! IFS= read -r deployment_selection; then
+      echo "Cancelled." >&2
+      exit 130
+    fi
+    case "$deployment_selection" in
+      ''|1) break ;;
+      2) exec node "$script_directory/runner/run.js" "$@" --deploy-kubernetes ;;
+      3) exec node "$script_directory/runner/run.js" "$@" --deploy-kubernetes --configure-only ;;
+      *) echo "Please select 1, 2, or 3." ;;
+    esac
+  done
+fi
+
 if ! command -v docker >/dev/null 2>&1; then
   echo "ERROR: Docker must be installed and available in PATH." >&2
   exit 1

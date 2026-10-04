@@ -11,4 +11,6 @@ import { AlertMessageFormatters } from './alert-message-formatter';
  *   'app.alertify.alerts.templates.custom.QueueDepthAlertTemplate': (context) =>
  *     context.translate('alertMessage.queueDepth', { depth: context.formatNumber(context.message['depth']) }),
  */
-export const EXTENDED_ALERT_MESSAGE_FORMATTERS: AlertMessageFormatters = {};
+export const EXTENDED_ALERT_MESSAGE_FORMATTERS: AlertMessageFormatters = {
+    
+};

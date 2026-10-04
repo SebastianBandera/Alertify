@@ -4,4 +4,5 @@
  * del diccionario base para extender la localización sin modificar el core.
  */
 export const ES_UY_EXTENDED_TRANSLATIONS: Readonly<Record<string, string>> = {
+    
 };

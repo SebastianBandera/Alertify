@@ -68,10 +68,11 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
     private final MaintenanceModeService maintenanceModeService;
     private final SystemStatusEventPublisher statusEventPublisher;
     private final DashboardEventPublisher dashboardEventPublisher;
+    private final app.alertify.alerts.service.ResourceResultObserverService resourceObserver;
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
     private final ConcurrentMap<Long, AlertGate> alertGates = new ConcurrentHashMap<>();
 
-    public AlertExecutionOrchestrator(AlertExecutionPreparationService preparationService, AlertExecutionPersistenceService persistenceService, WorkerStatusService workerStatusService, AlertWorkerClient workerClient, WorkerGrpcProperties properties, ApplicationEventLogger eventLogger, ProcedureInvocationTokenService procedureTokenService, ProcedureInvocationRegistry procedureInvocationRegistry, ProcedureExecutionOrchestrator procedureExecutionOrchestrator, CronQuietHoursService quietHoursService, MaintenanceModeService maintenanceModeService, SystemStatusEventPublisher statusEventPublisher, DashboardEventPublisher dashboardEventPublisher) {
+    public AlertExecutionOrchestrator(AlertExecutionPreparationService preparationService, AlertExecutionPersistenceService persistenceService, WorkerStatusService workerStatusService, AlertWorkerClient workerClient, WorkerGrpcProperties properties, ApplicationEventLogger eventLogger, ProcedureInvocationTokenService procedureTokenService, ProcedureInvocationRegistry procedureInvocationRegistry, ProcedureExecutionOrchestrator procedureExecutionOrchestrator, CronQuietHoursService quietHoursService, MaintenanceModeService maintenanceModeService, SystemStatusEventPublisher statusEventPublisher, DashboardEventPublisher dashboardEventPublisher, app.alertify.alerts.service.ResourceResultObserverService resourceObserver) {
         this.preparationService = preparationService;
         this.persistenceService = persistenceService;
         this.workerStatusService = workerStatusService;
@@ -85,6 +86,7 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
         this.maintenanceModeService = maintenanceModeService;
         this.statusEventPublisher = statusEventPublisher;
         this.dashboardEventPublisher = dashboardEventPublisher;
+        this.resourceObserver = resourceObserver;
     }
 
     /**
@@ -151,9 +153,22 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
     }
 
     public AlertHookExecution executeHook(long alertId, String alertName, boolean allowConcurrentExecutions, Duration busyWaitTimeout, String triggeredBy, Runnable waitingCallback, Runnable acquiredCallback) {
+        return executeHook(alertId, alertName, allowConcurrentExecutions, busyWaitTimeout, triggeredBy, waitingCallback, acquiredCallback, null, null);
+    }
+
+    public AlertHookExecution executeHook(long alertId, String alertName, boolean allowConcurrentExecutions, Duration busyWaitTimeout, String triggeredBy, Runnable waitingCallback, Runnable acquiredCallback, UUID parentHookInvocationId, String parentHookName) {
+        return executeTriggered(alertId, alertName, allowConcurrentExecutions, busyWaitTimeout, triggeredBy, waitingCallback, acquiredCallback, AlertExecutionTrigger.HOOK, null, null, parentHookInvocationId, parentHookName);
+    }
+
+    public AlertHookExecution executePipe(long alertId, String alertName, boolean allowConcurrentExecutions, Duration busyWaitTimeout, String triggeredBy, Runnable waitingCallback, Runnable acquiredCallback, UUID parentPipeExecutionId, String parentStepKey) {
+        return executeTriggered(alertId, alertName, allowConcurrentExecutions, busyWaitTimeout, triggeredBy, waitingCallback, acquiredCallback, AlertExecutionTrigger.PIPE, parentPipeExecutionId, parentStepKey, null, null);
+    }
+
+    private AlertHookExecution executeTriggered(long alertId, String alertName, boolean allowConcurrentExecutions, Duration busyWaitTimeout, String triggeredBy, Runnable waitingCallback, Runnable acquiredCallback, AlertExecutionTrigger source, UUID parentPipeExecutionId, String parentStepKey, UUID parentHookInvocationId, String parentHookName) {
         if (maintenanceModeService.isActive())
             return new AlertHookExecution(null, null, false, false, true);
 
+        Instant pipeDeadline = source == AlertExecutionTrigger.PIPE ? Instant.now().plus(busyWaitTimeout) : null;
         AlertGate gate = alertGates.computeIfAbsent(alertId, _ -> new AlertGate());
         boolean acquired;
         try {
@@ -169,8 +184,8 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
 
         runCallback(acquiredCallback);
         UUID executionId = UUID.randomUUID();
-        eventLogger.success("ALERT_EXECUTION_TRIGGERED", data(alertId, alertName, AlertExecutionTrigger.HOOK, triggeredBy));
-        AlertExecutionStatus status = execute(alertId, AlertExecutionTrigger.HOOK, triggeredBy, executionId, null);
+        eventLogger.success("ALERT_EXECUTION_TRIGGERED", data(alertId, alertName, source, triggeredBy));
+        AlertExecutionStatus status = execute(alertId, source, triggeredBy, executionId, null, parentPipeExecutionId, parentStepKey, parentHookInvocationId, parentHookName, pipeDeadline);
         return new AlertHookExecution(status == null ? null : executionId, status, status == null, false, false);
     }
 
@@ -192,13 +207,26 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
     }
 
     private AlertExecutionStatus execute(long alertId, AlertExecutionTrigger source, String triggeredBy, UUID executionId, WorkerReservation preReservedWorker) {
+        return execute(alertId, source, triggeredBy, executionId, preReservedWorker, null, null, null, null, null);
+    }
+
+    private AlertExecutionStatus execute(long alertId, AlertExecutionTrigger source, String triggeredBy, UUID executionId, WorkerReservation preReservedWorker, UUID parentPipeExecutionId, String parentStepKey, UUID parentHookInvocationId, String parentHookName, Instant pipeDeadline) {
         Instant startedAt = Instant.now();
         WorkerEndpoint endpoint = null;
         String workerName = null;
         String workerInstanceId = null;
         PreparedAlertExecution execution = null;
         Instant deadline = startedAt.plus(properties.execution().timeout());
+        if (pipeDeadline != null && pipeDeadline.isBefore(deadline))
+            deadline = pipeDeadline;
+
         persistenceService.registerTrigger(executionId, source, triggeredBy);
+        if (parentPipeExecutionId != null)
+            persistenceService.registerPipeParent(executionId, triggeredBy, parentPipeExecutionId, parentStepKey);
+
+        if (parentHookInvocationId != null)
+            persistenceService.registerHookParent(executionId, triggeredBy, parentHookInvocationId, parentHookName);
+
         try {
             // A manual run also covers alerts that are currently disabled.
             execution = preparationService
@@ -206,6 +234,13 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
                     .orElse(null);
             if (execution == null)
                 return null;
+
+            if (resourceObserver.supports(execution.templateClassName())) {
+                dashboardEventPublisher.executionStarted(alertId, executionId, startedAt);
+                var observed = resourceObserver.observe(alertId);
+                persistenceService.persistObserved(alertId, executionId, startedAt, observed);
+                return observed.status();
+            }
 
             WorkerReservation selectedReservation = preReservedWorker == null
                     ? workerStatusService.reserve(execution.requiredCapability())

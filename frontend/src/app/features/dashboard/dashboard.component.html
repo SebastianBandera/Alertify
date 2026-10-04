@@ -35,8 +35,7 @@
             <span class="running__icon" aria-hidden="true"></span>
             {{ localization.translate('dashboard.card.running') }}
           </span>
-        }
-        @if (card.lastExecution; as execution) {
+        } @else if (card.lastExecution; as execution) {
           <time class="alert-card__time" [attr.datetime]="execution.finishedAt" [title]="execution.finishedAt">
             {{ relativeTime(execution.finishedAt) }}
           </time>
@@ -304,6 +303,9 @@
       <button type="button" role="menuitem" class="card-menu__item" (click)="openCardHistory(card)">
         {{ localization.translate('dashboard.menu.history') }}
       </button>
+      <button type="button" role="menuitem" class="card-menu__item" (click)="openCardDefinition(card)">
+        {{ localization.translate('dashboard.menu.definition') }}
+      </button>
     }
   </div>
 }
@@ -359,6 +361,7 @@
       </header>
 
       <div class="modal__body">
+        <app-alert-chart [card]="card" />
         <section class="detail-section">
           <h3>{{ localization.translate('dashboard.detail.definition') }}</h3>
           @if (card.alert.description) {

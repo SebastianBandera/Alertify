@@ -84,12 +84,12 @@ public class PipeCsvService {
         for (Resolved entry : resolved) {
             PipeCsvCodec.ImportRow row = entry.row();
             if (entry.existing() == null) {
-                managementService.create(new PipeCreateRequest(row.name(), row.description(), row.enabled(), row.allowConcurrentExecutions(), entry.steps(), Set.of()));
+                managementService.create(new PipeCreateRequest(row.name(), row.description(), row.enabled(), row.allowConcurrentExecutions(), Duration.ofMillis(row.finallyTimeoutMillis()), entry.steps(), Set.of()));
                 created++;
             } else if (unchanged(entry.existing(), row, entry.steps())) {
                 unchanged++;
             } else {
-                managementService.update(entry.existing().getId(), new PipeUpdateRequest(entry.existing().getVersion(), row.name(), row.description(), row.enabled(), row.allowConcurrentExecutions(), entry.steps(), tagIds(entry.existing())));
+                managementService.update(entry.existing().getId(), new PipeUpdateRequest(entry.existing().getVersion(), row.name(), row.description(), row.enabled(), row.allowConcurrentExecutions(), Duration.ofMillis(row.finallyTimeoutMillis()), entry.steps(), tagIds(entry.existing())));
                 updated++;
             }
         }
@@ -113,7 +113,7 @@ public class PipeCsvService {
             }
             List<PipeBindingRequest> bindings = step.bindings().stream().map(value -> new PipeBindingRequest(
                     value.targetParameterKey(), value.sourceStepKey(), value.sourceOutputKey())).toList();
-            steps.add(new PipeStepRequest(step.key(), step.type(), resourceId, Duration.ofMillis(step.timeoutMillis()), continueOn, bindings));
+            steps.add(new PipeStepRequest(step.key(), step.type(), step.phase(), resourceId, Duration.ofMillis(step.timeoutMillis()), continueOn, bindings));
         }
         Pipe detailed = existing == null ? null : pipeRepository.findDetailedById(existing.getId()).orElseThrow();
         return new Resolved(row, detailed, List.copyOf(steps));
@@ -130,13 +130,13 @@ public class PipeCsvService {
     private static boolean unchanged(Pipe pipe, PipeCsvCodec.ImportRow row, List<PipeStepRequest> requested) {
         if (!pipe.getName().equals(row.name()) || !Objects.equals(pipe.getDescription(), row.description())
                 || pipe.isEnabled() != row.enabled() || pipe.isConcurrentExecutionAllowed() != row.allowConcurrentExecutions()
-                || pipe.getSteps().size() != requested.size())
+                || pipe.getFinallyTimeoutMillis() != row.finallyTimeoutMillis() || pipe.getSteps().size() != requested.size())
             return false;
         for (int index = 0; index < requested.size(); index++) {
             PipeStep current = pipe.getSteps().get(index);
             PipeStepRequest value = requested.get(index);
             long resourceId = current.getStepType() == PipeStepType.ALERT ? current.getAlert().getId() : current.getProcedure().getId();
-            if (!current.getStepKey().equals(value.key()) || current.getStepType() != value.type()
+            if (!current.getStepKey().equals(value.key()) || current.getStepType() != value.type() || current.getPhase() != value.phase()
                     || resourceId != value.resourceId() || current.getTimeoutMillis() != value.timeout().toMillis()
                     || !new LinkedHashSet<>(current.getContinueOn()).equals(value.continueOn()))
                 return false;

@@ -26,6 +26,7 @@ import { SessionActionsService } from '../../core/auth/session-actions.service';
 import { LocalizationService } from '../../core/i18n/localization.service';
 import { TranslationKey } from '../../core/i18n/localization.types';
 import { DragScrollDirective } from '../../shared/drag-scroll/drag-scroll.directive';
+import { AlertChartComponent } from './alert-chart.component';
 import { DashboardAcknowledgementService } from './dashboard-acknowledgement.service';
 import {
   compareDashboardCards,
@@ -128,11 +129,12 @@ const TRIGGER_LABEL_KEYS: Readonly<Record<ExecutionTrigger, TranslationKey>> = {
   MANUAL: 'dashboard.detail.trigger.MANUAL',
   HOOK: 'dashboard.detail.trigger.HOOK',
   SMART: 'dashboard.detail.trigger.SMART',
+  PIPE: 'dashboard.detail.trigger.PIPE',
 };
 
 @Component({
   selector: 'app-dashboard',
-  imports: [DatePipe, FormsModule, NgTemplateOutlet, DragScrollDirective, DashboardRibbonComponent, DashboardConnectionOverlayComponent],
+  imports: [AlertChartComponent, DatePipe, FormsModule, NgTemplateOutlet, DragScrollDirective, DashboardRibbonComponent, DashboardConnectionOverlayComponent],
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -429,6 +431,11 @@ export class DashboardComponent {
     void this.router.navigate(['/alerts'], { queryParams: { tab: 'history', alertId: card.alert.id } });
   }
 
+  protected openCardDefinition(card: DashboardAlertCard): void {
+    this.closeCardMenu();
+    void this.router.navigate(['/alerts'], { queryParams: { tab: 'alerts', editAlertId: card.alert.id } });
+  }
+
   private showNotice(message: string, error: boolean): void {
     this.clearNoticeTimer();
     this.notice.set({ message, error });
@@ -667,14 +674,29 @@ export class DashboardComponent {
 
   private matchesSearch(card: DashboardAlertCard, searchTerms: readonly string[]): boolean {
     if (searchTerms.length === 0) return true;
+    const searchableText = this.normalizeSearch(this.searchableCardText(card));
+    return searchTerms.every((term) => searchableText.includes(term));
+  }
+
+  private searchableCardText(card: DashboardAlertCard): string {
     const execution = card.lastExecution;
-    const searchableText = this.normalizeSearch([
+    const stability = this.stability(card);
+    const mutedState = this.mute.isSilenced(card.alert.id)
+      ? this.localization.translate('dashboard.card.silenced')
+      : this.mute.isIgnored(card.alert.id) ? this.localization.translate('dashboard.card.ignored') : '';
+    return [
       card.alert.name,
-      execution === null ? '' : this.alertMessages.tileMessage(card.alert.templateKey, execution),
+      this.dynamic(card.alert.templateNameKey),
+      ...card.alert.tags.map((tag) => tag.name),
+      this.statusLabel(card),
+      stability?.label ?? '',
+      execution === null ? this.localization.translate('dashboard.card.neverExecuted') : this.alertMessages.tileMessage(card.alert.templateKey, execution),
       execution?.errorMessage ?? '',
       execution?.errorType ?? '',
-    ].join(' '));
-    return searchTerms.every((term) => searchableText.includes(term));
+      card.runningSince ? this.localization.translate('dashboard.card.running') : '',
+      card.alert.enabled ? '' : this.localization.translate('dashboard.card.disabled'),
+      mutedState,
+    ].join(' ');
   }
 
   private normalizeSearch(value: string): string {

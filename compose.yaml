@@ -68,8 +68,6 @@ services:
       POSTGRES_USER: ${IDENTITY_DB_USER:?Set IDENTITY_DB_USER in .env}
       POSTGRES_PASSWORD: ${IDENTITY_DB_PASSWORD:?Set IDENTITY_DB_PASSWORD in .env}
       TZ: ${TIME_ZONE:?Set TIME_ZONE in .env}
-    ports:
-      - "${BIND_ADDRESS:?Set BIND_ADDRESS in .env}:${IDENTITY_DB_HOST_PORT:?Set IDENTITY_DB_HOST_PORT in .env}:5432"
     volumes:
       - identity_database_data:/var/lib/postgresql
     healthcheck:
@@ -121,8 +119,6 @@ services:
       APP_ADMIN_PASSWORD: ${APP_ADMIN_PASSWORD:?Set APP_ADMIN_PASSWORD in .env}
       APP_VIEWER_USERNAME: ${APP_VIEWER_USERNAME:?Set APP_VIEWER_USERNAME in .env}
       APP_VIEWER_PASSWORD: ${APP_VIEWER_PASSWORD:?Set APP_VIEWER_PASSWORD in .env}
-    ports:
-      - "127.0.0.1:${KEYCLOAK_HTTP_PORT:?Set KEYCLOAK_HTTP_PORT in .env}:8080"
     extra_hosts:
       - host.docker.internal:host-gateway
     post_start:
@@ -164,8 +160,6 @@ services:
       DATABASE_OWNER_USER: ${DATABASE_USER:?Set DATABASE_USER in .env}
       DATABASE_OWNER_PASSWORD: ${DATABASE_PASSWORD:?Set DATABASE_PASSWORD in .env}
       TZ: ${TIME_ZONE:?Set TIME_ZONE in .env}
-    ports:
-      - "${BIND_ADDRESS:?Set BIND_ADDRESS in .env}:${DATABASE_HOST_PORT:?Set DATABASE_HOST_PORT in .env}:5432"
     volumes:
       - database_data:/var/lib/postgresql
     mem_limit: ${DATABASE_CONTAINER_MEMORY:?Set DATABASE_CONTAINER_MEMORY in .env}
@@ -305,8 +299,6 @@ services:
       ALERT_TEMPLATE_SOURCE_ROOT: /application/alert-template-sources
       PROCEDURE_MAX_DEPTH: ${PROCEDURE_MAX_DEPTH:-16}
       TZ: ${TIME_ZONE:?Set TIME_ZONE in .env}
-    ports:
-      - "${BIND_ADDRESS:?Set BIND_ADDRESS in .env}:${BACKEND_DEBUG_PORT:?Set BACKEND_DEBUG_PORT in .env}:${BACKEND_DEBUG_PORT:?Set BACKEND_DEBUG_PORT in .env}"
     volumes:
       - grpc_backend_tls:/run/alertify-grpc-tls:ro
     mem_limit: ${BACKEND_CONTAINER_MEMORY:?Set BACKEND_CONTAINER_MEMORY in .env}

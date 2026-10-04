@@ -1,0 +1,10 @@
+{
+  "apiVersion": "networking.k8s.io/v1",
+  "kind": "Ingress",
+  "metadata": {
+    "name": "alertify",
+    "namespace": {{NAMESPACE}},
+    "annotations": {{INGRESS_ANNOTATIONS}}
+  },
+  "spec": {{INGRESS_SPEC}}
+}

@@ -1,3 +1,6 @@
+@if (drafts.has('procedures') && !editorOpen()) {
+  <button class="button button--secondary" type="button" (click)="restoreDraft()">{{ localization.translateDynamic('draft.restore') }}</button>
+}
 <section class="procedures-page">
   <header class="page-header">
     <div>
@@ -145,7 +148,7 @@
                     </button>
                     <span class="actions__divider" aria-hidden="true"></span>
                     <button type="button" [title]="localization.translate('procedures.historyHint')" (click)="showProcedureHistory(procedure)">{{ localization.translate('procedures.history') }}</button>
-                    <button type="button" (click)="openEdit(procedure)">{{ localization.translate('procedures.edit') }}</button>
+                    <button type="button" [attr.data-editor-viewport]="'procedure-' + procedure.id" (click)="openEdit(procedure)">{{ localization.translate('procedures.edit') }}</button>
                     <button class="danger" type="button" (click)="remove(procedure)">{{ localization.translate('procedures.delete') }}</button>
                   </div>
                 </td>
@@ -419,6 +422,7 @@
         <div>
           <h2>{{ localization.translate(editing() ? 'procedures.form.editTitle' : 'procedures.form.createTitle') }}</h2>
         </div>
+        <button class="button button--secondary" type="button" (click)="minimizeDraft()" [disabled]="saving()">{{ localization.translateDynamic('draft.minimize') }}</button>
         <button class="close" type="button" (click)="closeEditor()">×</button>
       </header>
       <form (ngSubmit)="save()">

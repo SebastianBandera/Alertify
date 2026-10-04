@@ -157,8 +157,16 @@ export interface AlertExecution {
   readonly templateId: number;
   readonly templateNameKey: string;
   readonly status: AlertExecutionStatus;
-  readonly trigger: 'CRON' | 'MANUAL' | 'HOOK' | 'SMART' | null;
+  readonly trigger: 'CRON' | 'MANUAL' | 'HOOK' | 'SMART' | 'PIPE' | null;
   readonly triggeredBy: string | null;
+  readonly parentPipeExecutionId: string | null;
+  readonly parentStepKey: string | null;
+  readonly parentHookInvocationId: string | null;
+  readonly parentHookName: string | null;
+  readonly closed: boolean;
+  readonly closureAt: string | null;
+  readonly closureBy: string | null;
+  readonly closureNote: string | null;
   readonly startedAt: string;
   readonly workStartedAt: string;
   readonly finishedAt: string;
@@ -216,6 +224,10 @@ export class AlertApiService {
     tagIds.forEach((tagId) => params.append('tagId', String(tagId)));
     if (tagIds.length >= 2) params.set('tagOperator', tagMatchMode);
     return this.request(`/api/alerts?${params.toString()}`);
+  }
+
+  async getAlert(id: number): Promise<Alert> {
+    return this.request(`/api/alerts/${id}`);
   }
 
   async alertDeletionImpact(id: number): Promise<AlertDeletionImpact> {
@@ -314,8 +326,25 @@ export class AlertApiService {
     return this.request(`/api/alert-executions?${params.toString()}`);
   }
 
+  async chartExecutions(alertId: number, from: string, to: string): Promise<readonly AlertExecution[]> {
+    const params = new URLSearchParams({ from, to, limit: '2000' });
+    return this.request(`/api/dashboard/alerts/${alertId}/chart-executions?${params}`);
+  }
+
   async createAlert(request: AlertWriteRequest): Promise<Alert> {
     return this.request('/api/alerts', { method: 'POST', body: JSON.stringify(request) });
+  }
+
+  async listObserverResources(kind: string): Promise<readonly { id: number; name: string; enabled: boolean }[]> {
+    return this.request(`/api/alerts/observer-resources?kind=${encodeURIComponent(kind)}`);
+  }
+
+  async changeExecutionClosure(id: number, closed: boolean, note: string | null): Promise<AlertExecution> {
+    return this.request(`/api/alert-executions/${id}/closure`, { method: 'POST', body: JSON.stringify({ closed, note }) });
+  }
+
+  async executionClosureAudit(id: number): Promise<readonly { closed: boolean; actor: string; note: string | null; at: string }[]> {
+    return this.request(`/api/alert-executions/${id}/closure-audit`);
   }
 
   async updateAlert(id: number, request: AlertWriteRequest): Promise<Alert> {

@@ -59,6 +59,9 @@ public class Pipe {
     @Column(name = "allow_concurrent_executions", nullable = false)
     private boolean allowConcurrentExecutions;
 
+    @Column(name = "finally_timeout_millis", nullable = false)
+    private long finallyTimeoutMillis = PipeStep.DEFAULT_TIMEOUT_MILLIS;
+
     @OneToMany(mappedBy = "pipe", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("position ASC")
     private List<PipeStep> steps = new ArrayList<>();
@@ -105,6 +108,8 @@ public class Pipe {
         if (values != null)
             tags.addAll(values);
     }
+    public void setFinallyTimeoutMillis(long value) { finallyTimeoutMillis = value; }
+    public long getFinallyTimeoutMillis() { return finallyTimeoutMillis; }
     public Long getId() { return id; }
     public long getVersion() { return version; }
     public String getName() { return name; }

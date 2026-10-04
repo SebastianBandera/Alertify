@@ -67,7 +67,9 @@ public final class AlertMapper {
                 Duration.between(execution.getWorkStartedAt(), execution.getFinishedAt()).toMillis(),
                 execution.getStatusMessage(), execution.getErrorType(), execution.getErrorMessage(),
                 execution.getWorkerName(), execution.getWorkerIpAddress(), execution.getWorkerPort(),
-                execution.getWorkerInstanceId()
+                execution.getWorkerInstanceId(), execution.getParentPipeExecutionId(), execution.getParentStepKey(),
+                execution.getParentHookInvocationId(), execution.getParentHookName(),
+                execution.isClosed(), execution.getClosureAt(), execution.getClosureBy(), execution.getClosureNote()
         );
     }
 

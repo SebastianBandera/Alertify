@@ -1,3 +1,6 @@
+@if (drafts.has('pipes') && !editorOpen()) {
+  <button class="button button--secondary" type="button" (click)="restoreDraft()">{{ localization.translateDynamic('draft.restore') }}</button>
+}
 <section class="pipes-page">
   <header class="page-header">
     <div>
@@ -71,7 +74,7 @@
                 <td>
                   <ol class="compact-list">
                     @for (step of pipe.steps; track step.id) {
-                      <li><code>{{ step.key }}</code> <span class="type">{{ step.type }}</span> {{ step.resourceName }}</li>
+                      <li><code>{{ step.key }}</code> <span class="type">{{ step.type }} · {{ step.phase }}</span> {{ step.resourceName }}</li>
                     }
                   </ol>
                 </td>
@@ -90,7 +93,7 @@
                       {{ dynamic(runningId() === pipe.id ? 'pipes.runStarting' : 'pipes.run') }}
                     </button>
                     <span class="actions__divider" aria-hidden="true"></span>
-                    <button type="button" (click)="openEdit(pipe)">{{ dynamic('pipes.edit') }}</button>
+                    <button type="button" [attr.data-editor-viewport]="'pipe-' + pipe.id" (click)="openEdit(pipe)">{{ dynamic('pipes.edit') }}</button>
                     <button class="danger" type="button" (click)="remove(pipe)">{{ dynamic('pipes.delete') }}</button>
                   </div>
                 </td>
@@ -161,7 +164,7 @@
                     <tr>
                       <td>{{ step.position + 1 }}</td>
                       <td><code>{{ step.key }}</code></td>
-                      <td><span class="type">{{ step.type }}</span> {{ step.resourceName }}</td>
+                      <td><span class="type">{{ step.type }} · {{ step.phase }}</span> {{ step.resourceName }}</td>
                       <td>{{ step.status }}@if (step.outcome && step.outcome !== step.status) { · {{ step.outcome }} }</td>
                       <td><code>{{ step.resourceExecutionId || '—' }}</code></td>
                       <td><code>{{ step.errorCode || '—' }}</code></td>
@@ -196,6 +199,7 @@
     <section class="modal" role="dialog" aria-modal="true" (mousedown)="$event.stopPropagation()">
       <header>
         <h2>{{ dynamic(editing() ? 'pipes.form.editTitle' : 'pipes.form.createTitle') }}</h2>
+        <button class="button button--secondary" type="button" (click)="minimizeDraft()" [disabled]="saving()">{{ localization.translateDynamic('draft.minimize') }}</button>
         <button class="close" type="button" (click)="closeEditor()">×</button>
       </header>
       <form (ngSubmit)="save()">
@@ -228,21 +232,24 @@
             <button class="button button--secondary" type="button" [disabled]="newStepResourceId() === null" (click)="addStep()">{{ dynamic('pipes.form.addStep') }}</button>
           </div>
 
+          <label><span>{{ dynamic('pipes.form.finallyTimeout') }}</span><input type="number" name="finallyTimeout" min="1" [ngModel]="form().finallyTimeoutMinutes" (ngModelChange)="patchForm('finallyTimeoutMinutes', $event)"></label>
+
           @for (step of form().steps; track $index; let index = $index) {
             <article class="step-card">
               <header>
-                <div><span class="order">{{ index + 1 }}</span><strong>{{ step.resourceName }}</strong><span class="type">{{ step.type }}</span>@if (!step.resourceEnabled) { <span class="warning">{{ dynamic('pipes.form.currentlyDisabled') }}</span> }</div>
+                <div><span class="order">{{ index + 1 }}</span><strong>{{ step.resourceName }}</strong><span class="type">{{ step.type }} · {{ step.phase }}</span>@if (!step.resourceEnabled) { <span class="warning">{{ dynamic('pipes.form.currentlyDisabled') }}</span> }</div>
                 <div class="order-actions"><button type="button" [disabled]="$first" (click)="moveStep(index, -1)">↑</button><button type="button" [disabled]="$last" (click)="moveStep(index, 1)">↓</button><button class="danger" type="button" (click)="removeStep(index)">{{ dynamic('pipes.form.remove') }}</button></div>
               </header>
               <div class="step-fields">
+                <label><span>{{ dynamic('pipes.form.phase') }}</span><select [name]="'phase-' + index" [ngModel]="step.phase" (ngModelChange)="patchStep(index, 'phase', $event)"><option value="MAIN">MAIN</option><option value="FINALLY">FINALLY</option></select></label>
                 <label><span>{{ dynamic('pipes.form.key') }}</span><input [name]="'key-' + index" required maxlength="255" [ngModel]="step.key" (ngModelChange)="patchStep(index, 'key', $event)"></label>
                 <label><span>{{ dynamic('pipes.form.timeout') }}</span><input type="number" [name]="'timeout-' + index" min="1" [ngModel]="step.timeoutMinutes" (ngModelChange)="patchStep(index, 'timeoutMinutes', $event)"></label>
-                <fieldset>
+                @if (step.phase === 'MAIN') { <fieldset>
                   <legend>{{ dynamic('pipes.form.continueOn') }}</legend>
                   @for (outcome of outcomes; track outcome) {
                     <label class="checkbox"><input type="checkbox" [name]="'continue-' + index + '-' + outcome" [ngModel]="step.continueOn.includes(outcome)" (ngModelChange)="toggleOutcome(index, outcome, $event)"><span>{{ outcome }}</span></label>
                   }
-                </fieldset>
+                </fieldset> }
               </div>
 
               @if (step.type === 'PROCEDURE' && artifactInputs(index).length) {

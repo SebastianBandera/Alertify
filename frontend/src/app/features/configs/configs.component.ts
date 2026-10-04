@@ -13,6 +13,7 @@ import {
   TagMatchMode,
 } from '../../core/api/configuration-api.service';
 import { LocalizationService } from '../../core/i18n/localization.service';
+import { EditorViewportService } from '../../shared/editor-viewport/editor-viewport.service';
 import { ExpressionEditorComponent } from '../../shared/expression-editor/expression-editor.component';
 
 interface ConfigurationForm {
@@ -62,6 +63,7 @@ function readStoredPageSize(): number {
   templateUrl: './configs.component.html',
   styleUrl: './configs.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  providers: [EditorViewportService],
 })
 export class ConfigsComponent implements OnInit {
   protected readonly localization = inject(LocalizationService);
@@ -69,6 +71,7 @@ export class ConfigsComponent implements OnInit {
   protected readonly pageSizeOptions = PAGE_SIZE_OPTIONS;
 
   private readonly api = inject(ConfigurationApiService);
+  private readonly editorViewport = inject(EditorViewportService);
 
   protected readonly configurations = signal<readonly ApplicationConfiguration[]>([]);
   protected readonly tags = signal<readonly ConfigurationTag[]>([]);
@@ -318,6 +321,7 @@ export class ConfigsComponent implements OnInit {
   }
 
   protected openEdit(configuration: ApplicationConfiguration): void {
+    this.editorViewport.capture(`configuration-${configuration.id}`);
     this.editingConfiguration.set(configuration);
     this.configurationForm.set({
       name: configuration.name,
@@ -370,6 +374,7 @@ export class ConfigsComponent implements OnInit {
   protected closeEditor(): void {
     if (!this.saving()) {
       this.editorOpen.set(false);
+      this.editorViewport.restore();
       this.resetExpressionEditorState();
     }
   }
@@ -441,6 +446,7 @@ export class ConfigsComponent implements OnInit {
         else await this.api.createBinaryConfiguration(metadata, form.binaryFile);
         this.editorOpen.set(false);
         await Promise.all([this.loadConfigurations(), this.loadExpressionSuggestions()]);
+        this.editorViewport.restore();
       } catch (error) { this.formError.set(this.errorMessage(error, 'rename')); }
       finally { this.saving.set(false); }
       return;
@@ -475,6 +481,7 @@ export class ConfigsComponent implements OnInit {
         this.loadConfigurations(),
         this.loadExpressionSuggestions(),
       ]);
+      this.editorViewport.restore();
     } catch (error) {
       this.formError.set(this.errorMessage(error, 'rename'));
     } finally {

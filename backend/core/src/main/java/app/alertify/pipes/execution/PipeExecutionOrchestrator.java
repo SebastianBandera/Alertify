@@ -24,6 +24,7 @@ import app.alertify.pipes.model.PipeExecutionStatus;
 import app.alertify.pipes.model.PipeExecutionTrigger;
 import app.alertify.pipes.model.PipeOutcome;
 import app.alertify.pipes.model.PipeStep;
+import app.alertify.pipes.model.PipeStepPhase;
 import app.alertify.pipes.model.PipeStepStatus;
 import app.alertify.pipes.model.PipeStepType;
 import app.alertify.procedures.ProcedureDepthExceededException;
@@ -148,70 +149,89 @@ public class PipeExecutionOrchestrator implements AutoCloseable {
         try {
             if (!includeDisabled && !pipe.isEnabled())
                 throw new PipeExecutionException("Pipe '" + pipe.getName() + "' is disabled");
+
             if (depth > properties.maxDepth())
                 throw new ProcedureDepthExceededException("Procedure-Pipe invocation depth exceeds " + properties.maxDepth());
 
             persistence.start(executionId, pipe, trigger, rootExecutionId, parentProcedureExecutionId, depth, triggeredBy);
             started = true;
-            boolean continueSequence = true;
             UUID affinity = null;
-            for (PipeStep step : pipe.getSteps()) {
-                if (!continueSequence) {
-                    persistence.completeStep(executionId, step.getStepKey(), PipeStepStatus.SKIPPED_SEQUENCE, null, null, null);
-                    partial = true;
-                    continue;
-                }
-                boolean enabled = step.getStepType() == PipeStepType.ALERT ? step.getAlert().isEnabled() : step.getProcedure().isEnabled();
-                if (!enabled) {
-                    persistence.completeStep(executionId, step.getStepKey(), PipeStepStatus.SKIPPED_DISABLED, null, null, null);
-                    partial = true;
-                    continue;
-                }
+            for (PipeStepPhase phase : PipeStepPhase.values()) {
+                boolean continueSequence = true;
+                Instant phaseDeadline = phase == PipeStepPhase.MAIN ? deadline
+                        : Instant.now().plusMillis(pipe.getFinallyTimeoutMillis());
+                for (PipeStep step : pipe.getSteps()) {
+                    if (step.getPhase() != phase)
+                        continue;
 
-                persistence.startStep(executionId, step.getStepKey());
-                StepRun run;
-                if (step.getStepType() == PipeStepType.ALERT) {
-                    run = executeAlert(step, executionId, deadline);
-                } else {
-                    Map<String, ArtifactLocation> inputs = new LinkedHashMap<>();
-                    for (var binding : step.getBindings()) {
-                        ArtifactLocation artifact = outputs.get(new ArtifactKey(binding.getSourceStep().getStepKey(), binding.getSourceOutput().getOutputKey()));
-                        if (artifact == null) {
-                            persistence.completeStep(executionId, step.getStepKey(), PipeStepStatus.MISSING_PIPE_OUTPUT,
-                                    PipeOutcome.ERROR, null, "MISSING_PIPE_OUTPUT");
-                            return finish(executionId, PipeExecutionStatus.FAILED, PipeOutcome.ERROR,
-                                    "MISSING_PIPE_OUTPUT", partial, outputs);
-                        }
-                        inputs.put(binding.getTargetParameter().getParameterKey(), artifact);
+                    if (!continueSequence) {
+                        persistence.completeStep(executionId, step.getStepKey(), PipeStepStatus.SKIPPED_SEQUENCE, null, null, null);
+                        partial = true;
+                        continue;
                     }
+                    boolean enabled = step.getStepType() == PipeStepType.ALERT ? step.getAlert().isEnabled() : step.getProcedure().isEnabled();
+                    if (!enabled) {
+                        persistence.completeStep(executionId, step.getStepKey(), PipeStepStatus.SKIPPED_DISABLED, null, null, null);
+                        partial = true;
+                        continue;
+                    }
+
+                    persistence.startStep(executionId, step.getStepKey());
+                    StepRun run;
                     try {
-                        Instant stepDeadline = earlier(deadline, Instant.now().plusMillis(step.getTimeoutMillis()));
-                        var procedure = procedureOrchestrator.executePipeStep(step.getProcedure().getId(), rootExecutionId,
-                                executionId, depth + 1, stepDeadline, preferred(inputs, affinity), inputs);
-                        affinity = procedure.workerInstanceId();
-                        artifactsToDelete.addAll(procedure.temporaryArtifacts());
-                        artifactsToDelete.addAll(procedure.outputs());
-                        for (ArtifactLocation output : procedure.outputs())
-                            outputs.put(new ArtifactKey(step.getStepKey(), output.descriptor().getOutputKey()), output);
-                        run = new StepRun(PipeOutcome.SUCCESS, PipeStepStatus.SUCCESS, procedure.executionId(), null);
-                    } catch (ProcedureDisabledException exception) {
-                        run = new StepRun(null, PipeStepStatus.SKIPPED_DISABLED, null, null);
-                    } catch (ProcedureExecutionException exception) {
-                        String code = exception.getMessage() != null && exception.getMessage().contains("Artifact")
-                                ? "ARTIFACT_UNAVAILABLE" : "PROCEDURE_ERROR";
-                        PipeStepStatus status = "ARTIFACT_UNAVAILABLE".equals(code)
-                                ? PipeStepStatus.ARTIFACT_UNAVAILABLE : PipeStepStatus.ERROR;
-                        run = new StepRun(PipeOutcome.ERROR, status, exception.getExecutionId(), code);
+                        if (!Instant.now().isBefore(phaseDeadline))
+                            throw new PipeExecutionException("PIPE_PHASE_TIMEOUT");
+
+                        if (step.getStepType() == PipeStepType.ALERT) {
+                            run = executeAlert(step, executionId, phaseDeadline);
+                        } else {
+                            Map<String, ArtifactLocation> inputs = new LinkedHashMap<>();
+                            for (var binding : step.getBindings()) {
+                                ArtifactLocation artifact = outputs.get(new ArtifactKey(binding.getSourceStep().getStepKey(), binding.getSourceOutput().getOutputKey()));
+                                if (artifact == null) {
+                                    throw new PipeExecutionException("MISSING_PIPE_OUTPUT");
+                                }
+                                inputs.put(binding.getTargetParameter().getParameterKey(), artifact);
+                            }
+                            try {
+                                Instant stepDeadline = earlier(phaseDeadline, Instant.now().plusMillis(step.getTimeoutMillis()));
+                                var procedure = procedureOrchestrator.executePipeStep(step.getProcedure().getId(), rootExecutionId,
+                                        executionId, depth + 1, stepDeadline, preferred(inputs, affinity), inputs);
+                                affinity = procedure.workerInstanceId();
+                                artifactsToDelete.addAll(procedure.temporaryArtifacts());
+                                artifactsToDelete.addAll(procedure.outputs());
+                                for (ArtifactLocation output : procedure.outputs())
+                                    outputs.put(new ArtifactKey(step.getStepKey(), output.descriptor().getOutputKey()), output);
+
+                                run = new StepRun(PipeOutcome.SUCCESS, PipeStepStatus.SUCCESS, procedure.executionId(), null);
+                            } catch (ProcedureDisabledException exception) {
+                                run = new StepRun(null, PipeStepStatus.SKIPPED_DISABLED, null, null);
+                            } catch (ProcedureExecutionException exception) {
+                                String code = exception.getMessage() != null && exception.getMessage().contains("Artifact")
+                                        ? "ARTIFACT_UNAVAILABLE" : "PROCEDURE_ERROR";
+                                PipeStepStatus status = "ARTIFACT_UNAVAILABLE".equals(code)
+                                        ? PipeStepStatus.ARTIFACT_UNAVAILABLE : PipeStepStatus.ERROR;
+                                run = new StepRun(PipeOutcome.ERROR, status, exception.getExecutionId(), code);
+                            }
+                        }
+                    } catch (RuntimeException exception) {
+                        String code = "MISSING_PIPE_OUTPUT".equals(exception.getMessage()) ? "MISSING_PIPE_OUTPUT"
+                                : "PIPE_PHASE_TIMEOUT".equals(exception.getMessage()) ? "PIPE_PHASE_TIMEOUT" : "PIPE_STEP_ERROR";
+                        run = new StepRun(PipeOutcome.ERROR, "MISSING_PIPE_OUTPUT".equals(code)
+                                ? PipeStepStatus.MISSING_PIPE_OUTPUT : PipeStepStatus.ERROR, null, code);
                     }
+                    persistence.completeStep(executionId, step.getStepKey(), run.status(), run.outcome(), run.executionId(), run.errorCode());
+                    if (run.outcome() == PipeOutcome.ERROR)
+                        aggregate = PipeOutcome.ERROR;
+                    else if (run.outcome() == PipeOutcome.WARN && aggregate == PipeOutcome.SUCCESS)
+                        aggregate = PipeOutcome.WARN;
+
+                    if (run.outcome() == null || run.outcome() != PipeOutcome.SUCCESS)
+                        partial = true;
+
+                    continueSequence = phase == PipeStepPhase.FINALLY || run.outcome() == null
+                            || step.getContinueOn().contains(run.outcome().name());
                 }
-                persistence.completeStep(executionId, step.getStepKey(), run.status(), run.outcome(), run.executionId(), run.errorCode());
-                if (run.outcome() == PipeOutcome.ERROR)
-                    aggregate = PipeOutcome.ERROR;
-                else if (run.outcome() == PipeOutcome.WARN && aggregate == PipeOutcome.SUCCESS)
-                    aggregate = PipeOutcome.WARN;
-                if (run.outcome() == null || run.outcome() != PipeOutcome.SUCCESS)
-                    partial = true;
-                continueSequence = run.outcome() == null || step.getContinueOn().contains(run.outcome().name());
             }
             PipeExecutionStatus status = aggregate == PipeOutcome.ERROR ? PipeExecutionStatus.FAILED
                     : partial || aggregate == PipeOutcome.WARN ? PipeExecutionStatus.PARTIAL : PipeExecutionStatus.COMPLETED;
@@ -219,11 +239,15 @@ public class PipeExecutionOrchestrator implements AutoCloseable {
         } catch (RuntimeException exception) {
             if (started)
                 persistence.failRunning(executionId, "PIPE_EXECUTION_ERROR");
+
             throw new PipeExecutionException(started ? executionId : null,
                     exception.getMessage() == null ? exception.getClass().getSimpleName() : exception.getMessage(), exception);
         } finally {
-            procedureOrchestrator.deleteArtifacts(artifactsToDelete);
-            leave(pipe.getId());
+            try {
+                procedureOrchestrator.deleteArtifacts(artifactsToDelete);
+            } finally {
+                leave(pipe.getId());
+            }
         }
     }
 
@@ -232,12 +256,15 @@ public class PipeExecutionOrchestrator implements AutoCloseable {
         Duration remaining = Duration.between(Instant.now(), deadline);
         if (remaining.compareTo(timeout) < 0)
             timeout = remaining;
-        var execution = alertOrchestrator.executeHook(step.getAlert().getId(), step.getAlert().getName(),
-                step.getAlert().isConcurrentExecutionAllowed(), timeout, "pipe:" + pipeExecutionId, () -> { }, () -> { });
+
+        var execution = alertOrchestrator.executePipe(step.getAlert().getId(), step.getAlert().getName(),
+                step.getAlert().isConcurrentExecutionAllowed(), timeout, "pipe:" + pipeExecutionId, () -> { }, () -> { }, pipeExecutionId, step.getStepKey());
         if (execution.busyTimeout())
             return new StepRun(PipeOutcome.ERROR, PipeStepStatus.ERROR, null, "ALERT_BUSY_TIMEOUT");
+
         if (execution.disabled())
             return new StepRun(null, PipeStepStatus.SKIPPED_DISABLED, null, null);
+
         if (execution.maintenance())
             return new StepRun(PipeOutcome.ERROR, PipeStepStatus.ERROR, null, "MAINTENANCE_MODE");
 
@@ -259,6 +286,7 @@ public class PipeExecutionOrchestrator implements AutoCloseable {
     private static UUID preferred(Map<String, ArtifactLocation> inputs, UUID affinity) {
         if (inputs.isEmpty())
             return affinity;
+
         UUID candidate = null;
         for (ArtifactLocation location : inputs.values()) {
             if (candidate == null)

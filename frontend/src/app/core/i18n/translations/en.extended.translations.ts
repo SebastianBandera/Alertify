@@ -4,4 +4,5 @@
  * English dictionary so a fork can extend localization without editing it.
  */
 export const EN_EXTENDED_TRANSLATIONS: Readonly<Record<string, string>> = {
+    
 };

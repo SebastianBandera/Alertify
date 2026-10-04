@@ -1,4 +1,64 @@
+@if (drafts.has('alerts') && !editorOpen()) {
+  <button class="button button--secondary" type="button" (click)="restoreDraft()">{{ localization.translateDynamic('draft.restore') }}</button>
+}
 <section class="alerts-page">
+  @if (closureExecution(); as execution) {
+    <dialog class="modal modal--closure" aria-labelledby="closure-title" aria-describedby="closure-description" (cancel)="cancelExecutionClosure($event)">
+      <header>
+        <div class="closure-heading">
+          <span class="closure-eyebrow">{{ localization.translate('alerts.history.closure') }}</span>
+          <h2 id="closure-title">{{ localization.translate(execution.closed ? 'alerts.history.reopen' : 'alerts.history.close') }}</h2>
+          <p>{{ execution.alertName }}</p>
+        </div>
+        <button class="close" type="button" [disabled]="closureSaving()" (click)="closeExecutionClosure()" [attr.aria-label]="localization.translate('alerts.history.dismissClosure')">×</button>
+      </header>
+      <form (ngSubmit)="saveExecutionClosure()" [attr.aria-busy]="closureSaving()">
+        <div class="closure-body">
+          <section class="closure-summary" [attr.aria-label]="localization.translate('alerts.history.execution')">
+            <div class="closure-summary__status">
+              <span class="badge" [class.badge--warn]="execution.status === 'WARN'" [class.badge--error]="execution.status === 'ERROR'">{{ execution.status }}</span>
+              <span class="closure-state" [class.closure-state--closed]="execution.closed">{{ localization.translate(execution.closed ? 'alerts.history.closed' : 'alerts.history.open') }}</span>
+            </div>
+            <dl>
+              <div><dt>{{ localization.translate('alerts.history.execution') }}</dt><dd><code>{{ execution.executionId }}</code></dd></div>
+              <div><dt>{{ localization.translate('alerts.history.finishedAt') }}</dt><dd>{{ execution.finishedAt | date:'medium' }}</dd></div>
+            </dl>
+          </section>
+          <p class="closure-description" id="closure-description">{{ localization.translate(execution.closed ? 'alerts.history.reopenHelp' : 'alerts.history.closeHelp') }}</p>
+          <div class="closure-note-field">
+            <label for="execution-closure-note">{{ localization.translate('alerts.history.closureNote') }}</label>
+            <textarea id="execution-closure-note" name="closureNote" rows="4" maxlength="2000" [disabled]="closureSaving()" [placeholder]="localization.translate('alerts.history.closureNotePlaceholder')" aria-describedby="closure-note-help closure-note-count" [ngModel]="closureNote()" (ngModelChange)="closureNote.set($event)"></textarea>
+            <div class="closure-note-hint"><p id="closure-note-help">{{ localization.translate('alerts.history.closureNoteHelp') }}</p><span id="closure-note-count">{{ closureNote().length }} / 2000</span></div>
+          </div>
+          <section class="closure-audit" aria-labelledby="closure-audit-title" [attr.aria-busy]="closureAuditLoading()">
+            <div class="closure-audit__heading"><h3 id="closure-audit-title">{{ localization.translate('alerts.history.closureAudit') }}</h3>@if (!closureAuditLoading() && !closureAuditError()) { <span>{{ closureAudit().length }}</span> }</div>
+            @if (closureAuditLoading()) {
+              <p class="closure-audit__empty" role="status">{{ localization.translate('alerts.history.closureAuditLoading') }}</p>
+            } @else if (closureAuditError()) {
+              <p class="closure-error" role="alert">{{ closureAuditError() }}</p>
+            } @else {
+              <ol class="closure-timeline">
+                @for (entry of closureAudit(); track $index) {
+                  <li [class.closure-timeline__entry--closed]="entry.closed">
+                    <div class="closure-timeline__event"><strong>{{ localization.translate(entry.closed ? 'alerts.history.closed' : 'alerts.history.open') }}</strong><time [attr.datetime]="entry.at">{{ entry.at | date:'medium' }}</time></div>
+                    <p class="closure-timeline__actor">{{ entry.actor }}</p>
+                    @if (entry.note) { <p class="closure-timeline__note">{{ entry.note }}</p> }
+                  </li>
+                } @empty {
+                  <li class="closure-audit__empty">{{ localization.translate('alerts.history.closureAuditEmpty') }}</li>
+                }
+              </ol>
+            }
+          </section>
+          @if (closureError()) { <p class="closure-error" role="alert">{{ closureError() }}</p> }
+        </div>
+        <footer>
+          <button class="button button--secondary" type="button" [disabled]="closureSaving()" (click)="closeExecutionClosure()">{{ localization.translate('alerts.cancel') }}</button>
+          <button class="button button--primary" type="submit" [disabled]="closureSaving()">{{ localization.translate(closureSaving() ? 'alerts.history.closureSaving' : execution.closed ? 'alerts.history.reopen' : 'alerts.history.close') }}</button>
+        </footer>
+      </form>
+    </dialog>
+  }
   <header class="page-header">
     <div>
       <h1>{{ localization.translate('alerts.title') }}</h1>
@@ -201,7 +261,7 @@
                     </button>
                     <span class="actions__divider" aria-hidden="true"></span>
                     <button type="button" [title]="localization.translate('alerts.historyHint')" (click)="showAlertHistory(alert)">{{ localization.translate('alerts.history') }}</button>
-                    <button type="button" (click)="openEdit(alert)">{{ localization.translate('alerts.edit') }}</button>
+                    <button type="button" [attr.data-editor-viewport]="'alert-' + alert.id" (click)="openEdit(alert)">{{ localization.translate('alerts.edit') }}</button>
                     <button class="danger" type="button" (click)="deleteAlert(alert)">{{ localization.translate('alerts.delete') }}</button>
                   </div>
                 </td>
@@ -394,8 +454,11 @@
             <th>{{ localization.translate('alerts.history.startedFinishedAt') }}</th>
             <th>{{ localization.translate('alerts.history.name') }}</th>
             <th>{{ localization.translate('alerts.history.status') }}</th>
+            <th>{{ localization.translate('alerts.history.origin') }}</th>
+            <th>{{ localization.translate('alerts.history.parent') }}</th>
             <th>{{ localization.translate('alerts.history.duration') }}</th>
             <th>{{ localization.translate('alerts.history.message') }}</th>
+            <th>{{ localization.translateDynamic('alerts.history.closure') }}</th>
           </tr></thead>
           <tbody>
             @for (execution of executions(); track execution.id) {
@@ -403,8 +466,33 @@
                 <td><strong>{{ execution.startedAt | date:'medium' }}</strong><small>{{ execution.finishedAt | date:'medium' }}</small></td>
                 <td><button class="history-name-link" type="button" (click)="showAlertByName(execution.alertName)">{{ execution.alertName }}</button><small>{{ dynamic(execution.templateNameKey) }}</small></td>
                 <td><span class="badge" [class.badge--warn]="execution.status === 'WARN'" [class.badge--error]="execution.status === 'ERROR'">{{ execution.status }}</span></td>
+                <td>
+                  <strong>{{ execution.trigger || '—' }}</strong>
+                  @if (execution.trigger === 'MANUAL' && execution.triggeredBy) { <small>{{ execution.triggeredBy }}</small> }
+                </td>
+                <td>
+                  @if (execution.parentPipeExecutionId) {
+                    <strong>{{ execution.parentStepKey || '—' }}</strong>
+                    <small><code>{{ execution.parentPipeExecutionId }}</code></small>
+                  } @else if (execution.parentHookInvocationId) {
+                    <strong>{{ execution.parentHookName || '—' }}</strong>
+                    <small><code>{{ execution.parentHookInvocationId }}</code></small>
+                  } @else { <span>—</span> }
+                </td>
                 <td>{{ execution.durationMillis }} ms</td>
                 <td class="execution-message">{{ statusMessage(execution) }}</td>
+                <td class="execution-closure">
+                  @if (execution.status !== 'SUCCESS') {
+                    <div class="execution-closure__content">
+                      <span class="closure-state" [class.closure-state--closed]="execution.closed">{{ localization.translate(execution.closed ? 'alerts.history.closed' : 'alerts.history.open') }}</span>
+                      @if (execution.closureAt) {
+                        <div class="execution-closure__audit"><strong [title]="execution.closureBy || ''">{{ execution.closureBy }}</strong><time [attr.datetime]="execution.closureAt">{{ execution.closureAt | date:'medium' }}</time></div>
+                        @if (execution.closureNote) { <p class="execution-closure__note" [title]="execution.closureNote">{{ execution.closureNote }}</p> }
+                      }
+                      <button class="execution-closure__action" type="button" [attr.data-editor-viewport]="'execution-closure-' + execution.id" (click)="openExecutionClosure(execution)">{{ localization.translate(execution.closed ? 'alerts.history.reopen' : 'alerts.history.close') }}</button>
+                    </div>
+                  } @else { <span class="muted" [attr.aria-label]="localization.translate('alerts.history.closureNotApplicable')">—</span> }
+                </td>
               </tr>
             }
           </tbody>
@@ -436,6 +524,7 @@
           <h2>{{ localization.translate(editingAlert() ? 'alerts.form.editTitle' : 'alerts.form.createTitle') }}</h2>
           <p>{{ localization.translate('alerts.form.description') }}</p>
         </div>
+        <button class="button button--secondary" type="button" (click)="minimizeDraft()" [disabled]="saving()">{{ localization.translateDynamic('draft.minimize') }}</button>
         <button class="close" type="button" (click)="closeEditor()" aria-label="Close">×</button>
       </header>
       <form (ngSubmit)="save()">
@@ -645,7 +734,19 @@
                     @if (parameterForm(parameter.key).source === 'TEXT') {
                       <label class="full">
                         <span>{{ localization.translate('alerts.form.value') }}</span>
-                        @if (parameter.multiline) {
+                        @if (observingResource() && parameter.key === 'resourceId') {
+                          <app-searchable-select
+                            [options]="observerResources()"
+                            [value]="parameterForm(parameter.key).textValue ? +parameterForm(parameter.key).textValue : null"
+                            (valueChange)="selectObserverResource($event)"
+                            [placeholder]="dynamic('observer.resource.select')"
+                            [emptyLabel]="dynamic('observer.resource.empty')"
+                            [ariaLabel]="dynamic('observer.resource.select')"
+                            [disabled]="observerResourcesLoading()"
+                          />
+                          @if (observerResourcesLoading()) { <small role="status">{{ dynamic('observer.resource.loading') }}</small> }
+                          @if (observerResourcesError()) { <small role="alert">{{ dynamic('observer.resource.error') }}</small> }
+                        } @else if (parameter.multiline) {
                           <textarea [ngModel]="parameterForm(parameter.key).textValue" (ngModelChange)="patchParameter(parameter.key, { textValue: $event })" [name]="'text-' + parameter.id" rows="5" required></textarea>
                         } @else {
                           <input type="text" [ngModel]="parameterForm(parameter.key).textValue" (ngModelChange)="patchParameter(parameter.key, { textValue: $event })" [name]="'text-' + parameter.id" required>

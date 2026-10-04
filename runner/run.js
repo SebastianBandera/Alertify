@@ -281,12 +281,26 @@ function insertMissingAssignments(envContent, templateAssignments, missing, secr
   return rendered.endsWith(lineEnding) ? rendered : `${rendered}${lineEnding}`;
 }
 
-function reconcileEnvironment(templatePath, envPath) {
+function reconcileEnvironment(templatePath, envPath, { avoidUpdateDependencies = false } = {}) {
   const templateContent = fs.readFileSync(templatePath, 'utf8');
   const template = parseDocument(templateContent, '.env.template');
   const envExists = fs.existsSync(envPath);
   const envContent = envExists ? fs.readFileSync(envPath, 'utf8') : '';
   const existing = parseExistingEnvironment(envContent);
+  const dependencyUpdates = new Map(
+    template.assignments.filter(({ key, rawValue }) =>
+      !avoidUpdateDependencies && /_(?:IMAGE|VERSION)$/.test(key) && existing.values.has(key) &&
+      plainValue(existing.values.get(key)) !== plainValue(rawValue),
+    ).map(({ key, rawValue }) => [key, rawValue]),
+  );
+  // Update every occurrence: Docker and the runner must agree even with duplicate keys.
+  const updatedContent = envContent.split(/(\r?\n)/).map((line) => {
+    const match = line.replace(/^\uFEFF/, '').match(ASSIGNMENT_PATTERN);
+    if (!match || !dependencyUpdates.has(match[1])) {
+      return line;
+    }
+    return line.slice(0, line.indexOf('=') + 1) + line.slice(line.indexOf('=') + 1).match(/^\s*/)[0] + dependencyUpdates.get(match[1]);
+  }).join('');
   const secretResult = resolveSecretValues(template.assignments, existing.values);
   const missing = template.assignments.filter(({ key }) => !existing.values.has(key));
   const missingSecretNames = new Set(
@@ -300,13 +314,13 @@ function reconcileEnvironment(templatePath, envPath) {
       flag: 'wx',
       mode: 0o600,
     });
-  } else if (missing.length > 0) {
-    const reconciled = insertMissingAssignments(
-      envContent,
+  } else if (missing.length > 0 || dependencyUpdates.size > 0) {
+    const reconciled = missing.length > 0 ? insertMissingAssignments(
+      updatedContent,
       template.assignments,
       missing,
       secretResult.resolved,
-    );
+    ) : updatedContent;
     fs.writeFileSync(envPath, reconciled, 'utf8');
   }
 
@@ -316,6 +330,7 @@ function reconcileEnvironment(templatePath, envPath) {
   return {
     created: !envExists,
     addedKeys: missing.map(({ key }) => key),
+    updatedKeys: [...dependencyUpdates.keys()],
     duplicates: finalEnvironment.duplicates,
     environment: finalEnvironment.values,
     generatedSecrets: secretResult.generated.filter((name) => missingSecretNames.has(name)),
@@ -534,6 +549,7 @@ function buildPlan(environment, options = {}) {
   const backendMode = mode(environment, 'BACKEND_MODE');
   const frontendMode = mode(environment, 'FRONTEND_MODE');
   const publicPort = portValue(environment, 'PUBLIC_PORT');
+  const publishAdditionalPorts = booleanValue(environment, 'PUBLISH_ADDITIONAL_PORTS');
   const appPublicUrl = parsedUrl(environment, 'APP_PUBLIC_URL');
   const publisherTlsEnabled = !isLocalhostHostname(appPublicUrl.hostname);
   const skipKeycloak = options.skipKeycloak === true;
@@ -559,6 +575,7 @@ function buildPlan(environment, options = {}) {
     frontendUrl: required(environment, 'APP_PUBLIC_URL'),
     skipFrontend,
     publicPort,
+    publishAdditionalPorts,
     publicHttpPort: null,
     publisherUrl: required(environment, 'APP_PUBLIC_URL'),
     publisherTlsEnabled,
@@ -567,7 +584,10 @@ function buildPlan(environment, options = {}) {
     publisherTlsCaValidityDays: null,
     rotatePublisherTlsCertificate: false,
     skipPublisher,
+    identityDatabaseHostPort: null,
+    keycloakAdminPort: null,
     keycloakAdminUrl: null,
+    applicationDatabaseHostPort: null,
     backendDebugEnabled: false,
     backendDebugPort: null,
     backendDebugSuspend: null,
@@ -650,9 +670,14 @@ function buildPlan(environment, options = {}) {
     required(environment, 'IDENTITY_DB_USER');
     required(environment, 'IDENTITY_DB_PASSWORD');
     required(environment, 'OIDC_REALM');
-    const keycloakAdminPort = portValue(environment, 'KEYCLOAK_HTTP_PORT');
-    plan.keycloakAdminUrl = required(environment, 'KEYCLOAK_ADMIN_URL');
-    validateUrlPort(environment, 'KEYCLOAK_ADMIN_URL', keycloakAdminPort);
+    if (publishAdditionalPorts) {
+      plan.keycloakAdminPort = portValue(environment, 'KEYCLOAK_HTTP_PORT');
+      plan.keycloakAdminUrl = required(environment, 'KEYCLOAK_ADMIN_URL');
+      validateUrlPort(environment, 'KEYCLOAK_ADMIN_URL', plan.keycloakAdminPort);
+      if (plan.identityDatabaseMode === 'local') {
+        plan.identityDatabaseHostPort = portValue(environment, 'IDENTITY_DB_HOST_PORT');
+      }
+    }
     validateUrlPort(environment, 'KEYCLOAK_PUBLIC_URL', publicPort);
 
     if (plan.identityDatabaseMode === 'local' && !skipKeycloak) {
@@ -712,12 +737,17 @@ function buildPlan(environment, options = {}) {
       validateUrlPort(environment, 'OIDC_ISSUER_URI', publicPort);
     }
     plan.backendDebugEnabled = booleanValue(environment, 'BACKEND_DEBUG_ENABLED');
-    plan.backendDebugPort = required(environment, 'BACKEND_DEBUG_PORT');
+    plan.backendDebugPort = portValue(environment, 'BACKEND_DEBUG_PORT');
     plan.backendDebugSuspend = allowedValue(
       environment,
       'BACKEND_DEBUG_SUSPEND',
       ['y', 'n'],
     );
+    if (plan.backendDebugEnabled && !publishAdditionalPorts) {
+      throw new Error(
+        'BACKEND_DEBUG_ENABLED=true requires PUBLISH_ADDITIONAL_PORTS=true so the debugger is reachable from the host.',
+      );
+    }
 
     if (plan.applicationDatabaseMode === 'local') {
       required(environment, 'DATABASE_IMAGE');
@@ -726,6 +756,9 @@ function buildPlan(environment, options = {}) {
       required(environment, 'DATABASE_BOOTSTRAP_PASSWORD');
       if (bootstrapUser === required(environment, 'DATABASE_USER')) {
         throw new Error('DATABASE_BOOTSTRAP_USER must be different from DATABASE_USER.');
+      }
+      if (publishAdditionalPorts) {
+        plan.applicationDatabaseHostPort = portValue(environment, 'DATABASE_HOST_PORT');
       }
       if (!skipDatabase) {
         plan.services.push({ name: 'database', build: true });
@@ -910,6 +943,11 @@ function printPlan(plan, environment) {
     console.log(
       `  - Keycloak master administration: direct local access (${redactUrl(plan.keycloakAdminUrl)})`,
     );
+  }
+  if (plan.publishAdditionalPorts) {
+    console.log('  - Additional host ports: enabled for local services');
+  } else {
+    console.log('  - Additional host ports: disabled; only public HTTP/HTTPS ports will be published');
   }
 }
 
@@ -1099,7 +1137,15 @@ function createRuntimeComposeOverride(plan, projectDirectory) {
     { baseService: 'worker-standard', instances: plan.workerStandardInstances },
     { baseService: 'worker-playwright', instances: plan.workerPlaywrightInstances },
   ].filter((group) => group.instances.length > 0);
-  if (workerGroups.length === 0 && !plan.publisherTlsEnabled) {
+  const publishIdentityDatabasePort = plan.identityDatabaseHostPort != null;
+  const publishKeycloakAdminPort = plan.keycloakAdminPort != null;
+  const publishApplicationDatabasePort = plan.applicationDatabaseHostPort != null;
+  const publishBackendDebugPort = plan.publishAdditionalPorts === true && plan.backendDebugEnabled === true;
+  const hasAdditionalPortOverrides = publishIdentityDatabasePort
+    || publishKeycloakAdminPort
+    || publishApplicationDatabasePort
+    || publishBackendDebugPort;
+  if (workerGroups.length === 0 && !plan.publisherTlsEnabled && !hasAdditionalPortOverrides) {
     return null;
   }
 
@@ -1118,6 +1164,34 @@ function createRuntimeComposeOverride(plan, projectDirectory) {
       '      - "${BIND_ADDRESS:?Set BIND_ADDRESS in .env}:${PUBLIC_PORT:?Set PUBLIC_PORT in .env}:8443"',
       '    volumes: !override',
       '      - publisher_tls:/run/alertify-publisher-tls:ro',
+    );
+  }
+  if (publishIdentityDatabasePort) {
+    lines.push(
+      '  identity-database:',
+      '    ports:',
+      '      - "${BIND_ADDRESS:?Set BIND_ADDRESS in .env}:${IDENTITY_DB_HOST_PORT:?Set IDENTITY_DB_HOST_PORT in .env}:5432"',
+    );
+  }
+  if (publishKeycloakAdminPort) {
+    lines.push(
+      '  identity:',
+      '    ports:',
+      '      - "127.0.0.1:${KEYCLOAK_HTTP_PORT:?Set KEYCLOAK_HTTP_PORT in .env}:8080"',
+    );
+  }
+  if (publishApplicationDatabasePort) {
+    lines.push(
+      '  database:',
+      '    ports:',
+      '      - "${BIND_ADDRESS:?Set BIND_ADDRESS in .env}:${DATABASE_HOST_PORT:?Set DATABASE_HOST_PORT in .env}:5432"',
+    );
+  }
+  if (publishBackendDebugPort) {
+    lines.push(
+      '  backend:',
+      '    ports:',
+      '      - "${BIND_ADDRESS:?Set BIND_ADDRESS in .env}:${BACKEND_DEBUG_PORT:?Set BACKEND_DEBUG_PORT in .env}:${BACKEND_DEBUG_PORT:?Set BACKEND_DEBUG_PORT in .env}"',
     );
   }
   for (const group of workerGroups) {
@@ -1394,10 +1468,17 @@ function cleanupDockerResources(projectDirectory, imagePatterns = []) {
 
 function printHelp() {
   console.log(`Usage: run.bat [options]\n       ./run.sh [options]\n\n` +
-    '  No options          Show an interactive checklist to choose the options below.\n' +
+    '  No options          Choose Compose, Kubernetes deployment, or Kubernetes validation.\n' +
+    '                     Compose then shows its interactive component checklist.\n' +
     '  --non-interactive  Skip the interactive checklist; required in automation when every\n' +
     '                     other option is also omitted.\n' +
     '  --configure-only   Reconcile .env and show the plan without starting services.\n' +
+    '  --avoid-update-dependencies  Preserve existing _IMAGE and _VERSION values in .env.\n' +
+    '                     By default, these values follow .env.template; missing variables\n' +
+    '                     are still added. Other existing settings and secrets are preserved.\n' +
+    '  --deploy-kubernetes  Build and deploy the complete application with local kubectl.\n' +
+    '  --kubeconfig=PATH    Select kubeconfig (Kubernetes mode only).\n' +
+    '  --kube-context=NAME  Select context (Kubernetes mode only).\n' +
     '  --skip-keycloak    Do not rebuild or restart Keycloak or its local database.\n' +
     '  --skip-redis       Do not rebuild or restart the local Redis service.\n' +
     '  --skip-database    Do not rebuild or restart the local application database.\n' +
@@ -1412,7 +1493,8 @@ function printHelp() {
     '                     semicolon-separated reference globs are also preserved.\n' +
     '                     Example: "--cleanup-docker-preserve-images=maven:*;mcr.microsoft.com/playwright:*;monitoring-*"\n' +
     '  --help             Show this help.\n\n' +
-    '  Passing any option above without --non-interactive runs non-interactively, exactly as\n' +
+    '  Kubernetes mode asks before applying unless --non-interactive is passed.\n' +
+    '  Passing any Compose option above without --non-interactive runs non-interactively, exactly as\n' +
     '  if --non-interactive had also been passed.\n\n' +
     '  --replace-stale-runner  Handled by run.bat/run.sh before this program starts: automatically\n' +
     '                          removes a leftover runner container from a previous run without\n' +
@@ -1570,6 +1652,8 @@ async function main(argv = process.argv.slice(2), projectDirectory = path.resolv
     '--non-interactive',
     '--replace-stale-runner',
     '--configure-only',
+    '--avoid-update-dependencies',
+    '--deploy-kubernetes',
     '--skip-keycloak',
     '--skip-redis',
     '--skip-database',
@@ -1580,7 +1664,7 @@ async function main(argv = process.argv.slice(2), projectDirectory = path.resolv
     '--skip-worker-playwright',
     '--help',
   ]);
-  const unknown = argv.filter((argument) => !allowed.has(argument) && !argument.startsWith('--cleanup-docker-preserve-images='));
+  const unknown = argv.filter((argument) => !allowed.has(argument) && !['--cleanup-docker-preserve-images=', '--kubeconfig=', '--kube-context='].some((prefix) => argument.startsWith(prefix)));
   if (unknown.length > 0) {
     throw new Error(`Unknown option: ${unknown.join(', ')}. Use --help to list the available options.`);
   }
@@ -1600,13 +1684,19 @@ async function main(argv = process.argv.slice(2), projectDirectory = path.resolv
     throw new Error(`${templatePath} was not found.`);
   }
 
-  const result = reconcileEnvironment(templatePath, envPath);
+  const result = reconcileEnvironment(templatePath, envPath, {
+    avoidUpdateDependencies: argv.includes('--avoid-update-dependencies'),
+  });
   if (result.created) {
     console.log(`.env was created with ${result.addedKeys.length} variables.`);
   } else if (result.addedKeys.length > 0) {
     console.log(`Added to .env: ${result.addedKeys.join(', ')}.`);
-  } else {
+  } else if (result.updatedKeys.length === 0) {
     console.log('.env already contains every variable from .env.template; no changes were made.');
+  }
+
+  if (result.updatedKeys.length > 0) {
+    console.log(`Dependency variables updated from .env.template: ${result.updatedKeys.join(', ')}.`);
   }
 
   if (result.generatedSecrets.length > 0) {
@@ -1626,6 +1716,21 @@ async function main(argv = process.argv.slice(2), projectDirectory = path.resolv
   }
 
   const effectiveEnvironment = applyApplicationContext(result.environment);
+
+  if (argv.includes('--deploy-kubernetes')) {
+    const kubernetes = require('./kubernetes');
+    const options = kubernetes.parseOptions(argv);
+    const plan = buildPlan(effectiveEnvironment);
+    const privateKeyPartClassResult = ensurePrivateKeyPartClass(effectiveEnvironment, projectDirectory);
+    printPrivateKeyPartClassResult(privateKeyPartClassResult, projectDirectory);
+    await kubernetes.deploy(effectiveEnvironment, plan, options, projectDirectory, {
+      preparePublisherTlsCertificate, prepareGrpcCertificates,
+    });
+    return;
+  }
+  if (argv.some((argument) => argument.startsWith('--kubeconfig=') || argument.startsWith('--kube-context='))) {
+    throw new Error('--kubeconfig and --kube-context require --deploy-kubernetes.');
+  }
 
   let skipOptions;
   let configureOnlySelected;

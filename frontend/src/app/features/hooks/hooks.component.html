@@ -1,3 +1,6 @@
+@if (drafts.has('hooks') && !editorOpen()) {
+  <button class="button button--secondary" type="button" (click)="restoreDraft()">{{ localization.translateDynamic('draft.restore') }}</button>
+}
 <section class="hooks-page">
   <header class="page-header">
     <div>
@@ -89,7 +92,7 @@
                 </td>
                 <td><span class="badge" [class.badge--disabled]="!hook.enabled">{{ dynamic(hook.enabled ? 'hooks.enabled' : 'hooks.disabled') }}</span></td>
                 <td class="actions">
-                  <button type="button" (click)="openEdit(hook)">{{ dynamic('hooks.edit') }}</button>
+                  <button type="button" [attr.data-editor-viewport]="'hook-' + hook.id" (click)="openEdit(hook)">{{ dynamic('hooks.edit') }}</button>
                   <button type="button" (click)="rotate(hook)">{{ dynamic('hooks.rotate') }}</button>
                   <button class="danger" type="button" (click)="remove(hook)">{{ dynamic('hooks.delete') }}</button>
                 </td>
@@ -180,6 +183,7 @@
     <section class="modal" role="dialog" aria-modal="true" (mousedown)="$event.stopPropagation()">
       <header>
         <h2>{{ dynamic(editing() ? 'hooks.form.editTitle' : 'hooks.form.createTitle') }}</h2>
+        <button class="button button--secondary" type="button" (click)="minimizeDraft()" [disabled]="saving()">{{ localization.translateDynamic('draft.minimize') }}</button>
         <button class="close" type="button" (click)="closeEditor()">×</button>
       </header>
       <form (ngSubmit)="save()">

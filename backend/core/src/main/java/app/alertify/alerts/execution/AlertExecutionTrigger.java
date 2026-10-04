@@ -9,5 +9,6 @@ public enum AlertExecutionTrigger {
     CRON,
     MANUAL,
     HOOK,
-    SMART
+    SMART,
+    PIPE
 }
