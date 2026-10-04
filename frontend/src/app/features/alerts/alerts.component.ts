@@ -1,5 +1,5 @@
 import { DatePipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, OnInit, computed, effect, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, Injector, OnInit, afterNextRender, computed, effect, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -115,6 +115,7 @@ export class AlertsComponent implements OnInit {
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
   private readonly elementRef: ElementRef<HTMLElement> = inject(ElementRef);
+  private readonly injector = inject(Injector);
   private readonly editorViewport = inject(EditorViewportService);
 
   protected readonly activeTab = signal<AlertTab>('alerts');
@@ -126,6 +127,8 @@ export class AlertsComponent implements OnInit {
   protected readonly closureNote = signal('');
   protected readonly closureSaving = signal(false);
   protected readonly closureError = signal<string | null>(null);
+  protected readonly closureAuditLoading = signal(false);
+  protected readonly closureAuditError = signal<string | null>(null);
   protected readonly closureAudit = signal<readonly { closed: boolean; actor: string; note: string | null; at: string }[]>([]);
   protected readonly bindings = signal<AlertBindingOptions>(EMPTY_BINDINGS);
   protected readonly loading = signal(true);
@@ -1072,25 +1075,52 @@ export class AlertsComponent implements OnInit {
   }
 
   protected async openExecutionClosure(execution: AlertExecution): Promise<void> {
+    this.editorViewport.capture(`execution-closure-${execution.id}`);
     this.closureExecution.set(execution);
     this.closureNote.set('');
     this.closureError.set(null);
     this.closureAudit.set([]);
+    this.closureAuditError.set(null);
+    this.closureAuditLoading.set(true);
+    afterNextRender(() => {
+      if (this.closureExecution()?.id !== execution.id) return;
+      this.elementRef.nativeElement.querySelector<HTMLDialogElement>('.modal--closure')?.showModal();
+      this.elementRef.nativeElement.querySelector<HTMLTextAreaElement>('#execution-closure-note')?.focus({ preventScroll: true });
+    }, { injector: this.injector });
     try {
-      this.closureAudit.set(await this.api.executionClosureAudit(execution.id));
+      const audit = await this.api.executionClosureAudit(execution.id);
+      if (this.closureExecution() !== execution) return;
+      this.closureAudit.set([...audit].reverse());
     } catch {
-      this.closureError.set(this.localization.translateDynamic('alerts.history.closureError'));
+      if (this.closureExecution() === execution) {
+        this.closureAuditError.set(this.localization.translate('alerts.history.closureAuditError'));
+      }
+    } finally {
+      if (this.closureExecution() === execution) this.closureAuditLoading.set(false);
     }
+  }
+
+  protected closeExecutionClosure(): void {
+    if (this.closureSaving()) return;
+    this.closureExecution.set(null);
+    this.editorViewport.restore();
+  }
+
+  protected cancelExecutionClosure(event: Event): void {
+    event.preventDefault();
+    this.closeExecutionClosure();
   }
 
   protected async saveExecutionClosure(): Promise<void> {
     const execution = this.closureExecution();
     if (!execution || this.closureSaving()) return;
     this.closureSaving.set(true);
+    this.closureError.set(null);
     try {
       const updated = await this.api.changeExecutionClosure(execution.id, !execution.closed, this.closureNote() || null);
       this.executions.update((items) => items.map((item) => item.id === updated.id ? updated : item));
       this.closureExecution.set(null);
+      this.editorViewport.restore();
     } catch {
       this.closureError.set(this.localization.translateDynamic('alerts.history.closureError'));
     } finally {

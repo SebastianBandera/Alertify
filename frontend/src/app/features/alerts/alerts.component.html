@@ -3,21 +3,61 @@
 }
 <section class="alerts-page">
   @if (closureExecution(); as execution) {
-    <div class="modal-backdrop">
-      <section class="modal modal--tags" role="dialog" aria-modal="true" aria-labelledby="closure-title">
-        <header class="modal__header"><h2 id="closure-title">{{ localization.translateDynamic(execution.closed ? 'alerts.history.reopen' : 'alerts.history.close') }} · {{ execution.alertName }}</h2></header>
-        <label for="execution-closure-note">{{ localization.translateDynamic('alerts.history.closureNote') }}</label>
-        <textarea id="execution-closure-note" maxlength="2000" [ngModel]="closureNote()" (ngModelChange)="closureNote.set($event)"></textarea>
-        @for (entry of closureAudit(); track $index) {
-          <p>{{ localization.translateDynamic(entry.closed ? 'alerts.history.closed' : 'alerts.history.open') }} · {{ entry.actor }} · {{ entry.at | date:'medium' }}<small>{{ entry.note }}</small></p>
-        }
-        @if (closureError()) { <p role="alert">{{ closureError() }}</p> }
-        <footer class="modal__footer">
-          <button type="button" [disabled]="closureSaving()" (click)="saveExecutionClosure()">{{ localization.translateDynamic(execution.closed ? 'alerts.history.reopen' : 'alerts.history.close') }}</button>
-          <button type="button" [disabled]="closureSaving()" (click)="closureExecution.set(null)">{{ localization.translate('alerts.cancel') }}</button>
+    <dialog class="modal modal--closure" aria-labelledby="closure-title" aria-describedby="closure-description" (cancel)="cancelExecutionClosure($event)">
+      <header>
+        <div class="closure-heading">
+          <span class="closure-eyebrow">{{ localization.translate('alerts.history.closure') }}</span>
+          <h2 id="closure-title">{{ localization.translate(execution.closed ? 'alerts.history.reopen' : 'alerts.history.close') }}</h2>
+          <p>{{ execution.alertName }}</p>
+        </div>
+        <button class="close" type="button" [disabled]="closureSaving()" (click)="closeExecutionClosure()" [attr.aria-label]="localization.translate('alerts.history.dismissClosure')">×</button>
+      </header>
+      <form (ngSubmit)="saveExecutionClosure()" [attr.aria-busy]="closureSaving()">
+        <div class="closure-body">
+          <section class="closure-summary" [attr.aria-label]="localization.translate('alerts.history.execution')">
+            <div class="closure-summary__status">
+              <span class="badge" [class.badge--warn]="execution.status === 'WARN'" [class.badge--error]="execution.status === 'ERROR'">{{ execution.status }}</span>
+              <span class="closure-state" [class.closure-state--closed]="execution.closed">{{ localization.translate(execution.closed ? 'alerts.history.closed' : 'alerts.history.open') }}</span>
+            </div>
+            <dl>
+              <div><dt>{{ localization.translate('alerts.history.execution') }}</dt><dd><code>{{ execution.executionId }}</code></dd></div>
+              <div><dt>{{ localization.translate('alerts.history.finishedAt') }}</dt><dd>{{ execution.finishedAt | date:'medium' }}</dd></div>
+            </dl>
+          </section>
+          <p class="closure-description" id="closure-description">{{ localization.translate(execution.closed ? 'alerts.history.reopenHelp' : 'alerts.history.closeHelp') }}</p>
+          <div class="closure-note-field">
+            <label for="execution-closure-note">{{ localization.translate('alerts.history.closureNote') }}</label>
+            <textarea id="execution-closure-note" name="closureNote" rows="4" maxlength="2000" [disabled]="closureSaving()" [placeholder]="localization.translate('alerts.history.closureNotePlaceholder')" aria-describedby="closure-note-help closure-note-count" [ngModel]="closureNote()" (ngModelChange)="closureNote.set($event)"></textarea>
+            <div class="closure-note-hint"><p id="closure-note-help">{{ localization.translate('alerts.history.closureNoteHelp') }}</p><span id="closure-note-count">{{ closureNote().length }} / 2000</span></div>
+          </div>
+          <section class="closure-audit" aria-labelledby="closure-audit-title" [attr.aria-busy]="closureAuditLoading()">
+            <div class="closure-audit__heading"><h3 id="closure-audit-title">{{ localization.translate('alerts.history.closureAudit') }}</h3>@if (!closureAuditLoading() && !closureAuditError()) { <span>{{ closureAudit().length }}</span> }</div>
+            @if (closureAuditLoading()) {
+              <p class="closure-audit__empty" role="status">{{ localization.translate('alerts.history.closureAuditLoading') }}</p>
+            } @else if (closureAuditError()) {
+              <p class="closure-error" role="alert">{{ closureAuditError() }}</p>
+            } @else {
+              <ol class="closure-timeline">
+                @for (entry of closureAudit(); track $index) {
+                  <li [class.closure-timeline__entry--closed]="entry.closed">
+                    <div class="closure-timeline__event"><strong>{{ localization.translate(entry.closed ? 'alerts.history.closed' : 'alerts.history.open') }}</strong><time [attr.datetime]="entry.at">{{ entry.at | date:'medium' }}</time></div>
+                    <p class="closure-timeline__actor">{{ entry.actor }}</p>
+                    @if (entry.note) { <p class="closure-timeline__note">{{ entry.note }}</p> }
+                  </li>
+                } @empty {
+                  <li class="closure-audit__empty">{{ localization.translate('alerts.history.closureAuditEmpty') }}</li>
+                }
+              </ol>
+            }
+          </section>
+          @if (closureError()) { <p class="closure-error" role="alert">{{ closureError() }}</p> }
+        </div>
+        <footer>
+          <button class="button button--secondary" type="button" [disabled]="closureSaving()" (click)="closeExecutionClosure()">{{ localization.translate('alerts.cancel') }}</button>
+          <button class="button button--primary" type="submit" [disabled]="closureSaving()">{{ localization.translate(closureSaving() ? 'alerts.history.closureSaving' : execution.closed ? 'alerts.history.reopen' : 'alerts.history.close') }}</button>
         </footer>
-      </section>
-    </div>
+      </form>
+    </dialog>
   }
   <header class="page-header">
     <div>
@@ -441,12 +481,17 @@
                 </td>
                 <td>{{ execution.durationMillis }} ms</td>
                 <td class="execution-message">{{ statusMessage(execution) }}</td>
-                <td>
+                <td class="execution-closure">
                   @if (execution.status !== 'SUCCESS') {
-                    <button type="button" (click)="openExecutionClosure(execution)">{{ localization.translateDynamic(execution.closed ? 'alerts.history.reopen' : 'alerts.history.close') }}</button>
-                    <small>{{ localization.translateDynamic(execution.closed ? 'alerts.history.closed' : 'alerts.history.open') }}</small>
-                    @if (execution.closureAt) { <small>{{ execution.closureBy }} · {{ execution.closureAt | date:'medium' }}</small><small>{{ execution.closureNote }}</small> }
-                  }
+                    <div class="execution-closure__content">
+                      <span class="closure-state" [class.closure-state--closed]="execution.closed">{{ localization.translate(execution.closed ? 'alerts.history.closed' : 'alerts.history.open') }}</span>
+                      @if (execution.closureAt) {
+                        <div class="execution-closure__audit"><strong [title]="execution.closureBy || ''">{{ execution.closureBy }}</strong><time [attr.datetime]="execution.closureAt">{{ execution.closureAt | date:'medium' }}</time></div>
+                        @if (execution.closureNote) { <p class="execution-closure__note" [title]="execution.closureNote">{{ execution.closureNote }}</p> }
+                      }
+                      <button class="execution-closure__action" type="button" [attr.data-editor-viewport]="'execution-closure-' + execution.id" (click)="openExecutionClosure(execution)">{{ localization.translate(execution.closed ? 'alerts.history.reopen' : 'alerts.history.close') }}</button>
+                    </div>
+                  } @else { <span class="muted" [attr.aria-label]="localization.translate('alerts.history.closureNotApplicable')">—</span> }
                 </td>
               </tr>
             }
