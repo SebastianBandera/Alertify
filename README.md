@@ -4,6 +4,8 @@ Alertify is a monitoring and automation application. Create scheduled alerts,
 follow their status in a live dashboard, and build reusable operations and
 workflows with Procedures, Pipes, and Hooks.
 
+![Alertify dashboard](docs/images/dashboard.png)
+
 ## Quick start
 
 Install and start Docker with Linux container support. Download or clone this
