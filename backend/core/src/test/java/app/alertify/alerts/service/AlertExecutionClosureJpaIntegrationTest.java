@@ -30,6 +30,7 @@ import org.springframework.orm.jpa.persistenceunit.PersistenceManagedTypes;
 import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import app.alertify.ai.AiProvenance;
 import app.alertify.alerts.model.AlertExecutionClosureAudit;
 import app.alertify.jpa.repository.AlertExecutionClosureAuditRepository;
 import jakarta.persistence.Column;
@@ -88,6 +89,7 @@ class AlertExecutionClosureJpaIntegrationTest {
                     (id, execution_id, alert_id, closed, actor_subject, actor_name, note, changed_at)
                 VALUES (-1, ?, 3, true, 'historical-subject', 'historical-admin', 'retained', ?)
                 """, HISTORICAL_EXECUTION, java.time.OffsetDateTime.ofInstant(AT, java.time.ZoneOffset.UTC));
+        jdbc.execute(Files.readString(migrations.resolve("4.ai-tool-audit.sql")));
 
         factory = new LocalContainerEntityManagerFactoryBean();
         factory.setDataSource(dataSource);
@@ -112,7 +114,12 @@ class AlertExecutionClosureJpaIntegrationTest {
         assertNotNull(jdbc.queryForObject("SELECT to_regprocedure('audit.reject_closure_audit_mutation()')::text", String.class));
         assertNull(jdbc.queryForObject("SELECT to_regclass('core.alert_execution_closure_audit')::text", String.class));
         assertNotNull(jdbc.queryForObject("SELECT to_regclass('audit.idx_alert_closure_audit_execution')::text", String.class));
+        assertNotNull(jdbc.queryForObject("SELECT to_regclass('audit.idx_revinfo_ai_conversation')::text", String.class));
+        assertNotNull(jdbc.queryForObject("SELECT to_regclass('audit.idx_alert_closure_ai_conversation')::text", String.class));
+        assertNotNull(jdbc.queryForObject("SELECT to_regclass('core.idx_alert_executions_ai_conversation')::text", String.class));
         assertTrue(jdbc.queryForObject("SELECT pg_get_serial_sequence('audit.alert_execution_closure_audit', 'id')", String.class).startsWith("audit."));
+        assertFalse(jdbc.queryForObject("SELECT ai_assisted FROM core.alert_executions WHERE id = -1", Boolean.class));
+        assertNull(jdbc.queryForObject("SELECT ai_conversation_id FROM core.alert_executions WHERE id = -1", Long.class));
         var history = audits.findByExecutionIdOrderByIdAsc(HISTORICAL_EXECUTION);
         assertEquals(1, history.size());
         var entry = history.getFirst();
@@ -131,8 +138,8 @@ class AlertExecutionClosureJpaIntegrationTest {
     void persistsAndReadsOrderedEventsWithoutRequiringTheirOriginalExecution() {
         UUID executionId = UUID.randomUUID();
         transactions.executeWithoutResult(status -> {
-            var closure = audits.save(new AlertExecutionClosureAudit(executionId, 99L, true, "subject", "admin", "resolved", AT));
-            var reopening = audits.save(new AlertExecutionClosureAudit(executionId, 99L, false, "subject", "reviewer", null, AT.plusSeconds(1)));
+            var closure = audits.save(new AlertExecutionClosureAudit(executionId, 99L, true, "subject", "admin", "resolved", AT, AiProvenance.NONE));
+            var reopening = audits.save(new AlertExecutionClosureAudit(executionId, 99L, false, "subject", "reviewer", null, AT.plusSeconds(1), AiProvenance.NONE));
             entityManager.flush();
             entityManager.clear();
             var history = audits.findByExecutionIdOrderByIdAsc(executionId);
@@ -155,7 +162,7 @@ class AlertExecutionClosureJpaIntegrationTest {
         assertThrows(RuntimeException.class, () -> transactions.executeWithoutResult(status -> {
             entityManager.find(ClosureState.class, -1L).close();
             entityManager.flush();
-            audits.save(new AlertExecutionClosureAudit(executionId, 3L, true, "subject", "admin", "x".repeat(2001), AT));
+            audits.save(new AlertExecutionClosureAudit(executionId, 3L, true, "subject", "admin", "x".repeat(2001), AT, AiProvenance.NONE));
             entityManager.flush();
         }));
         assertFalse(jdbc.queryForObject("SELECT closed FROM core.alert_executions WHERE id = -1", Boolean.class));
@@ -167,7 +174,7 @@ class AlertExecutionClosureJpaIntegrationTest {
         UUID executionId = UUID.randomUUID();
         assertThrows(IllegalStateException.class, () -> transactions.executeWithoutResult(status -> {
             entityManager.find(ClosureState.class, -1L).close();
-            audits.save(new AlertExecutionClosureAudit(executionId, 3L, true, "subject", "admin", null, AT));
+            audits.save(new AlertExecutionClosureAudit(executionId, 3L, true, "subject", "admin", null, AT, AiProvenance.NONE));
             entityManager.flush();
             throw new IllegalStateException("Simulated failure after the audit was written");
         }));

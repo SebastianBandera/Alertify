@@ -68,7 +68,8 @@ class SecretExportImportAuditService {
         ApplicationLogLevelDefinition levelDefinition = levelRepository.findByCode(level.name()).orElseThrow(() -> missing("level", level.name()));
         ApplicationLogSource source = sourceRepository.findByCode(SOURCE).orElseThrow(() -> missing("source", SOURCE));
         ApplicationLogEvent eventDefinition = eventRepository.findByCode(event).orElseThrow(() -> missing("event", event));
-        logRepository.saveAndFlush(new ApplicationLog(Instant.now(), levelDefinition, source, eventDefinition, outcome, SYSTEM_ACTOR, SYSTEM_ACTOR, null, null, jsonMapper.valueToTree(data)));
+        logRepository.saveAndFlush(new ApplicationLog(Instant.now(), levelDefinition, source, eventDefinition, outcome,
+                SYSTEM_ACTOR, SYSTEM_ACTOR, false, null, null, null, jsonMapper.valueToTree(data)));
     }
 
     private static IllegalStateException missing(String catalog, String code) {

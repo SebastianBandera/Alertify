@@ -11,6 +11,7 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import app.alertify.ai.AiInvocationContextHolder;
 import app.alertify.alerts.model.AlertExecutionWorker;
 import app.alertify.configuration.service.WritableConfigurationService;
 import app.alertify.execution.ExecutionTimestamps;
@@ -75,9 +76,11 @@ public class ProcedureExecutionPersistenceService {
     public void start(UUID executionId, PreparedProcedureExecution prepared, ProcedureExecutionTrigger trigger, UUID rootExecutionId, UUID parentAlertExecutionId, UUID parentProcedureExecutionId, UUID parentPipeExecutionId, int depth, Instant startedAt, String triggeredBy) {
         Procedure procedure = procedureRepository.findById(prepared.procedureId())
                 .orElseThrow(() -> new IllegalStateException("Procedure " + prepared.procedureId() + " was not found"));
-        executionRepository.saveAndFlush(ProcedureExecution.running(executionId, procedure,
+        ProcedureExecution execution = ProcedureExecution.running(executionId, procedure,
                 prepared.procedureVersion(), trigger, rootExecutionId, parentAlertExecutionId,
-                parentProcedureExecutionId, parentPipeExecutionId, depth, startedAt, triggeredBy));
+                parentProcedureExecutionId, parentPipeExecutionId, depth, startedAt, triggeredBy);
+        execution.recordAiProvenance(AiInvocationContextHolder.currentProvenance());
+        executionRepository.saveAndFlush(execution);
     }
 
     @Transactional

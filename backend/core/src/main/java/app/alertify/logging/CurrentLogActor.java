@@ -4,6 +4,9 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 
+import app.alertify.ai.AiInvocationContext;
+import app.alertify.ai.AiInvocationContextHolder;
+
 /**
  * Extracts a stable subject and username from the current JWT authentication,
  * with explicit fallbacks for scheduled or unauthenticated system work.
@@ -19,6 +22,10 @@ final class CurrentLogActor {
     }
 
     static LogActor resolve() {
+        AiInvocationContext aiContext = AiInvocationContextHolder.current();
+        if (aiContext != null)
+            return new LogActor(aiContext.userSubject(), aiContext.username());
+
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication instanceof JwtAuthenticationToken jwtAuthentication && authentication.isAuthenticated()) {
             String subject = jwtAuthentication.getToken().getSubject();

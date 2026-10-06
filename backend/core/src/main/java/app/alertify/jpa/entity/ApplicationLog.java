@@ -59,6 +59,12 @@ public class ApplicationLog {
     @Column(nullable = false, columnDefinition = "text", updatable = false)
     private String username;
 
+    @Column(name = "ai_assisted", nullable = false, updatable = false)
+    private boolean aiAssisted;
+
+    @Column(name = "ai_conversation_id", updatable = false)
+    private Long aiConversationId;
+
     @Column(name = "request_id", updatable = false)
     private UUID requestId;
 
@@ -72,7 +78,7 @@ public class ApplicationLog {
     protected ApplicationLog() {
     }
 
-    public ApplicationLog(Instant eventAt, ApplicationLogLevelDefinition level, ApplicationLogSource source, ApplicationLogEvent event, ApplicationLogOutcome outcome, String userSubject, String username, UUID requestId, String path, JsonNode data) {
+    public ApplicationLog(Instant eventAt, ApplicationLogLevelDefinition level, ApplicationLogSource source, ApplicationLogEvent event, ApplicationLogOutcome outcome, String userSubject, String username, boolean aiAssisted, Long aiConversationId, UUID requestId, String path, JsonNode data) {
         this.eventAt = Objects.requireNonNull(eventAt);
         this.level = Objects.requireNonNull(level);
         this.source = Objects.requireNonNull(source);
@@ -80,6 +86,8 @@ public class ApplicationLog {
         this.outcome = Objects.requireNonNull(outcome);
         this.userSubject = Objects.requireNonNull(userSubject);
         this.username = Objects.requireNonNull(username);
+        this.aiAssisted = aiAssisted;
+        this.aiConversationId = aiConversationId;
         this.requestId = requestId;
         this.path = path;
         this.data = Objects.requireNonNull(data);
@@ -115,6 +123,14 @@ public class ApplicationLog {
 
     public String getUsername() {
         return username;
+    }
+
+    public boolean isAiAssisted() {
+        return aiAssisted;
+    }
+
+    public Long getAiConversationId() {
+        return aiConversationId;
     }
 
     public UUID getRequestId() {

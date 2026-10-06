@@ -6,6 +6,7 @@ import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import app.alertify.ai.AiInvocationContextHolder;
 import app.alertify.alerts.api.AlertExecutionResponse;
 import app.alertify.alerts.model.AlertExecutionClosureAudit;
 import app.alertify.api.error.ConflictException;
@@ -42,7 +43,7 @@ public class AlertExecutionClosureService {
         Instant now = Instant.now();
         execution.changeClosure(closed, actor, normalized, now);
         audits.save(new AlertExecutionClosureAudit(execution.getExecutionId(), execution.getAlert().getId(), closed,
-                subject, actor, normalized, now));
+                subject, actor, normalized, now, AiInvocationContextHolder.currentProvenance()));
         events.alertChangedAfterCommit(execution.getAlert().getId());
         return AlertMapper.toExecution(execution);
     }
@@ -51,9 +52,10 @@ public class AlertExecutionClosureService {
     public List<ClosureAudit> audit(long id) {
         var execution = executions.findById(id).orElseThrow(() -> new ResourceNotFoundException("Alert execution " + id + " was not found"));
         return audits.findByExecutionIdOrderByIdAsc(execution.getExecutionId()).stream()
-                .map(audit -> new ClosureAudit(audit.isClosed(), audit.getActorName(), audit.getNote(), audit.getChangedAt()))
+                .map(audit -> new ClosureAudit(audit.isClosed(), audit.getActorName(), audit.getNote(), audit.getChangedAt(),
+                        audit.isAiAssisted(), audit.getAiConversationId()))
                 .toList();
     }
 
-    public record ClosureAudit(boolean closed, String actor, String note, Instant at) { }
+    public record ClosureAudit(boolean closed, String actor, String note, Instant at, boolean aiAssisted, Long aiConversationId) { }
 }

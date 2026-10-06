@@ -13,7 +13,7 @@ import app.alertify.procedures.service.ProcedureCatalogService;
 /** Read-only endpoint over the registered procedure template catalog. */
 @RestController
 @RequestMapping("/api/procedure-templates")
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize(app.alertify.config.AuthorizationPolicies.ADMIN)
 public class ProcedureTemplateController {
     private final ProcedureCatalogService service;
 

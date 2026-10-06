@@ -6,6 +6,7 @@ import java.util.UUID;
 
 import org.hibernate.annotations.Immutable;
 
+import app.alertify.ai.AiProvenance;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -44,10 +45,16 @@ public class AlertExecutionClosureAudit {
     @Column(name = "changed_at", nullable = false, updatable = false)
     private Instant changedAt;
 
+    @Column(name = "ai_assisted", nullable = false, updatable = false)
+    private boolean aiAssisted;
+
+    @Column(name = "ai_conversation_id", updatable = false)
+    private Long aiConversationId;
+
     protected AlertExecutionClosureAudit() {
     }
 
-    public AlertExecutionClosureAudit(UUID executionId, long alertId, boolean closed, String actorSubject, String actorName, String note, Instant changedAt) {
+    public AlertExecutionClosureAudit(UUID executionId, long alertId, boolean closed, String actorSubject, String actorName, String note, Instant changedAt, AiProvenance provenance) {
         this.executionId = Objects.requireNonNull(executionId);
         this.alertId = alertId;
         this.closed = closed;
@@ -55,6 +62,8 @@ public class AlertExecutionClosureAudit {
         this.actorName = Objects.requireNonNull(actorName);
         this.note = note;
         this.changedAt = Objects.requireNonNull(changedAt);
+        this.aiAssisted = Objects.requireNonNull(provenance).assisted();
+        this.aiConversationId = provenance.conversationId();
     }
 
     public Long getId() { return id; }
@@ -65,4 +74,6 @@ public class AlertExecutionClosureAudit {
     public String getActorName() { return actorName; }
     public String getNote() { return note; }
     public Instant getChangedAt() { return changedAt; }
+    public boolean isAiAssisted() { return aiAssisted; }
+    public Long getAiConversationId() { return aiConversationId; }
 }

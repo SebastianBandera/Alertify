@@ -46,11 +46,11 @@ public class ApplicationLogService {
     );
     private static final Set<String> FILTER_FIELDS = Set.of(
             "id", EVENT_AT, LEVEL_CODE, SOURCE_CODE, EVENT_CODE, "outcome",
-            USER_SUBJECT, USERNAME, "requestId", "path"
+            USER_SUBJECT, USERNAME, "aiAssisted", "aiConversationId", "requestId", "path"
     );
     private static final Set<String> SORT_FIELDS = Set.of(
             "id", EVENT_AT, LEVEL, SOURCE, EVENT, "outcome", USER_SUBJECT, USERNAME,
-            "path"
+            "aiAssisted", "aiConversationId", "path"
     );
     private static final Map<String, String> SORT_ALIASES = Map.of(
             LEVEL, LEVEL_CODE,
@@ -106,7 +106,8 @@ public class ApplicationLogService {
     private static ApplicationLogResponse toResponse(ApplicationLog log) {
         return new ApplicationLogResponse(
                 log.getId(), log.getEventAt(), log.getLevel(), log.getSource(), log.getEvent(),
-                log.getOutcome(), log.getUserSubject(), log.getUsername(), log.getRequestId(),
+                log.getOutcome(), log.getUserSubject(), log.getUsername(), log.isAiAssisted(),
+                log.getAiConversationId(), log.getRequestId(),
                 log.getPath(), log.getData().deepCopy()
         );
     }

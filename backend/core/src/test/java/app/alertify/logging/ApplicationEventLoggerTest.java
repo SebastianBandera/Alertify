@@ -4,6 +4,8 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 
 import org.slf4j.MDC;
 import org.junit.jupiter.api.AfterEach;
@@ -14,6 +16,9 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+
+import app.alertify.ai.AiInvocationContext;
+import app.alertify.ai.AiInvocationContextHolder;
 
 @ExtendWith(MockitoExtension.class)
 class ApplicationEventLoggerTest {
@@ -75,6 +80,21 @@ class ApplicationEventLoggerTest {
             .isEqualTo(ApplicationLogLevel.INFO);
         org.assertj.core.api.Assertions.assertThat(command.getValue().outcome())
             .isEqualTo(ApplicationLogOutcome.FAILURE);
+    }
+
+    @Test
+    void capturesAiProvenanceInTheImmutableLogCommand() {
+        ApplicationEventLogger logger = new ApplicationEventLogger(writer, "test-app");
+        AiInvocationContext context = new AiInvocationContext("subject", "admin", Set.of("ROLE_ADMIN"), 72L, UUID.randomUUID());
+
+        AiInvocationContextHolder.runWith(context, () -> logger.success("CONFIGURATION_UPDATED", Map.of("id", 7)));
+
+        ArgumentCaptor<ApplicationLogCommand> command = ArgumentCaptor.forClass(ApplicationLogCommand.class);
+        verify(writer).persist(command.capture());
+        org.assertj.core.api.Assertions.assertThat(command.getValue().aiProvenance().assisted()).isTrue();
+        org.assertj.core.api.Assertions.assertThat(command.getValue().aiProvenance().conversationId()).isEqualTo(72L);
+        org.assertj.core.api.Assertions.assertThat(command.getValue().actor().subject()).isEqualTo("subject");
+        org.assertj.core.api.Assertions.assertThat(command.getValue().actor().username()).isEqualTo("admin");
     }
 
 }

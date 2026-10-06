@@ -11,7 +11,7 @@ import app.alertify.alerts.service.ResourceResultObserverService;
 import app.alertify.alerts.service.ResourceResultObserverService.ResourceOption;
 
 @RestController
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize(app.alertify.config.AuthorizationPolicies.ADMIN)
 public class AlertObserverResourcesController {
     private final ResourceResultObserverService service;
 

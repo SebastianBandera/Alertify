@@ -6,6 +6,7 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import app.alertify.ai.AiInvocationContextHolder;
 import app.alertify.api.error.ResourceNotFoundException;
 import app.alertify.jpa.repository.PipeExecutionRepository;
 import app.alertify.jpa.repository.PipeRepository;
@@ -44,6 +45,7 @@ public class PipeExecutionPersistenceService {
         Pipe managed = pipeRepository.findDetailedById(pipe.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Pipe " + pipe.getId() + " was not found"));
         PipeExecution execution = new PipeExecution(executionId, managed, trigger, rootExecutionId, parentProcedureExecutionId, depth, triggeredBy);
+        execution.recordAiProvenance(AiInvocationContextHolder.currentProvenance());
         managed.getSteps().forEach(step -> execution.addStep(new PipeStepResult(execution, step)));
         executionRepository.saveAndFlush(execution);
         eventLogger.successAfterCommit("PIPE_EXECUTION_STARTED", Map.of("executionId", executionId, "pipeId", pipe.getId(), "pipeName", pipe.getName()));

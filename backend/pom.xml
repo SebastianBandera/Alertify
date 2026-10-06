@@ -26,6 +26,7 @@
         <jgit.version>7.8.0.202609011348-r</jgit.version>
         <protobuf.version>4.36.2</protobuf.version>
         <playwright.version>1.63.0</playwright.version>
+        <spring-ai.version>2.0.1</spring-ai.version>
         <sqlite.version>3.53.4.0</sqlite.version>
     </properties>
 
@@ -40,6 +41,13 @@
 
     <dependencyManagement>
         <dependencies>
+            <dependency>
+                <groupId>org.springframework.ai</groupId>
+                <artifactId>spring-ai-bom</artifactId>
+                <version>${spring-ai.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
             <dependency>
                 <groupId>com.google.protobuf</groupId>
                 <artifactId>protobuf-bom</artifactId>

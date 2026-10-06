@@ -14,6 +14,7 @@ import java.util.concurrent.Executors;
 
 import org.springframework.stereotype.Service;
 
+import app.alertify.ai.AiInvocationContextHolder;
 import app.alertify.alerts.execution.AlertExecutionOrchestrator;
 import app.alertify.alerts.execution.AlertExecutionStatus;
 import app.alertify.alerts.execution.MaintenanceModeService;
@@ -71,8 +72,8 @@ public class PipeExecutionOrchestrator implements AutoCloseable {
         UUID executionId = UUID.randomUUID();
         Instant deadline = Instant.now().plus(Duration.ofMinutes(30));
         try {
-            executor.submit(() -> execute(pipe, executionId, executionId, null, 1, PipeExecutionTrigger.MANUAL,
-                    triggeredBy, deadline, true));
+            executor.submit(AiInvocationContextHolder.wrap(() -> execute(pipe, executionId, executionId, null, 1,
+                    PipeExecutionTrigger.MANUAL, triggeredBy, deadline, true)));
         } catch (RuntimeException exception) {
             leave(pipeId);
             throw exception;

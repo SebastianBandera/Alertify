@@ -60,7 +60,8 @@ public final class AlertMapper {
         AlertTemplateDefinition template = alert.getTemplate();
         return new AlertExecutionResponse(
                 execution.getId(), execution.getExecutionId(), alert.getId(), alert.getName(), template.getId(), template.getNameKey(),
-                execution.getStatus(), execution.getTrigger(), execution.getTriggeredBy(), execution.getStartedAt(), execution.getWorkStartedAt(),
+                execution.getStatus(), execution.getTrigger(), execution.getTriggeredBy(), execution.isAiAssisted(),
+                execution.getAiConversationId(), execution.getStartedAt(), execution.getWorkStartedAt(),
                 execution.getFinishedAt(),
                 Duration.between(execution.getStartedAt(), execution.getFinishedAt()).toMillis(),
                 Duration.between(execution.getStartedAt(), execution.getWorkStartedAt()).toMillis(),

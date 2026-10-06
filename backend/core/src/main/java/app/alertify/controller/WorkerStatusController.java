@@ -14,7 +14,7 @@ import app.alertify.grpc.discovery.WorkerStatusService;
 
 @RestController
 @RequestMapping("/api/workers/status")
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize(app.alertify.config.AuthorizationPolicies.ADMIN)
 public class WorkerStatusController {
 
     private final WorkerStatusService service;

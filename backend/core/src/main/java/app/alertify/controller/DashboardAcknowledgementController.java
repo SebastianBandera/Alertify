@@ -23,7 +23,7 @@ import jakarta.validation.constraints.Positive;
  */
 @RestController
 @RequestMapping("/api/dashboard")
-@PreAuthorize("hasRole('ADMIN') or hasRole('DASHBOARD')")
+@PreAuthorize(app.alertify.config.AuthorizationPolicies.ADMIN_OR_DASHBOARD)
 @Validated
 public class DashboardAcknowledgementController {
 

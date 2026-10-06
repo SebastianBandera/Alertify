@@ -12,6 +12,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+import app.alertify.ai.AiInvocationContextHolder;
+
 /**
  * Primary entry point for structured application events. It enriches events
  * with the current actor and request context, writes them to the console and
@@ -82,6 +84,7 @@ public class ApplicationEventLogger {
     private ApplicationLogCommand command(ApplicationLogLevel level, String event, ApplicationLogOutcome outcome, Map<String, ?> data) {
         return new ApplicationLogCommand(
                 Instant.now(), level, source, event, outcome, CurrentLogActor.resolve(),
+                AiInvocationContextHolder.currentProvenance(),
                 currentRequestId(), currentRequestPath(), Map.copyOf(data)
         );
     }

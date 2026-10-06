@@ -17,6 +17,8 @@ public record AlertExecutionResponse(
     AlertExecutionStatus status,
     AlertExecutionTrigger trigger,
     String triggeredBy,
+    boolean aiAssisted,
+    Long aiConversationId,
     Instant startedAt,
     Instant workStartedAt,
     Instant finishedAt,
@@ -43,6 +45,7 @@ public record AlertExecutionResponse(
     public AlertExecutionResponse withoutWorkerAddress() {
         return new AlertExecutionResponse(
                 id, executionId, alertId, alertName, templateId, templateNameKey, status, trigger, triggeredBy,
+                aiAssisted, aiConversationId,
                 startedAt, workStartedAt, finishedAt, durationMillis, idleMillis, executionMillis, statusMessage,
                 errorType, errorMessage, workerName, null, null, workerInstanceId, parentPipeExecutionId, parentStepKey,
                 parentHookInvocationId, parentHookName, closed, closureAt, closureBy, closureNote
@@ -53,6 +56,7 @@ public record AlertExecutionResponse(
     public AlertExecutionResponse forViewer() {
         return new AlertExecutionResponse(
                 id, executionId, alertId, alertName, templateId, templateNameKey, status, trigger, triggeredBy,
+                aiAssisted, aiConversationId,
                 startedAt, workStartedAt, finishedAt, durationMillis, idleMillis, executionMillis, statusMessage,
                 errorType, null, workerName, null, null, workerInstanceId, parentPipeExecutionId, parentStepKey,
                 parentHookInvocationId, parentHookName, closed, closureAt, null, null

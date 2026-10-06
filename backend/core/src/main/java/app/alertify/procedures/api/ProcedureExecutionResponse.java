@@ -35,6 +35,8 @@ public record ProcedureExecutionResponse(
     String workerIpAddress,
     Integer workerPort,
     UUID workerInstanceId,
-    String triggeredBy
+    String triggeredBy,
+    boolean aiAssisted,
+    Long aiConversationId
 ) {
 }

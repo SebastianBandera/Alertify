@@ -39,26 +39,26 @@ public class ApplicationLogController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize(app.alertify.config.AuthorizationPolicies.ADMIN)
     public Page<ApplicationLogResponse> search(@RequestParam MultiValueMap<String, String> params, @PageableDefault(size = 25, sort = "eventAt", direction = Sort.Direction.DESC) Pageable pageable) {
         return service.search(params, pageable);
     }
 
     @GetMapping("/events")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize(app.alertify.config.AuthorizationPolicies.ADMIN)
     public List<String> events() {
         return service.eventCodes();
     }
 
     @PostMapping("/login")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize(app.alertify.config.AuthorizationPolicies.AUTHENTICATED)
     public ResponseEntity<Void> login(HttpServletRequest request) {
         logSessionEvent("USER_LOGIN", request);
         return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/logout")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize(app.alertify.config.AuthorizationPolicies.AUTHENTICATED)
     public ResponseEntity<Void> logout(HttpServletRequest request) {
         logSessionEvent("USER_LOGOUT", request);
         return ResponseEntity.noContent().build();

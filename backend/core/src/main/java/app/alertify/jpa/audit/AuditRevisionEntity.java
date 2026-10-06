@@ -36,6 +36,12 @@ public class AuditRevisionEntity {
     @Column(nullable = false, length = 255)
     private String username;
 
+    @Column(name = "ai_assisted", nullable = false)
+    private boolean aiAssisted;
+
+    @Column(name = "ai_conversation_id")
+    private Long aiConversationId;
+
     public Long getRevision() {
         return revision;
     }
@@ -52,11 +58,24 @@ public class AuditRevisionEntity {
         return username;
     }
 
+    public boolean isAiAssisted() {
+        return aiAssisted;
+    }
+
+    public Long getAiConversationId() {
+        return aiConversationId;
+    }
+
     void setUserSubject(String userSubject) {
         this.userSubject = userSubject;
     }
 
     void setUsername(String username) {
         this.username = username;
+    }
+
+    void setAiProvenance(boolean aiAssisted, Long aiConversationId) {
+        this.aiAssisted = aiAssisted;
+        this.aiConversationId = aiConversationId;
     }
 }

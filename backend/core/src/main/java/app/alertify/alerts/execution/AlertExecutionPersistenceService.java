@@ -15,6 +15,8 @@ import java.util.concurrent.ConcurrentMap;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import app.alertify.ai.AiInvocationContextHolder;
+import app.alertify.ai.AiProvenance;
 import app.alertify.alerts.model.Alert;
 import app.alertify.alerts.model.AlertExecution;
 import app.alertify.alerts.model.AlertExecutionWorker;
@@ -59,15 +61,18 @@ public class AlertExecutionPersistenceService {
     }
 
     public void registerTrigger(UUID executionId, AlertExecutionTrigger trigger, String triggeredBy) {
-        triggerContexts.put(executionId, new TriggerContext(trigger, triggeredBy, null, null, null, null));
+        triggerContexts.put(executionId, new TriggerContext(trigger, triggeredBy, null, null, null, null,
+                AiInvocationContextHolder.currentProvenance()));
     }
 
     public void registerPipeParent(UUID executionId, String triggeredBy, UUID parentPipeExecutionId, String parentStepKey) {
-        triggerContexts.put(executionId, new TriggerContext(AlertExecutionTrigger.PIPE, triggeredBy, parentPipeExecutionId, parentStepKey, null, null));
+        triggerContexts.put(executionId, new TriggerContext(AlertExecutionTrigger.PIPE, triggeredBy, parentPipeExecutionId,
+                parentStepKey, null, null, AiInvocationContextHolder.currentProvenance()));
     }
 
     public void registerHookParent(UUID executionId, String triggeredBy, UUID parentHookInvocationId, String parentHookName) {
-        triggerContexts.put(executionId, new TriggerContext(AlertExecutionTrigger.HOOK, triggeredBy, null, null, parentHookInvocationId, parentHookName));
+        triggerContexts.put(executionId, new TriggerContext(AlertExecutionTrigger.HOOK, triggeredBy, null, null,
+                parentHookInvocationId, parentHookName, AiInvocationContextHolder.currentProvenance()));
     }
 
     public void clearTrigger(UUID executionId) { triggerContexts.remove(executionId); }
@@ -77,6 +82,7 @@ public class AlertExecutionPersistenceService {
         TriggerContext context = triggerContexts.get(executionId);
         AlertExecution execution = AlertExecution.observed(executionId, alert(alertId), result.status(), startedAt, Instant.now(), result.summary(), trigger(context), actor(context));
         recordParent(execution, context);
+        recordProvenance(execution, context);
         executionRepository.save(execution);
         logResult(execution);
     }
@@ -105,6 +111,7 @@ public class AlertExecutionPersistenceService {
         }
 
         recordParent(execution, context);
+        recordProvenance(execution, context);
         executionRepository.save(execution);
         AlertState state = stateRepository.findById(alertId).orElseThrow(() -> new IllegalStateException("Alert state " + alertId + " was not found"));
         state.replaceState(SecretValueSanitizer.sanitize(result.getState(), secretValues(prepared)));
@@ -150,6 +157,7 @@ public class AlertExecutionPersistenceService {
                 errorType, errorMessage, errorStackTrace, trigger(context), actor(context)
         );
         recordParent(execution, context);
+        recordProvenance(execution, context);
         executionRepository.save(execution);
         logResult(execution);
     }
@@ -279,5 +287,10 @@ public class AlertExecutionPersistenceService {
         }
     }
 
-    private record TriggerContext(AlertExecutionTrigger trigger, String triggeredBy, UUID parentPipeExecutionId, String parentStepKey, UUID parentHookInvocationId, String parentHookName) { }
+    private static void recordProvenance(AlertExecution execution, TriggerContext context) {
+        execution.recordAiProvenance(context == null ? AiProvenance.NONE : context.aiProvenance());
+    }
+
+    private record TriggerContext(AlertExecutionTrigger trigger, String triggeredBy, UUID parentPipeExecutionId,
+            String parentStepKey, UUID parentHookInvocationId, String parentHookName, AiProvenance aiProvenance) { }
 }

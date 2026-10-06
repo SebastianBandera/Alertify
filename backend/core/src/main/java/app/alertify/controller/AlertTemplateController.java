@@ -12,7 +12,7 @@ import app.alertify.alerts.service.AlertCatalogService;
 
 @RestController
 @RequestMapping("/api/alert-templates")
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize(app.alertify.config.AuthorizationPolicies.ADMIN)
 public class AlertTemplateController {
 
     private final AlertCatalogService service;

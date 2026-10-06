@@ -16,6 +16,7 @@ import java.util.concurrent.Executors;
 
 import org.springframework.stereotype.Service;
 
+import app.alertify.ai.AiInvocationContextHolder;
 import app.alertify.alerts.template.annotation.AlertParameterSource;
 import app.alertify.dashboard.DashboardEventPublisher;
 import app.alertify.grpc.AlertWorkerClient;
@@ -120,7 +121,7 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
         }
         eventLogger.success("ALERT_EXECUTION_TRIGGERED", data(alertId, alertName, source, triggeredBy));
         UUID executionId = UUID.randomUUID();
-        executor.submit(() -> execute(alertId, source, triggeredBy, executionId, null));
+        executor.submit(AiInvocationContextHolder.wrap(() -> execute(alertId, source, triggeredBy, executionId, null)));
         return true;
     }
 
@@ -143,7 +144,8 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
         UUID executionId = UUID.randomUUID();
         eventLogger.success("ALERT_EXECUTION_TRIGGERED", data(alertId, alertName, AlertExecutionTrigger.SMART, null));
         try {
-            executor.submit(() -> execute(alertId, AlertExecutionTrigger.SMART, null, executionId, capacity.reservation()));
+            executor.submit(AiInvocationContextHolder.wrap(() -> execute(alertId, AlertExecutionTrigger.SMART, null,
+                    executionId, capacity.reservation())));
         } catch (RuntimeException exception) {
             capacity.reservation().close();
             leave(alertId);

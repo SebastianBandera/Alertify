@@ -71,7 +71,8 @@ final class ProcedureMapper {
                 execution.getWorkStartedAt(), execution.getFinishedAt(), duration, idle, work,
                 execution.getResultJson(), execution.isResultRedacted(), execution.getErrorType(),
                 execution.getErrorMessage(), execution.getWorkerName(), execution.getWorkerIpAddress(),
-                execution.getWorkerPort(), execution.getWorkerInstanceId(), execution.getTriggeredBy()
+                execution.getWorkerPort(), execution.getWorkerInstanceId(), execution.getTriggeredBy(),
+                execution.isAiAssisted(), execution.getAiConversationId()
         );
     }
 

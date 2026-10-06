@@ -10,7 +10,7 @@ import app.alertify.binary.BinaryPayloadService;
 
 @RestController
 @RequestMapping("/api/binary-values")
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize(app.alertify.config.AuthorizationPolicies.ADMIN)
 public class BinaryLimitsController {
     private final BinaryPayloadService service;
     public BinaryLimitsController(BinaryPayloadService service) { this.service = service; }

@@ -7,6 +7,7 @@ import java.util.UUID;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
+import app.alertify.ai.AiProvenance;
 import app.alertify.alerts.execution.AlertExecutionStatus;
 import app.alertify.alerts.execution.AlertExecutionTrigger;
 import jakarta.persistence.Column;
@@ -85,6 +86,12 @@ public class AlertExecution {
 
     @Column(name = "triggered_by", columnDefinition = "text", updatable = false)
     private String triggeredBy;
+
+    @Column(name = "ai_assisted", nullable = false, updatable = false)
+    private boolean aiAssisted;
+
+    @Column(name = "ai_conversation_id", updatable = false)
+    private Long aiConversationId;
 
     @Column(name = "parent_pipe_execution_id", updatable = false)
     private UUID parentPipeExecutionId;
@@ -265,4 +272,13 @@ public class AlertExecution {
 
     public AlertExecutionTrigger getTrigger() { return trigger; }
     public String getTriggeredBy() { return triggeredBy; }
+
+    public void recordAiProvenance(AiProvenance provenance) {
+        Objects.requireNonNull(provenance);
+        aiAssisted = provenance.assisted();
+        aiConversationId = provenance.conversationId();
+    }
+
+    public boolean isAiAssisted() { return aiAssisted; }
+    public Long getAiConversationId() { return aiConversationId; }
 }

@@ -49,7 +49,7 @@ import jakarta.validation.constraints.PositiveOrZero;
  */
 @RestController
 @RequestMapping("/api/configurations")
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize(app.alertify.config.AuthorizationPolicies.ADMIN)
 @Validated
 public class ApplicationConfigurationController {
 

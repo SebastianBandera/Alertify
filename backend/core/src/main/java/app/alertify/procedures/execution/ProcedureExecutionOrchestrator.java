@@ -18,6 +18,7 @@ import java.util.concurrent.Executors;
 
 import org.springframework.stereotype.Service;
 
+import app.alertify.ai.AiInvocationContextHolder;
 import app.alertify.alerts.execution.MaintenanceModeService;
 import app.alertify.alerts.template.annotation.AlertParameterSource;
 import app.alertify.api.error.MaintenanceModeActiveException;
@@ -129,13 +130,13 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
             UUID executionId = UUID.randomUUID();
             Instant deadline = Instant.now().plus(properties.execution().timeout());
             eventLogger.success("PROCEDURE_EXECUTION_TRIGGERED", data(procedureId, procedureName, executionId, trigger, triggeredBy));
-            executor.submit(() -> {
+            executor.submit(AiInvocationContextHolder.wrap(() -> {
                 try {
                     execute(procedureId, executionId, executionId, null, null, 1, trigger, triggeredBy, deadline, includeDisabled, null);
                 } catch (RuntimeException ignored) {
                     // Failure is persisted and audited by execute.
                 }
-            });
+            }));
         } catch (RuntimeException exception) {
             leave(procedureId);
             throw exception;
