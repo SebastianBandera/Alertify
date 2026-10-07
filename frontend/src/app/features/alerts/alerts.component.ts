@@ -736,7 +736,6 @@ export class AlertsComponent implements OnInit {
       smartExecutionEnabled: current.smartExecutionEnabled,
       smartExecutionIntervalHours: current.smartExecutionIntervalHours,
       smartExecutionPolicy: current.smartExecutionPolicy,
-      persistentIssues: current.persistentIssues,
       tagIds: current.tagIds,
     });
     this.clearFieldError('template');
@@ -1161,7 +1160,7 @@ export class AlertsComponent implements OnInit {
     for (const parameter of template.parameters) {
       parameters[parameter.key] = this.defaultParameterForm(parameter);
     }
-    return { ...this.emptyForm(), templateId: template.id, parameters };
+    return { ...this.emptyForm(), templateId: template.id, persistentIssues: template.persistentIssuesDefault, parameters };
   }
 
   private defaultParameterForm(parameter: AlertTemplateParameter): ParameterForm {

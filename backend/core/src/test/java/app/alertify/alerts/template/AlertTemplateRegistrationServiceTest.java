@@ -30,6 +30,7 @@ import app.alertify.alerts.templates.HttpsCertificateExpiryAlertTemplate;
 import app.alertify.alerts.templates.InternetConnectionAlertTemplate;
 import app.alertify.alerts.templates.KubernetesWorkloadAlertTemplate;
 import app.alertify.alerts.templates.PlaywrightPageAlertTemplate;
+import app.alertify.alerts.templates.ScheduledReminderAlertTemplate;
 import app.alertify.alerts.templates.SqlStatusAlertTemplate;
 import app.alertify.alerts.templates.SqlThresholdAlertTemplate;
 import app.alertify.alerts.templates.SqlWatchAlertTemplate;
@@ -74,6 +75,10 @@ class AlertTemplateRegistrationServiceTest {
         for (AlertTemplateDefinition template : templateCaptor.getAllValues())
             templatesByKey.put(template.getTemplateKey(), template);
 
+        ArgumentCaptor<AlertTemplateParameterDefinition> parameterCaptor =
+            ArgumentCaptor.forClass(AlertTemplateParameterDefinition.class);
+        verify(parameterRepository, atLeast(39)).save(parameterCaptor.capture());
+
         AlertTemplateDefinition httpsCertificateTemplate =
             templatesByKey.get(HttpsCertificateExpiryAlertTemplate.class.getName());
         assertNotNull(httpsCertificateTemplate);
@@ -110,6 +115,19 @@ class AlertTemplateRegistrationServiceTest {
 
         AlertTemplateDefinition tcpTemplate = templatesByKey.get(TcpConnectionAlertTemplate.class.getName());
         assertNotNull(tcpTemplate);
+
+        AlertTemplateDefinition reminderTemplate = templatesByKey.get(ScheduledReminderAlertTemplate.class.getName());
+        assertNotNull(reminderTemplate);
+        assertTrue(reminderTemplate.isPersistentIssuesDefault());
+        assertEquals("alerts.template.scheduledReminder.name", reminderTemplate.getNameKey());
+        List<AlertTemplateParameterDefinition> reminderParameters = parametersOf(parameterCaptor, reminderTemplate);
+        assertEquals(2, reminderParameters.size());
+        assertEquals("warningCron", reminderParameters.get(0).getParameterKey());
+        assertEquals("org.springframework.scheduling.support.CronExpression", reminderParameters.get(0).getJavaType());
+        assertEquals(List.of(AlertParameterSource.TEXT), reminderParameters.get(0).getAllowedSources());
+        assertEquals("warningMessage", reminderParameters.get(1).getParameterKey());
+        assertTrue(reminderParameters.get(1).isMultiline());
+        assertEquals(List.of(AlertParameterSource.TEXT), reminderParameters.get(1).getAllowedSources());
 
         AlertTemplateDefinition webRequestTemplate =
             templatesByKey.get(WebRequestAlertTemplate.class.getName());
@@ -158,10 +176,6 @@ class AlertTemplateRegistrationServiceTest {
             "app/alertify/alerts/templates/SqlStatusAlertTemplate.java",
             sqlStatusTemplate.getSourcePath()
         );
-
-        ArgumentCaptor<AlertTemplateParameterDefinition> parameterCaptor =
-            ArgumentCaptor.forClass(AlertTemplateParameterDefinition.class);
-        verify(parameterRepository, atLeast(39)).save(parameterCaptor.capture());
 
         List<AlertTemplateParameterDefinition> kubernetesParameters = parametersOf(parameterCaptor, kubernetesTemplate);
         assertEquals(7, kubernetesParameters.size());

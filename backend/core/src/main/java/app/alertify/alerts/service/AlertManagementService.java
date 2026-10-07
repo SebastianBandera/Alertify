@@ -168,7 +168,10 @@ public class AlertManagementService {
                 template, name, normalizeOptional(request.description()), cron, request.enabled(),
                 request.allowConcurrentExecutions(), tags
         );
-        newAlert.changePersistentIssues(Boolean.TRUE.equals(request.persistentIssues()), Instant.now());
+        boolean persistentIssues = request.persistentIssues() == null
+                ? template.isPersistentIssuesDefault()
+                : request.persistentIssues();
+        newAlert.changePersistentIssues(persistentIssues, Instant.now());
         changeSmartExecution(newAlert, request.smartExecutionEnabled(), request.smartExecutionIntervalHours(), request.smartExecutionPolicy(), false);
         Alert alert = alertRepository.saveAndFlush(newAlert);
         List<AlertParameterValue> values = synchronizeParameters(alert, request.parameters(), List.of());
@@ -457,9 +460,16 @@ public class AlertManagementService {
             case "java.net.URI" -> URI.create(value);
             case "java.time.Duration" -> Duration.parse(value);
             case "java.time.Instant" -> Instant.parse(value);
+            case "org.springframework.scheduling.support.CronExpression" -> validateTemplateCron(value);
             case "app.alertify.worker.contract.DatabaseCredentials" -> DatabaseCredentials.fromJson(value);
             default -> { }
         }
+    }
+
+    private static void validateTemplateCron(String value) {
+        CronExpression expression = CronExpression.parse(value);
+        if (expression.next(ZonedDateTime.now(ZoneId.systemDefault())) == null)
+            throw new IllegalArgumentException("Cron expression never matches a future date");
     }
 
     private void ensureNameAvailable(String name, Long id) {

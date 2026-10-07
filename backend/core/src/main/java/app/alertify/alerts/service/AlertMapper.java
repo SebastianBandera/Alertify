@@ -28,6 +28,7 @@ public final class AlertMapper {
         return new AlertTemplateResponse(
                 template.getId(), template.getVersion(), template.getTemplateKey(),
                 template.getNameKey(), template.getDescriptionKey(), template.getRequiredCapability(),
+                template.isPersistentIssuesDefault(),
                 template.getTags().stream()
                         .map(tag -> new AlertTemplateTagResponse(tag.nameKey(), tag.color()))
                         .toList(),

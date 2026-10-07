@@ -29,5 +29,7 @@ public @interface AlertTemplate {
 
     WorkerCapability capability() default WorkerCapability.STANDARD;
 
+    boolean persistentIssuesDefault() default false;
+
     String sourcePath() default "";
 }

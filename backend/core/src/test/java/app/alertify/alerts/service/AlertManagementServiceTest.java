@@ -25,6 +25,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.scheduling.support.CronExpression;
 
 import app.alertify.alerts.api.AlertDeletionImpactResponse;
 import app.alertify.alerts.api.AlertCreateRequest;
@@ -134,6 +135,63 @@ class AlertManagementServiceTest {
 
         assertThat(response.smartExecutionPolicy()).isEqualTo(SmartExecutionPolicy.ONCE_PER_INTERVAL);
         assertThat(response.smartExecutionIntervalHours()).isEqualTo(23);
+    }
+
+    @Test
+    void usesTheTemplatePersistentIssuesDefaultWhenCreationOmitsTheOption() {
+        AlertTemplateDefinition template = template(true);
+        when(templateRepository.findById(7L)).thenReturn(Optional.of(template));
+        when(alertRepository.saveAndFlush(any(Alert.class))).thenAnswer(invocation -> {
+            Alert saved = invocation.getArgument(0);
+            ReflectionTestUtils.setField(saved, "id", 5L);
+            return saved;
+        });
+
+        AlertResponse response = service().create(new AlertCreateRequest(
+                7L, "reminder", null, "-", true, false, List.of(), Set.of(), null,
+                false, null, null
+        ));
+
+        assertThat(response.persistentIssuesSince()).isNotNull();
+    }
+
+    @Test
+    void explicitPersistentIssuesChoiceOverridesTheTemplateDefault() {
+        AlertTemplateDefinition template = template(true);
+        when(templateRepository.findById(7L)).thenReturn(Optional.of(template));
+        when(alertRepository.saveAndFlush(any(Alert.class))).thenAnswer(invocation -> {
+            Alert saved = invocation.getArgument(0);
+            ReflectionTestUtils.setField(saved, "id", 5L);
+            return saved;
+        });
+
+        AlertResponse response = service().create(new AlertCreateRequest(
+                7L, "reminder", null, "-", true, false, List.of(), Set.of(), false,
+                false, null, null
+        ));
+
+        assertThat(response.persistentIssuesSince()).isNull();
+    }
+
+    @Test
+    void rejectsInvalidSpringCronTemplateParameters() {
+        AlertTemplateDefinition template = template(true);
+        AlertTemplateParameterDefinition warningCron = new AlertTemplateParameterDefinition(
+                template, "warningCron", "cron.label", "cron.description", CronExpression.class.getName(),
+                List.of(), true, null, false, 1, true, List.of(AlertParameterSource.TEXT), List.of(), List.of()
+        );
+        when(templateRepository.findById(7L)).thenReturn(Optional.of(template));
+        when(templateParameterRepository.findAllByTemplate_IdOrderByParameterOrderAscIdAsc(7L)).thenReturn(List.of(warningCron));
+        when(alertRepository.saveAndFlush(any(Alert.class))).thenAnswer(invocation -> {
+            Alert saved = invocation.getArgument(0);
+            ReflectionTestUtils.setField(saved, "id", 5L);
+            return saved;
+        });
+
+        assertThatThrownBy(() -> service().create(new AlertCreateRequest(
+                7L, "reminder", null, "-", true,
+                List.of(new AlertParameterValueRequest("warningCron", AlertParameterSource.TEXT, "not-a-cron", null, null)), Set.of()
+        ))).hasMessageContaining("warningCron").hasMessageContaining(CronExpression.class.getName());
     }
 
     @Test
@@ -269,14 +327,20 @@ class AlertManagementServiceTest {
     }
 
     private static Alert alert(String name) {
-        AlertTemplateDefinition template = new AlertTemplateDefinition(
-                "app.alertify.alerts.templates.HttpsCertificateExpiryAlertTemplate",
-                "name.key", "description.key", "source/path.java", WorkerCapability.STANDARD
-        );
-        ReflectionTestUtils.setField(template, "id", 7L);
+        AlertTemplateDefinition template = template(false);
         Alert alert = new Alert(template, name, null, "0 0 8 * * *", true, false, Set.of());
         ReflectionTestUtils.setField(alert, "id", 5L);
         return alert;
+    }
+
+    private static AlertTemplateDefinition template(boolean persistentIssuesDefault) {
+        AlertTemplateDefinition template = new AlertTemplateDefinition(
+                "app.alertify.alerts.templates.HttpsCertificateExpiryAlertTemplate",
+                "name.key", "description.key", "source/path.java", WorkerCapability.STANDARD,
+                persistentIssuesDefault, List.of()
+        );
+        ReflectionTestUtils.setField(template, "id", 7L);
+        return template;
     }
 
     private static AlertTemplateParameterDefinition requiredSteps(AlertTemplateDefinition template) {

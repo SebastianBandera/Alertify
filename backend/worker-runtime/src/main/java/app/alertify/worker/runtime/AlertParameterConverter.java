@@ -6,6 +6,8 @@ import java.net.URI;
 import java.time.Duration;
 import java.time.Instant;
 
+import org.springframework.scheduling.support.CronExpression;
+
 import app.alertify.worker.contract.DatabaseCredentials;
 import app.alertify.worker.contract.GitCredentials;
 import app.alertify.worker.contract.OidcTokenSet;
@@ -74,6 +76,9 @@ final class AlertParameterConverter {
         if (targetType == Instant.class)
             return Instant.parse(value);
 
+        if (targetType == CronExpression.class)
+            return CronExpression.parse(value);
+
         if (targetType == DatabaseCredentials.class)
             return DatabaseCredentials.fromJson(value);
 
@@ -113,6 +118,7 @@ final class AlertParameterConverter {
 
         if (declaredType == String.class || declaredType == Character.class || declaredType == char.class
                 || declaredType == URI.class || declaredType == Duration.class || declaredType == Instant.class
+                || declaredType == CronExpression.class
                 || declaredType == BigInteger.class || declaredType == BigDecimal.class
                 || declaredType == Byte.class || declaredType == byte.class
                 || declaredType == Short.class || declaredType == short.class

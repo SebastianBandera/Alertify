@@ -111,7 +111,7 @@ public class AlertTemplateRegistrationService {
             .orElseGet(() -> AlertTemplateDefinition.from(templateClass));
         template.synchronize(
             metadata.nameKey(), metadata.descriptionKey(), metadata.sourcePath(),
-            metadata.capability(), Arrays.stream(metadata.tags())
+            metadata.capability(), metadata.persistentIssuesDefault(), Arrays.stream(metadata.tags())
                 .map(AlertTemplateTagDefinition::from)
                 .toList()
         );

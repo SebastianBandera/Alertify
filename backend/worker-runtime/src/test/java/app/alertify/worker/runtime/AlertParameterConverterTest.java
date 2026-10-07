@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.time.Instant;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.scheduling.support.CronExpression;
 
 import com.google.protobuf.ByteString;
 
@@ -79,5 +80,15 @@ class AlertParameterConverterTest {
 
         assertThat(archive).isNotEmpty();
         assertThat(BinaryPayloadCodec.decompress(archive, 1024)).isEmpty();
+    }
+
+    @Test
+    void convertsSpringCronExpressions() {
+        AlertParameter parameter = AlertParameter.newBuilder().setName("warningCron")
+                .setJavaType(CronExpression.class.getName()).setValue("0 0 9 * * *").build();
+
+        Object value = AlertParameterConverter.convert(parameter, CronExpression.class);
+
+        assertThat(value).isEqualTo(CronExpression.parse("0 0 9 * * *"));
     }
 }
