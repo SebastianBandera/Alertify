@@ -14,6 +14,7 @@ import app.alertify.worker.contract.GitCredentials;
 import app.alertify.worker.contract.KubeconfigCredentials;
 import app.alertify.worker.contract.GitProvider;
 import app.alertify.worker.contract.OidcTokenSet;
+import app.alertify.worker.contract.UsernamePasswordCredentials;
 import app.alertify.worker.grpc.AlertParameter;
 
 class AlertParameterConverterTest {
@@ -40,6 +41,18 @@ class AlertParameterConverterTest {
 
         assertThat(value).isEqualTo(credentials);
         assertThat(AlertParameterConverter.serialize(value, GitCredentials.class)).isEqualTo(credentials.toJson());
+    }
+
+    @Test
+    void roundTripsUsernamePasswordCredentialsThroughCanonicalJson() {
+        UsernamePasswordCredentials credentials = new UsernamePasswordCredentials(null, "secret");
+        AlertParameter parameter = AlertParameter.newBuilder().setName("credentials")
+                .setJavaType(UsernamePasswordCredentials.class.getName()).setValue(credentials.toJson()).build();
+
+        Object value = AlertParameterConverter.convert(parameter, UsernamePasswordCredentials.class);
+
+        assertThat(value).isEqualTo(credentials);
+        assertThat(AlertParameterConverter.serialize(value, UsernamePasswordCredentials.class)).isEqualTo(credentials.toJson());
     }
 
     @Test
