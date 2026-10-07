@@ -32,6 +32,7 @@ import app.alertify.procedures.ProcedureDisabledException;
 import app.alertify.procedures.ProcedureExecutionException;
 import app.alertify.procedures.execution.ProcedureExecutionOrchestrator;
 import app.alertify.procedures.execution.ProcedureExecutionOrchestrator.ArtifactLocation;
+import app.alertify.procedures.execution.ProcedureExecutionOrchestrator.PipeParameterValue;
 import app.alertify.procedures.execution.ProcedureExecutionProperties;
 import app.alertify.worker.grpc.InvokePipeResponse;
 import app.alertify.worker.grpc.PipeInvocationFailure;
@@ -143,6 +144,7 @@ public class PipeExecutionOrchestrator implements AutoCloseable {
     private PipeRun execute(Pipe pipe, UUID executionId, UUID rootExecutionId, UUID parentProcedureExecutionId, int depth, PipeExecutionTrigger trigger, String triggeredBy, Instant deadline, boolean includeDisabled) {
         List<ArtifactLocation> artifactsToDelete = new ArrayList<>();
         Map<ArtifactKey, ArtifactLocation> outputs = new LinkedHashMap<>();
+        Map<String, ResultValue> results = new LinkedHashMap<>();
         PipeOutcome aggregate = PipeOutcome.SUCCESS;
         boolean partial = false;
         boolean started = false;
@@ -186,22 +188,38 @@ public class PipeExecutionOrchestrator implements AutoCloseable {
                             run = executeAlert(step, executionId, phaseDeadline);
                         } else {
                             Map<String, ArtifactLocation> inputs = new LinkedHashMap<>();
+                            Map<String, PipeParameterValue> parameterInputs = new LinkedHashMap<>();
                             for (var binding : step.getBindings()) {
-                                ArtifactLocation artifact = outputs.get(new ArtifactKey(binding.getSourceStep().getStepKey(), binding.getSourceOutput().getOutputKey()));
-                                if (artifact == null) {
-                                    throw new PipeExecutionException("MISSING_PIPE_OUTPUT");
+                                if (binding.isArtifactOutput()) {
+                                    ArtifactLocation artifact = outputs.get(new ArtifactKey(binding.getSourceStep().getStepKey(), binding.getSourceOutput().getOutputKey()));
+                                    if (artifact == null)
+                                        throw new PipeExecutionException("MISSING_PIPE_OUTPUT");
+
+                                    inputs.put(binding.getTargetParameter().getParameterKey(), artifact);
+                                    continue;
                                 }
-                                inputs.put(binding.getTargetParameter().getParameterKey(), artifact);
+                                ResultValue source = results.get(binding.getSourceStep().getStepKey());
+                                if (source == null)
+                                    throw new PipeExecutionException("MISSING_PIPE_OUTPUT");
+
+                                JsonNode selected = source.value().at(binding.getSourceResultPointer());
+                                if (selected.isMissingNode() || selected.isNull())
+                                    throw new PipeExecutionException("MISSING_PIPE_OUTPUT");
+
+                                String value = selected.isString() ? selected.stringValue() : selected.toString();
+                                parameterInputs.put(binding.getTargetParameter().getParameterKey(),
+                                        new PipeParameterValue(value, source.sensitive()));
                             }
                             try {
                                 Instant stepDeadline = earlier(phaseDeadline, Instant.now().plusMillis(step.getTimeoutMillis()));
                                 var procedure = procedureOrchestrator.executePipeStep(step.getProcedure().getId(), rootExecutionId,
-                                        executionId, depth + 1, stepDeadline, preferred(inputs, affinity), inputs);
+                                        executionId, depth + 1, stepDeadline, preferred(inputs, affinity), inputs, parameterInputs);
                                 affinity = procedure.workerInstanceId();
                                 artifactsToDelete.addAll(procedure.temporaryArtifacts());
                                 artifactsToDelete.addAll(procedure.outputs());
                                 for (ArtifactLocation output : procedure.outputs())
                                     outputs.put(new ArtifactKey(step.getStepKey(), output.descriptor().getOutputKey()), output);
+                                results.put(step.getStepKey(), new ResultValue(procedure.result().deepCopy(), procedure.sensitiveResult()));
 
                                 run = new StepRun(PipeOutcome.SUCCESS, PipeStepStatus.SUCCESS, procedure.executionId(), null);
                             } catch (ProcedureDisabledException exception) {
@@ -342,4 +360,5 @@ public class PipeExecutionOrchestrator implements AutoCloseable {
     private record PipeRun(PipeOutcome outcome, JsonNode summary) { }
     private record StepRun(PipeOutcome outcome, PipeStepStatus status, UUID executionId, String errorCode) { }
     private record ArtifactKey(String stepKey, String outputKey) { }
+    private record ResultValue(JsonNode value, boolean sensitive) { }
 }

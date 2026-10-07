@@ -42,7 +42,9 @@ class PipeCsvCodec {
     private static ExportStep exportStep(PipeStep step) {
         String resource = step.getStepType() == PipeStepType.ALERT ? step.getAlert().getName() : step.getProcedure().getName();
         List<ExportBinding> bindings = step.getBindings().stream().map(value -> new ExportBinding(
-                value.getTargetParameter().getParameterKey(), value.getSourceStep().getStepKey(), value.getSourceOutput().getOutputKey())).toList();
+                value.getTargetParameter().getParameterKey(), value.getSourceStep().getStepKey(),
+                value.isArtifactOutput() ? value.getSourceOutput().getOutputKey() : null,
+                value.getSourceResultPointer())).toList();
         return new ExportStep(step.getStepKey(), step.getStepType(), step.getPhase(), resource, step.getTimeoutMillis(), step.getContinueOn(), bindings);
     }
 
@@ -137,16 +139,22 @@ class PipeCsvCodec {
         List<ImportBinding> result = new ArrayList<>();
         Set<String> targets = new LinkedHashSet<>();
         for (JsonNode value : node) {
-            if (!value.isObject() || !string(value, "targetParameterKey") || !string(value, "sourceStepKey") || !string(value, "sourceOutputKey"))
-                throw error(row, "each binding on step '" + stepKey + "' requires targetParameterKey, sourceStepKey, and sourceOutputKey");
+            if (!value.isObject() || !string(value, "targetParameterKey") || !string(value, "sourceStepKey"))
+                throw error(row, "each binding on step '" + stepKey + "' requires targetParameterKey and sourceStepKey");
+            if (value.has("sourceOutputKey") && !value.get("sourceOutputKey").isNull() && !value.get("sourceOutputKey").isString()
+                    || value.has("sourceResultPointer") && !value.get("sourceResultPointer").isNull() && !value.get("sourceResultPointer").isString())
+                throw error(row, "binding sources on step '" + stepKey + "' must be strings or null");
             String target = value.get("targetParameterKey").stringValue().trim();
             String sourceStep = value.get("sourceStepKey").stringValue().trim();
-            String sourceOutput = value.get("sourceOutputKey").stringValue().trim();
-            if (target.isEmpty() || sourceStep.isEmpty() || sourceOutput.isEmpty())
+            String sourceOutput = nullableString(value, "sourceOutputKey");
+            String sourceResultPointer = nullableString(value, "sourceResultPointer");
+            if (target.isEmpty() || sourceStep.isEmpty())
                 throw error(row, "binding keys on step '" + stepKey + "' cannot be empty");
+            if ((sourceOutput == null) == (sourceResultPointer == null))
+                throw error(row, "each binding on step '" + stepKey + "' requires exactly one sourceOutputKey or sourceResultPointer");
             if (!targets.add(target))
                 throw error(row, "target parameter '" + target + "' is bound more than once on step '" + stepKey + "'");
-            result.add(new ImportBinding(target, sourceStep, sourceOutput));
+            result.add(new ImportBinding(target, sourceStep, sourceOutput, sourceResultPointer));
         }
         return List.copyOf(result);
     }
@@ -169,6 +177,12 @@ class PipeCsvCodec {
     }
 
     private static boolean string(JsonNode node, String field) { return node.has(field) && node.get(field).isString(); }
+    private static String nullableString(JsonNode node, String field) {
+        if (!node.has(field) || node.get(field).isNull())
+            return null;
+        String value = node.get(field).stringValue();
+        return value.isEmpty() ? null : value;
+    }
     private static boolean parseBoolean(String value, int row, String field) {
         return switch (value.trim().toLowerCase(Locale.ROOT)) {
             case "true" -> true;
@@ -198,7 +212,7 @@ class PipeCsvCodec {
 
     record ImportRow(int rowNumber, String name, String description, boolean enabled, boolean allowConcurrentExecutions, List<ImportStep> steps, long finallyTimeoutMillis) { }
     record ImportStep(String key, PipeStepType type, PipeStepPhase phase, String resource, long timeoutMillis, Set<String> continueOn, List<ImportBinding> bindings) { }
-    record ImportBinding(String targetParameterKey, String sourceStepKey, String sourceOutputKey) { }
+    record ImportBinding(String targetParameterKey, String sourceStepKey, String sourceOutputKey, String sourceResultPointer) { }
     private record ExportStep(String key, PipeStepType type, PipeStepPhase phase, String resource, long timeoutMillis, List<String> continueOn, List<ExportBinding> bindings) { }
-    private record ExportBinding(String targetParameterKey, String sourceStepKey, String sourceOutputKey) { }
+    private record ExportBinding(String targetParameterKey, String sourceStepKey, String sourceOutputKey, String sourceResultPointer) { }
 }

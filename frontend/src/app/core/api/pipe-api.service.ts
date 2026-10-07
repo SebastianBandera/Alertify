@@ -30,7 +30,8 @@ export interface PipeTagWriteRequest {
 export interface PipeBinding {
   readonly targetParameterKey: string;
   readonly sourceStepKey: string;
-  readonly sourceOutputKey: string;
+  readonly sourceOutputKey: string | null;
+  readonly sourceResultPointer: string | null;
 }
 
 export interface PipeStep {
@@ -68,6 +69,7 @@ export interface PipeOption {
   readonly type: PipeStepType;
   readonly outputs: readonly string[];
   readonly artifactInputs: readonly string[];
+  readonly stringInputs: readonly string[];
 }
 
 export interface PipeOptions {

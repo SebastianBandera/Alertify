@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -127,6 +128,25 @@ class ProcedureExecutionOrchestratorConcurrencyTest {
         assertThat(result.getNullValue()).isFalse();
         assertThat(result.getSource()).isEqualTo(AlertParameterValueSource.ALERT_PARAMETER_VALUE_SOURCE_PIPE_OUTPUT);
         assertThat(result.getArtifact()).isEqualTo(artifact);
+    }
+
+    @Test
+    void sensitivePipeResultOverridesStringInputAndTaintsExecution() {
+        ResolvedProcedureParameter parameter = new ResolvedProcedureParameter("pin", String.class.getName(),
+                "fallback", null, false, AlertParameterSource.TEXT, null, null, null, false);
+        PreparedProcedureExecution prepared = new PreparedProcedureExecution(8L, 0L, "Consumer", false,
+                "template.Consumer", WorkerCapability.STANDARD, false, "checksum", "source", List.of(parameter));
+
+        PreparedProcedureExecution resolved = ProcedureExecutionOrchestrator.withPipeInputs(prepared,
+                Map.of("pin", new ProcedureExecutionOrchestrator.PipeParameterValue("042731", true)));
+
+        assertThat(resolved.sensitiveResult()).isTrue();
+        assertThat(resolved.parameters()).singleElement().satisfies(value -> {
+            assertThat(value.name()).isEqualTo("pin");
+            assertThat(value.value()).isEqualTo("042731");
+            assertThat(value.source()).isEqualTo(AlertParameterSource.PIPE_OUTPUT);
+            assertThat(value.writable()).isFalse();
+        });
     }
 
     @Test

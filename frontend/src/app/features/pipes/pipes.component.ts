@@ -36,6 +36,9 @@ interface PipeStepForm {
   bindings: PipeBinding[];
   bindingTarget: string;
   bindingSource: string;
+  resultBindingTarget: string;
+  resultBindingSourceStep: string;
+  resultBindingPointer: string;
 }
 
 interface PipeForm {
@@ -248,6 +251,9 @@ export class PipesComponent implements OnInit, OnDestroy {
         bindings: step.bindings.map((binding) => ({ ...binding })),
         bindingTarget: '',
         bindingSource: '',
+        resultBindingTarget: '',
+        resultBindingSourceStep: '',
+        resultBindingPointer: '',
       })),
     });
     this.formError.set(null);
@@ -267,7 +273,15 @@ export class PipesComponent implements OnInit, OnDestroy {
     const draft = this.drafts.read<PipeForm, Pipe>('pipes');
     if (!draft || this.saving()) return;
     this.editorViewport.capture(draft.editing ? `pipe-${draft.editing.id}` : 'pipe-create');
-    this.form.set(draft.form);
+    this.form.set({
+      ...draft.form,
+      steps: draft.form.steps.map((step) => ({
+        ...step,
+        resultBindingTarget: step.resultBindingTarget ?? '',
+        resultBindingSourceStep: step.resultBindingSourceStep ?? '',
+        resultBindingPointer: step.resultBindingPointer ?? '',
+      })),
+    });
     this.editing.set(draft.editing);
     this.formError.set(null);
     this.editorOpen.set(true);
@@ -312,6 +326,9 @@ export class PipesComponent implements OnInit, OnDestroy {
         bindings: [],
         bindingTarget: '',
         bindingSource: '',
+        resultBindingTarget: '',
+        resultBindingSourceStep: '',
+        resultBindingPointer: '',
       }],
     }));
     this.newStepResourceId.set(null);
@@ -322,14 +339,17 @@ export class PipesComponent implements OnInit, OnDestroy {
       const previousKey = form.steps[index]?.key;
       return {
         ...form,
-        steps: form.steps.map((step, candidate) => ({
-          ...(candidate === index ? { ...step, [key]: value } : step),
-          bindings: key === 'key' && previousKey
-            ? step.bindings.map((binding) => binding.sourceStepKey === previousKey
-              ? { ...binding, sourceStepKey: String(value) }
-              : binding)
-            : step.bindings,
-        })),
+        steps: form.steps.map((step, candidate) => {
+          const patchedStep = candidate === index ? { ...step, [key]: value } : step;
+          return {
+            ...patchedStep,
+            bindings: key === 'key' && previousKey
+              ? patchedStep.bindings.map((binding) => binding.sourceStepKey === previousKey
+                ? { ...binding, sourceStepKey: String(value) }
+                : binding)
+              : patchedStep.bindings,
+          };
+        }),
       };
     });
   }
@@ -354,7 +374,14 @@ export class PipesComponent implements OnInit, OnDestroy {
           steps.findIndex((candidate) => candidate.key === binding.sourceStepKey) < position) };
 
       const moved = steps.findIndex((candidate) => candidate.key === movedKey);
-      if (moved >= 0) steps[moved] = { ...steps[moved], bindingSource: '', bindingTarget: '' };
+      if (moved >= 0) steps[moved] = {
+        ...steps[moved],
+        bindingSource: '',
+        bindingTarget: '',
+        resultBindingSourceStep: '',
+        resultBindingTarget: '',
+        resultBindingPointer: '',
+      };
       return { ...form, steps };
     });
   }
@@ -383,6 +410,17 @@ export class PipesComponent implements OnInit, OnDestroy {
       ?.artifactInputs ?? [];
   }
 
+  protected stringInputs(index: number): readonly string[] {
+    const step = this.form().steps[index];
+    return this.options().resources.find((option) => option.type === step.type && option.id === step.resourceId)
+      ?.stringInputs ?? [];
+  }
+
+  protected resultSourceSteps(index: number): readonly PipeStepForm[] {
+    return this.form().steps.slice(0, index).filter((step) => step.type === 'PROCEDURE'
+      && !(this.form().steps[index].phase === 'MAIN' && step.phase === 'FINALLY'));
+  }
+
   protected bindingSources(index: number): readonly BindingSourceOption[] {
     const sources: BindingSourceOption[] = [];
     for (const step of this.form().steps.slice(0, index)) {
@@ -399,13 +437,37 @@ export class PipesComponent implements OnInit, OnDestroy {
     const step = this.form().steps[index];
     if (!step.bindingTarget || !step.bindingSource) return;
     const [sourceStepKey, sourceOutputKey] = step.bindingSource.split('\u0000', 2);
-    const binding: PipeBinding = { targetParameterKey: step.bindingTarget, sourceStepKey, sourceOutputKey };
+    const binding: PipeBinding = {
+      targetParameterKey: step.bindingTarget,
+      sourceStepKey,
+      sourceOutputKey,
+      sourceResultPointer: null,
+    };
     this.patchStep(index, 'bindings', [
       ...step.bindings.filter((candidate) => candidate.targetParameterKey !== binding.targetParameterKey),
       binding,
     ]);
     this.patchStep(index, 'bindingTarget', '');
     this.patchStep(index, 'bindingSource', '');
+  }
+
+  protected addResultBinding(index: number): void {
+    const step = this.form().steps[index];
+    const pointer = (step.resultBindingPointer ?? '').trim();
+    if (!step.resultBindingTarget || !step.resultBindingSourceStep || !pointer.startsWith('/')) return;
+    const binding: PipeBinding = {
+      targetParameterKey: step.resultBindingTarget,
+      sourceStepKey: step.resultBindingSourceStep,
+      sourceOutputKey: null,
+      sourceResultPointer: pointer,
+    };
+    this.patchStep(index, 'bindings', [
+      ...step.bindings.filter((candidate) => candidate.targetParameterKey !== binding.targetParameterKey),
+      binding,
+    ]);
+    this.patchStep(index, 'resultBindingTarget', '');
+    this.patchStep(index, 'resultBindingSourceStep', '');
+    this.patchStep(index, 'resultBindingPointer', '');
   }
 
   protected removeBinding(stepIndex: number, bindingIndex: number): void {

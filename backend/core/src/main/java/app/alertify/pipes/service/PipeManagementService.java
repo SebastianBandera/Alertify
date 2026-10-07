@@ -48,6 +48,7 @@ import app.alertify.procedures.artifact.ProcedureArtifactInput;
 import app.alertify.procedures.model.Procedure;
 import app.alertify.procedures.model.ProcedureTemplateOutputDefinition;
 import app.alertify.procedures.model.ProcedureTemplateParameterDefinition;
+import tools.jackson.core.JsonPointer;
 
 @Service
 public class PipeManagementService {
@@ -93,15 +94,19 @@ public class PipeManagementService {
     public PipeOptionsResponse options() {
         List<PipeOptionResponse> resources = new ArrayList<>();
         alertRepository.findAll(Sort.by("name")).forEach(alert -> resources.add(new PipeOptionResponse(
-                alert.getId(), alert.getName(), alert.isEnabled(), PipeStepType.ALERT, List.of(), List.of())));
+                alert.getId(), alert.getName(), alert.isEnabled(), PipeStepType.ALERT, List.of(), List.of(), List.of())));
         for (Procedure procedure : procedureRepository.findAll(Sort.by("name"))) {
             List<String> outputs = outputRepository.findAllByTemplate_IdOrderByOutputOrderAscIdAsc(procedure.getTemplate().getId())
                     .stream().map(ProcedureTemplateOutputDefinition::getOutputKey).toList();
-            List<String> inputs = parameterRepository.findAllByTemplate_IdOrderByParameterOrderAscIdAsc(procedure.getTemplate().getId())
+            List<ProcedureTemplateParameterDefinition> parameters = parameterRepository.findAllByTemplate_IdOrderByParameterOrderAscIdAsc(procedure.getTemplate().getId());
+            List<String> inputs = parameters
                     .stream().filter(value -> value.getJavaType().equals(ProcedureArtifactInput.class.getName()))
                     .map(ProcedureTemplateParameterDefinition::getParameterKey).toList();
+            List<String> stringInputs = parameters.stream()
+                    .filter(value -> value.getJavaType().equals(String.class.getName()) && value.isBindingAllowed())
+                    .map(ProcedureTemplateParameterDefinition::getParameterKey).toList();
             resources.add(new PipeOptionResponse(procedure.getId(), procedure.getName(), procedure.isEnabled(),
-                    PipeStepType.PROCEDURE, outputs, inputs));
+                    PipeStepType.PROCEDURE, outputs, inputs, stringInputs));
         }
         return new PipeOptionsResponse(resources);
     }
@@ -236,19 +241,44 @@ public class PipeManagementService {
             if (!targets.add(binding.targetParameterKey()))
                 throw invalid("Target parameter '" + binding.targetParameterKey() + "' is bound more than once");
             ProcedureTemplateParameterDefinition parameter = parameters.get(binding.targetParameterKey());
-            if (parameter == null || !parameter.getJavaType().equals(ProcedureArtifactInput.class.getName()))
-                throw invalid("Target parameter '" + binding.targetParameterKey() + "' is not a ProcedureArtifactInput");
+            if (parameter == null)
+                throw invalid("Target parameter '" + binding.targetParameterKey() + "' does not exist");
             PipeStep source = steps.get(binding.sourceStepKey());
             if (source == null || source.getPosition() >= target.getPosition()
                     || target.getPhase() == app.alertify.pipes.model.PipeStepPhase.MAIN && source.getPhase() == app.alertify.pipes.model.PipeStepPhase.FINALLY)
                 throw invalid("Binding source step '" + binding.sourceStepKey() + "' must be an earlier step");
             if (source.getStepType() != PipeStepType.PROCEDURE)
                 throw invalid("Binding source step '" + binding.sourceStepKey() + "' must be a Procedure");
-            ProcedureTemplateOutputDefinition output = outputRepository
-                    .findAllByTemplate_IdOrderByOutputOrderAscIdAsc(source.getProcedure().getTemplate().getId()).stream()
-                    .filter(value -> value.getOutputKey().equals(binding.sourceOutputKey())).findFirst()
-                    .orElseThrow(() -> invalid("Output '" + binding.sourceOutputKey() + "' does not exist on source step '" + binding.sourceStepKey() + "'"));
-            target.addBinding(new PipeStepBinding(target, parameter, source, output));
+            boolean artifact = binding.sourceOutputKey() != null && !binding.sourceOutputKey().isBlank();
+            boolean result = binding.sourceResultPointer() != null;
+            if (artifact == result)
+                throw invalid("Binding for target parameter '" + binding.targetParameterKey() + "' must declare exactly one source");
+
+            if (artifact) {
+                if (!parameter.getJavaType().equals(ProcedureArtifactInput.class.getName()))
+                    throw invalid("Target parameter '" + binding.targetParameterKey() + "' is not a ProcedureArtifactInput");
+                ProcedureTemplateOutputDefinition output = outputRepository
+                        .findAllByTemplate_IdOrderByOutputOrderAscIdAsc(source.getProcedure().getTemplate().getId()).stream()
+                        .filter(value -> value.getOutputKey().equals(binding.sourceOutputKey())).findFirst()
+                        .orElseThrow(() -> invalid("Output '" + binding.sourceOutputKey() + "' does not exist on source step '" + binding.sourceStepKey() + "'"));
+                target.addBinding(new PipeStepBinding(target, parameter, source, output));
+                continue;
+            }
+            if (!parameter.getJavaType().equals(String.class.getName()) || !parameter.isBindingAllowed())
+                throw invalid("Target parameter '" + binding.targetParameterKey() + "' is not a bindable String");
+
+            String pointer = binding.sourceResultPointer();
+            if (pointer.isEmpty() || pointer.charAt(0) != '/')
+                throw invalid("Result pointer for target parameter '" + binding.targetParameterKey() + "' must start with '/'");
+            if (pointer.length() > 2000)
+                throw invalid("Result pointer for target parameter '" + binding.targetParameterKey() + "' exceeds 2000 characters");
+
+            try {
+                JsonPointer.compile(pointer);
+            } catch (IllegalArgumentException exception) {
+                throw invalid("Result pointer for target parameter '" + binding.targetParameterKey() + "' is invalid");
+            }
+            target.addBinding(new PipeStepBinding(target, parameter, source, pointer));
         }
     }
 

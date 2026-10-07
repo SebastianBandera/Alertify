@@ -112,7 +112,7 @@ public class PipeCsvService {
                 catch (IllegalArgumentException exception) { throw error(row, "step '" + step.key() + "' has invalid continueOn outcome '" + value + "'"); }
             }
             List<PipeBindingRequest> bindings = step.bindings().stream().map(value -> new PipeBindingRequest(
-                    value.targetParameterKey(), value.sourceStepKey(), value.sourceOutputKey())).toList();
+                    value.targetParameterKey(), value.sourceStepKey(), value.sourceOutputKey(), value.sourceResultPointer())).toList();
             steps.add(new PipeStepRequest(step.key(), step.type(), step.phase(), resourceId, Duration.ofMillis(step.timeoutMillis()), continueOn, bindings));
         }
         Pipe detailed = existing == null ? null : pipeRepository.findDetailedById(existing.getId()).orElseThrow();
@@ -141,9 +141,13 @@ public class PipeCsvService {
                     || !new LinkedHashSet<>(current.getContinueOn()).equals(value.continueOn()))
                 return false;
             List<String> currentBindings = current.getBindings().stream().map(binding -> binding.getTargetParameter().getParameterKey()
-                    + "\u0000" + binding.getSourceStep().getStepKey() + "\u0000" + binding.getSourceOutput().getOutputKey()).toList();
+                    + "\u0000" + binding.getSourceStep().getStepKey() + "\u0000"
+                    + (binding.isArtifactOutput() ? "artifact\u0000" + binding.getSourceOutput().getOutputKey()
+                            : "result\u0000" + binding.getSourceResultPointer())).toList();
             List<String> requestedBindings = value.bindings().stream().map(binding -> binding.targetParameterKey()
-                    + "\u0000" + binding.sourceStepKey() + "\u0000" + binding.sourceOutputKey()).toList();
+                    + "\u0000" + binding.sourceStepKey() + "\u0000"
+                    + (binding.sourceOutputKey() != null ? "artifact\u0000" + binding.sourceOutputKey()
+                            : "result\u0000" + binding.sourceResultPointer())).toList();
             if (!currentBindings.equals(requestedBindings))
                 return false;
         }

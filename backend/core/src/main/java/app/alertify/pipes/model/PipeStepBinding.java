@@ -45,9 +45,12 @@ public class PipeStepBinding {
     @JoinColumn(name = "source_step_id", nullable = false)
     private PipeStep sourceStep;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "source_output_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "source_output_id")
     private ProcedureTemplateOutputDefinition sourceOutput;
+
+    @Column(name = "source_result_pointer", columnDefinition = "text")
+    private String sourceResultPointer;
 
     protected PipeStepBinding() {
     }
@@ -59,9 +62,18 @@ public class PipeStepBinding {
         this.sourceOutput = Objects.requireNonNull(sourceOutput);
     }
 
+    public PipeStepBinding(PipeStep targetStep, ProcedureTemplateParameterDefinition targetParameter, PipeStep sourceStep, String sourceResultPointer) {
+        this.targetStep = Objects.requireNonNull(targetStep);
+        this.targetParameter = Objects.requireNonNull(targetParameter);
+        this.sourceStep = Objects.requireNonNull(sourceStep);
+        this.sourceResultPointer = Objects.requireNonNull(sourceResultPointer);
+    }
+
     public Long getId() { return id; }
     public PipeStep getTargetStep() { return targetStep; }
     public ProcedureTemplateParameterDefinition getTargetParameter() { return targetParameter; }
     public PipeStep getSourceStep() { return sourceStep; }
     public ProcedureTemplateOutputDefinition getSourceOutput() { return sourceOutput; }
+    public String getSourceResultPointer() { return sourceResultPointer; }
+    public boolean isArtifactOutput() { return sourceOutput != null; }
 }
