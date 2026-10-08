@@ -6,10 +6,13 @@ import java.net.URI;
 import java.time.Duration;
 import java.time.Instant;
 
+import org.springframework.scheduling.support.CronExpression;
+
 import app.alertify.worker.contract.DatabaseCredentials;
 import app.alertify.worker.contract.GitCredentials;
 import app.alertify.worker.contract.OidcTokenSet;
 import app.alertify.worker.contract.KubeconfigCredentials;
+import app.alertify.worker.contract.UsernamePasswordCredentials;
 import app.alertify.worker.contract.BinaryPayloadCodec;
 import app.alertify.worker.grpc.AlertParameter;
 
@@ -74,8 +77,14 @@ final class AlertParameterConverter {
         if (targetType == Instant.class)
             return Instant.parse(value);
 
+        if (targetType == CronExpression.class)
+            return CronExpression.parse(value);
+
         if (targetType == DatabaseCredentials.class)
             return DatabaseCredentials.fromJson(value);
+
+        if (targetType == UsernamePasswordCredentials.class)
+            return UsernamePasswordCredentials.fromJson(value);
 
         if (targetType == GitCredentials.class)
             return GitCredentials.fromJson(value);
@@ -102,6 +111,9 @@ final class AlertParameterConverter {
         if (declaredType == DatabaseCredentials.class)
             return ((DatabaseCredentials) value).toJson();
 
+        if (declaredType == UsernamePasswordCredentials.class)
+            return ((UsernamePasswordCredentials) value).toJson();
+
         if (declaredType == GitCredentials.class)
             return ((GitCredentials) value).toJson();
 
@@ -113,6 +125,7 @@ final class AlertParameterConverter {
 
         if (declaredType == String.class || declaredType == Character.class || declaredType == char.class
                 || declaredType == URI.class || declaredType == Duration.class || declaredType == Instant.class
+                || declaredType == CronExpression.class
                 || declaredType == BigInteger.class || declaredType == BigDecimal.class
                 || declaredType == Byte.class || declaredType == byte.class
                 || declaredType == Short.class || declaredType == short.class

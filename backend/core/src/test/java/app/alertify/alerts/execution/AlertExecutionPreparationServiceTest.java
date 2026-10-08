@@ -1,6 +1,7 @@
 package app.alertify.alerts.execution;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.times;
@@ -11,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -39,6 +41,7 @@ import app.alertify.jpa.repository.AlertStateRepository;
 import app.alertify.jpa.repository.AlertTemplateParameterDefinitionRepository;
 import app.alertify.jpa.repository.ApplicationConfigurationRepository;
 import app.alertify.jpa.repository.ApplicationSecretRepository;
+import app.alertify.pipes.execution.PipeParameterValue;
 import app.alertify.services.secret.SecretAccessService;
 import app.alertify.services.secret.SecretAccessContext;
 import app.alertify.binary.BinaryBindingService;
@@ -202,6 +205,64 @@ class AlertExecutionPreparationServiceTest {
                 context.consumerType() == SecretAccessContext.ConsumerType.ALERT
                         && context.consumerId() == 17L
                         && context.consumerName().equals("Form alert")));
+    }
+
+    @Test
+    void appliesSensitivePipeOverridesWithoutChangingTheConfiguredFallback() throws Exception {
+        AlertTemplateDefinition template = new AlertTemplateDefinition(
+                "dynamic.PipeAlert", "name", "description", "PipeAlert.java", WorkerCapability.STANDARD);
+        ReflectionTestUtils.setField(template, "id", 42L);
+        AlertTemplateParameterDefinition definition = new AlertTemplateParameterDefinition(
+                template, "headersOverrideJson", "headers", "headers", String.class.getName(),
+                List.of(), true, null, true, 0, false,
+                List.of(AlertParameterSource.TEXT), List.of(), List.of());
+        ReflectionTestUtils.setField(definition, "id", 43L);
+        Alert alert = new Alert(template, "Pipe alert", null, "-", true);
+        ReflectionTestUtils.setField(alert, "id", 47L);
+        AlertParameterValue configured = AlertParameterValue.text(alert, definition, "[\"Accept: application/json\"]");
+        Files.writeString(sourceRoot.resolve("PipeAlert.java"), "source", StandardCharsets.UTF_8);
+
+        when(alertRepository.findById(47L)).thenReturn(Optional.of(alert));
+        when(parameterValueRepository.findAllByAlertIdOrdered(47L)).thenReturn(List.of(configured));
+        when(definitionRepository.findAllByTemplate_IdOrderByParameterOrderAscIdAsc(42L)).thenReturn(List.of(definition));
+        when(stateRepository.findById(47L)).thenReturn(Optional.empty());
+
+        PreparedAlertExecution execution = service().prepare(47L, false,
+                Map.of("headersOverrideJson", new PipeParameterValue("[\"Authorization: Bearer derived-token\"]", true)))
+                .orElseThrow();
+
+        assertThat(execution.parameters()).singleElement().satisfies(parameter -> {
+            assertThat(parameter.value()).isEqualTo("[\"Authorization: Bearer derived-token\"]");
+            assertThat(parameter.source()).isEqualTo(AlertParameterSource.PIPE_OUTPUT);
+            assertThat(parameter.sensitive()).isTrue();
+            assertThat(parameter.configurationId()).isNull();
+            assertThat(parameter.secretId()).isNull();
+        });
+        assertThat(configured.getTextValue()).isEqualTo("[\"Accept: application/json\"]");
+    }
+
+    @Test
+    void rejectsPipeOverridesForWritableRequiredAlertParameters() throws Exception {
+        AlertTemplateDefinition template = new AlertTemplateDefinition(
+                "dynamic.WritablePipeAlert", "name", "description", "WritablePipeAlert.java", WorkerCapability.STANDARD);
+        ReflectionTestUtils.setField(template, "id", 52L);
+        AlertTemplateParameterDefinition definition = new AlertTemplateParameterDefinition(
+                template, "state", "state", "state", String.class.getName(),
+                List.of(), true, true, null, false, 0, true,
+                List.of(AlertParameterSource.CONFIGURATION), List.of(), List.of());
+        ReflectionTestUtils.setField(definition, "id", 53L);
+        Alert alert = new Alert(template, "Writable Pipe alert", null, "-", true);
+        ReflectionTestUtils.setField(alert, "id", 57L);
+        Files.writeString(sourceRoot.resolve("WritablePipeAlert.java"), "source", StandardCharsets.UTF_8);
+
+        when(alertRepository.findById(57L)).thenReturn(Optional.of(alert));
+        when(parameterValueRepository.findAllByAlertIdOrdered(57L)).thenReturn(List.of());
+        when(definitionRepository.findAllByTemplate_IdOrderByParameterOrderAscIdAsc(52L)).thenReturn(List.of(definition));
+
+        assertThatThrownBy(() -> service().prepare(57L, false,
+                Map.of("state", new PipeParameterValue("derived", true))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("must be a bindable String");
     }
 
     private AlertExecutionPreparationService service() {

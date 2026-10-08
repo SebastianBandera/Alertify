@@ -53,7 +53,8 @@ final class PipeMapper {
                 value.getContinueOn().stream().map(PipeOutcome::valueOf)
                         .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new)),
                 value.getBindings().stream().map(binding -> new PipeBindingResponse(
-                        binding.getTargetParameter().getParameterKey(), binding.getSourceStep().getStepKey(),
-                        binding.getSourceOutput().getOutputKey())).toList());
+                        binding.getTargetParameterKey(), binding.getSourceStep().getStepKey(),
+                        binding.isArtifactOutput() ? binding.getSourceOutput().getOutputKey() : null,
+                        binding.getSourceResultPointer(), binding.getValueExpression())).toList());
     }
 }

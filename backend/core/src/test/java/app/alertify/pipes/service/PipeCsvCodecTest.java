@@ -13,8 +13,10 @@ import org.junit.jupiter.api.Test;
 import app.alertify.api.error.InvalidPipeImportException;
 import app.alertify.pipes.model.Pipe;
 import app.alertify.pipes.model.PipeStep;
+import app.alertify.pipes.model.PipeStepBinding;
 import app.alertify.pipes.model.PipeStepPhase;
 import app.alertify.procedures.model.Procedure;
+import app.alertify.procedures.model.ProcedureTemplateParameterDefinition;
 import tools.jackson.databind.json.JsonMapper;
 
 class PipeCsvCodecTest {
@@ -40,5 +42,28 @@ class PipeCsvCodecTest {
         assertThatThrownBy(() -> codec.read(csv.getBytes(StandardCharsets.UTF_8)))
                 .isInstanceOf(InvalidPipeImportException.class)
                 .hasMessage("CSV header must be exactly: name,description,enabled,allowConcurrentExecutions,steps,finallyTimeoutMillis");
+    }
+
+    @Test
+    void preservesResultPointerBindingInExportAndImport() {
+        Pipe pipe = new Pipe("result binding", null, false, false);
+        Procedure producerProcedure = mock(Procedure.class);
+        when(producerProcedure.getName()).thenReturn("producer procedure");
+        PipeStep producer = PipeStep.procedure(pipe, "producer", 0, producerProcedure, 5_000, List.of("SUCCESS"));
+        Procedure consumerProcedure = mock(Procedure.class);
+        when(consumerProcedure.getName()).thenReturn("consumer procedure");
+        PipeStep consumer = PipeStep.procedure(pipe, "consumer", 1, consumerProcedure, 5_000, List.of("SUCCESS"));
+        var parameter = mock(ProcedureTemplateParameterDefinition.class);
+        when(parameter.getParameterKey()).thenReturn("pin");
+        consumer.addBinding(new PipeStepBinding(consumer, parameter, producer, "/code", "Bearer {{pipe.VALUE}}"));
+        pipe.replaceSteps(List.of(producer, consumer));
+
+        var row = codec.read(codec.write(List.of(pipe))).getFirst();
+        var binding = row.steps().get(1).bindings().getFirst();
+        assertThat(binding.targetParameterKey()).isEqualTo("pin");
+        assertThat(binding.sourceStepKey()).isEqualTo("producer");
+        assertThat(binding.sourceOutputKey()).isNull();
+        assertThat(binding.sourceResultPointer()).isEqualTo("/code");
+        assertThat(binding.valueExpression()).isEqualTo("Bearer {{pipe.VALUE}}");
     }
 }

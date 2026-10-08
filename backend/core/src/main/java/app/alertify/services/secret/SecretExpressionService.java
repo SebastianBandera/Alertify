@@ -162,6 +162,7 @@ public class SecretExpressionService {
                 case UTILITY -> reference.isFunction()
                         ? utilities.apply(reference.name(), argument)
                         : utilities.resolve(reference.name(), now);
+                case PIPE -> throw new InvalidConfigurationExpressionException("Pipe values cannot be referenced from secret expressions");
             }, depth + 1);
         } finally {
             path.remove(key);

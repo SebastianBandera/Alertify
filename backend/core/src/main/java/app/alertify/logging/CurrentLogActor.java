@@ -26,7 +26,10 @@ final class CurrentLogActor {
         if (aiContext != null)
             return new LogActor(aiContext.userSubject(), aiContext.username());
 
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        return resolve(SecurityContextHolder.getContext().getAuthentication());
+    }
+
+    static LogActor resolve(Authentication authentication) {
         if (authentication instanceof JwtAuthenticationToken jwtAuthentication && authentication.isAuthenticated()) {
             String subject = jwtAuthentication.getToken().getSubject();
             String username = jwtAuthentication.getToken().getClaimAsString(USERNAME_CLAIM);

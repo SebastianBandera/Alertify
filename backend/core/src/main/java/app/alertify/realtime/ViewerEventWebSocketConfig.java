@@ -22,6 +22,7 @@ public class ViewerEventWebSocketConfig implements WebSocketConfigurer {
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
         registry.addHandler(handler, "/api/viewer/events")
+                .addInterceptors(new EventHandshakeInterceptor())
                 .setAllowedOrigins(allowedOrigin);
     }
 }

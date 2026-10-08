@@ -52,6 +52,7 @@ export interface AlertTemplate {
   readonly nameKey: string;
   readonly descriptionKey: string;
   readonly requiredCapability: WorkerCapability;
+  readonly persistentIssuesDefault: boolean;
   readonly tags: readonly AlertTemplateTag[];
   readonly alertCount: number;
   readonly parameters: readonly AlertTemplateParameter[];

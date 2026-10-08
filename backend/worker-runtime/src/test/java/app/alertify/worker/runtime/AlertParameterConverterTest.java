@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.time.Instant;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.scheduling.support.CronExpression;
 
 import com.google.protobuf.ByteString;
 
@@ -13,6 +14,7 @@ import app.alertify.worker.contract.GitCredentials;
 import app.alertify.worker.contract.KubeconfigCredentials;
 import app.alertify.worker.contract.GitProvider;
 import app.alertify.worker.contract.OidcTokenSet;
+import app.alertify.worker.contract.UsernamePasswordCredentials;
 import app.alertify.worker.grpc.AlertParameter;
 
 class AlertParameterConverterTest {
@@ -39,6 +41,18 @@ class AlertParameterConverterTest {
 
         assertThat(value).isEqualTo(credentials);
         assertThat(AlertParameterConverter.serialize(value, GitCredentials.class)).isEqualTo(credentials.toJson());
+    }
+
+    @Test
+    void roundTripsUsernamePasswordCredentialsThroughCanonicalJson() {
+        UsernamePasswordCredentials credentials = new UsernamePasswordCredentials(null, "secret");
+        AlertParameter parameter = AlertParameter.newBuilder().setName("credentials")
+                .setJavaType(UsernamePasswordCredentials.class.getName()).setValue(credentials.toJson()).build();
+
+        Object value = AlertParameterConverter.convert(parameter, UsernamePasswordCredentials.class);
+
+        assertThat(value).isEqualTo(credentials);
+        assertThat(AlertParameterConverter.serialize(value, UsernamePasswordCredentials.class)).isEqualTo(credentials.toJson());
     }
 
     @Test
@@ -79,5 +93,15 @@ class AlertParameterConverterTest {
 
         assertThat(archive).isNotEmpty();
         assertThat(BinaryPayloadCodec.decompress(archive, 1024)).isEmpty();
+    }
+
+    @Test
+    void convertsSpringCronExpressions() {
+        AlertParameter parameter = AlertParameter.newBuilder().setName("warningCron")
+                .setJavaType(CronExpression.class.getName()).setValue("0 0 9 * * *").build();
+
+        Object value = AlertParameterConverter.convert(parameter, CronExpression.class);
+
+        assertThat(value).isEqualTo(CronExpression.parse("0 0 9 * * *"));
     }
 }

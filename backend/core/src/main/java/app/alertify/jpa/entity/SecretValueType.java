@@ -5,6 +5,8 @@ package app.alertify.jpa.entity;
  * value; {@code DB_SECRET} is the canonical JSON of
  * {@link app.alertify.worker.contract.DatabaseCredentials}; {@code GIT_SECRET}
  * is the canonical JSON of {@link app.alertify.worker.contract.GitCredentials};
+ * {@code USERNAME_PASSWORD} is the canonical JSON of
+ * {@link app.alertify.worker.contract.UsernamePasswordCredentials};
  * {@code OIDC_TOKEN_SET} is the canonical JSON of
  * {@link app.alertify.worker.contract.OidcTokenSet};
  * {@code KUBECONFIG} is the exact UTF-8 text represented in workers by
@@ -15,6 +17,7 @@ package app.alertify.jpa.entity;
  */
 public enum SecretValueType {
     STRING,
+    USERNAME_PASSWORD,
     DB_SECRET,
     GIT_SECRET,
     OIDC_TOKEN_SET,

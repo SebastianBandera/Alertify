@@ -36,6 +36,7 @@ import app.alertify.procedures.ProcedureDisabledException;
 import app.alertify.procedures.ProcedureExecutionException;
 import app.alertify.pipes.execution.PipeInvocationTokenService;
 import app.alertify.pipes.execution.PipeExecutionOrchestrator;
+import app.alertify.pipes.execution.PipeParameterValue;
 import app.alertify.pipes.PipeExecutionException;
 import app.alertify.worker.grpc.InvokePipeResponse;
 import org.springframework.beans.factory.ObjectProvider;
@@ -232,14 +233,14 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
         }
     }
 
-    public ProcedurePipeExecution executePipeStep(long procedureId, UUID rootExecutionId, UUID parentPipeExecutionId, int depth, Instant deadline, UUID preferredWorkerInstanceId, Map<String, ArtifactLocation> artifactInputs) {
+    public ProcedurePipeExecution executePipeStep(long procedureId, UUID rootExecutionId, UUID parentPipeExecutionId, int depth, Instant deadline, UUID preferredWorkerInstanceId, Map<String, ArtifactLocation> artifactInputs, Map<String, PipeParameterValue> parameterInputs) {
         UUID executionId = UUID.randomUUID();
         Instant startedAt = Instant.now();
         boolean entered = false;
         boolean started = false;
         List<ArtifactLocation> createdArtifacts = new ArrayList<>();
         try {
-            PreparedProcedureExecution prepared = preparationService.prepare(procedureId, false, true);
+            PreparedProcedureExecution prepared = withPipeInputs(preparationService.prepare(procedureId, false, true), parameterInputs);
             if (!enter(procedureId, prepared.allowConcurrentExecutions()))
                 throw busy(prepared.procedureName());
 
@@ -297,7 +298,7 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
                 List<ArtifactLocation> outputs = result.getArtifactsList().stream()
                         .map(descriptor -> new ArtifactLocation(descriptor, endpoint, workerInstanceId)).toList();
                 return new ProcedurePipeExecution(executionId, value, workerInstanceId, endpoint, outputs,
-                        List.copyOf(createdArtifacts));
+                        List.copyOf(createdArtifacts), prepared.sensitiveResult());
             }
         } catch (RuntimeException exception) {
             if (started)
@@ -346,7 +347,33 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
 
     public record ArtifactLocation(ArtifactDescriptor descriptor, WorkerEndpoint endpoint, UUID workerInstanceId) { }
     public record ProcedurePipeExecution(UUID executionId, JsonNode result, UUID workerInstanceId,
-            WorkerEndpoint endpoint, List<ArtifactLocation> outputs, List<ArtifactLocation> temporaryArtifacts) { }
+            WorkerEndpoint endpoint, List<ArtifactLocation> outputs, List<ArtifactLocation> temporaryArtifacts,
+            boolean sensitiveResult) {
+        public ProcedurePipeExecution(UUID executionId, JsonNode result, UUID workerInstanceId,
+                WorkerEndpoint endpoint, List<ArtifactLocation> outputs, List<ArtifactLocation> temporaryArtifacts) {
+            this(executionId, result, workerInstanceId, endpoint, outputs, temporaryArtifacts, false);
+        }
+    }
+
+    static PreparedProcedureExecution withPipeInputs(PreparedProcedureExecution prepared, Map<String, PipeParameterValue> inputs) {
+        if (inputs.isEmpty())
+            return prepared;
+
+        List<ResolvedProcedureParameter> parameters = prepared.parameters().stream().map(parameter -> {
+            PipeParameterValue input = inputs.get(parameter.name());
+            if (input == null)
+                return parameter;
+            if (!parameter.javaType().equals(String.class.getName()))
+                throw new IllegalArgumentException("Pipe result binding target '" + parameter.name() + "' must be a String");
+
+            return new ResolvedProcedureParameter(parameter.name(), parameter.javaType(), input.value(), null,
+                    false, AlertParameterSource.PIPE_OUTPUT, null, null, null, null, false, null, null, null, null, input.sensitive());
+        }).toList();
+        boolean sensitive = prepared.sensitiveResult() || inputs.values().stream().anyMatch(PipeParameterValue::sensitive);
+        return new PreparedProcedureExecution(prepared.procedureId(), prepared.procedureVersion(), prepared.procedureName(),
+                prepared.allowConcurrentExecutions(), prepared.templateClassName(), prepared.requiredCapability(), sensitive,
+                prepared.sourceChecksum(), prepared.source(), parameters);
+    }
 
     private JsonNode execute(long procedureId, UUID executionId, UUID rootExecutionId, UUID parentAlertExecutionId, UUID parentProcedureExecutionId, int depth, ProcedureExecutionTrigger trigger, String triggeredBy, Instant deadline, boolean includeDisabled, PreparedProcedureExecution preparedExecution) {
         Instant startedAt = Instant.now();
@@ -484,7 +511,8 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
                 .setJavaType(parameter.javaType())
                 .setNullValue(artifact == null && parameter.source() != AlertParameterSource.PROCEDURE
                         && parameter.source() != AlertParameterSource.PIPE && parameter.nullValue())
-                .setSource(source(artifact == null ? parameter.source() : AlertParameterSource.PIPE_OUTPUT));
+                .setSource(source(artifact == null ? parameter.source() : AlertParameterSource.PIPE_OUTPUT))
+                .setSensitive(parameter.sensitive());
         if (parameter.source() == AlertParameterSource.PROCEDURE) {
             value.setProcedureId(parameter.procedureId())
                     .setInvocationToken(tokenService.issue(parameter.procedureId(), rootExecutionId,
@@ -541,7 +569,7 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
 
     private static ExecutionError sanitize(ExecutionError error, PreparedProcedureExecution prepared) {
         return SecretValueSanitizer.sanitize(error, prepared.parameters().stream()
-                .filter(parameter -> parameter.source() == AlertParameterSource.SECRET)
+                .filter(ResolvedProcedureParameter::sensitive)
                 .map(ResolvedProcedureParameter::value)
                 .toList());
     }

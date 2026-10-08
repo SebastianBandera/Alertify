@@ -28,6 +28,7 @@ import app.alertify.pipes.model.PipeStep;
 import app.alertify.pipes.model.PipeStepPhase;
 import app.alertify.pipes.model.PipeStepStatus;
 import app.alertify.pipes.model.PipeStepType;
+import app.alertify.pipes.service.PipeBindingExpressionService;
 import app.alertify.procedures.ProcedureDepthExceededException;
 import app.alertify.procedures.ProcedureDisabledException;
 import app.alertify.procedures.ProcedureExecutionException;
@@ -50,10 +51,11 @@ public class PipeExecutionOrchestrator implements AutoCloseable {
     private final ProcedureExecutionProperties properties;
     private final ApplicationEventLogger eventLogger;
     private final JsonMapper jsonMapper;
+    private final PipeBindingExpressionService bindingExpressions;
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
     private final ConcurrentMap<Long, PipeGate> gates = new ConcurrentHashMap<>();
 
-    public PipeExecutionOrchestrator(PipeExecutionPersistenceService persistence, AlertExecutionOrchestrator alertOrchestrator, ProcedureExecutionOrchestrator procedureOrchestrator, MaintenanceModeService maintenanceModeService, ProcedureExecutionProperties properties, ApplicationEventLogger eventLogger, JsonMapper jsonMapper) {
+    public PipeExecutionOrchestrator(PipeExecutionPersistenceService persistence, AlertExecutionOrchestrator alertOrchestrator, ProcedureExecutionOrchestrator procedureOrchestrator, MaintenanceModeService maintenanceModeService, ProcedureExecutionProperties properties, ApplicationEventLogger eventLogger, JsonMapper jsonMapper, PipeBindingExpressionService bindingExpressions) {
         this.persistence = persistence;
         this.alertOrchestrator = alertOrchestrator;
         this.procedureOrchestrator = procedureOrchestrator;
@@ -61,6 +63,7 @@ public class PipeExecutionOrchestrator implements AutoCloseable {
         this.properties = properties;
         this.eventLogger = eventLogger;
         this.jsonMapper = jsonMapper;
+        this.bindingExpressions = bindingExpressions;
     }
 
     public UUID triggerManual(long pipeId, String triggeredBy) {
@@ -144,6 +147,7 @@ public class PipeExecutionOrchestrator implements AutoCloseable {
     private PipeRun execute(Pipe pipe, UUID executionId, UUID rootExecutionId, UUID parentProcedureExecutionId, int depth, PipeExecutionTrigger trigger, String triggeredBy, Instant deadline, boolean includeDisabled) {
         List<ArtifactLocation> artifactsToDelete = new ArrayList<>();
         Map<ArtifactKey, ArtifactLocation> outputs = new LinkedHashMap<>();
+        Map<String, ResultValue> results = new LinkedHashMap<>();
         PipeOutcome aggregate = PipeOutcome.SUCCESS;
         boolean partial = false;
         boolean started = false;
@@ -183,26 +187,49 @@ public class PipeExecutionOrchestrator implements AutoCloseable {
                         if (!Instant.now().isBefore(phaseDeadline))
                             throw new PipeExecutionException("PIPE_PHASE_TIMEOUT");
 
+                        Map<String, PipeParameterValue> parameterInputs = new LinkedHashMap<>();
+                        for (var binding : step.getBindings()) {
+                            if (!binding.isArtifactOutput()) {
+                                ResultValue source = results.get(binding.getSourceStep().getStepKey());
+                                if (source == null)
+                                    throw new PipeExecutionException("MISSING_PIPE_OUTPUT");
+
+                                JsonNode selected = source.value().at(binding.getSourceResultPointer());
+                                if (selected.isMissingNode() || selected.isNull())
+                                    throw new PipeExecutionException("MISSING_PIPE_OUTPUT");
+
+                                String value = selected.isString() ? selected.stringValue() : selected.toString();
+                                if (binding.getValueExpression() != null)
+                                    value = bindingExpressions.evaluate(binding.getValueExpression(), value);
+
+                                parameterInputs.put(binding.getTargetParameterKey(),
+                                        new PipeParameterValue(value, source.sensitive()));
+                            }
+                        }
                         if (step.getStepType() == PipeStepType.ALERT) {
-                            run = executeAlert(step, executionId, phaseDeadline);
+                            run = executeAlert(step, executionId, phaseDeadline, parameterInputs);
                         } else {
                             Map<String, ArtifactLocation> inputs = new LinkedHashMap<>();
                             for (var binding : step.getBindings()) {
+                                if (!binding.isArtifactOutput())
+                                    continue;
+
                                 ArtifactLocation artifact = outputs.get(new ArtifactKey(binding.getSourceStep().getStepKey(), binding.getSourceOutput().getOutputKey()));
-                                if (artifact == null) {
+                                if (artifact == null)
                                     throw new PipeExecutionException("MISSING_PIPE_OUTPUT");
-                                }
-                                inputs.put(binding.getTargetParameter().getParameterKey(), artifact);
+
+                                inputs.put(binding.getTargetParameterKey(), artifact);
                             }
                             try {
                                 Instant stepDeadline = earlier(phaseDeadline, Instant.now().plusMillis(step.getTimeoutMillis()));
                                 var procedure = procedureOrchestrator.executePipeStep(step.getProcedure().getId(), rootExecutionId,
-                                        executionId, depth + 1, stepDeadline, preferred(inputs, affinity), inputs);
+                                        executionId, depth + 1, stepDeadline, preferred(inputs, affinity), inputs, parameterInputs);
                                 affinity = procedure.workerInstanceId();
                                 artifactsToDelete.addAll(procedure.temporaryArtifacts());
                                 artifactsToDelete.addAll(procedure.outputs());
                                 for (ArtifactLocation output : procedure.outputs())
                                     outputs.put(new ArtifactKey(step.getStepKey(), output.descriptor().getOutputKey()), output);
+                                results.put(step.getStepKey(), new ResultValue(procedure.result().deepCopy(), procedure.sensitiveResult()));
 
                                 run = new StepRun(PipeOutcome.SUCCESS, PipeStepStatus.SUCCESS, procedure.executionId(), null);
                             } catch (ProcedureDisabledException exception) {
@@ -252,14 +279,14 @@ public class PipeExecutionOrchestrator implements AutoCloseable {
         }
     }
 
-    private StepRun executeAlert(PipeStep step, UUID pipeExecutionId, Instant deadline) {
+    private StepRun executeAlert(PipeStep step, UUID pipeExecutionId, Instant deadline, Map<String, PipeParameterValue> parameterInputs) {
         Duration timeout = Duration.ofMillis(step.getTimeoutMillis());
         Duration remaining = Duration.between(Instant.now(), deadline);
         if (remaining.compareTo(timeout) < 0)
             timeout = remaining;
 
         var execution = alertOrchestrator.executePipe(step.getAlert().getId(), step.getAlert().getName(),
-                step.getAlert().isConcurrentExecutionAllowed(), timeout, "pipe:" + pipeExecutionId, () -> { }, () -> { }, pipeExecutionId, step.getStepKey());
+                step.getAlert().isConcurrentExecutionAllowed(), timeout, "pipe:" + pipeExecutionId, () -> { }, () -> { }, pipeExecutionId, step.getStepKey(), parameterInputs);
         if (execution.busyTimeout())
             return new StepRun(PipeOutcome.ERROR, PipeStepStatus.ERROR, null, "ALERT_BUSY_TIMEOUT");
 
@@ -343,4 +370,5 @@ public class PipeExecutionOrchestrator implements AutoCloseable {
     private record PipeRun(PipeOutcome outcome, JsonNode summary) { }
     private record StepRun(PipeOutcome outcome, PipeStepStatus status, UUID executionId, String errorCode) { }
     private record ArtifactKey(String stepKey, String outputKey) { }
+    private record ResultValue(JsonNode value, boolean sensitive) { }
 }

@@ -31,6 +31,7 @@ import app.alertify.logging.ApplicationEventLogger;
 import app.alertify.procedures.execution.ProcedureInvocationRegistry;
 import app.alertify.procedures.execution.ProcedureInvocationTokenService;
 import app.alertify.procedures.execution.ProcedureExecutionOrchestrator;
+import app.alertify.pipes.execution.PipeParameterValue;
 import app.alertify.system.SystemStatusEventPublisher;
 import app.alertify.worker.contract.SecretValueSanitizer;
 import app.alertify.worker.contract.WorkerCapability;
@@ -159,14 +160,18 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
     }
 
     public AlertHookExecution executeHook(long alertId, String alertName, boolean allowConcurrentExecutions, Duration busyWaitTimeout, String triggeredBy, Runnable waitingCallback, Runnable acquiredCallback, UUID parentHookInvocationId, String parentHookName) {
-        return executeTriggered(alertId, alertName, allowConcurrentExecutions, busyWaitTimeout, triggeredBy, waitingCallback, acquiredCallback, AlertExecutionTrigger.HOOK, null, null, parentHookInvocationId, parentHookName);
+        return executeTriggered(alertId, alertName, allowConcurrentExecutions, busyWaitTimeout, triggeredBy, waitingCallback, acquiredCallback, AlertExecutionTrigger.HOOK, null, null, parentHookInvocationId, parentHookName, Map.of());
     }
 
     public AlertHookExecution executePipe(long alertId, String alertName, boolean allowConcurrentExecutions, Duration busyWaitTimeout, String triggeredBy, Runnable waitingCallback, Runnable acquiredCallback, UUID parentPipeExecutionId, String parentStepKey) {
-        return executeTriggered(alertId, alertName, allowConcurrentExecutions, busyWaitTimeout, triggeredBy, waitingCallback, acquiredCallback, AlertExecutionTrigger.PIPE, parentPipeExecutionId, parentStepKey, null, null);
+        return executePipe(alertId, alertName, allowConcurrentExecutions, busyWaitTimeout, triggeredBy, waitingCallback, acquiredCallback, parentPipeExecutionId, parentStepKey, Map.of());
     }
 
-    private AlertHookExecution executeTriggered(long alertId, String alertName, boolean allowConcurrentExecutions, Duration busyWaitTimeout, String triggeredBy, Runnable waitingCallback, Runnable acquiredCallback, AlertExecutionTrigger source, UUID parentPipeExecutionId, String parentStepKey, UUID parentHookInvocationId, String parentHookName) {
+    public AlertHookExecution executePipe(long alertId, String alertName, boolean allowConcurrentExecutions, Duration busyWaitTimeout, String triggeredBy, Runnable waitingCallback, Runnable acquiredCallback, UUID parentPipeExecutionId, String parentStepKey, Map<String, PipeParameterValue> pipeInputs) {
+        return executeTriggered(alertId, alertName, allowConcurrentExecutions, busyWaitTimeout, triggeredBy, waitingCallback, acquiredCallback, AlertExecutionTrigger.PIPE, parentPipeExecutionId, parentStepKey, null, null, pipeInputs);
+    }
+
+    private AlertHookExecution executeTriggered(long alertId, String alertName, boolean allowConcurrentExecutions, Duration busyWaitTimeout, String triggeredBy, Runnable waitingCallback, Runnable acquiredCallback, AlertExecutionTrigger source, UUID parentPipeExecutionId, String parentStepKey, UUID parentHookInvocationId, String parentHookName, Map<String, PipeParameterValue> pipeInputs) {
         if (maintenanceModeService.isActive())
             return new AlertHookExecution(null, null, false, false, true);
 
@@ -187,7 +192,7 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
         runCallback(acquiredCallback);
         UUID executionId = UUID.randomUUID();
         eventLogger.success("ALERT_EXECUTION_TRIGGERED", data(alertId, alertName, source, triggeredBy));
-        AlertExecutionStatus status = execute(alertId, source, triggeredBy, executionId, null, parentPipeExecutionId, parentStepKey, parentHookInvocationId, parentHookName, pipeDeadline);
+        AlertExecutionStatus status = execute(alertId, source, triggeredBy, executionId, null, parentPipeExecutionId, parentStepKey, parentHookInvocationId, parentHookName, pipeDeadline, pipeInputs);
         return new AlertHookExecution(status == null ? null : executionId, status, status == null, false, false);
     }
 
@@ -209,10 +214,10 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
     }
 
     private AlertExecutionStatus execute(long alertId, AlertExecutionTrigger source, String triggeredBy, UUID executionId, WorkerReservation preReservedWorker) {
-        return execute(alertId, source, triggeredBy, executionId, preReservedWorker, null, null, null, null, null);
+        return execute(alertId, source, triggeredBy, executionId, preReservedWorker, null, null, null, null, null, Map.of());
     }
 
-    private AlertExecutionStatus execute(long alertId, AlertExecutionTrigger source, String triggeredBy, UUID executionId, WorkerReservation preReservedWorker, UUID parentPipeExecutionId, String parentStepKey, UUID parentHookInvocationId, String parentHookName, Instant pipeDeadline) {
+    private AlertExecutionStatus execute(long alertId, AlertExecutionTrigger source, String triggeredBy, UUID executionId, WorkerReservation preReservedWorker, UUID parentPipeExecutionId, String parentStepKey, UUID parentHookInvocationId, String parentHookName, Instant pipeDeadline, Map<String, PipeParameterValue> pipeInputs) {
         Instant startedAt = Instant.now();
         WorkerEndpoint endpoint = null;
         String workerName = null;
@@ -231,8 +236,9 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
 
         try {
             // A manual run also covers alerts that are currently disabled.
-            execution = preparationService
-                    .prepare(alertId, source == AlertExecutionTrigger.MANUAL)
+            execution = (pipeInputs.isEmpty()
+                    ? preparationService.prepare(alertId, source == AlertExecutionTrigger.MANUAL)
+                    : preparationService.prepare(alertId, source == AlertExecutionTrigger.MANUAL, pipeInputs))
                     .orElse(null);
             if (execution == null)
                 return null;
@@ -327,7 +333,8 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
                     .setJavaType(parameter.javaType())
                     .setNullValue(parameter.source() != AlertParameterSource.PROCEDURE
                             && parameter.nullValue())
-                    .setSource(toGrpcSource(parameter.source()));
+                    .setSource(toGrpcSource(parameter.source()))
+                    .setSensitive(parameter.sensitive());
             if (parameter.source() == AlertParameterSource.PROCEDURE) {
                 UUID parentExecutionId = UUID.fromString(executionId);
                 value.setProcedureId(parameter.procedureId())
@@ -368,7 +375,7 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
 
     private static List<String> secretValues(PreparedAlertExecution execution) {
         List<String> values = new ArrayList<>(execution.parameters().stream()
-                .filter(parameter -> parameter.source() == AlertParameterSource.SECRET)
+                .filter(ResolvedAlertParameter::sensitive)
                 .map(ResolvedAlertParameter::value)
                 .filter(value -> value != null)
                 .toList());
@@ -393,7 +400,8 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
             case CONFIGURATION -> AlertParameterValueSource.ALERT_PARAMETER_VALUE_SOURCE_CONFIGURATION;
             case SECRET -> AlertParameterValueSource.ALERT_PARAMETER_VALUE_SOURCE_SECRET;
             case PROCEDURE -> AlertParameterValueSource.ALERT_PARAMETER_VALUE_SOURCE_PROCEDURE;
-            case PIPE, PIPE_OUTPUT -> throw new IllegalArgumentException("Pipe sources are not valid for Alert parameters");
+            case PIPE -> throw new IllegalArgumentException("Pipe handles are not valid for Alert parameters");
+            case PIPE_OUTPUT -> AlertParameterValueSource.ALERT_PARAMETER_VALUE_SOURCE_PIPE_OUTPUT;
         };
     }
 

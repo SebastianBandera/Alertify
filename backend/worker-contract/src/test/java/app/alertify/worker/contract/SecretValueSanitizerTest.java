@@ -56,6 +56,21 @@ class SecretValueSanitizerTest {
     }
 
     @Test
+    void redactsTokensExtractedFromAuthorizationHeaders() {
+        String headers = "[\"Accept: application/json\",\"Authorization: Bearer opaque.jwt.token\",\"Basic ZHVtbXk6c2VjcmV0\"]";
+        ExecutionError error = ExecutionError.newBuilder()
+                .setType("example.Failure")
+                .setMessage("Bearer token opaque.jwt.token was rejected")
+                .setStackTrace("authorization=ZHVtbXk6c2VjcmV0")
+                .build();
+
+        ExecutionError sanitized = SecretValueSanitizer.sanitize(error, List.of(headers));
+
+        assertThat(sanitized.getMessage()).isEqualTo("Bearer token [REDACTED] was rejected");
+        assertThat(sanitized.getStackTrace()).isEqualTo("authorization=[REDACTED]");
+    }
+
+    @Test
     void leavesOutputsUnchangedWithoutUsableSecretValues() {
         ExecutionError error = ExecutionError.newBuilder()
                 .setType("example.Failure")
