@@ -44,6 +44,7 @@ public final class ApiRequestLoggingFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
         UUID requestId = UUID.randomUUID();
         long startedAt = System.nanoTime();
+        request.setAttribute(RequestLogContext.REQUEST_ATTRIBUTE, new RequestLogContext(requestId, request.getRequestURI(), request.getMethod(), startedAt));
         response.setHeader(REQUEST_ID_HEADER, requestId.toString());
         MDC.put(ApplicationEventLogger.REQUEST_ID_MDC_KEY, requestId.toString());
         MDC.put(ApplicationEventLogger.REQUEST_PATH_MDC_KEY, request.getRequestURI());
@@ -62,10 +63,14 @@ public final class ApiRequestLoggingFilter extends OncePerRequestFilter {
             String errorCode = errorCode(request);
             ApplicationLogLevel level = ApiResponseLogLevelResolver.resolve(status, errorCode);
 
-            if (status >= 400) {
-                eventLogger.failure("API_REQUEST", level, data);
-            } else {
-                eventLogger.success("API_REQUEST", data);
+            boolean deferred = status == HttpServletResponse.SC_SWITCHING_PROTOCOLS && Boolean.TRUE.equals(request.getAttribute(RequestLogContext.DEFERRED_ATTRIBUTE));
+            // Successful upgrades are recorded by the WebSocket handler after AUTH.
+            if (!deferred) {
+                if (status >= 400) {
+                    eventLogger.failure("API_REQUEST", level, data);
+                } else {
+                    eventLogger.success("API_REQUEST", data);
+                }
             }
             MDC.remove(ApplicationEventLogger.REQUEST_ID_MDC_KEY);
             MDC.remove(ApplicationEventLogger.REQUEST_PATH_MDC_KEY);
