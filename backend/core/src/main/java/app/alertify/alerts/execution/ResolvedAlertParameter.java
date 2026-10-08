@@ -23,10 +23,15 @@ public record ResolvedAlertParameter(
     Long secretId,
     Long procedureId,
     boolean writable,
-    Long bindingVersion
+    Long bindingVersion,
+    boolean sensitive
 ) {
+    public ResolvedAlertParameter(String name, String javaType, String value, byte[] binaryZip, boolean nullValue, AlertParameterSource source, Long configurationId, Long secretId, Long procedureId, boolean writable, Long bindingVersion) {
+        this(name, javaType, value, binaryZip, nullValue, source, configurationId, secretId, procedureId, writable, bindingVersion, source == AlertParameterSource.SECRET);
+    }
+
     public ResolvedAlertParameter(String name, String javaType, String value, byte[] binaryZip, boolean nullValue, AlertParameterSource source, Long configurationId, Long secretId, Long procedureId, boolean writable) {
-        this(name, javaType, value, binaryZip, nullValue, source, configurationId, secretId, procedureId, writable, null);
+        this(name, javaType, value, binaryZip, nullValue, source, configurationId, secretId, procedureId, writable, null, source == AlertParameterSource.SECRET);
     }
 
     ResolvedAlertParameter(String name, String javaType, String value, boolean nullValue,
@@ -57,11 +62,13 @@ public record ResolvedAlertParameter(
                 var otherSecretId,
                 var otherProcedureId,
                 var otherWritable,
-                var otherBindingVersion)))
+                var otherBindingVersion,
+                var otherSensitive)))
             return false;
 
         return nullValue == otherNullValue
                 && writable == otherWritable
+                && sensitive == otherSensitive
                 && Objects.equals(name, otherName)
                 && Objects.equals(javaType, otherJavaType)
                 && Objects.equals(value, otherValue)
@@ -76,7 +83,7 @@ public record ResolvedAlertParameter(
     @Override
     public int hashCode() {
         int result = Objects.hash(
-            name, javaType, value, nullValue, source, configurationId, secretId, procedureId, writable, bindingVersion
+            name, javaType, value, nullValue, source, configurationId, secretId, procedureId, writable, bindingVersion, sensitive
         );
         return 31 * result + Arrays.hashCode(binaryZip);
     }
@@ -95,6 +102,7 @@ public record ResolvedAlertParameter(
                 + ", procedureId=" + procedureId
                 + ", writable=" + writable
                 + ", bindingVersion=" + bindingVersion
+                + ", sensitive=" + sensitive
                 + "]";
     }
 }

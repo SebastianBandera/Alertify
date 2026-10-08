@@ -42,9 +42,9 @@ class PipeCsvCodec {
     private static ExportStep exportStep(PipeStep step) {
         String resource = step.getStepType() == PipeStepType.ALERT ? step.getAlert().getName() : step.getProcedure().getName();
         List<ExportBinding> bindings = step.getBindings().stream().map(value -> new ExportBinding(
-                value.getTargetParameter().getParameterKey(), value.getSourceStep().getStepKey(),
+                value.getTargetParameterKey(), value.getSourceStep().getStepKey(),
                 value.isArtifactOutput() ? value.getSourceOutput().getOutputKey() : null,
-                value.getSourceResultPointer())).toList();
+                value.getSourceResultPointer(), value.getValueExpression())).toList();
         return new ExportStep(step.getStepKey(), step.getStepType(), step.getPhase(), resource, step.getTimeoutMillis(), step.getContinueOn(), bindings);
     }
 
@@ -142,19 +142,23 @@ class PipeCsvCodec {
             if (!value.isObject() || !string(value, "targetParameterKey") || !string(value, "sourceStepKey"))
                 throw error(row, "each binding on step '" + stepKey + "' requires targetParameterKey and sourceStepKey");
             if (value.has("sourceOutputKey") && !value.get("sourceOutputKey").isNull() && !value.get("sourceOutputKey").isString()
-                    || value.has("sourceResultPointer") && !value.get("sourceResultPointer").isNull() && !value.get("sourceResultPointer").isString())
+                    || value.has("sourceResultPointer") && !value.get("sourceResultPointer").isNull() && !value.get("sourceResultPointer").isString()
+                    || value.has("valueExpression") && !value.get("valueExpression").isNull() && !value.get("valueExpression").isString())
                 throw error(row, "binding sources on step '" + stepKey + "' must be strings or null");
             String target = value.get("targetParameterKey").stringValue().trim();
             String sourceStep = value.get("sourceStepKey").stringValue().trim();
             String sourceOutput = nullableString(value, "sourceOutputKey");
             String sourceResultPointer = nullableString(value, "sourceResultPointer");
+            String valueExpression = nullableString(value, "valueExpression");
             if (target.isEmpty() || sourceStep.isEmpty())
                 throw error(row, "binding keys on step '" + stepKey + "' cannot be empty");
             if ((sourceOutput == null) == (sourceResultPointer == null))
                 throw error(row, "each binding on step '" + stepKey + "' requires exactly one sourceOutputKey or sourceResultPointer");
+            if (sourceOutput != null && valueExpression != null)
+                throw error(row, "artifact binding on step '" + stepKey + "' cannot declare valueExpression");
             if (!targets.add(target))
                 throw error(row, "target parameter '" + target + "' is bound more than once on step '" + stepKey + "'");
-            result.add(new ImportBinding(target, sourceStep, sourceOutput, sourceResultPointer));
+            result.add(new ImportBinding(target, sourceStep, sourceOutput, sourceResultPointer, valueExpression));
         }
         return List.copyOf(result);
     }
@@ -212,7 +216,7 @@ class PipeCsvCodec {
 
     record ImportRow(int rowNumber, String name, String description, boolean enabled, boolean allowConcurrentExecutions, List<ImportStep> steps, long finallyTimeoutMillis) { }
     record ImportStep(String key, PipeStepType type, PipeStepPhase phase, String resource, long timeoutMillis, Set<String> continueOn, List<ImportBinding> bindings) { }
-    record ImportBinding(String targetParameterKey, String sourceStepKey, String sourceOutputKey, String sourceResultPointer) { }
+    record ImportBinding(String targetParameterKey, String sourceStepKey, String sourceOutputKey, String sourceResultPointer, String valueExpression) { }
     private record ExportStep(String key, PipeStepType type, PipeStepPhase phase, String resource, long timeoutMillis, List<String> continueOn, List<ExportBinding> bindings) { }
-    private record ExportBinding(String targetParameterKey, String sourceStepKey, String sourceOutputKey, String sourceResultPointer) { }
+    private record ExportBinding(String targetParameterKey, String sourceStepKey, String sourceOutputKey, String sourceResultPointer, String valueExpression) { }
 }

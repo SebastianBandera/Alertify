@@ -77,6 +77,7 @@ message AlertParameter {
   int64 pipe_id = 13;
   string pipe_invocation_token = 14;
   ArtifactDescriptor artifact = 15;
+  bool sensitive = 16;
 }
 
 enum AlertParameterValueSource {

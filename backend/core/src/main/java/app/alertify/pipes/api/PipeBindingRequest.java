@@ -7,6 +7,7 @@ public record PipeBindingRequest(
     @NotBlank @Size(max = 255) String targetParameterKey,
     @NotBlank @Size(max = 255) String sourceStepKey,
     @Size(max = 255) String sourceOutputKey,
-    @Size(max = 2000) String sourceResultPointer
+    @Size(max = 2000) String sourceResultPointer,
+    @Size(max = 1048576) String valueExpression
 ) {
 }

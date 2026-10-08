@@ -35,6 +35,7 @@ import app.alertify.procedures.ProcedureDisabledException;
 import app.alertify.procedures.ProcedureExecutionException;
 import app.alertify.pipes.execution.PipeInvocationTokenService;
 import app.alertify.pipes.execution.PipeExecutionOrchestrator;
+import app.alertify.pipes.execution.PipeParameterValue;
 import app.alertify.pipes.PipeExecutionException;
 import app.alertify.worker.grpc.InvokePipeResponse;
 import org.springframework.beans.factory.ObjectProvider;
@@ -344,7 +345,6 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
     }
 
     public record ArtifactLocation(ArtifactDescriptor descriptor, WorkerEndpoint endpoint, UUID workerInstanceId) { }
-    public record PipeParameterValue(String value, boolean sensitive) { }
     public record ProcedurePipeExecution(UUID executionId, JsonNode result, UUID workerInstanceId,
             WorkerEndpoint endpoint, List<ArtifactLocation> outputs, List<ArtifactLocation> temporaryArtifacts,
             boolean sensitiveResult) {
@@ -366,7 +366,7 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
                 throw new IllegalArgumentException("Pipe result binding target '" + parameter.name() + "' must be a String");
 
             return new ResolvedProcedureParameter(parameter.name(), parameter.javaType(), input.value(), null,
-                    false, AlertParameterSource.PIPE_OUTPUT, null, null, null, null, false, null, null, null, null);
+                    false, AlertParameterSource.PIPE_OUTPUT, null, null, null, null, false, null, null, null, null, input.sensitive());
         }).toList();
         boolean sensitive = prepared.sensitiveResult() || inputs.values().stream().anyMatch(PipeParameterValue::sensitive);
         return new PreparedProcedureExecution(prepared.procedureId(), prepared.procedureVersion(), prepared.procedureName(),
@@ -510,7 +510,8 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
                 .setJavaType(parameter.javaType())
                 .setNullValue(artifact == null && parameter.source() != AlertParameterSource.PROCEDURE
                         && parameter.source() != AlertParameterSource.PIPE && parameter.nullValue())
-                .setSource(source(artifact == null ? parameter.source() : AlertParameterSource.PIPE_OUTPUT));
+                .setSource(source(artifact == null ? parameter.source() : AlertParameterSource.PIPE_OUTPUT))
+                .setSensitive(parameter.sensitive());
         if (parameter.source() == AlertParameterSource.PROCEDURE) {
             value.setProcedureId(parameter.procedureId())
                     .setInvocationToken(tokenService.issue(parameter.procedureId(), rootExecutionId,
@@ -567,8 +568,7 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
 
     private static ExecutionError sanitize(ExecutionError error, PreparedProcedureExecution prepared) {
         return SecretValueSanitizer.sanitize(error, prepared.parameters().stream()
-                .filter(parameter -> parameter.source() == AlertParameterSource.SECRET
-                        || parameter.source() == AlertParameterSource.PIPE_OUTPUT)
+                .filter(ResolvedProcedureParameter::sensitive)
                 .map(ResolvedProcedureParameter::value)
                 .toList());
     }

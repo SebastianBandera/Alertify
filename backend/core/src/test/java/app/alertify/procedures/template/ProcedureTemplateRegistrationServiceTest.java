@@ -24,6 +24,7 @@ import app.alertify.procedures.model.ProcedureTemplateOutputDefinition;
 import app.alertify.procedures.model.ProcedureTemplateParameterDefinition;
 import app.alertify.procedures.templates.CopyFileToNfsProcedureTemplate;
 import app.alertify.procedures.templates.ExecutePipeProcedureTemplate;
+import app.alertify.procedures.templates.HttpAccessTokenExchangeProcedureTemplate;
 import app.alertify.procedures.templates.MariaDbBackupProcedureTemplate;
 import app.alertify.procedures.templates.OracleDataPumpExportProcedureTemplate;
 import app.alertify.procedures.templates.PostgresBackupProcedureTemplate;
@@ -49,10 +50,10 @@ class ProcedureTemplateRegistrationServiceTest {
                 templateRepository, parameterRepository, outputRepository, new DefaultResourceLoader()
         );
 
-        assertThat(service.scanAndRegister()).isEqualTo(11);
+        assertThat(service.scanAndRegister()).isEqualTo(12);
 
         ArgumentCaptor<ProcedureTemplateDefinition> template = ArgumentCaptor.captor();
-        verify(templateRepository, org.mockito.Mockito.times(11)).save(template.capture());
+        verify(templateRepository, org.mockito.Mockito.times(12)).save(template.capture());
         ProcedureTemplateDefinition totp = template.getAllValues().stream()
                 .filter(value -> value.getTemplateKey().equals(TotpProcedureTemplate.class.getName()))
                 .findFirst().orElseThrow();
@@ -65,6 +66,7 @@ class ProcedureTemplateRegistrationServiceTest {
                         WritableParameterCopyProcedureTemplate.class.getName(),
                         SimulatedLongRunningProcedureTemplate.class.getName(),
                         SimulatedLongRunningPlaywrightProcedureTemplate.class.getName(),
+                        HttpAccessTokenExchangeProcedureTemplate.class.getName(),
                         ExecutePipeProcedureTemplate.class.getName(),
                         PostgresBackupProcedureTemplate.class.getName(),
                         MariaDbBackupProcedureTemplate.class.getName(),
@@ -73,13 +75,22 @@ class ProcedureTemplateRegistrationServiceTest {
                         CopyFileToNfsProcedureTemplate.class.getName());
 
         ArgumentCaptor<ProcedureTemplateParameterDefinition> parameters = ArgumentCaptor.captor();
-        verify(parameterRepository, org.mockito.Mockito.times(50)).save(parameters.capture());
+        verify(parameterRepository, org.mockito.Mockito.times(60)).save(parameters.capture());
         List<ProcedureTemplateParameterDefinition> totpParameters = parameters.getAllValues().stream()
                 .filter(value -> value.getTemplate() == totp).toList();
         assertThat(totpParameters.getFirst().getParameterKey()).isEqualTo("secret");
         assertThat(totpParameters.getFirst().getAllowedSources())
                 .containsExactly(AlertParameterSource.SECRET);
         assertThat(totpParameters.get(1).getOptions()).containsExactly("SHA1", "SHA256", "SHA512");
+
+        ProcedureTemplateDefinition tokenExchange = template.getAllValues().stream()
+                .filter(value -> value.getTemplateKey().equals(HttpAccessTokenExchangeProcedureTemplate.class.getName()))
+                .findFirst().orElseThrow();
+        assertThat(tokenExchange.isSensitiveResult()).isTrue();
+        assertThat(parameters.getAllValues().stream().filter(value -> value.getTemplate() == tokenExchange))
+                .extracting(ProcedureTemplateParameterDefinition::getParameterKey)
+                .containsExactly("credentials", "tokenUrl", "authenticationType", "basicMethod", "scope",
+                        "clientAuthenticationType", "clientId", "clientCredentials", "tokenJsonPointer", "timeoutSeconds");
 
         ProcedureTemplateDefinition postgres = template.getAllValues().stream()
                 .filter(value -> value.getTemplateKey().equals(PostgresBackupProcedureTemplate.class.getName()))

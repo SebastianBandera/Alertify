@@ -28,6 +28,7 @@ import app.alertify.grpc.AlertWorkerClient;
 import app.alertify.grpc.WorkerGrpcProperties;
 import app.alertify.grpc.discovery.WorkerStatusService;
 import app.alertify.logging.ApplicationEventLogger;
+import app.alertify.pipes.execution.PipeParameterValue;
 import app.alertify.procedures.MissingArtifactInputException;
 import app.alertify.procedures.artifact.ProcedureArtifactInput;
 import app.alertify.system.SystemStatusEventPublisher;
@@ -138,7 +139,7 @@ class ProcedureExecutionOrchestratorConcurrencyTest {
                 "template.Consumer", WorkerCapability.STANDARD, false, "checksum", "source", List.of(parameter));
 
         PreparedProcedureExecution resolved = ProcedureExecutionOrchestrator.withPipeInputs(prepared,
-                Map.of("pin", new ProcedureExecutionOrchestrator.PipeParameterValue("042731", true)));
+                Map.of("pin", new PipeParameterValue("042731", true)));
 
         assertThat(resolved.sensitiveResult()).isTrue();
         assertThat(resolved.parameters()).singleElement().satisfies(value -> {

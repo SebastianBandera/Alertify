@@ -32,6 +32,7 @@ export interface PipeBinding {
   readonly sourceStepKey: string;
   readonly sourceOutputKey: string | null;
   readonly sourceResultPointer: string | null;
+  readonly valueExpression: string | null;
 }
 
 export interface PipeStep {
@@ -74,6 +75,7 @@ export interface PipeOption {
 
 export interface PipeOptions {
   readonly resources: readonly PipeOption[];
+  readonly expressionUtilityFunctions: readonly string[];
 }
 
 export interface PipeStepWriteRequest {

@@ -55,7 +55,7 @@ class PipeCsvCodecTest {
         PipeStep consumer = PipeStep.procedure(pipe, "consumer", 1, consumerProcedure, 5_000, List.of("SUCCESS"));
         var parameter = mock(ProcedureTemplateParameterDefinition.class);
         when(parameter.getParameterKey()).thenReturn("pin");
-        consumer.addBinding(new PipeStepBinding(consumer, parameter, producer, "/code"));
+        consumer.addBinding(new PipeStepBinding(consumer, parameter, producer, "/code", "Bearer {{pipe.VALUE}}"));
         pipe.replaceSteps(List.of(producer, consumer));
 
         var row = codec.read(codec.write(List.of(pipe))).getFirst();
@@ -64,5 +64,6 @@ class PipeCsvCodecTest {
         assertThat(binding.sourceStepKey()).isEqualTo("producer");
         assertThat(binding.sourceOutputKey()).isNull();
         assertThat(binding.sourceResultPointer()).isEqualTo("/code");
+        assertThat(binding.valueExpression()).isEqualTo("Bearer {{pipe.VALUE}}");
     }
 }

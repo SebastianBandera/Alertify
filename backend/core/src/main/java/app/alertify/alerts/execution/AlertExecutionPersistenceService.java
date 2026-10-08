@@ -19,7 +19,6 @@ import app.alertify.alerts.model.Alert;
 import app.alertify.alerts.model.AlertExecution;
 import app.alertify.alerts.model.AlertExecutionWorker;
 import app.alertify.alerts.model.AlertState;
-import app.alertify.alerts.template.annotation.AlertParameterSource;
 import app.alertify.grpc.discovery.WorkerEndpoint;
 import app.alertify.configuration.service.WritableConfigurationService;
 import app.alertify.execution.ExecutionTimestamps;
@@ -247,7 +246,7 @@ public class AlertExecutionPersistenceService {
             return List.of();
 
         List<String> values = new ArrayList<>(prepared.parameters().stream()
-                .filter(parameter -> parameter.source() == AlertParameterSource.SECRET)
+                .filter(ResolvedAlertParameter::sensitive)
                 .map(ResolvedAlertParameter::value)
                 .filter(value -> value != null)
                 .toList());

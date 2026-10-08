@@ -83,6 +83,11 @@ class AlertExecutionClosureJpaIntegrationTest {
                     VALUES (-1, ?, 3, 'WARN', current_timestamp, current_timestamp, current_timestamp)
                 """, HISTORICAL_EXECUTION);
         jdbc.execute(Files.readString(migrations.resolve("3.alert-execution-origin.sql")));
+        try (var files = Files.list(migrations)) {
+            for (Path file : files.filter(path -> path.getFileName().toString().matches("[4-9][0-9]*\\..*\\.sql"))
+                    .sorted(java.util.Comparator.comparingInt(path -> Integer.parseInt(path.getFileName().toString().split("\\.")[0]))).toList())
+                jdbc.execute(Files.readString(file));
+        }
         jdbc.update("""
                 INSERT INTO audit.alert_execution_closure_audit
                     (id, execution_id, alert_id, closed, actor_subject, actor_name, note, changed_at)
@@ -125,6 +130,18 @@ class AlertExecutionClosureJpaIntegrationTest {
         assertEquals(AT, entry.getChangedAt());
         assertThrows(DataAccessException.class, () -> jdbc.update("UPDATE audit.alert_execution_closure_audit SET note = 'changed' WHERE id = -1"));
         assertThrows(DataAccessException.class, () -> jdbc.update("DELETE FROM audit.alert_execution_closure_audit WHERE id = -1"));
+    }
+
+    @Test
+    void pipeAlertBindingsAndExpressionsHaveFinalConstraintsAndAuditColumns() {
+        assertEquals(2, jdbc.queryForObject("SELECT count(*) FROM information_schema.columns WHERE table_schema = 'audit' AND table_name = 'pipe_step_bindings_aud' AND column_name IN ('target_alert_parameter_id', 'value_expression')", Integer.class));
+        assertEquals("YES", jdbc.queryForObject("SELECT is_nullable FROM information_schema.columns WHERE table_schema = 'core' AND table_name = 'pipe_step_bindings' AND column_name = 'target_parameter_id'", String.class));
+        assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM information_schema.columns WHERE table_schema = 'core' AND table_name = 'pipe_step_bindings' AND column_name = 'target_procedure_parameter_id'", Integer.class));
+        assertNotNull(jdbc.queryForObject("SELECT to_regclass('core.uq_pipe_step_bindings_target_alert_parameter')::text", String.class));
+        assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM pg_constraint WHERE conrelid = 'core.pipe_step_bindings'::regclass AND conname = 'ck_pipe_step_bindings_alert_source'", Integer.class));
+        var failure = org.junit.jupiter.api.Assertions.assertThrows(org.springframework.dao.DataIntegrityViolationException.class,
+                () -> jdbc.execute("INSERT INTO core.pipe_step_bindings(target_step_id, source_step_id, source_result_pointer) VALUES (-99, -98, '/accessToken')"));
+        assertTrue(failure.getMessage().contains("ck_pipe_step_bindings_target"));
     }
 
     @Test
