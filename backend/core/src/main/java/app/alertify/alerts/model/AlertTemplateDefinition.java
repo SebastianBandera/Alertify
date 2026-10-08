@@ -74,6 +74,9 @@ public class AlertTemplateDefinition {
     @Column(name = "required_capability", nullable = false, length = 32)
     private WorkerCapability requiredCapability;
 
+    @Column(name = "persistent_issues_default", nullable = false)
+    private boolean persistentIssuesDefault;
+
     @CreationTimestamp
     @NotAudited
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -88,12 +91,16 @@ public class AlertTemplateDefinition {
     }
 
     public AlertTemplateDefinition(String templateKey, String nameKey, String descriptionKey, String sourcePath, WorkerCapability requiredCapability) {
-        this(templateKey, nameKey, descriptionKey, sourcePath, requiredCapability, List.of());
+        this(templateKey, nameKey, descriptionKey, sourcePath, requiredCapability, false, List.of());
     }
 
     public AlertTemplateDefinition(String templateKey, String nameKey, String descriptionKey, String sourcePath, WorkerCapability requiredCapability, List<AlertTemplateTagDefinition> tags) {
+        this(templateKey, nameKey, descriptionKey, sourcePath, requiredCapability, false, tags);
+    }
+
+    public AlertTemplateDefinition(String templateKey, String nameKey, String descriptionKey, String sourcePath, WorkerCapability requiredCapability, boolean persistentIssuesDefault, List<AlertTemplateTagDefinition> tags) {
         this.templateKey = Objects.requireNonNull(templateKey, "templateKey must not be null");
-        synchronize(nameKey, descriptionKey, sourcePath, requiredCapability, tags);
+        synchronize(nameKey, descriptionKey, sourcePath, requiredCapability, persistentIssuesDefault, tags);
     }
 
     public static AlertTemplateDefinition from(Class<?> templateClass) {
@@ -101,7 +108,8 @@ public class AlertTemplateDefinition {
         AlertTemplate metadata = templateClass.getAnnotation(AlertTemplate.class);
         return new AlertTemplateDefinition(
                 templateKey, metadata.nameKey(), metadata.descriptionKey(), metadata.sourcePath(),
-                metadata.capability(), Arrays.stream(metadata.tags()).map(AlertTemplateTagDefinition::from).toList()
+                metadata.capability(), metadata.persistentIssuesDefault(),
+                Arrays.stream(metadata.tags()).map(AlertTemplateTagDefinition::from).toList()
         );
     }
 
@@ -133,6 +141,10 @@ public class AlertTemplateDefinition {
         return requiredCapability;
     }
 
+    public boolean isPersistentIssuesDefault() {
+        return persistentIssuesDefault;
+    }
+
     public List<AlertTemplateTagDefinition> getTags() {
         return tags;
     }
@@ -146,14 +158,19 @@ public class AlertTemplateDefinition {
     }
 
     public void synchronize(String nameKey, String descriptionKey, String sourcePath, WorkerCapability requiredCapability) {
-        synchronize(nameKey, descriptionKey, sourcePath, requiredCapability, List.of());
+        synchronize(nameKey, descriptionKey, sourcePath, requiredCapability, false, List.of());
     }
 
     public void synchronize(String nameKey, String descriptionKey, String sourcePath, WorkerCapability requiredCapability, List<AlertTemplateTagDefinition> tags) {
+        synchronize(nameKey, descriptionKey, sourcePath, requiredCapability, false, tags);
+    }
+
+    public void synchronize(String nameKey, String descriptionKey, String sourcePath, WorkerCapability requiredCapability, boolean persistentIssuesDefault, List<AlertTemplateTagDefinition> tags) {
         this.nameKey = Objects.requireNonNull(nameKey, "nameKey must not be null");
         this.descriptionKey = Objects.requireNonNull(descriptionKey, "descriptionKey must not be null");
         this.sourcePath = Objects.requireNonNull(sourcePath, "sourcePath must not be null");
         this.requiredCapability = Objects.requireNonNull(requiredCapability, "requiredCapability must not be null");
+        this.persistentIssuesDefault = persistentIssuesDefault;
         this.tags = List.copyOf(Objects.requireNonNull(tags, "tags must not be null"));
     }
 }

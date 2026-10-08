@@ -288,6 +288,10 @@ export const ALERT_MESSAGE_FORMATTERS: AlertMessageFormatters = {
 
   [`${TEMPLATES}devtools.SimulatedResultAlertTemplate`]: (context) => text(context.message['message']),
 
+  [`${TEMPLATES}ScheduledReminderAlertTemplate`]: (context) => context.status === 'WARN'
+    ? text(context.message['message'])
+    : context.translate('alertMessage.scheduledReminder.clear'),
+
   [`${TEMPLATES}devtools.SimulatedLongRunningAlertTemplate`]: (context) =>
     context.translate('alertMessage.simulated.duration', { duration: context.formatDuration(context.message['sleepMilliseconds']) }),
 

@@ -20,7 +20,7 @@ public record AlertCreateRequest(
     boolean allowConcurrentExecutions,
     @NotNull @Size(max = 100) List<@Valid AlertParameterValueRequest> parameters,
     @NotNull @Size(max = 100) Set<@Positive Long> tagIds,
-    /** Keeps past WARN/ERROR results on the dashboard until each user marks them as seen; off when omitted. */
+    /** Keeps past WARN/ERROR results on the dashboard until each user marks them as seen; uses the template default when omitted. */
     Boolean persistentIssues,
     Boolean smartExecutionEnabled,
     @Positive Integer smartExecutionIntervalHours,
