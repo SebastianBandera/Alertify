@@ -93,6 +93,8 @@ class ApplicationEventLoggerTest {
             ArgumentCaptor<ApplicationLogCommand> command = ArgumentCaptor.forClass(ApplicationLogCommand.class);
             verify(writer).persist(command.capture());
             org.assertj.core.api.Assertions.assertThat(command.getValue().actor()).isEqualTo(new LogActor("subject-123", "alice"));
+            org.assertj.core.api.Assertions.assertThat(command.getValue().aiProvenance().assisted()).isFalse();
+            org.assertj.core.api.Assertions.assertThat(command.getValue().aiProvenance().conversationId()).isNull();
             org.assertj.core.api.Assertions.assertThat(command.getValue().requestId()).isEqualTo(request.requestId());
             org.assertj.core.api.Assertions.assertThat(command.getValue().path()).isEqualTo(request.path());
             org.assertj.core.api.Assertions.assertThat(messages.list).singleElement().satisfies(entry ->

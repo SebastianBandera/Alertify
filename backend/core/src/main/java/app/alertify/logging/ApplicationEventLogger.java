@@ -14,6 +14,7 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import app.alertify.ai.AiInvocationContextHolder;
+import app.alertify.ai.AiProvenance;
 
 /**
  * Primary entry point for structured application events. It enriches events
@@ -60,7 +61,7 @@ public class ApplicationEventLogger {
 
     private ApplicationLogCommand command(ApplicationLogLevel level, String event, ApplicationLogOutcome outcome, Map<String, ?> data, Authentication authentication, RequestLogContext context) {
         LogActor actor = authentication == null ? new LogActor("anonymous", "anonymous") : CurrentLogActor.resolve(authentication);
-        return new ApplicationLogCommand(Instant.now(), level, source, event, outcome, actor, context.requestId(), context.path(), Map.copyOf(data));
+        return new ApplicationLogCommand(Instant.now(), level, source, event, outcome, actor, AiProvenance.NONE, context.requestId(), context.path(), Map.copyOf(data));
     }
 
     public void failure(String event, Map<String, ?> data) {
