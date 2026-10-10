@@ -4,11 +4,11 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.UUID;
 
-import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Component;
 import org.springframework.validation.annotation.Validated;
 
+import app.alertify.ai.AlertifyTool;
 import app.alertify.ai.AiToolExecutor;
 import app.alertify.ai.AiToolSupport;
 import app.alertify.ai.api.AiFilter;
@@ -60,75 +60,75 @@ public class ProcedureAiTools {
         this.support = support;
     }
 
-    @Tool(name = "alertify_procedure_search", description = "Search procedure definitions with bounded pagination")
+    @AlertifyTool(name = "alertify_procedure_search", description = "Search procedure definitions with bounded pagination", readOnly = true)
     public AiPage<ProcedureResponse> search(String name, Long templateId, List<Long> tagIds, boolean requireAllTags, @Valid AiPageRequest page) {
         return tools.execute("alertify_procedure_search", () -> AiPage.from(procedures.search(name, templateId,
                 tagIds == null ? java.util.Set.of() : new LinkedHashSet<>(tagIds), requireAllTags, page.pageable())));
     }
 
-    @Tool(name = "alertify_procedure_templates", description = "List procedure templates, parameters, outputs and sensitive-result flags")
+    @AlertifyTool(name = "alertify_procedure_templates", description = "List procedure templates, parameters, outputs and sensitive-result flags", readOnly = true)
     public List<ProcedureTemplateResponse> templates() {
         return tools.execute("alertify_procedure_templates", catalog::templates);
     }
 
-    @Tool(name = "alertify_procedure_binding_options", description = "List resources that procedure parameters may reference")
+    @AlertifyTool(name = "alertify_procedure_binding_options", description = "List resources that procedure parameters may reference", readOnly = true)
     public ProcedureBindingOptionsResponse bindingOptions() {
         return tools.execute("alertify_procedure_binding_options", catalog::bindingOptions);
     }
 
-    @Tool(name = "alertify_procedure_deletion_impact", description = "Preview references that affect deleting a procedure")
+    @AlertifyTool(name = "alertify_procedure_deletion_impact", description = "Preview references that affect deleting a procedure", readOnly = true)
     public ProcedureDeletionImpactResponse deletionImpact(long id) {
         return tools.execute("alertify_procedure_deletion_impact", () -> procedures.deletionImpact(id));
     }
 
-    @Tool(name = "alertify_procedure_create", description = "Create a procedure using administration validation")
+    @AlertifyTool(name = "alertify_procedure_create", description = "Create a procedure using administration validation", readOnly = false)
     public ProcedureResponse create(@Valid ProcedureCreateRequest request) {
         return tools.execute("alertify_procedure_create", () -> procedures.create(request));
     }
 
-    @Tool(name = "alertify_procedure_update", description = "Update a procedure using its current optimistic version")
+    @AlertifyTool(name = "alertify_procedure_update", description = "Update a procedure using its current optimistic version", readOnly = false)
     public ProcedureResponse update(long id, @Valid ProcedureUpdateRequest request) {
         return tools.execute("alertify_procedure_update", () -> procedures.update(id, request));
     }
 
-    @Tool(name = "alertify_procedure_run", description = "Trigger an immediate procedure execution")
+    @AlertifyTool(name = "alertify_procedure_run", description = "Trigger an immediate procedure execution", readOnly = false)
     public void run(long id) { tools.execute("alertify_procedure_run", () -> procedures.runNow(id)); }
 
-    @Tool(name = "alertify_procedure_delete", description = "Delete a procedure using its current optimistic version")
+    @AlertifyTool(name = "alertify_procedure_delete", description = "Delete a procedure using its current optimistic version", readOnly = false)
     public void delete(long id, long version) { tools.execute("alertify_procedure_delete", () -> procedures.delete(id, version)); }
 
-    @Tool(name = "alertify_procedure_export_csv", description = "Export procedures as a bounded UTF-8 CSV text file")
+    @AlertifyTool(name = "alertify_procedure_export_csv", description = "Export procedures as a bounded UTF-8 CSV text file", readOnly = true)
     public AiTextFile exportCsv() {
         return tools.execute("alertify_procedure_export_csv", () -> support.csv("alertify-procedures.csv", csv.exportCsv()));
     }
 
-    @Tool(name = "alertify_procedure_import_csv", description = "Import procedures from a bounded UTF-8 CSV text file")
+    @AlertifyTool(name = "alertify_procedure_import_csv", description = "Import procedures from a bounded UTF-8 CSV text file", readOnly = false)
     public ProcedureImportResult importCsv(@Valid AiTextFile file) {
         return tools.execute("alertify_procedure_import_csv", () -> csv.importCsv(support.csvUpload(file)));
     }
 
-    @Tool(name = "alertify_procedure_execution_search", description = "Search procedure execution history; sensitive results remain redacted")
+    @AlertifyTool(name = "alertify_procedure_execution_search", description = "Search procedure execution history; sensitive results remain redacted", readOnly = true)
     public AiPage<ProcedureExecutionResponse> executionSearch(Long procedureId, ProcedureExecutionStatus status, UUID executionId, @Valid AiPageRequest page) {
         return tools.execute("alertify_procedure_execution_search", () -> AiPage.from(
                 executions.search(procedureId, status, executionId, page.pageable())));
     }
 
-    @Tool(name = "alertify_procedure_tag_search", description = "Search tags scoped to procedures")
+    @AlertifyTool(name = "alertify_procedure_tag_search", description = "Search tags scoped to procedures", readOnly = true)
     public AiPage<TagResponse> tagSearch(List<AiFilter> filters, @Valid AiPageRequest page) {
         return tools.execute("alertify_procedure_tag_search", () -> AiPage.from(tags.search(support.filters(filters), page.pageable())));
     }
 
-    @Tool(name = "alertify_procedure_tag_create", description = "Create a tag scoped to procedures")
+    @AlertifyTool(name = "alertify_procedure_tag_create", description = "Create a tag scoped to procedures", readOnly = false)
     public TagResponse tagCreate(@Valid TagCreateRequest request) {
         return tools.execute("alertify_procedure_tag_create", () -> tags.create(request));
     }
 
-    @Tool(name = "alertify_procedure_tag_update", description = "Update a procedure tag using its current version")
+    @AlertifyTool(name = "alertify_procedure_tag_update", description = "Update a procedure tag using its current version", readOnly = false)
     public TagResponse tagUpdate(long id, @Valid TagUpdateRequest request) {
         return tools.execute("alertify_procedure_tag_update", () -> tags.update(id, request));
     }
 
-    @Tool(name = "alertify_procedure_tag_delete", description = "Delete a procedure tag using its current version")
+    @AlertifyTool(name = "alertify_procedure_tag_delete", description = "Delete a procedure tag using its current version", readOnly = false)
     public void tagDelete(long id, long version) {
         tools.execute("alertify_procedure_tag_delete", () -> tags.delete(id, version));
     }

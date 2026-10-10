@@ -3,12 +3,12 @@ package app.alertify.ai.tools;
 import java.time.Instant;
 import java.util.List;
 
-import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Component;
 
 import app.alertify.ai.AiInvocationContextHolder;
 import app.alertify.ai.AiToolExecutor;
+import app.alertify.ai.AlertifyTool;
 import app.alertify.alerts.api.AlertExecutionResponse;
 import app.alertify.alerts.service.AlertManagementService;
 import app.alertify.config.AuthorizationPolicies;
@@ -35,21 +35,21 @@ public class DashboardAiTools {
         this.tools = tools;
     }
 
-    @Tool(name = "alertify_dashboard_acknowledgements", description = "List persistent alert issues acknowledged by the current user")
+    @AlertifyTool(name = "alertify_dashboard_acknowledgements", description = "List persistent alert issues acknowledged by the current user", readOnly = true)
     @PreAuthorize(AuthorizationPolicies.ADMIN_OR_DASHBOARD)
     public List<AlertIssueAcknowledgementResponse> acknowledgements() {
         return tools.execute("alertify_dashboard_acknowledgements",
                 () -> acknowledgements.forUser(AiInvocationContextHolder.current().userSubject()));
     }
 
-    @Tool(name = "alertify_dashboard_acknowledge_alert", description = "Acknowledge one alert's persistent issues for the current user")
+    @AlertifyTool(name = "alertify_dashboard_acknowledge_alert", description = "Acknowledge one alert's persistent issues for the current user", readOnly = false)
     @PreAuthorize(AuthorizationPolicies.ADMIN_OR_DASHBOARD)
     public AlertIssueAcknowledgementResponse acknowledge(long alertId) {
         return tools.execute("alertify_dashboard_acknowledge_alert",
                 () -> acknowledgements.acknowledge(alertId, AiInvocationContextHolder.current().userSubject()));
     }
 
-    @Tool(name = "alertify_dashboard_alert_chart", description = "Read a bounded alert execution window suitable for chart analysis")
+    @AlertifyTool(name = "alertify_dashboard_alert_chart", description = "Read a bounded alert execution window suitable for chart analysis", readOnly = true)
     @PreAuthorize(AuthorizationPolicies.ADMIN_OR_DASHBOARD)
     public List<AlertExecutionResponse> chart(long alertId, Instant from, Instant to, int limit) {
         if (limit < 1 || limit > 50)
@@ -61,7 +61,7 @@ public class DashboardAiTools {
         });
     }
 
-    @Tool(name = "alertify_dashboard_alert_run", description = "Run one alert with the current dashboard user's normal rate limit")
+    @AlertifyTool(name = "alertify_dashboard_alert_run", description = "Run one alert with the current dashboard user's normal rate limit", readOnly = false)
     @PreAuthorize(AuthorizationPolicies.DASHBOARD_RUN)
     public void run(long alertId) {
         tools.execute("alertify_dashboard_alert_run", () -> {
