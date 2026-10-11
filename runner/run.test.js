@@ -332,6 +332,13 @@ test('buildPlan requires externally configured initial AI settings', () => {
   assert.throws(() => buildPlan(environment, SKIP_ALL_OPTIONS), /AI_DEFAULT_MODEL/);
 });
 
+test('buildPlan requires a positive Codex model concurrency limit', () => {
+  const environment = applyApplicationContext(templateEnvironment());
+  environment.set('AI_MAX_CONCURRENT_MODEL_REQUESTS', '0');
+
+  assert.throws(() => buildPlan(environment, SKIP_ALL_OPTIONS), /AI_MAX_CONCURRENT_MODEL_REQUESTS must be a positive integer/);
+});
+
 test('applyApplicationContext derives the public origin when the application is published at root', () => {
   const template = parseExistingEnvironment(
     fs.readFileSync(path.join(__dirname, '..', '.env.template'), 'utf8'),

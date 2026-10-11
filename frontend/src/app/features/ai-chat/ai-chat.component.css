@@ -32,6 +32,9 @@
 .ai-chat__message { box-sizing: border-box; min-width: 0; max-width: 88%; margin: 0 0 .75rem; padding: .65rem .8rem; border-radius: .75rem; background: #fff; box-shadow: 0 1px 3px rgb(15 23 42 / .1); overflow-wrap: anywhere; word-break: break-word; white-space: pre-wrap; }
 .ai-chat__message--user { margin-left: auto; background: #e9e8ff; }
 .ai-chat__message p { min-width: 0; max-width: 100%; margin: .2rem 0 0; }
+.ai-chat__turn-failure { box-sizing: border-box; min-width: 0; max-width: 88%; margin: 0 0 .75rem; padding: .65rem .8rem; border: 1px solid #fecaca; border-radius: .75rem; color: #7f1d1d; background: #fef2f2; box-shadow: 0 1px 3px rgb(127 29 29 / .08); overflow-wrap: anywhere; }
+.ai-chat__turn-failure p { margin: .25rem 0; white-space: pre-wrap; }
+.ai-chat__turn-failure code { color: inherit; }
 .ai-chat__approval { margin: .8rem 0; padding: .8rem; border: 1px solid #f59e0b; border-radius: .6rem; background: #fffbeb; }
 .ai-chat__approval code, .ai-chat__approval pre { display: block; margin: .4rem 0; max-height: 9rem; overflow: auto; white-space: pre-wrap; }
 .ai-chat__working { display: flex; gap: .55rem; align-items: center; width: fit-content; margin: .35rem 0 .75rem; padding: .55rem .75rem; border-radius: .75rem; color: #4338ca; background: #eef2ff; font-size: .85rem; font-weight: 600; }

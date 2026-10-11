@@ -750,6 +750,7 @@ function buildPlan(environment, options = {}) {
     required(environment, 'WORKER_CODEX_CONTAINER_MEMORY');
     required(environment, 'AI_WORKER_STATE_KEY');
     required(environment, 'AI_REFRESH_TOKEN_LIFETIME');
+    positiveIntegerValue(environment, 'AI_MAX_CONCURRENT_MODEL_REQUESTS');
     required(environment, 'AI_DEFAULT_MODEL');
     required(environment, 'AI_DEFAULT_REASONING_EFFORT');
     required(environment, 'AI_DEFAULT_REFRESH_POLICY');

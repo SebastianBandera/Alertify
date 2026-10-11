@@ -25,7 +25,7 @@ class EncryptedStateStoreTest {
         Path file = directory.resolve("state.enc");
         String key = Base64.getUrlEncoder().withoutPadding().encodeToString(new byte[32]);
         EncryptedStateStore store = new EncryptedStateStore(new CodexWorkerProperties("worker", 0, 1024,
-                Duration.ofSeconds(1), Duration.ofDays(30), "configured-model", "low", "", "low", "ON_USE", file, key, null));
+                Duration.ofSeconds(1), Duration.ofDays(30), 3, "configured-model", "low", "", "low", "ON_USE", file, key, null));
         OAuthSession session = new OAuthSession("BROWSER", "private-access-token", "private-refresh-token",
                 "private-id-token", "client", "subject", "", "user@example.test",
                 Instant.parse("2026-10-10T15:00:00Z"), Instant.parse("2026-11-09T15:00:00Z"),

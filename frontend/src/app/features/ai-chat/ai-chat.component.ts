@@ -6,7 +6,9 @@ import {
   AiApprovalPolicy,
   AiChatApiError,
   AiChatApiService,
+  AiChatMessage,
   AiChatMode,
+  AiChatTurn,
   AiConversationDetail,
   AiConversationSummary,
   AiToolInvocation,
@@ -15,6 +17,34 @@ import { AiModuleApiService } from '../../core/api/ai-module-api.service';
 import { AuthService } from '../../core/auth/auth.service';
 import { LocalizationService } from '../../core/i18n/localization.service';
 import { AdminEventChannelService } from '../../core/realtime/admin-event-channel.service';
+
+type AiChatTimelineItem =
+  | Readonly<{ kind: 'message'; key: string; message: AiChatMessage }>
+  | Readonly<{ kind: 'failure'; key: string; turn: AiChatTurn }>;
+
+export function buildAiChatTimeline(messages: readonly AiChatMessage[], turns: readonly AiChatTurn[]): readonly AiChatTimelineItem[] {
+  const failures = new Map(turns.filter((turn) => turn.status === 'FAILED').map((turn) => [turn.id, turn]));
+  const lastMessageIndexes = new Map<number, number>();
+  messages.forEach((message, index) => {
+    if (message.turnId !== null) lastMessageIndexes.set(message.turnId, index);
+  });
+
+  const timeline: AiChatTimelineItem[] = [];
+  messages.forEach((message, index) => {
+    timeline.push({ kind: 'message', key: `message-${message.id}`, message });
+    if (message.turnId === null || lastMessageIndexes.get(message.turnId) !== index) return;
+
+    const failure = failures.get(message.turnId);
+    if (!failure) return;
+
+    timeline.push({ kind: 'failure', key: `failure-${failure.id}`, turn: failure });
+    failures.delete(failure.id);
+  });
+  for (const turn of turns) {
+    if (failures.delete(turn.id)) timeline.push({ kind: 'failure', key: `failure-${turn.id}`, turn });
+  }
+  return timeline;
+}
 
 @Component({
   selector: 'app-ai-chat',
@@ -43,14 +73,21 @@ export class AiChatComponent implements OnInit {
   protected readonly detached = signal(false);
   protected readonly conversations = signal<readonly AiConversationSummary[]>([]);
   protected readonly selected = signal<AiConversationDetail | null>(null);
+  protected readonly desiredConversationId = signal<number | null>(null);
   protected readonly mode = signal<AiChatMode>('READ_ONLY');
   protected readonly approvalPolicy = signal<AiApprovalPolicy>('ASK');
   protected readonly message = signal('');
   protected readonly busy = signal(false);
   private readonly waitingForModel = signal(false);
   protected readonly error = signal('');
+  protected readonly timeline = computed(() => {
+    const conversation = this.selected();
+    return conversation ? buildAiChatTimeline(conversation.messages, conversation.turns) : [];
+  });
   protected readonly panelWidth = signal(this.restorePanelWidth());
   protected readonly chatAvailable = computed(() => this.chatUnavailableReason() === '');
+  protected readonly conversationReady = computed(() => this.desiredConversationId() === null
+    || this.selected()?.id === this.desiredConversationId());
   protected readonly modelWorking = computed(() => {
     if (this.waitingForModel()) return true;
 
@@ -122,6 +159,9 @@ export class AiChatComponent implements OnInit {
   private autoScrolling = false;
   private scrollAnimationTimeout: number | null = null;
   private scrollFrame: number | null = null;
+  private selectionIntentGeneration = 0;
+  private detailRequestGeneration = 0;
+  private conversationListRequestGeneration = 0;
 
   ngOnInit(): void {
     void this.refreshAvailability();
@@ -139,14 +179,13 @@ export class AiChatComponent implements OnInit {
     }
     this.events.on('AI_CHAT_UPDATED').pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event) => {
       if (event.status === 'DELETED') {
-        if (this.selected()?.id === event.conversationId) {
-          this.selected.set(null);
-          this.waitingForModel.set(false);
-        }
+        if (this.desiredConversationId() === event.conversationId) this.resetConversationSelection();
         void this.loadConversations();
         return;
       }
-      if (this.selected()?.id === event.conversationId) void this.select(event.conversationId, 'follow');
+      if (this.desiredConversationId() === event.conversationId)
+        void this.loadConversation(event.conversationId, 'follow');
+
       void this.loadConversations();
     });
     const listener = (event: MessageEvent<unknown>) => {
@@ -181,15 +220,24 @@ export class AiChatComponent implements OnInit {
   }
 
   protected async newConversation(): Promise<void> {
-    this.selected.set(null);
-    this.mode.set('READ_ONLY');
-    this.approvalPolicy.set('ASK');
+    this.resetConversationSelection();
     this.message.set('');
   }
 
   protected async select(id: number, scrollMode: 'force' | 'follow' | 'none' = 'force'): Promise<void> {
+    this.selectionIntentGeneration++;
+    this.desiredConversationId.set(id);
+    this.error.set('');
+    if (this.selected()?.id !== id) this.selected.set(null);
+    await this.loadConversation(id, scrollMode);
+  }
+
+  private async loadConversation(id: number, scrollMode: 'force' | 'follow' | 'none'): Promise<void> {
+    const requestGeneration = ++this.detailRequestGeneration;
     try {
       const conversation = await this.api.conversation(id);
+      if (!this.isCurrentDetailRequest(id, requestGeneration)) return;
+
       this.selected.set(conversation);
       this.mode.set(conversation.mode);
       this.approvalPolicy.set(conversation.approvalPolicy);
@@ -197,25 +245,33 @@ export class AiChatComponent implements OnInit {
         this.scrollToLatest(scrollMode === 'force');
 
     } catch (error) {
-      this.showError(error);
+      if (this.isCurrentDetailRequest(id, requestGeneration)) this.showError(error);
     }
   }
 
   protected async send(): Promise<void> {
     const text = this.message().trim();
-    if (!text || this.busy() || !this.chatAvailable() || !!this.activeTurnId()) return;
+    if (!text || this.busy() || !this.chatAvailable() || !this.conversationReady() || !!this.activeTurnId()) return;
     this.busy.set(true);
     this.waitingForModel.set(true);
     this.followLatest = true;
     this.scrollToLatest(true);
     this.error.set('');
+    const submittedConversationId = this.desiredConversationId();
+    const submittedSelectionGeneration = this.selectionIntentGeneration;
     try {
-      const response = await this.api.submit(this.selected()?.id ?? null, text, this.mode(), this.approvalPolicy(), this.localization.locale());
-      this.message.set('');
-      await this.select(response.conversationId);
+      const response = await this.api.submit(submittedConversationId, text, this.mode(), this.approvalPolicy(), this.localization.locale());
+      if (this.message().trim() === text) this.message.set('');
+      if (this.selectionIntentGeneration === submittedSelectionGeneration
+          && this.desiredConversationId() === submittedConversationId)
+        await this.select(response.conversationId);
+
       await this.loadConversations();
     } catch (error) {
-      this.showError(error);
+      if (this.selectionIntentGeneration === submittedSelectionGeneration
+          && this.desiredConversationId() === submittedConversationId)
+        this.showError(error);
+
     } finally {
       this.waitingForModel.set(false);
       this.busy.set(false);
@@ -375,8 +431,11 @@ export class AiChatComponent implements OnInit {
   }
 
   private async load(): Promise<void> {
+    const initialSelectionGeneration = this.selectionIntentGeneration;
     await this.loadConversations();
-    const selectedSummary = this.conversations().find((conversation) => conversation.id === this.selected()?.id);
+    if (this.selectionIntentGeneration !== initialSelectionGeneration) return;
+
+    const selectedSummary = this.conversations().find((conversation) => conversation.id === this.desiredConversationId());
     const currentDayConversation = selectedSummary && this.isCurrentLocalDay(selectedSummary.createdAt)
       ? selectedSummary
       : this.conversations().find((conversation) => this.isCurrentLocalDay(conversation.createdAt));
@@ -389,10 +448,12 @@ export class AiChatComponent implements OnInit {
   }
 
   private async loadConversations(): Promise<void> {
+    const requestGeneration = ++this.conversationListRequestGeneration;
     try {
-      this.conversations.set(await this.api.conversations());
+      const conversations = await this.api.conversations();
+      if (requestGeneration === this.conversationListRequestGeneration) this.conversations.set(conversations);
     } catch (error) {
-      this.showError(error);
+      if (requestGeneration === this.conversationListRequestGeneration) this.showError(error);
     }
   }
 
@@ -406,12 +467,19 @@ export class AiChatComponent implements OnInit {
       this.scrollToLatest(true);
     }
     this.error.set('');
+    const actionConversationId = this.desiredConversationId();
+    const actionSelectionGeneration = this.selectionIntentGeneration;
     try {
       await action();
-      const id = this.selected()?.id;
-      if (id) await this.select(id);
+      if (actionConversationId !== null && this.selectionIntentGeneration === actionSelectionGeneration
+          && this.desiredConversationId() === actionConversationId)
+        await this.loadConversation(actionConversationId, 'force');
+
     } catch (error) {
-      this.showError(error);
+      if (this.selectionIntentGeneration === actionSelectionGeneration
+          && this.desiredConversationId() === actionConversationId)
+        this.showError(error);
+
     } finally {
       this.waitingForModel.set(false);
       this.busy.set(false);
@@ -425,6 +493,20 @@ export class AiChatComponent implements OnInit {
     }
 
     this.error.set(error instanceof Error ? error.message : 'AI chat request failed.');
+  }
+
+  private resetConversationSelection(): void {
+    this.selectionIntentGeneration++;
+    this.detailRequestGeneration++;
+    this.desiredConversationId.set(null);
+    this.selected.set(null);
+    this.waitingForModel.set(false);
+    this.mode.set('READ_ONLY');
+    this.approvalPolicy.set('ASK');
+  }
+
+  private isCurrentDetailRequest(id: number, requestGeneration: number): boolean {
+    return requestGeneration === this.detailRequestGeneration && this.desiredConversationId() === id;
   }
 
   private async refreshAvailability(): Promise<void> {

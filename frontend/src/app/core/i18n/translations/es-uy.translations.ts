@@ -1828,6 +1828,9 @@ export const ES_UY_TRANSLATIONS = {
   'ai.chat.unavailable.worker': 'Chat IA no está disponible porque el worker dedicado de Codex no está activo.',
   'ai.chat.unavailable.disabled': 'Chat IA no está disponible porque el módulo de IA está deshabilitado.',
   'ai.chat.unavailable.session': 'Iniciá sesión en Codex desde el Módulo IA antes de usar Chat IA.',
+  'ai.chat.failure.title': 'No se pudo completar el turno',
+  'ai.chat.failure.message': 'El modelo no proporcionó más información sobre el fallo.',
+  'ai.chat.failure.code': 'Código de error',
   'ai.chat.error.turnActive': 'Esta conversación ya está procesando otro mensaje.',
   ...ES_UY_EXTENDED_TRANSLATIONS,
 } satisfies TranslationDictionary;

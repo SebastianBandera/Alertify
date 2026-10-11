@@ -12,6 +12,7 @@ public record CodexWorkerProperties(
     int maxInboundMessageBytes,
     Duration shutdownGracePeriod,
     Duration refreshTokenLifetime,
+    int maxConcurrentModelRequests,
     String defaultModel,
     String defaultReasoningEffort,
     String defaultReviewerModel,

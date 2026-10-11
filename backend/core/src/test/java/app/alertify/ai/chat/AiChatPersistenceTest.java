@@ -65,6 +65,25 @@ class AiChatPersistenceTest {
     }
 
     @Test
+    void sessionChangesPersistTheFailureAndInterruptActiveTools() {
+        AiConversationRepository conversations = mock(AiConversationRepository.class);
+        AiTurnRepository turns = mock(AiTurnRepository.class);
+        AiMessageRepository messages = mock(AiMessageRepository.class);
+        AiToolInvocationRepository invocations = mock(AiToolInvocationRepository.class);
+        AiToolInvocation running = mock(AiToolInvocation.class);
+        AiTurn turn = mock(AiTurn.class);
+        when(invocations.findAllByTurn_IdAndStatusIn(10L, List.of("PENDING_APPROVAL", "RUNNING")))
+                .thenReturn(List.of(running));
+        when(turns.findById(10L)).thenReturn(Optional.of(turn));
+        AiChatPersistence persistence = new AiChatPersistence(conversations, turns, messages, invocations);
+
+        persistence.failed(10L, "AI_SESSION_CHANGED", "The Codex session changed before the request completed");
+
+        verify(running).interrupt("AI_SESSION_CHANGED");
+        verify(turn).fail("AI_SESSION_CHANGED", "The Codex session changed before the request completed");
+    }
+
+    @Test
     void restorationHistoryIsScopedToTheTrustedConversationAndCurrentTurn() {
         AiConversationRepository conversations = mock(AiConversationRepository.class);
         AiTurnRepository turns = mock(AiTurnRepository.class);

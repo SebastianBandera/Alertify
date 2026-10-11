@@ -1827,6 +1827,9 @@ export const EN_TRANSLATIONS = {
   'ai.chat.unavailable.worker': 'AI Chat is unavailable because the dedicated Codex worker is not active.',
   'ai.chat.unavailable.disabled': 'AI Chat is unavailable because the AI module is disabled.',
   'ai.chat.unavailable.session': 'Sign in to Codex from the AI Module before using AI Chat.',
+  'ai.chat.failure.title': 'The turn could not be completed',
+  'ai.chat.failure.message': 'The model did not provide more information about the failure.',
+  'ai.chat.failure.code': 'Error code',
   'ai.chat.error.turnActive': 'This conversation is already processing another message.',
   ...EN_EXTENDED_TRANSLATIONS,
 } satisfies TranslationDictionary;

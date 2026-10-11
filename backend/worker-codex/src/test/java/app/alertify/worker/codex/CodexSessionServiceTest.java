@@ -5,13 +5,27 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.nio.file.Path;
 import java.net.http.HttpHeaders;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.net.URI;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Queue;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import javax.net.ssl.SSLSession;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 
 import tools.jackson.databind.JsonNode;
@@ -243,13 +257,103 @@ class CodexSessionServiceTest {
                 .hasMessageContaining("subject");
     }
 
+    @Test
+    @Timeout(10)
+    void limitsConcurrentModelRequestsAndReleasesTheNextQueuedRequest() throws Exception {
+        ControlledTransport transport = new ControlledTransport();
+        CodexSessionService service = authenticatedService(transport);
+        List<CodexSessionService.ProviderCall> calls = List.of(
+                service.codexRequest(Map.of(), metadata(1), 1L, 1L),
+                service.codexRequest(Map.of(), metadata(2), 2L, 2L),
+                service.codexRequest(Map.of(), metadata(3), 3L, 3L),
+                service.codexRequest(Map.of(), metadata(4), 4L, 4L));
+        List<CompletableFuture<CodexSessionService.CodexResponse>> results = calls.stream().map(CodexSessionServiceTest::execute).toList();
+
+        assertThat(transport.awaitStarted(3)).isTrue();
+        assertThat(transport.modelRequestCount()).isEqualTo(3);
+        transport.completeOne();
+        assertThat(transport.awaitStarted(1)).isTrue();
+        assertThat(transport.modelRequestCount()).isEqualTo(4);
+        transport.completeAll();
+
+        results.forEach(result -> assertThat(result.join().body().path("id").stringValue()).isEqualTo("complete"));
+    }
+
+    @Test
+    @Timeout(10)
+    void logoutCancelsTheActiveHttpRequestAndRejectsItsLateResult() throws Exception {
+        ControlledTransport transport = new ControlledTransport();
+        CodexSessionService service = authenticatedService(transport);
+        CodexSessionService.ProviderCall call = service.codexRequest(Map.of(), metadata(1), 1L, 1L);
+        CompletableFuture<CodexSessionService.CodexResponse> result = execute(call);
+        assertThat(transport.awaitStarted(1)).isTrue();
+
+        assertThat(service.logout()).isTrue();
+
+        assertThatThrownBy(result::join).hasRootCauseInstanceOf(CodexSessionService.SessionChangedException.class);
+        assertThat(service.sessionStatus()).isEqualTo("SIGNED_OUT");
+        assertThat(transport.cancelledModelRequests()).isEqualTo(1);
+    }
+
+    @Test
+    void logoutBeforeExecutionRejectsTheRequestWithoutSendingIt() {
+        ControlledTransport transport = new ControlledTransport();
+        CodexSessionService service = authenticatedService(transport);
+        CodexSessionService.ProviderCall call = service.codexRequest(Map.of(), metadata(1), 1L, 1L);
+
+        assertThat(service.logout()).isTrue();
+
+        assertThatThrownBy(call::execute).isInstanceOf(CodexSessionService.SessionChangedException.class);
+        assertThat(transport.modelRequestCount()).isZero();
+    }
+
+    @Test
+    @Timeout(10)
+    void settingsRemainWritableWhileAModelRequestIsPending() throws Exception {
+        ControlledTransport transport = new ControlledTransport();
+        CodexSessionService service = authenticatedService(transport);
+        CodexSessionService.ProviderCall call = service.codexRequest(Map.of(), metadata(1), 1L, 1L);
+        CompletableFuture<CodexSessionService.CodexResponse> result = execute(call);
+        assertThat(transport.awaitStarted(1)).isTrue();
+
+        AiSettingsState updated = new AiSettingsState(true, "CODEX", "other-model", "low", "instructions", "ON_USE", "", "low");
+        assertThat(service.updateSettings(updated)).isEqualTo(updated);
+
+        call.cancel(CodexSessionService.CancellationReason.USER);
+        assertThatThrownBy(result::join).hasCauseInstanceOf(CodexSessionService.ProviderRequestCancelledException.class);
+    }
+
     private CodexSessionService service() {
         CodexWorkerProperties properties = properties(directory.resolve("state.enc"));
         return new CodexSessionService(new EncryptedStateStore(properties), properties);
     }
 
+    private CodexSessionService authenticatedService(CodexHttpTransport transport) {
+        CodexWorkerProperties properties = properties(directory.resolve("authenticated-state.enc"));
+        EncryptedStateStore store = new EncryptedStateStore(properties);
+        store.save(new PersistentAiState(settings(), session("BROWSER"), Map.of(), "urn:uuid:test-host"));
+        return new CodexSessionService(store, properties, transport);
+    }
+
+    private static CodexSessionService.CodexRequestMetadata metadata(long turnId) {
+        return new CodexSessionService.CodexRequestMetadata("configured-model", false, false, "0.0.0", false, 272000,
+                "installation", "session", "thread", "window", Long.toString(turnId), 0);
+    }
+
+    private static CompletableFuture<CodexSessionService.CodexResponse> execute(CodexSessionService.ProviderCall call) {
+        CompletableFuture<CodexSessionService.CodexResponse> result = new CompletableFuture<>();
+        Thread.ofVirtual().start(() -> {
+            try {
+                result.complete(call.execute());
+            } catch (RuntimeException exception) {
+                result.completeExceptionally(exception);
+            }
+        });
+        return result;
+    }
+
     private static CodexWorkerProperties properties(Path stateFile) {
-        return new CodexWorkerProperties("worker", 0, 1024, Duration.ofSeconds(1), Duration.ofDays(30), "configured-model",
+        return new CodexWorkerProperties("worker", 0, 1024, Duration.ofSeconds(1), Duration.ofDays(30), 3, "configured-model",
                 "low", "", "low", "ON_USE", stateFile, Base64.getUrlEncoder().withoutPadding().encodeToString(new byte[32]), null);
     }
 
@@ -261,5 +365,67 @@ class CodexSessionServiceTest {
         return new OAuthSession(authMode, "access", "refresh", "id", "client", "subject",
                 "DEVICE".equals(authMode) ? "account" : "", "Admin",
                 Instant.now().plus(Duration.ofHours(1)), Instant.now().plus(Duration.ofDays(1)), null);
+    }
+
+    private static final class ControlledTransport implements CodexHttpTransport {
+        private static final String RESPONSE = """
+                data: {"type":"response.completed","response":{"id":"complete","output":[],"usage":{"total_tokens":0}}}
+
+                """;
+
+        private final AtomicInteger modelRequestCount = new AtomicInteger();
+        private final AtomicInteger cancelledModelRequests = new AtomicInteger();
+        private final Semaphore started = new Semaphore(0);
+        private final Queue<CompletableFuture<HttpResponse<String>>> pending = new ConcurrentLinkedQueue<>();
+
+        @Override
+        public CompletableFuture<HttpResponse<String>> sendAsync(HttpRequest request) {
+            if (!request.uri().getPath().endsWith("/responses"))
+                return CompletableFuture.completedFuture(new StubResponse(request, 200, "{}"));
+
+            modelRequestCount.incrementAndGet();
+            CompletableFuture<HttpResponse<String>> response = new CompletableFuture<>();
+            response.whenComplete((ignored, error) -> {
+                if (response.isCancelled()) cancelledModelRequests.incrementAndGet();
+            });
+            pending.add(response);
+            started.release();
+            return response;
+        }
+
+        boolean awaitStarted(int count) throws InterruptedException {
+            return started.tryAcquire(count, 5, TimeUnit.SECONDS);
+        }
+
+        int modelRequestCount() {
+            return modelRequestCount.get();
+        }
+
+        int cancelledModelRequests() {
+            return cancelledModelRequests.get();
+        }
+
+        void completeOne() {
+            pending.remove().complete(new StubResponse(null, 200, RESPONSE));
+        }
+
+        void completeAll() {
+            CompletableFuture<HttpResponse<String>> response;
+            while ((response = pending.poll()) != null)
+                response.complete(new StubResponse(null, 200, RESPONSE));
+        }
+    }
+
+    private record StubResponse(HttpRequest request, int statusCode, String body) implements HttpResponse<String> {
+        @Override
+        public Optional<HttpResponse<String>> previousResponse() { return Optional.empty(); }
+        @Override
+        public HttpHeaders headers() { return HttpHeaders.of(Map.of(), (name, value) -> true); }
+        @Override
+        public URI uri() { return request == null ? URI.create("https://example.test") : request.uri(); }
+        @Override
+        public HttpClient.Version version() { return HttpClient.Version.HTTP_2; }
+        @Override
+        public Optional<SSLSession> sslSession() { return Optional.empty(); }
     }
 }

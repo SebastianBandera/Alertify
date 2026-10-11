@@ -24,6 +24,7 @@ import app.alertify.worker.ai.grpc.ChatToolResult;
 import app.alertify.worker.ai.grpc.ChatWorkerMessage;
 import app.alertify.worker.ai.grpc.ReviewToolCallRequest;
 import app.alertify.worker.ai.grpc.ReviewToolCallResponse;
+import io.grpc.Context;
 import io.grpc.stub.StreamObserver;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -75,8 +76,19 @@ class CodexChatService {
             List<Object> input = new ArrayList<>();
             input.add(Map.of("role", "user", "content", prompt));
             CodexSessionService.CodexRequestMetadata metadata = sessions.requestMetadata(request.getModel(), null, null);
-            CodexSessionService.CodexResponse response = sessions.codexResponse(requestBody(request.getModel(), request.getReasoningEffort(),
-                    REVIEW_INSTRUCTIONS, input, List.of(), metadata.responsesLite(), metadata.namespacedTools()), metadata);
+            CodexSessionService.ProviderCall call = sessions.codexRequest(requestBody(request.getModel(), request.getReasoningEffort(),
+                    REVIEW_INSTRUCTIONS, input, List.of(), metadata.responsesLite(), metadata.namespacedTools()), metadata,
+                    request.getConversationId(), request.getTurnId());
+            Context context = Context.current();
+            Context.CancellationListener cancellationListener = ignored -> call.cancel(CodexSessionService.CancellationReason.USER);
+            context.addListener(cancellationListener, Runnable::run);
+            CodexSessionService.CodexResponse response;
+            try {
+                response = call.execute();
+            } finally {
+                context.removeListener(cancellationListener);
+            }
+            sessions.validateSession(metadata);
             String answer = outputText(response.body()).trim();
             boolean allowed = answer.toUpperCase(Locale.ROOT).startsWith("ALLOW");
             String reason = answer.replaceFirst("(?i)^(ALLOW|REJECT)\\s*[:.-]?\\s*", "").trim();
@@ -97,6 +109,8 @@ class CodexChatService {
         private volatile long startedAt;
         private volatile boolean cancelled;
         private volatile boolean started;
+        private volatile Thread runner;
+        private volatile CodexSessionService.ProviderCall activeCall;
 
         private ChatExchange(StreamObserver<ChatWorkerMessage> observer) {
             this.observer = observer;
@@ -121,7 +135,7 @@ class CodexChatService {
             phase = "PREPARING";
             startedAt = System.nanoTime();
             LOGGER.info("event=AI_CHAT_TURN outcome=STARTED conversationId={} turnId={} mode={} approvalPolicy={} model={} reasoningEffort={} historyMessages={} initialTools={}", start.getConversationId(), start.getTurnId(), start.getMode(), start.getApprovalPolicy(), start.getModel(), start.getReasoningEffort(), start.getHistoryCount(), start.getToolsCount());
-            Thread.ofVirtual().name("codex-chat-" + start.getTurnId()).start(() -> run(start));
+            runner = Thread.ofVirtual().name("codex-chat-" + start.getTurnId()).start(() -> run(start));
         }
 
         private void run(ChatStart start) {
@@ -138,7 +152,18 @@ class CodexChatService {
                     long requestStartedAt = System.nanoTime();
                     modelRequests++;
                     LOGGER.info("event=AI_MODEL_REQUEST outcome=STARTED conversationId={} turnId={} step={} model={} reasoningEffort={} inputItems={} availableTools={} transport={}", start.getConversationId(), start.getTurnId(), step + 1, start.getModel(), start.getReasoningEffort(), input.size(), tools.size(), metadata.privateCodex() ? "PRIVATE_CODEX" : "PUBLIC_RESPONSES");
-                    CodexSessionService.CodexResponse codexResponse = sessions.codexResponse(requestBody(start.getModel(), start.getReasoningEffort(), start.getInstructions(), input, tools, metadata.responsesLite(), metadata.namespacedTools()), metadata);
+                    CodexSessionService.ProviderCall providerCall = sessions.codexRequest(requestBody(start.getModel(), start.getReasoningEffort(), start.getInstructions(), input, tools, metadata.responsesLite(), metadata.namespacedTools()), metadata, start.getConversationId(), start.getTurnId());
+                    activeCall = providerCall;
+                    CodexSessionService.CodexResponse codexResponse;
+                    try {
+                        codexResponse = providerCall.execute();
+                    } finally {
+                        activeCall = null;
+                    }
+                    if (cancelled)
+                        break;
+
+                    sessions.validateSession(metadata);
                     observer.onNext(ChatWorkerMessage.newBuilder().setUsage(codexResponse.usage()).build());
                     JsonNode response = codexResponse.body();
                     JsonNode output = response.path("output");
@@ -200,8 +225,16 @@ class CodexChatService {
                 Thread.currentThread().interrupt();
                 if (!cancelled)
                     fail("AI_CHAT_INTERRUPTED", "The chat exchange was interrupted");
+            } catch (CodexSessionService.SessionChangedException exception) {
+                fail("AI_SESSION_CHANGED", exception.getMessage());
+            } catch (CodexSessionService.ProviderRequestCancelledException exception) {
+                if (!cancelled)
+                    fail("AI_PROVIDER_CANCELLED", exception.getMessage());
             } catch (RuntimeException exception) {
                 fail("AI_PROVIDER_FAILED", safeMessage(exception));
+            } finally {
+                runner = null;
+                activeCall = null;
             }
         }
 
@@ -221,6 +254,12 @@ class CodexChatService {
             cancelled = true;
             ChatStart current = start;
             LOGGER.info("event=AI_CHAT_TURN outcome=CANCEL_REQUESTED conversationId={} turnId={} phase={} durationMs={}", current == null ? 0 : current.getConversationId(), current == null ? 0 : current.getTurnId(), phase, startedAt == 0 ? 0 : elapsedMillis(startedAt));
+            CodexSessionService.ProviderCall currentCall = activeCall;
+            if (currentCall != null)
+                currentCall.cancel(CodexSessionService.CancellationReason.USER);
+            Thread currentRunner = runner;
+            if (currentRunner != null)
+                currentRunner.interrupt();
             results.offer(ChatToolResult.newBuilder().setCallId("").setFailed(true).setOutput("Cancelled").build());
         }
 

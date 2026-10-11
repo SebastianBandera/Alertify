@@ -22,17 +22,23 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtDecoders;
 import org.springframework.stereotype.Service;
-import org.springframework.scheduling.annotation.Scheduled;
 
 import app.alertify.worker.ai.grpc.ChatRateLimitWindow;
 import app.alertify.worker.ai.grpc.ChatTokenUsage;
@@ -70,27 +76,42 @@ class CodexSessionService {
 
     private final EncryptedStateStore store;
     private final Duration refreshTokenLifetime;
+    private final CodexHttpTransport http;
     private final JsonMapper json = JsonMapper.builder().findAndAddModules().build();
-    private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build();
-    private final ReentrantLock lock = new ReentrantLock();
+    private final ReentrantLock stateLock = new ReentrantLock();
+    private final ReentrantLock refreshLock = new ReentrantLock();
+    private final ReentrantLock modelCatalogLock = new ReentrantLock();
+    private final ReentrantLock usageSnapshotLock = new ReentrantLock();
+    private final Semaphore modelRequests;
+    private final Map<UUID, ProviderCall> activeProviderCalls = new ConcurrentHashMap<>();
     private volatile JwtDecoder jwtDecoder;
+    private long sessionRevision;
 
     private volatile PersistentAiState state;
     private volatile PendingBrowserLogin browserLogin;
     private volatile PendingDeviceLogin deviceLogin;
-    private Map<String, CodexModelProfile> modelProfiles = Map.of();
-    private Instant modelCatalogExpiresAt = Instant.EPOCH;
-    private String modelCatalogIdentity = "";
-    private JsonNode usageSnapshot;
-    private Instant usageSnapshotExpiresAt = Instant.EPOCH;
-    private String usageSnapshotIdentity = "";
+    private volatile Map<String, CodexModelProfile> modelProfiles = Map.of();
+    private volatile Instant modelCatalogExpiresAt = Instant.EPOCH;
+    private volatile String modelCatalogIdentity = "";
+    private volatile JsonNode usageSnapshot;
+    private volatile Instant usageSnapshotExpiresAt = Instant.EPOCH;
+    private volatile String usageSnapshotIdentity = "";
 
+    @Autowired
     CodexSessionService(EncryptedStateStore store, CodexWorkerProperties properties) {
+        this(store, properties, CodexHttpTransport.create());
+    }
+
+    CodexSessionService(EncryptedStateStore store, CodexWorkerProperties properties, CodexHttpTransport http) {
         this.store = store;
+        this.http = http;
         refreshTokenLifetime = properties.refreshTokenLifetime();
+        modelRequests = new Semaphore(properties.maxConcurrentModelRequests(), true);
         usageSnapshot = json.createObjectNode();
         if (refreshTokenLifetime == null || refreshTokenLifetime.isNegative() || refreshTokenLifetime.isZero())
             throw new IllegalStateException("The refresh token lifetime must be positive");
+        if (properties.maxConcurrentModelRequests() < 1)
+            throw new IllegalStateException("The maximum number of concurrent model requests must be positive");
 
         AiSettingsState initialSettings = new AiSettingsState(true, "CODEX", properties.defaultModel(), properties.defaultReasoningEffort(), "",
                 properties.defaultRefreshPolicy(), properties.defaultReviewerModel(), properties.defaultReviewerReasoningEffort());
@@ -107,13 +128,13 @@ class CodexSessionService {
 
     AiSettingsState updateSettings(AiSettingsState settings) {
         validateSettings(settings);
-        lock.lock();
+        stateLock.lock();
         try {
             state = new PersistentAiState(settings, state.session(), state.dynamicClients(), state.hostId());
             store.save(state);
             return settings;
         } finally {
-            lock.unlock();
+            stateLock.unlock();
         }
     }
 
@@ -126,7 +147,7 @@ class CodexSessionService {
 
         String subject = required(adminSubject, "admin_subject");
 
-        lock.lock();
+        stateLock.lock();
         try {
             requireNoSessionOrAttempt();
             DynamicClient client = state.dynamicClients().get(redirectUri);
@@ -138,7 +159,7 @@ class CodexSessionService {
                     Instant.now().plus(LOGIN_LIFETIME));
             return new BrowserLoginStart(browserLogin, callbackTicket);
         } finally {
-            lock.unlock();
+            stateLock.unlock();
         }
     }
 
@@ -160,9 +181,11 @@ class CodexSessionService {
     }
 
     void completeBrowserLogin(String code, String receivedState, String scope, String clientId, String callbackTicket) {
-        lock.lock();
+        PendingBrowserLogin pending;
+        String issuedClientId;
+        stateLock.lock();
         try {
-            PendingBrowserLogin pending = browserLogin;
+            pending = browserLogin;
             if (pending == null || Instant.now().isAfter(pending.expiresAt()))
                 throw new IllegalStateException("No active browser login attempt");
 
@@ -176,7 +199,6 @@ class CodexSessionService {
 
             if (!constantTimeEquals(pending.state(), receivedState))
                 throw new IllegalArgumentException("The OAuth callback did not match the pending login attempt");
-            String issuedClientId;
             if (DYNAMIC_CLIENT_ID.equals(pending.clientId())) {
                 issuedClientId = required(clientId, "client_id");
                 if (DYNAMIC_CLIENT_ID.equals(issuedClientId))
@@ -186,46 +208,81 @@ class CodexSessionService {
                     throw new IllegalArgumentException("The OAuth callback client ID did not match the selected registration");
                 issuedClientId = pending.clientId();
             }
-            Map<String, String> values = new LinkedHashMap<>();
-            values.put("grant_type", "authorization_code");
-            values.put("code", required(code, "code"));
-            values.put("redirect_uri", pending.redirectUri());
-            values.put("client_id", issuedClientId);
-            values.put("code_verifier", pending.verifier());
-            values.put("resource", API_RESOURCE);
-            JsonNode token = postForm(AUTH_ISSUER + "/api/accounts/oauth/token", values);
-            requireScopes(token.path("scope").asText(scope));
-            String authMode = LOGIN_MODE_EXTENSION.equals(pending.loginMode()) ? "BROWSER_EXTENSION" : "BROWSER";
-            OAuthSession session = tokenSession(authMode, token, issuedClientId, pending.nonce(), true);
-            if (!pending.expectedSubject().isBlank() && !pending.expectedSubject().equals(session.subject()))
-                throw new IllegalArgumentException("The authorized account did not match the selected registration");
+        } finally {
+            stateLock.unlock();
+        }
+
+        Map<String, String> values = new LinkedHashMap<>();
+        values.put("grant_type", "authorization_code");
+        values.put("code", required(code, "code"));
+        values.put("redirect_uri", pending.redirectUri());
+        values.put("client_id", issuedClientId);
+        values.put("code_verifier", pending.verifier());
+        values.put("resource", API_RESOURCE);
+        JsonNode token = postForm(AUTH_ISSUER + "/api/accounts/oauth/token", values);
+        requireScopes(token.path("scope").asText(scope));
+        String authMode = LOGIN_MODE_EXTENSION.equals(pending.loginMode()) ? "BROWSER_EXTENSION" : "BROWSER";
+        OAuthSession session = tokenSession(authMode, token, issuedClientId, pending.nonce(), true);
+        if (!pending.expectedSubject().isBlank() && !pending.expectedSubject().equals(session.subject()))
+            throw new IllegalArgumentException("The authorized account did not match the selected registration");
+
+        stateLock.lock();
+        try {
+            if (browserLogin != pending)
+                throw new SessionChangedException();
+
             Map<String, DynamicClient> clients = new HashMap<>(state.dynamicClients());
             clients.put(pending.redirectUri(), new DynamicClient(issuedClientId, session.subject(), session.accountId(), session.accountLabel()));
             state = new PersistentAiState(state.settings(), session, Map.copyOf(clients), state.hostId());
             store.save(state);
             browserLogin = null;
-            invalidateModelCatalog();
+            sessionRevision++;
+            invalidateCachesLocked();
         } finally {
-            lock.unlock();
+            stateLock.unlock();
         }
     }
 
     PendingDeviceLogin beginDeviceLogin() {
-        lock.lock();
+        PendingDeviceLogin reservation = new PendingDeviceLogin("", "", Instant.now().plus(LOGIN_LIFETIME), 5, "STARTING", "");
+        stateLock.lock();
         try {
             requireNoSessionOrAttempt();
+            deviceLogin = reservation;
+        } finally {
+            stateLock.unlock();
+        }
+
+        PendingDeviceLogin pending;
+        try {
             Map<String, Object> body = Map.of("client_id", DEVICE_CLIENT_ID);
             JsonNode response = postJson(AUTH_ISSUER + "/api/accounts/deviceauth/usercode", body);
             int interval = Math.max(1, response.path("interval").asInt(5));
             Instant expiresAt = Instant.now().plusSeconds(Math.min(LOGIN_LIFETIME.toSeconds(), response.path("expires_in").asLong(LOGIN_LIFETIME.toSeconds())));
-            PendingDeviceLogin pending = new PendingDeviceLogin(text(response, "device_auth_id"), text(response, "user_code"),
+            pending = new PendingDeviceLogin(text(response, "device_auth_id"), text(response, "user_code"),
                     expiresAt, interval, "PENDING", "");
-            deviceLogin = pending;
-            Thread.ofVirtual().name("codex-device-login").start(() -> pollDeviceLogin(pending));
-            return pending;
-        } finally {
-            lock.unlock();
+        } catch (RuntimeException exception) {
+            stateLock.lock();
+            try {
+                if (deviceLogin == reservation)
+                    deviceLogin = null;
+            } finally {
+                stateLock.unlock();
+            }
+            throw exception;
         }
+
+        stateLock.lock();
+        try {
+            if (deviceLogin != reservation)
+                throw new SessionChangedException();
+
+            deviceLogin = pending;
+        } finally {
+            stateLock.unlock();
+        }
+        Thread.ofVirtual().name("codex-device-login").start(() -> pollDeviceLogin(pending));
+        return pending;
     }
 
     PendingDeviceLogin deviceLogin() {
@@ -233,27 +290,20 @@ class CodexSessionService {
     }
 
     void cancelLogin() {
-        lock.lock();
+        stateLock.lock();
         try {
             browserLogin = null;
             deviceLogin = null;
         } finally {
-            lock.unlock();
+            stateLock.unlock();
         }
     }
 
     RefreshResult refresh() {
-        lock.lock();
-        try {
-            OAuthSession current = requireSession();
-            Instant previous = current.expiresAt();
-            OAuthSession refreshed = refreshSession(current);
-            state = new PersistentAiState(state.settings(), refreshed, state.dynamicClients(), state.hostId());
-            store.save(state);
-            return new RefreshResult(previous, refreshed.expiresAt(), refreshed.refreshExpiresAt(), refreshed.lastRefreshedAt());
-        } finally {
-            lock.unlock();
-        }
+        SessionSnapshot current = sessionSnapshot();
+        Instant previous = current.session().expiresAt();
+        SessionSnapshot refreshed = refreshSession(current, true);
+        return new RefreshResult(previous, refreshed.session().expiresAt(), refreshed.session().refreshExpiresAt(), refreshed.session().lastRefreshedAt());
     }
 
     @Scheduled(fixedDelay = 30_000, initialDelay = 30_000)
@@ -270,116 +320,102 @@ class CodexSessionService {
     }
 
     boolean logout() {
-        lock.lock();
+        OAuthSession current;
+        stateLock.lock();
         try {
-            OAuthSession current = state.session();
-            boolean revoked = true;
-            if (current != null && current.refreshToken() != null && !current.refreshToken().isBlank()) {
-                try {
-                    if ("DEVICE".equals(current.authMode()))
-                        postJson(AUTH_ISSUER + "/oauth/revoke", Map.of("token", current.refreshToken(),
-                                "token_type_hint", "refresh_token", "client_id", current.clientId()));
-                    else
-                        postForm(AUTH_ISSUER + "/oauth/revoke", Map.of("token", current.refreshToken(),
-                                "token_type_hint", "refresh_token", "client_id", current.clientId()));
-                } catch (RuntimeException ignored) {
-                    revoked = false;
-                }
-            }
+            current = state.session();
             state = new PersistentAiState(state.settings(), null, state.dynamicClients(), state.hostId());
             store.save(state);
             browserLogin = null;
             deviceLogin = null;
-            invalidateModelCatalog();
-            return revoked;
+            sessionRevision++;
+            invalidateCachesLocked();
         } finally {
-            lock.unlock();
+            stateLock.unlock();
+        }
+        activeProviderCalls.values().forEach(call -> call.cancel(CancellationReason.SESSION_CHANGED));
+
+        if (current == null || current.refreshToken() == null || current.refreshToken().isBlank()) return true;
+
+        try {
+            if ("DEVICE".equals(current.authMode()))
+                postJson(AUTH_ISSUER + "/oauth/revoke", Map.of("token", current.refreshToken(),
+                        "token_type_hint", "refresh_token", "client_id", current.clientId()));
+            else
+                postForm(AUTH_ISSUER + "/oauth/revoke", Map.of("token", current.refreshToken(),
+                        "token_type_hint", "refresh_token", "client_id", current.clientId()));
+            return true;
+        } catch (RuntimeException ignored) {
+            return false;
         }
     }
 
     void testConnection() {
-        lock.lock();
-        try {
-            OAuthSession session = usableSession();
-            String uri = usesPrivateCodex(session) ? PRIVATE_CODEX_MODELS_URI : PUBLIC_MODELS_URI;
-            HttpRequest.Builder request = authenticatedRequest(uri, session).timeout(Duration.ofSeconds(30)).GET();
-            if (usesPrivateCodex(session))
-                addPrivateCodexHeaders(request, session, "0.0.0");
+        SessionSnapshot snapshot = usableSessionSnapshot();
+        OAuthSession session = snapshot.session();
+        String uri = usesPrivateCodex(session) ? PRIVATE_CODEX_MODELS_URI : PUBLIC_MODELS_URI;
+        HttpRequest.Builder request = authenticatedRequest(uri, session).timeout(Duration.ofSeconds(30)).GET();
+        if (usesPrivateCodex(session))
+            addPrivateCodexHeaders(request, session, "0.0.0");
 
-            send(request.build());
-        } finally {
-            lock.unlock();
-        }
+        send(request.build());
+        ensureCurrent(snapshot);
     }
 
     CodexRequestMetadata requestMetadata(String model, Long conversationId, Long turnId) {
-        lock.lock();
-        try {
-            OAuthSession session = usableSession();
-            String identity = firstNonBlank(session.subject(), session.accountId(), session.clientId());
-            String catalogIdentity = (usesPrivateCodex(session) ? "PRIVATE:" : "PUBLIC:") + identity;
-            if (Instant.now().isAfter(modelCatalogExpiresAt) || !catalogIdentity.equals(modelCatalogIdentity))
-                refreshModelCatalog(session, catalogIdentity);
+        SessionSnapshot snapshot = usableSessionSnapshot();
+        OAuthSession session = snapshot.session();
+        String identity = firstNonBlank(session.subject(), session.accountId(), session.clientId());
+        String catalogIdentity = (usesPrivateCodex(session) ? "PRIVATE:" : "PUBLIC:") + identity;
+        CodexModelProfile profile = modelProfile(snapshot, model, catalogIdentity);
 
-            CodexModelProfile profile = modelProfiles.get(model);
-            if (profile == null)
-                throw new IllegalArgumentException("The configured model is not available in the Codex model catalog");
-
-            String sessionId = conversationId == null ? UUID.randomUUID().toString()
-                    : deterministicId(state.hostId() + ":conversation:" + conversationId);
-            String threadId = sessionId;
-            String windowId = deterministicId(sessionId + ":window");
-            String requestTurnId = turnId == null ? UUID.randomUUID().toString()
-                    : deterministicId(state.hostId() + ":turn:" + turnId);
-            String installationId = state.hostId().startsWith("urn:uuid:") ? state.hostId().substring("urn:uuid:".length()) : state.hostId();
-            return new CodexRequestMetadata(model, profile.responsesLite(), profile.namespacedTools(), profile.clientVersion(), profile.privateCodex(), profile.contextWindow(), installationId,
-                    sessionId, threadId, windowId, requestTurnId);
-        } finally {
-            lock.unlock();
-        }
+        String sessionId = conversationId == null ? UUID.randomUUID().toString()
+                : deterministicId(snapshot.hostId() + ":conversation:" + conversationId);
+        String threadId = sessionId;
+        String windowId = deterministicId(sessionId + ":window");
+        String requestTurnId = turnId == null ? UUID.randomUUID().toString()
+                : deterministicId(snapshot.hostId() + ":turn:" + turnId);
+        String installationId = snapshot.hostId().startsWith("urn:uuid:") ? snapshot.hostId().substring("urn:uuid:".length()) : snapshot.hostId();
+        return new CodexRequestMetadata(model, profile.responsesLite(), profile.namespacedTools(), profile.clientVersion(), profile.privateCodex(), profile.contextWindow(), installationId,
+                sessionId, threadId, windowId, requestTurnId, snapshot.revision());
     }
 
-    CodexResponse codexResponse(Map<String, ?> body, CodexRequestMetadata metadata) {
-        lock.lock();
-        try {
-            OAuthSession session = usableSession();
-            Map<String, Object> requestBody = new LinkedHashMap<>(body);
-            requestBody.put("prompt_cache_key", metadata.sessionId());
-            String uri = metadata.privateCodex() ? PRIVATE_CODEX_RESPONSES_URI : PUBLIC_RESPONSES_URI;
-            HttpRequest.Builder request = authenticatedRequest(uri, session).timeout(Duration.ofMinutes(5))
+    ProviderCall codexRequest(Map<String, ?> body, CodexRequestMetadata metadata, Long conversationId, Long turnId) {
+        SessionSnapshot snapshot = usableSessionSnapshot();
+        if (snapshot.revision() != metadata.sessionRevision())
+            throw new SessionChangedException();
+
+        OAuthSession session = snapshot.session();
+        Map<String, Object> requestBody = new LinkedHashMap<>(body);
+        requestBody.put("prompt_cache_key", metadata.sessionId());
+        String uri = metadata.privateCodex() ? PRIVATE_CODEX_RESPONSES_URI : PUBLIC_RESPONSES_URI;
+        HttpRequest.Builder request = authenticatedRequest(uri, session).timeout(Duration.ofMinutes(5))
+                .header("Content-Type", "application/json")
+                .header("Accept", "text/event-stream")
+                .POST(HttpRequest.BodyPublishers.ofByteArray(json.writeValueAsBytes(requestBody)));
+        if (metadata.privateCodex()) {
+            requestBody.put("client_metadata", Map.of(
+                    "x-codex-installation-id", metadata.installationId(),
+                    "session_id", metadata.sessionId(),
+                    "thread_id", metadata.threadId(),
+                    "turn_id", metadata.turnId(),
+                    "x-codex-window-id", metadata.windowId()));
+            request = authenticatedRequest(uri, session).timeout(Duration.ofMinutes(5))
                     .header("Content-Type", "application/json")
                     .header("Accept", "text/event-stream")
                     .POST(HttpRequest.BodyPublishers.ofByteArray(json.writeValueAsBytes(requestBody)));
-            if (metadata.privateCodex()) {
-                requestBody.put("client_metadata", Map.of(
-                        "x-codex-installation-id", metadata.installationId(),
-                        "session_id", metadata.sessionId(),
-                        "thread_id", metadata.threadId(),
-                        "turn_id", metadata.turnId(),
-                        "x-codex-window-id", metadata.windowId()));
-                request = authenticatedRequest(uri, session).timeout(Duration.ofMinutes(5))
-                        .header("Content-Type", "application/json")
-                        .header("Accept", "text/event-stream")
-                        .POST(HttpRequest.BodyPublishers.ofByteArray(json.writeValueAsBytes(requestBody)));
-                addPrivateCodexHeaders(request, session, metadata.clientVersion());
-                request.header("version", metadata.clientVersion())
-                        .header("session-id", metadata.sessionId())
-                        .header("thread-id", metadata.threadId())
-                        .header("x-client-request-id", metadata.threadId())
-                        .header("x-codex-window-id", metadata.windowId())
-                        .header("x-codex-routing-hint", "model=" + metadata.model());
-                if (metadata.responsesLite())
-                    request.header("x-openai-internal-codex-responses-lite", "true");
-            }
-
-            HttpResponse<String> httpResponse = send(request.build());
-            JsonNode response = parseCodexStream(json, httpResponse.body());
-            Instant observedAt = Instant.now();
-            JsonNode quota = metadata.privateCodex() ? codexUsageSnapshot(session, metadata.clientVersion(), observedAt) : null;
-            return new CodexResponse(response, usage(response, httpResponse.headers(), quota, metadata.contextWindow(), observedAt));
-        } finally {
-            lock.unlock();
+            addPrivateCodexHeaders(request, session, metadata.clientVersion());
+            request.header("version", metadata.clientVersion())
+                    .header("session-id", metadata.sessionId())
+                    .header("thread-id", metadata.threadId())
+                    .header("x-client-request-id", metadata.threadId())
+                    .header("x-codex-window-id", metadata.windowId())
+                    .header("x-codex-routing-hint", "model=" + metadata.model());
+            if (metadata.responsesLite())
+                request.header("x-openai-internal-codex-responses-lite", "true");
         }
+
+        return new ProviderCall(request.build(), snapshot, metadata, conversationId, turnId);
     }
 
     String sessionStatus() {
@@ -408,21 +444,67 @@ class CodexSessionService {
         return "";
     }
 
-    private OAuthSession usableSession() {
-        OAuthSession current = requireSession();
-        if (current.refreshExpiresAt() != null && !current.refreshExpiresAt().isAfter(Instant.now()))
-            throw new IllegalStateException("The refresh token expired; sign in again");
+    private SessionSnapshot usableSessionSnapshot() {
+        SessionSnapshot current = sessionSnapshot();
+        OAuthSession session = current.session();
+        if (!"NONE".equals(current.refreshPolicy()) && session.expiresAt() != null && session.expiresAt().isBefore(Instant.now().plusSeconds(60)))
+            return refreshSession(current, false);
 
-        String policy = state.settings().refreshPolicy();
-        if (!"NONE".equals(policy) && current.expiresAt() != null && current.expiresAt().isBefore(Instant.now().plusSeconds(60))) {
-            OAuthSession refreshed = refreshSession(current);
-            state = new PersistentAiState(state.settings(), refreshed, state.dynamicClients(), state.hostId());
-            store.save(state);
-            return refreshed;
-        }
-        if (current.expiresAt() != null && current.expiresAt().isBefore(Instant.now()))
+        if (session.expiresAt() != null && session.expiresAt().isBefore(Instant.now()))
             throw new IllegalStateException("The access token expired and automatic refresh is disabled");
         return current;
+    }
+
+    private SessionSnapshot sessionSnapshot() {
+        stateLock.lock();
+        try {
+            OAuthSession current = requireSession();
+            if (current.refreshExpiresAt() != null && !current.refreshExpiresAt().isAfter(Instant.now()))
+                throw new IllegalStateException("The refresh token expired; sign in again");
+
+            return new SessionSnapshot(current, sessionRevision, state.settings().refreshPolicy(), state.hostId());
+        } finally {
+            stateLock.unlock();
+        }
+    }
+
+    private SessionSnapshot refreshSession(SessionSnapshot expected, boolean force) {
+        refreshLock.lock();
+        try {
+            SessionSnapshot current = sessionSnapshot();
+            if (current.revision() != expected.revision())
+                throw new SessionChangedException();
+            if (!Objects.equals(current.session(), expected.session()))
+                return current;
+            if (!force && (current.session().expiresAt() == null
+                    || !current.session().expiresAt().isBefore(Instant.now().plusSeconds(60))))
+                return current;
+
+            OAuthSession refreshed = refreshSession(current.session());
+            stateLock.lock();
+            try {
+                if (sessionRevision != current.revision() || !Objects.equals(state.session(), current.session()))
+                    throw new SessionChangedException();
+
+                state = new PersistentAiState(state.settings(), refreshed, state.dynamicClients(), state.hostId());
+                store.save(state);
+                return new SessionSnapshot(refreshed, sessionRevision, state.settings().refreshPolicy(), state.hostId());
+            } finally {
+                stateLock.unlock();
+            }
+        } finally {
+            refreshLock.unlock();
+        }
+    }
+
+    private void ensureCurrent(SessionSnapshot snapshot) {
+        stateLock.lock();
+        try {
+            if (sessionRevision != snapshot.revision() || state.session() == null)
+                throw new SessionChangedException();
+        } finally {
+            stateLock.unlock();
+        }
     }
 
     private OAuthSession refreshSession(OAuthSession current) {
@@ -470,30 +552,41 @@ class CodexSessionService {
                 exchange.put("client_id", DEVICE_CLIENT_ID);
                 exchange.put("code_verifier", text(response, "code_verifier"));
                 JsonNode token = postForm(AUTH_ISSUER + "/oauth/token", exchange);
-                lock.lock();
+                OAuthSession session = tokenSession(LOGIN_MODE_DEVICE, token, DEVICE_CLIENT_ID, null, true);
+                stateLock.lock();
                 try {
                     if (deviceLogin != attempt)
                         return;
-                    OAuthSession session = tokenSession(LOGIN_MODE_DEVICE, token, DEVICE_CLIENT_ID, null, true);
                     state = new PersistentAiState(state.settings(), session, state.dynamicClients(), state.hostId());
                     store.save(state);
                     deviceLogin = null;
-                    invalidateModelCatalog();
+                    sessionRevision++;
+                    invalidateCachesLocked();
                     return;
                 } finally {
-                    lock.unlock();
+                    stateLock.unlock();
                 }
             } catch (InterruptedException exception) {
                 Thread.currentThread().interrupt();
                 return;
             } catch (RuntimeException exception) {
-                if (deviceLogin == attempt)
-                    deviceLogin = attempt.withStatus("ERROR", "Device authorization failed");
+                stateLock.lock();
+                try {
+                    if (deviceLogin == attempt)
+                        deviceLogin = attempt.withStatus("ERROR", "Device authorization failed");
+                } finally {
+                    stateLock.unlock();
+                }
                 return;
             }
         }
-        if (deviceLogin == attempt)
-            deviceLogin = attempt.withStatus("EXPIRED", "Device authorization expired");
+        stateLock.lock();
+        try {
+            if (deviceLogin == attempt)
+                deviceLogin = attempt.withStatus("EXPIRED", "Device authorization expired");
+        } finally {
+            stateLock.unlock();
+        }
     }
 
     private OAuthSession tokenSession(String mode, JsonNode token, String clientId, String expectedNonce, boolean requireIdentity) {
@@ -559,35 +652,36 @@ class CodexSessionService {
     }
 
     private JsonNode postJsonAllowPending(String url, Map<String, ?> values) {
-        try {
-            HttpRequest request = HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(30))
-                    .header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofByteArray(json.writeValueAsBytes(values))).build();
-            HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() == 403 || response.statusCode() == 404)
-                return null;
-            if (response.statusCode() < 200 || response.statusCode() >= 300)
-                throw new IllegalStateException("The authorization service returned HTTP " + response.statusCode());
-            return parse(response.body());
-        } catch (java.io.IOException exception) {
-            throw new IllegalStateException("The authorization request failed", exception);
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("The authorization request was interrupted", exception);
-        }
+        HttpRequest request = HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(30))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofByteArray(json.writeValueAsBytes(values))).build();
+        HttpResponse<String> response = await(http.sendAsync(request));
+        if (response.statusCode() == 403 || response.statusCode() == 404)
+            return null;
+        if (response.statusCode() < 200 || response.statusCode() >= 300)
+            throw new IllegalStateException("The authorization service returned HTTP " + response.statusCode());
+        return parse(response.body());
     }
 
     private HttpResponse<String> send(HttpRequest request) {
+        return successful(await(http.sendAsync(request)));
+    }
+
+    private HttpResponse<String> successful(HttpResponse<String> response) {
+        if (response.statusCode() < 200 || response.statusCode() >= 300)
+            throw remoteServiceError(response);
+        return response;
+    }
+
+    private static <T> T await(CompletableFuture<T> future) {
         try {
-            HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() < 200 || response.statusCode() >= 300)
-                throw remoteServiceError(response);
-            return response;
-        } catch (java.io.IOException exception) {
-            throw new IllegalStateException("The remote service request failed", exception);
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("The remote service request was interrupted", exception);
+            return future.join();
+        } catch (CompletionException exception) {
+            Throwable cause = exception.getCause();
+            if (cause instanceof RuntimeException runtime)
+                throw runtime;
+
+            throw new IllegalStateException("The remote service request failed", cause);
         }
     }
 
@@ -628,31 +722,64 @@ class CodexSessionService {
             request.header("ChatGPT-Account-Id", session.accountId());
     }
 
-    private JsonNode codexUsageSnapshot(OAuthSession session, String clientVersion, Instant observedAt) {
-        String identity = firstNonBlank(session.subject(), session.accountId(), session.clientId());
-        if (identity.equals(usageSnapshotIdentity) && observedAt.isBefore(usageSnapshotExpiresAt))
-            return usageSnapshot;
-
-        if (!identity.equals(usageSnapshotIdentity))
-            usageSnapshot = json.createObjectNode();
-        usageSnapshotIdentity = identity;
-        usageSnapshotExpiresAt = observedAt.plus(USAGE_SNAPSHOT_LIFETIME);
+    private JsonNode codexUsageSnapshot(SessionSnapshot snapshot, String clientVersion, Instant observedAt, ProviderCall providerCall) {
+        usageSnapshotLock.lock();
         try {
-            HttpRequest.Builder request = authenticatedRequest(PRIVATE_CODEX_USAGE_URI, session).timeout(Duration.ofSeconds(30))
-                    .header("Accept", "application/json").GET();
-            addPrivateCodexHeaders(request, session, clientVersion);
-            JsonNode refreshed = parse(send(request.build()).body());
-            if (refreshed.isObject())
+            OAuthSession session = snapshot.session();
+            String identity = firstNonBlank(session.subject(), session.accountId(), session.clientId());
+            if (identity.equals(usageSnapshotIdentity) && observedAt.isBefore(usageSnapshotExpiresAt))
+                return usageSnapshot;
+
+            JsonNode refreshed = json.createObjectNode();
+            try {
+                HttpRequest.Builder request = authenticatedRequest(PRIVATE_CODEX_USAGE_URI, session).timeout(Duration.ofSeconds(30))
+                        .header("Accept", "application/json").GET();
+                addPrivateCodexHeaders(request, session, clientVersion);
+                JsonNode response = parse(providerCall.sendCancelable(request.build()).body());
+                if (response.isObject())
+                    refreshed = response;
+            } catch (SessionChangedException | ProviderRequestCancelledException exception) {
+                throw exception;
+            } catch (RemoteServiceException exception) {
+                LOGGER.warn("Codex usage metadata is unavailable: {}", exception.getMessage());
+            } catch (RuntimeException exception) {
+                LOGGER.warn("Codex usage metadata is unavailable: {}", exception.getClass().getSimpleName());
+            }
+
+            stateLock.lock();
+            try {
+                if (sessionRevision != snapshot.revision() || state.session() == null)
+                    throw new SessionChangedException();
+
                 usageSnapshot = refreshed;
-        } catch (RemoteServiceException exception) {
-            LOGGER.warn("Codex usage metadata is unavailable: {}", exception.getMessage());
-        } catch (RuntimeException exception) {
-            LOGGER.warn("Codex usage metadata is unavailable: {}", exception.getClass().getSimpleName());
+                usageSnapshotIdentity = identity;
+                usageSnapshotExpiresAt = observedAt.plus(USAGE_SNAPSHOT_LIFETIME);
+                return usageSnapshot;
+            } finally {
+                stateLock.unlock();
+            }
+        } finally {
+            usageSnapshotLock.unlock();
         }
-        return usageSnapshot;
     }
 
-    private void refreshModelCatalog(OAuthSession session, String catalogIdentity) {
+    private CodexModelProfile modelProfile(SessionSnapshot snapshot, String model, String catalogIdentity) {
+        modelCatalogLock.lock();
+        try {
+            if (Instant.now().isAfter(modelCatalogExpiresAt) || !catalogIdentity.equals(modelCatalogIdentity))
+                refreshModelCatalog(snapshot, catalogIdentity);
+
+            CodexModelProfile profile = modelProfiles.get(model);
+            if (profile == null)
+                throw new IllegalArgumentException("The configured model is not available in the Codex model catalog");
+            return profile;
+        } finally {
+            modelCatalogLock.unlock();
+        }
+    }
+
+    private void refreshModelCatalog(SessionSnapshot snapshot, String catalogIdentity) {
+        OAuthSession session = snapshot.session();
         boolean privateCodex = usesPrivateCodex(session);
         String uri = privateCodex ? PRIVATE_CODEX_MODELS_URI : PUBLIC_MODELS_URI;
         HttpRequest.Builder request = authenticatedRequest(uri, session).timeout(Duration.ofSeconds(30)).GET();
@@ -663,15 +790,26 @@ class CodexSessionService {
         if (refreshed.isEmpty())
             throw new IllegalStateException("The Codex model catalog was empty");
 
-        modelProfiles = Map.copyOf(refreshed);
-        modelCatalogIdentity = catalogIdentity;
-        modelCatalogExpiresAt = Instant.now().plus(MODEL_CATALOG_LIFETIME);
+        stateLock.lock();
+        try {
+            if (sessionRevision != snapshot.revision() || state.session() == null)
+                throw new SessionChangedException();
+
+            modelProfiles = Map.copyOf(refreshed);
+            modelCatalogIdentity = catalogIdentity;
+            modelCatalogExpiresAt = Instant.now().plus(MODEL_CATALOG_LIFETIME);
+        } finally {
+            stateLock.unlock();
+        }
     }
 
-    private void invalidateModelCatalog() {
+    private void invalidateCachesLocked() {
         modelProfiles = Map.of();
         modelCatalogIdentity = "";
         modelCatalogExpiresAt = Instant.EPOCH;
+        usageSnapshot = json.createObjectNode();
+        usageSnapshotIdentity = "";
+        usageSnapshotExpiresAt = Instant.EPOCH;
     }
 
     static Map<String, CodexModelProfile> parseModelCatalog(JsonNode response, boolean privateCodex) {
@@ -930,17 +1068,156 @@ class CodexSessionService {
         return UUID.nameUUIDFromBytes(value.getBytes(StandardCharsets.UTF_8)).toString();
     }
 
+    void validateSession(CodexRequestMetadata metadata) {
+        stateLock.lock();
+        try {
+            if (sessionRevision != metadata.sessionRevision() || state.session() == null)
+                throw new SessionChangedException();
+        } finally {
+            stateLock.unlock();
+        }
+    }
+
+    final class ProviderCall {
+        private final UUID id = UUID.randomUUID();
+        private final HttpRequest request;
+        private final SessionSnapshot snapshot;
+        private final CodexRequestMetadata metadata;
+        private final Long conversationId;
+        private final Long turnId;
+        private volatile CompletableFuture<HttpResponse<String>> responseFuture;
+        private volatile Thread owner;
+        private volatile CancellationReason cancellationReason;
+
+        private ProviderCall(HttpRequest request, SessionSnapshot snapshot, CodexRequestMetadata metadata, Long conversationId, Long turnId) {
+            this.request = request;
+            this.snapshot = snapshot;
+            this.metadata = metadata;
+            this.conversationId = conversationId;
+            this.turnId = turnId;
+        }
+
+        CodexResponse execute() {
+            long queuedAt = System.nanoTime();
+            boolean acquired = false;
+            owner = Thread.currentThread();
+            activeProviderCalls.put(id, this);
+            LOGGER.info("event=AI_MODEL_HTTP outcome=QUEUED conversationId={} turnId={} activeRequests={} availablePermits={}", conversationId, turnId, activeProviderCalls.size(), modelRequests.availablePermits());
+            try {
+                throwIfCancelled();
+                ensureCurrent(snapshot);
+                modelRequests.acquire();
+                acquired = true;
+                throwIfCancelled();
+                ensureCurrent(snapshot);
+                LOGGER.info("event=AI_MODEL_HTTP outcome=STARTED conversationId={} turnId={} queueMs={}", conversationId, turnId, elapsedMillis(queuedAt));
+                HttpResponse<String> httpResponse = sendCancelable(request);
+                throwIfCancelled();
+                ensureCurrent(snapshot);
+                JsonNode response = parseCodexStream(json, httpResponse.body());
+                Instant observedAt = Instant.now();
+                JsonNode quota = metadata.privateCodex() ? codexUsageSnapshot(snapshot, metadata.clientVersion(), observedAt, this) : null;
+                throwIfCancelled();
+                ensureCurrent(snapshot);
+                LOGGER.info("event=AI_MODEL_HTTP outcome=COMPLETED conversationId={} turnId={} durationMs={}", conversationId, turnId, elapsedMillis(queuedAt));
+                return new CodexResponse(response, usage(response, httpResponse.headers(), quota, metadata.contextWindow(), observedAt));
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                throw cancelledException(exception);
+            } catch (CancellationException exception) {
+                throw cancelledException(exception);
+            } finally {
+                responseFuture = null;
+                owner = null;
+                activeProviderCalls.remove(id, this);
+                if (acquired)
+                    modelRequests.release();
+            }
+        }
+
+        synchronized void cancel(CancellationReason reason) {
+            if (cancellationReason != null)
+                return;
+
+            cancellationReason = reason;
+            CompletableFuture<HttpResponse<String>> currentFuture = responseFuture;
+            if (currentFuture != null)
+                currentFuture.cancel(true);
+            Thread currentOwner = owner;
+            if (currentOwner != null)
+                currentOwner.interrupt();
+            LOGGER.info("event=AI_MODEL_HTTP outcome=CANCEL_REQUESTED conversationId={} turnId={} reason={}", conversationId, turnId, reason);
+        }
+
+        private HttpResponse<String> sendCancelable(HttpRequest currentRequest) {
+            CompletableFuture<HttpResponse<String>> currentFuture;
+            synchronized (this) {
+                throwIfCancelled();
+                currentFuture = http.sendAsync(currentRequest);
+                responseFuture = currentFuture;
+            }
+            try {
+                return successful(await(currentFuture));
+            } finally {
+                synchronized (this) {
+                    if (responseFuture == currentFuture)
+                        responseFuture = null;
+                }
+            }
+        }
+
+        private void throwIfCancelled() {
+            if (cancellationReason != null)
+                throw cancelledException(null);
+        }
+
+        private RuntimeException cancelledException(Throwable cause) {
+            if (cancellationReason == CancellationReason.SESSION_CHANGED)
+                return new SessionChangedException();
+            return new ProviderRequestCancelledException(cause);
+        }
+    }
+
+    private static long elapsedMillis(long startedAt) {
+        return Math.max(0, (System.nanoTime() - startedAt) / 1_000_000);
+    }
+
     record CodexModelProfile(boolean responsesLite, boolean namespacedTools, String clientVersion, boolean privateCodex, long contextWindow) {
     }
 
     record CodexRequestMetadata(String model, boolean responsesLite, boolean namespacedTools, String clientVersion,
-            boolean privateCodex, long contextWindow, String installationId, String sessionId, String threadId, String windowId, String turnId) {
+            boolean privateCodex, long contextWindow, String installationId, String sessionId, String threadId, String windowId, String turnId,
+            long sessionRevision) {
     }
 
     record CodexResponse(JsonNode body, ChatUsageUpdate usage) {
     }
 
     record TokenIdentity(String subject, String accountId) {
+    }
+
+    private record SessionSnapshot(OAuthSession session, long revision, String refreshPolicy, String hostId) {
+    }
+
+    enum CancellationReason {
+        USER,
+        SESSION_CHANGED
+    }
+
+    static final class SessionChangedException extends IllegalStateException {
+        private static final long serialVersionUID = 1L;
+
+        private SessionChangedException() {
+            super("The Codex session changed before the request completed");
+        }
+    }
+
+    static final class ProviderRequestCancelledException extends IllegalStateException {
+        private static final long serialVersionUID = 1L;
+
+        private ProviderRequestCancelledException(Throwable cause) {
+            super("The Codex request was cancelled", cause);
+        }
     }
 
     static JsonNode parseCodexStream(JsonMapper json, String value) {
@@ -1174,5 +1451,15 @@ class CodexSessionService {
     }
 
     record RefreshResult(Instant previousExpiresAt, Instant expiresAt, Instant refreshExpiresAt, Instant lastRefreshedAt) {
+    }
+}
+
+@FunctionalInterface
+interface CodexHttpTransport {
+    CompletableFuture<HttpResponse<String>> sendAsync(HttpRequest request);
+
+    static CodexHttpTransport create() {
+        HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build();
+        return request -> client.sendAsync(request, HttpResponse.BodyHandlers.ofString());
     }
 }

@@ -1820,6 +1820,9 @@ export type TranslationKey =
   | 'ai.chat.unavailable.worker'
   | 'ai.chat.unavailable.disabled'
   | 'ai.chat.unavailable.session'
+  | 'ai.chat.failure.title'
+  | 'ai.chat.failure.message'
+  | 'ai.chat.failure.code'
   | 'ai.chat.error.turnActive';
 
 export type TranslationDictionary = Readonly<Record<TranslationKey, string>>;

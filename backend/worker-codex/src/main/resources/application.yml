@@ -14,6 +14,7 @@ alertify:
     max-inbound-message-bytes: ${WORKER_GRPC_MAX_MESSAGE_BYTES:4194304}
     shutdown-grace-period: 10s
     refresh-token-lifetime: ${AI_REFRESH_TOKEN_LIFETIME:30d}
+    max-concurrent-model-requests: ${AI_MAX_CONCURRENT_MODEL_REQUESTS:3}
     default-model: ${AI_DEFAULT_MODEL}
     default-reasoning-effort: ${AI_DEFAULT_REASONING_EFFORT}
     default-reviewer-model: ${AI_DEFAULT_REVIEWER_MODEL:gpt-6.1-sol}

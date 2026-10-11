@@ -58,7 +58,7 @@
     </header>
 
     <div class="ai-chat__toolbar">
-      <select [ngModel]="selected()?.id ?? ''" (ngModelChange)="$event ? select(+$event) : newConversation()" [attr.title]="selected()?.title ?? localization.translateDynamic('ai.chat.new')">
+      <select [ngModel]="desiredConversationId() ?? ''" (ngModelChange)="$event ? select(+$event) : newConversation()" [attr.title]="selected()?.title ?? localization.translateDynamic('ai.chat.new')">
         <option value="">{{ localization.translateDynamic('ai.chat.new') }}</option>
         @for (conversation of conversations(); track conversation.id) {
           <option [value]="conversation.id">{{ conversation.title }}</option>
@@ -95,15 +95,25 @@
       (touchstart)="noteManualScrollIntent()"
       (keydown)="noteManualScrollIntent()"
     >
-      @for (messageItem of selected()?.messages ?? []; track messageItem.id) {
-        <article [class.ai-chat__message--user]="messageItem.role === 'USER'" class="ai-chat__message">
-          <small>{{ messageAuthor(messageItem.role) }}</small>
-          <p>
-            @for (part of messageParts(messageItem.content); track $index) {
-              @if (part.bold) { <strong>{{ part.text }}</strong> } @else { {{ part.text }} }
+      @for (item of timeline(); track item.key) {
+        @if (item.kind === 'message') {
+          <article [class.ai-chat__message--user]="item.message.role === 'USER'" class="ai-chat__message">
+            <small>{{ messageAuthor(item.message.role) }}</small>
+            <p>
+              @for (part of messageParts(item.message.content); track $index) {
+                @if (part.bold) { <strong>{{ part.text }}</strong> } @else { {{ part.text }} }
+              }
+            </p>
+          </article>
+        } @else {
+          <article class="ai-chat__turn-failure" role="alert">
+            <strong>{{ localization.translateDynamic('ai.chat.failure.title') }}</strong>
+            <p>{{ item.turn.errorMessage || localization.translateDynamic('ai.chat.failure.message') }}</p>
+            @if (item.turn.errorCode) {
+              <small>{{ localization.translateDynamic('ai.chat.failure.code') }}: <code>{{ item.turn.errorCode }}</code></small>
             }
-          </p>
-        </article>
+          </article>
+        }
       } @empty {
         <p class="ai-chat__empty">{{ localization.translateDynamic('ai.chat.empty') }}</p>
       }
@@ -181,7 +191,7 @@
               </span>
             </span>
           }
-          <button class="ai-chat__send-button" type="button" [disabled]="busy() || !chatAvailable() || !!activeTurnId() || !message().trim()" (click)="send()">{{ localization.translateDynamic('ai.chat.send') }}</button>
+          <button class="ai-chat__send-button" type="button" [disabled]="busy() || !chatAvailable() || !conversationReady() || !!activeTurnId() || !message().trim()" (click)="send()">{{ localization.translateDynamic('ai.chat.send') }}</button>
         </div>
       </div>
     </footer>
