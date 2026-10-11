@@ -14,17 +14,23 @@ export interface SecretTag {
   readonly updatedAt: string;
 }
 
-export type SecretValueType = 'STRING' | 'DB_SECRET' | 'GIT_SECRET' | 'OIDC_TOKEN_SET' | 'KUBECONFIG' | 'EXPRESSION' | 'BINARY';
+export type SecretValueType = 'STRING' | 'USERNAME_PASSWORD' | 'DB_SECRET' | 'GIT_SECRET' | 'OIDC_TOKEN_SET' | 'KUBECONFIG' | 'EXPRESSION' | 'BINARY';
 
 export type DatabaseEngine = 'POSTGRESQL' | 'MARIADB' | 'SQL_SERVER' | 'ORACLE' | 'OTHER';
 
 export type GitProvider = 'GITHUB' | 'GITLAB' | 'BITBUCKET' | 'OTHER';
 
-export const SECRET_VALUE_TYPES: readonly SecretValueType[] = ['STRING', 'DB_SECRET', 'GIT_SECRET', 'OIDC_TOKEN_SET', 'KUBECONFIG', 'EXPRESSION', 'BINARY'];
+export const SECRET_VALUE_TYPES: readonly SecretValueType[] = ['STRING', 'USERNAME_PASSWORD', 'DB_SECRET', 'GIT_SECRET', 'OIDC_TOKEN_SET', 'KUBECONFIG', 'EXPRESSION', 'BINARY'];
 
 export const DATABASE_ENGINES: readonly DatabaseEngine[] = ['POSTGRESQL', 'MARIADB', 'SQL_SERVER', 'ORACLE', 'OTHER'];
 
 export const GIT_PROVIDERS: readonly GitProvider[] = ['GITHUB', 'GITLAB', 'BITBUCKET', 'OTHER'];
+
+/** Value shape sent for USERNAME_PASSWORD secrets; username is optional. */
+export interface UsernamePasswordSecretValue {
+  readonly username: string | null;
+  readonly password: string;
+}
 
 /** Value shape sent for DB_SECRET secrets; the backend stores it as canonical JSON. */
 export interface DatabaseSecretValue {
@@ -56,7 +62,7 @@ export interface OidcTokenSetSecretValue {
   readonly refreshExpiresAt: string | null;
 }
 
-export type SecretValue = string | DatabaseSecretValue | GitSecretValue | OidcTokenSetSecretValue;
+export type SecretValue = string | UsernamePasswordSecretValue | DatabaseSecretValue | GitSecretValue | OidcTokenSetSecretValue;
 
 export interface SecretExpressionSuggestions {
   readonly configurations: readonly string[];

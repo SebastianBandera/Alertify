@@ -49,6 +49,7 @@ public class ConfigurationExpressionParser {
         Set<String> environmentNames = new LinkedHashSet<>();
         Set<String> utilityNames = new LinkedHashSet<>();
         Set<String> utilityFunctionNames = new LinkedHashSet<>();
+        Set<String> pipeNames = new LinkedHashSet<>();
         int cursor = 0;
 
         while (cursor < expression.length()) {
@@ -64,7 +65,7 @@ public class ConfigurationExpressionParser {
             String token = expression.substring(opening + 2, closing);
             ExpressionReference reference = parseReference(token, opening, closing + 2, scope, nesting);
             references.add(reference);
-            collectNames(reference, configurationNames, secretNames, environmentNames, utilityNames, utilityFunctionNames);
+            collectNames(reference, configurationNames, secretNames, environmentNames, utilityNames, utilityFunctionNames, pipeNames);
             cursor = closing + 2;
         }
 
@@ -75,7 +76,8 @@ public class ConfigurationExpressionParser {
                 Set.copyOf(secretNames),
                 Set.copyOf(environmentNames),
                 Set.copyOf(utilityNames),
-                Set.copyOf(utilityFunctionNames)
+                Set.copyOf(utilityFunctionNames),
+                Set.copyOf(pipeNames)
         );
     }
 
@@ -112,6 +114,9 @@ public class ConfigurationExpressionParser {
             );
         }
         if (token.startsWith("configs.")) {
+            if (scope == ExpressionScope.PIPE_BINDING)
+                throw unsupported(token, scope);
+
             String name = token.substring("configs.".length());
             if (!isValidEntryName(name))
                 throw new InvalidConfigurationExpressionException("Invalid configuration reference '{{" + token + "}}'");
@@ -120,6 +125,9 @@ public class ConfigurationExpressionParser {
         }
         if (token.startsWith("secrets.")) {
             if (scope != ExpressionScope.SECRET) {
+                if (scope == ExpressionScope.PIPE_BINDING)
+                    throw unsupported(token, scope);
+
                 throw new InvalidConfigurationExpressionException(
                         "Unsupported expression reference '{{" + token + "}}': secrets cannot be referenced from configuration expressions"
                 );
@@ -131,6 +139,9 @@ public class ConfigurationExpressionParser {
             return new ExpressionReference(ReferenceType.SECRET, name, start, end, null);
         }
         if (token.startsWith("env.")) {
+            if (scope == ExpressionScope.PIPE_BINDING)
+                throw unsupported(token, scope);
+
             String name = token.substring("env.".length());
             if (!ENVIRONMENT_NAME.matcher(name).matches()) {
                 throw new InvalidConfigurationExpressionException("Invalid environment variable reference '{{" + token + "}}'");
@@ -145,14 +156,31 @@ public class ConfigurationExpressionParser {
             if (!UTILITY_NAME.matcher(name).matches()) {
                 throw new InvalidConfigurationExpressionException("Invalid utility reference '{{" + token + "}}'");
             }
+            if (scope == ExpressionScope.PIPE_BINDING)
+                throw new InvalidConfigurationExpressionException("Pipe binding expressions only allow utility functions with an argument");
+
             return new ExpressionReference(ReferenceType.UTILITY, name, start, end, null);
         }
-        String scopes = scope == ExpressionScope.SECRET
-                ? "configs.NAME, secrets.NAME, env.NAME, utils.NAME or utils.FUNCTION(argument)"
-                : "configs.NAME, env.NAME, utils.NAME or utils.FUNCTION(argument)";
-        throw new InvalidConfigurationExpressionException(
-                "Unsupported expression reference '{{" + token + "}}'; use " + scopes
-        );
+        if (token.startsWith("pipe.")) {
+            if (scope != ExpressionScope.PIPE_BINDING)
+                throw unsupported(token, scope);
+
+            String name = token.substring("pipe.".length());
+            if (!name.equals("VALUE"))
+                throw new InvalidConfigurationExpressionException("Invalid Pipe binding reference '{{" + token + "}}'; use pipe.VALUE");
+
+            return new ExpressionReference(ReferenceType.PIPE, name, start, end, null);
+        }
+        throw unsupported(token, scope);
+    }
+
+    private static InvalidConfigurationExpressionException unsupported(String token, ExpressionScope scope) {
+        String scopes = switch (scope) {
+            case CONFIGURATION -> "configs.NAME, env.NAME, utils.NAME or utils.FUNCTION(argument)";
+            case SECRET -> "configs.NAME, secrets.NAME, env.NAME, utils.NAME or utils.FUNCTION(argument)";
+            case PIPE_BINDING -> "pipe.VALUE or utils.FUNCTION(argument)";
+        };
+        return new InvalidConfigurationExpressionException("Unsupported expression reference '{{" + token + "}}'; use " + scopes);
     }
 
     private static boolean isValidEntryName(String name) {
@@ -160,7 +188,7 @@ public class ConfigurationExpressionParser {
                 && !name.contains("(") && !name.contains(")");
     }
 
-    private static void collectNames(ExpressionReference reference, Set<String> configurationNames, Set<String> secretNames, Set<String> environmentNames, Set<String> utilityNames, Set<String> utilityFunctionNames) {
+    private static void collectNames(ExpressionReference reference, Set<String> configurationNames, Set<String> secretNames, Set<String> environmentNames, Set<String> utilityNames, Set<String> utilityFunctionNames, Set<String> pipeNames) {
         switch (reference.type()) {
             case CONFIGURATION -> configurationNames.add(reference.name());
             case SECRET -> secretNames.add(reference.name());
@@ -171,6 +199,7 @@ public class ConfigurationExpressionParser {
                 else
                     utilityNames.add(reference.name());
             }
+            case PIPE -> pipeNames.add(reference.name());
         }
         if (reference.argument() != null) {
             configurationNames.addAll(reference.argument().configurationNames());
@@ -178,6 +207,7 @@ public class ConfigurationExpressionParser {
             environmentNames.addAll(reference.argument().environmentNames());
             utilityNames.addAll(reference.argument().utilityNames());
             utilityFunctionNames.addAll(reference.argument().utilityFunctionNames());
+            pipeNames.addAll(reference.argument().pipeNames());
         }
     }
 
@@ -188,7 +218,8 @@ public class ConfigurationExpressionParser {
         Set<String> secretNames,
         Set<String> environmentNames,
         Set<String> utilityNames,
-        Set<String> utilityFunctionNames
+        Set<String> utilityFunctionNames,
+        Set<String> pipeNames
     ) {
     }
 
@@ -214,12 +245,14 @@ public class ConfigurationExpressionParser {
         CONFIGURATION,
         SECRET,
         ENVIRONMENT,
-        UTILITY
+        UTILITY,
+        PIPE
     }
 
     /** Where an expression lives; only secret expressions may read other secrets. */
     public enum ExpressionScope {
         CONFIGURATION,
-        SECRET
+        SECRET,
+        PIPE_BINDING
     }
 }

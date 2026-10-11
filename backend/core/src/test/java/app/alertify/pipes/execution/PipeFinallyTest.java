@@ -6,14 +6,21 @@ import static org.mockito.Mockito.*;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 
 import app.alertify.alerts.execution.AlertExecutionOrchestrator;
 import app.alertify.alerts.execution.MaintenanceModeService;
+import app.alertify.alerts.execution.AlertExecutionStatus;
+import app.alertify.alerts.model.Alert;
+import app.alertify.alerts.model.AlertTemplateParameterDefinition;
 import app.alertify.logging.ApplicationEventLogger;
 import app.alertify.pipes.model.*;
+import app.alertify.pipes.service.PipeBindingExpressionService;
+import app.alertify.configuration.service.ConfigurationExpressionParser;
+import app.alertify.configuration.service.ConfigurationExpressionUtilityResolver;
 import app.alertify.procedures.execution.ProcedureExecutionOrchestrator;
 import app.alertify.procedures.execution.ProcedureExecutionProperties;
 import app.alertify.procedures.model.Procedure;
@@ -42,14 +49,13 @@ class PipeFinallyTest {
         when(pipe.getSteps()).thenReturn(List.of(main, cleanup));
         var artifact = new ProcedureExecutionOrchestrator.ArtifactLocation(
                 ArtifactDescriptor.newBuilder().setOutputKey("report").build(), null, UUID.randomUUID());
-        when(procedures.executePipeStep(eq(11L), any(), any(), anyInt(), any(), any(), anyMap()))
-                .thenReturn(new ProcedureExecutionOrchestrator.ProcedurePipeExecution(UUID.randomUUID(), null,
-                        artifact.workerInstanceId(), null, List.of(artifact), List.of()));
-        when(procedures.executePipeStep(eq(12L), any(), any(), anyInt(), any(), any(), anyMap())).thenAnswer(invocation -> {
+        when(procedures.executePipeStep(eq(11L), any(), any(), anyInt(), any(), any(), anyMap(), anyMap()))
+                .thenReturn(execution(artifact.workerInstanceId(), List.of(artifact), false));
+        when(procedures.executePipeStep(eq(12L), any(), any(), anyInt(), any(), any(), anyMap(), anyMap())).thenAnswer(invocation -> {
             assertThat(invocation.<java.util.Map<String, ProcedureExecutionOrchestrator.ArtifactLocation>>getArgument(6))
                     .containsEntry("input", artifact);
             verify(procedures, never()).deleteArtifacts(anyList());
-            return new ProcedureExecutionOrchestrator.ProcedurePipeExecution(UUID.randomUUID(), null, null, null, List.of(), List.of());
+            return execution(null, List.of(), false);
         });
         try (var orchestrator = orchestrator(persistence, procedures)) {
             orchestrator.invoke(new PipeInvocationTokenService.Claims(1, UUID.randomUUID(), UUID.randomUUID(), 1, Instant.now().plusSeconds(30)));
@@ -71,19 +77,19 @@ class PipeFinallyTest {
         PipeStep cleanup = step(pipe, "cleanup", 2, 13, PipeStepPhase.FINALLY);
         PipeStep last = step(pipe, "last", 3, 14, PipeStepPhase.FINALLY);
         when(pipe.getSteps()).thenReturn(List.of(main, skipped, cleanup, last));
-        when(procedures.executePipeStep(eq(11L), any(), any(), anyInt(), any(), any(), anyMap()))
+        when(procedures.executePipeStep(eq(11L), any(), any(), anyInt(), any(), any(), anyMap(), anyMap()))
                 .thenThrow(new IllegalStateException("failure"));
-        when(procedures.executePipeStep(eq(13L), any(), any(), anyInt(), any(), any(), anyMap()))
+        when(procedures.executePipeStep(eq(13L), any(), any(), anyInt(), any(), any(), anyMap(), anyMap()))
                 .thenThrow(new IllegalStateException("cleanup failure"));
-        when(procedures.executePipeStep(eq(14L), any(), any(), anyInt(), any(), any(), anyMap()))
-                .thenReturn(new ProcedureExecutionOrchestrator.ProcedurePipeExecution(UUID.randomUUID(), null, null, null, List.of(), List.of()));
+        when(procedures.executePipeStep(eq(14L), any(), any(), anyInt(), any(), any(), anyMap(), anyMap()))
+                .thenReturn(execution(null, List.of(), false));
         try (var orchestrator = orchestrator(persistence, procedures)) {
             var response = orchestrator.invoke(new PipeInvocationTokenService.Claims(1, UUID.randomUUID(), UUID.randomUUID(), 1, Instant.now().plusSeconds(30)));
             assertThat(response.hasResult()).isTrue();
             assertThat(response.getResult().getResultJson()).contains("ERROR");
         }
         verify(persistence).completeStep(any(), eq("skipped"), eq(PipeStepStatus.SKIPPED_SEQUENCE), isNull(), isNull(), isNull());
-        verify(procedures).executePipeStep(eq(14L), any(), any(), anyInt(), any(), any(), anyMap());
+        verify(procedures).executePipeStep(eq(14L), any(), any(), anyInt(), any(), any(), anyMap(), anyMap());
         verify(persistence).finish(any(), eq(PipeExecutionStatus.FAILED), eq(PipeOutcome.ERROR), isNull());
     }
 
@@ -99,15 +105,138 @@ class PipeFinallyTest {
         PipeStep main = step(pipe, "main", 0, 11, PipeStepPhase.MAIN);
         PipeStep cleanup = step(pipe, "cleanup", 1, 12, PipeStepPhase.FINALLY);
         when(pipe.getSteps()).thenReturn(List.of(main, cleanup));
-        when(procedures.executePipeStep(eq(12L), any(), any(), anyInt(), any(), any(), anyMap())).thenAnswer(invocation -> {
+        when(procedures.executePipeStep(eq(12L), any(), any(), anyInt(), any(), any(), anyMap(), anyMap())).thenAnswer(invocation -> {
             assertThat((Instant) invocation.getArgument(4)).isAfter(Instant.now());
-            return new ProcedureExecutionOrchestrator.ProcedurePipeExecution(UUID.randomUUID(), null, null, null, List.of(), List.of());
+            return execution(null, List.of(), false);
         });
         try (var orchestrator = orchestrator(persistence, procedures)) {
             orchestrator.invoke(new PipeInvocationTokenService.Claims(1, UUID.randomUUID(), UUID.randomUUID(), 1, Instant.now().minusSeconds(1)));
         }
-        verify(procedures, never()).executePipeStep(eq(11L), any(), any(), anyInt(), any(), any(), anyMap());
-        verify(procedures).executePipeStep(eq(12L), any(), any(), anyInt(), any(), any(), anyMap());
+        verify(procedures, never()).executePipeStep(eq(11L), any(), any(), anyInt(), any(), any(), anyMap(), anyMap());
+        verify(procedures).executePipeStep(eq(12L), any(), any(), anyInt(), any(), any(), anyMap(), anyMap());
+    }
+
+    @Test
+    void transformsSensitiveJsonPointerBindingAndPreservesSensitivity() {
+        var persistence = mock(PipeExecutionPersistenceService.class);
+        var procedures = mock(ProcedureExecutionOrchestrator.class);
+        Pipe pipe = mock(Pipe.class);
+        when(pipe.getId()).thenReturn(1L);
+        when(pipe.isEnabled()).thenReturn(true);
+        when(pipe.getFinallyTimeoutMillis()).thenReturn(60_000L);
+        when(persistence.definition(1L)).thenReturn(pipe);
+        PipeStep totp = step(pipe, "totp", 0, 11, PipeStepPhase.MAIN);
+        PipeStep consumer = step(pipe, "consumer", 1, 12, PipeStepPhase.MAIN);
+        var parameter = mock(ProcedureTemplateParameterDefinition.class);
+        when(parameter.getParameterKey()).thenReturn("pin");
+        consumer.addBinding(new PipeStepBinding(consumer, parameter, totp, "/code", "[{{utils.JSON_STRING(Authorization: Bearer {{pipe.VALUE}})}}]"));
+        when(pipe.getSteps()).thenReturn(List.of(totp, consumer));
+        var result = JsonMapper.builder().build().createObjectNode().put("code", "042731");
+        when(procedures.executePipeStep(eq(11L), any(), any(), anyInt(), any(), any(), anyMap(), anyMap()))
+                .thenReturn(new ProcedureExecutionOrchestrator.ProcedurePipeExecution(UUID.randomUUID(), result,
+                        null, null, List.of(), List.of(), true));
+        when(procedures.executePipeStep(eq(12L), any(), any(), anyInt(), any(), any(), anyMap(), anyMap())).thenAnswer(invocation -> {
+            assertThat(invocation.<java.util.Map<String, PipeParameterValue>>getArgument(7))
+                    .containsEntry("pin", new PipeParameterValue("[\"Authorization: Bearer 042731\"]", true));
+            return execution(null, List.of(), true);
+        });
+
+        try (var orchestrator = orchestrator(persistence, procedures)) {
+            var response = orchestrator.invoke(new PipeInvocationTokenService.Claims(1, UUID.randomUUID(), UUID.randomUUID(), 1, Instant.now().plusSeconds(30)));
+            assertThat(response.hasResult()).isTrue();
+        }
+    }
+
+    @Test
+    void serializesNonTextualJsonPointerBindingAsCompactJson() {
+        var persistence = mock(PipeExecutionPersistenceService.class);
+        var procedures = mock(ProcedureExecutionOrchestrator.class);
+        Pipe pipe = mock(Pipe.class);
+        when(pipe.getId()).thenReturn(1L);
+        when(pipe.isEnabled()).thenReturn(true);
+        when(pipe.getFinallyTimeoutMillis()).thenReturn(60_000L);
+        when(persistence.definition(1L)).thenReturn(pipe);
+        PipeStep producer = step(pipe, "producer", 0, 11, PipeStepPhase.MAIN);
+        PipeStep consumer = step(pipe, "consumer", 1, 12, PipeStepPhase.MAIN);
+        var parameter = mock(ProcedureTemplateParameterDefinition.class);
+        when(parameter.getParameterKey()).thenReturn("payload");
+        consumer.addBinding(new PipeStepBinding(consumer, parameter, producer, "/payload"));
+        when(pipe.getSteps()).thenReturn(List.of(producer, consumer));
+        var result = JsonMapper.builder().build().createObjectNode();
+        result.putObject("payload").put("count", 2).put("ok", true);
+        when(procedures.executePipeStep(eq(11L), any(), any(), anyInt(), any(), any(), anyMap(), anyMap()))
+                .thenReturn(new ProcedureExecutionOrchestrator.ProcedurePipeExecution(UUID.randomUUID(), result,
+                        null, null, List.of(), List.of(), false));
+        when(procedures.executePipeStep(eq(12L), any(), any(), anyInt(), any(), any(), anyMap(), anyMap())).thenAnswer(invocation -> {
+            assertThat(invocation.<java.util.Map<String, PipeParameterValue>>getArgument(7))
+                    .containsEntry("payload", new PipeParameterValue("{\"count\":2,\"ok\":true}", false));
+            return execution(null, List.of(), false);
+        });
+
+        try (var orchestrator = orchestrator(persistence, procedures)) {
+            orchestrator.invoke(new PipeInvocationTokenService.Claims(1, UUID.randomUUID(), UUID.randomUUID(), 1, Instant.now().plusSeconds(30)));
+        }
+    }
+
+    @Test
+    void marksStepAsMissingOutputWhenJsonPointerDoesNotResolve() {
+        var persistence = mock(PipeExecutionPersistenceService.class);
+        var procedures = mock(ProcedureExecutionOrchestrator.class);
+        Pipe pipe = mock(Pipe.class);
+        when(pipe.getId()).thenReturn(1L);
+        when(pipe.isEnabled()).thenReturn(true);
+        when(pipe.getFinallyTimeoutMillis()).thenReturn(60_000L);
+        when(persistence.definition(1L)).thenReturn(pipe);
+        PipeStep producer = step(pipe, "producer", 0, 11, PipeStepPhase.MAIN);
+        PipeStep consumer = step(pipe, "consumer", 1, 12, PipeStepPhase.MAIN);
+        var parameter = mock(ProcedureTemplateParameterDefinition.class);
+        when(parameter.getParameterKey()).thenReturn("pin");
+        consumer.addBinding(new PipeStepBinding(consumer, parameter, producer, "/missing"));
+        when(pipe.getSteps()).thenReturn(List.of(producer, consumer));
+        when(procedures.executePipeStep(eq(11L), any(), any(), anyInt(), any(), any(), anyMap(), anyMap()))
+                .thenReturn(execution(null, List.of(), false));
+
+        try (var orchestrator = orchestrator(persistence, procedures)) {
+            orchestrator.invoke(new PipeInvocationTokenService.Claims(1, UUID.randomUUID(), UUID.randomUUID(), 1, Instant.now().plusSeconds(30)));
+        }
+
+        verify(procedures, never()).executePipeStep(eq(12L), any(), any(), anyInt(), any(), any(), anyMap(), anyMap());
+        verify(persistence).completeStep(any(), eq("consumer"), eq(PipeStepStatus.MISSING_PIPE_OUTPUT), eq(PipeOutcome.ERROR), isNull(), eq("MISSING_PIPE_OUTPUT"));
+    }
+
+    @Test
+    void reusesOneSensitiveProcedureResultAcrossMultipleAlertSteps() {
+        var persistence = mock(PipeExecutionPersistenceService.class);
+        var procedures = mock(ProcedureExecutionOrchestrator.class);
+        var alerts = mock(AlertExecutionOrchestrator.class);
+        Pipe pipe = mock(Pipe.class);
+        when(pipe.getId()).thenReturn(1L);
+        when(pipe.isEnabled()).thenReturn(true);
+        when(pipe.getFinallyTimeoutMillis()).thenReturn(60_000L);
+        when(persistence.definition(1L)).thenReturn(pipe);
+        PipeStep producer = step(pipe, "token", 0, 11, PipeStepPhase.MAIN);
+        PipeStep first = alertStep(pipe, "first", 1, 21);
+        PipeStep second = alertStep(pipe, "second", 2, 22);
+        var parameter = mock(AlertTemplateParameterDefinition.class);
+        when(parameter.getParameterKey()).thenReturn("headersOverrideJson");
+        first.addBinding(new PipeStepBinding(first, parameter, producer, "/accessToken", "[{{utils.JSON_STRING(Authorization: Bearer {{pipe.VALUE}})}}]"));
+        second.addBinding(new PipeStepBinding(second, parameter, producer, "/accessToken", "[{{utils.JSON_STRING(Authorization: Bearer {{pipe.VALUE}})}}]"));
+        when(pipe.getSteps()).thenReturn(List.of(producer, first, second));
+        var result = JsonMapper.builder().build().createObjectNode().put("accessToken", "opaque-token");
+        when(procedures.executePipeStep(eq(11L), any(), any(), anyInt(), any(), any(), anyMap(), anyMap()))
+                .thenReturn(new ProcedureExecutionOrchestrator.ProcedurePipeExecution(UUID.randomUUID(), result,
+                        null, null, List.of(), List.of(), true));
+        when(alerts.executePipe(anyLong(), anyString(), anyBoolean(), any(), anyString(), any(), any(), any(), anyString(), anyMap()))
+                .thenReturn(new AlertExecutionOrchestrator.AlertHookExecution(UUID.randomUUID(), AlertExecutionStatus.SUCCESS, false, false, false));
+
+        try (var orchestrator = orchestrator(persistence, procedures, alerts)) {
+            orchestrator.invoke(new PipeInvocationTokenService.Claims(1, UUID.randomUUID(), UUID.randomUUID(), 1, Instant.now().plusSeconds(30)));
+        }
+
+        var inputs = org.mockito.ArgumentCaptor.forClass(Map.class);
+        verify(alerts, times(2)).executePipe(anyLong(), anyString(), anyBoolean(), any(), anyString(), any(), any(), any(), anyString(), inputs.capture());
+        assertThat(inputs.getAllValues()).allSatisfy(value -> assertThat(value)
+                .containsEntry("headersOverrideJson", new PipeParameterValue("[\"Authorization: Bearer opaque-token\"]", true)));
     }
 
     private static PipeStep step(Pipe pipe, String key, int position, long id, PipeStepPhase phase) {
@@ -119,8 +248,26 @@ class PipeFinallyTest {
         return step;
     }
 
+    private static PipeStep alertStep(Pipe pipe, String key, int position, long id) {
+        Alert alert = mock(Alert.class);
+        when(alert.getId()).thenReturn(id);
+        when(alert.getName()).thenReturn(key);
+        when(alert.isEnabled()).thenReturn(true);
+        return PipeStep.alert(pipe, key, position, alert, 30_000, List.of("SUCCESS"));
+    }
+
     private static PipeExecutionOrchestrator orchestrator(PipeExecutionPersistenceService persistence, ProcedureExecutionOrchestrator procedures) {
-        return new PipeExecutionOrchestrator(persistence, mock(AlertExecutionOrchestrator.class), procedures,
-                mock(MaintenanceModeService.class), new ProcedureExecutionProperties(5), mock(ApplicationEventLogger.class), JsonMapper.builder().build());
+        return orchestrator(persistence, procedures, mock(AlertExecutionOrchestrator.class));
+    }
+
+    private static PipeExecutionOrchestrator orchestrator(PipeExecutionPersistenceService persistence, ProcedureExecutionOrchestrator procedures, AlertExecutionOrchestrator alerts) {
+        return new PipeExecutionOrchestrator(persistence, alerts, procedures,
+                mock(MaintenanceModeService.class), new ProcedureExecutionProperties(5), mock(ApplicationEventLogger.class), JsonMapper.builder().build(),
+                new PipeBindingExpressionService(new ConfigurationExpressionParser(), new ConfigurationExpressionUtilityResolver()));
+    }
+
+    private static ProcedureExecutionOrchestrator.ProcedurePipeExecution execution(UUID workerInstanceId, List<ProcedureExecutionOrchestrator.ArtifactLocation> outputs, boolean sensitive) {
+        return new ProcedureExecutionOrchestrator.ProcedurePipeExecution(UUID.randomUUID(),
+                JsonMapper.builder().build().createObjectNode(), workerInstanceId, null, outputs, List.of(), sensitive);
     }
 }

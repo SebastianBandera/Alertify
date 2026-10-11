@@ -39,6 +39,7 @@ import app.alertify.services.secret.SecretAccessService;
 import app.alertify.binary.BinaryBindingService;
 import app.alertify.jpa.entity.ConfigurationValueType;
 import app.alertify.jpa.entity.SecretValueType;
+import app.alertify.pipes.execution.PipeParameterValue;
 
 /**
  * Builds the immutable snapshot an alert execution needs before any worker is
@@ -76,7 +77,7 @@ public class AlertExecutionPreparationService {
 
     @Transactional(readOnly = true)
     public Optional<PreparedAlertExecution> prepare(Long alertId) {
-        return prepareInternal(alertId, false);
+        return prepareInternal(alertId, false, Map.of());
     }
 
     /**
@@ -84,7 +85,12 @@ public class AlertExecutionPreparationService {
      */
     @Transactional(readOnly = true)
     public Optional<PreparedAlertExecution> prepare(Long alertId, boolean includeDisabled) {
-        return prepareInternal(alertId, includeDisabled);
+        return prepareInternal(alertId, includeDisabled, Map.of());
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<PreparedAlertExecution> prepare(Long alertId, boolean includeDisabled, Map<String, PipeParameterValue> pipeInputs) {
+        return prepareInternal(alertId, includeDisabled, Map.copyOf(pipeInputs));
     }
 
     /**
@@ -100,7 +106,7 @@ public class AlertExecutionPreparationService {
                 prepareValues(template.getTemplateKey(), parameters, accessContext));
     }
 
-    private Optional<PreparedAlertExecution> prepareInternal(Long alertId, boolean includeDisabled) {
+    private Optional<PreparedAlertExecution> prepareInternal(Long alertId, boolean includeDisabled, Map<String, PipeParameterValue> pipeInputs) {
         Alert alert = alertRepository.findById(alertId).orElse(null);
         if (alert == null || (!alert.isEnabled() && !includeDisabled))
             return Optional.empty();
@@ -115,7 +121,7 @@ public class AlertExecutionPreparationService {
         List<ResolvedAlertParameter> parameters = definitionRepository
                 .findAllByTemplate_IdOrderByParameterOrderAscIdAsc(template.getId())
                 .stream()
-                .map(definition -> resolve(definition, configuredValues.get(definition.getId()), accessContext))
+                .map(definition -> resolve(definition, configuredValues.get(definition.getId()), accessContext, pipeInputs.get(definition.getParameterKey())))
                 .toList();
         String state = stateRepository.findById(alertId).map(AlertState::getState).orElse("");
         return Optional.of(new PreparedAlertExecution(
@@ -162,7 +168,15 @@ public class AlertExecutionPreparationService {
         };
     }
 
-    private ResolvedAlertParameter resolve(AlertTemplateParameterDefinition definition, AlertParameterValue configured, SecretAccessContext accessContext) {
+    private ResolvedAlertParameter resolve(AlertTemplateParameterDefinition definition, AlertParameterValue configured, SecretAccessContext accessContext, PipeParameterValue pipeInput) {
+        if (pipeInput != null) {
+            if (!definition.getJavaType().equals(String.class.getName()) || !definition.isBindingAllowed()
+                    || definition.isWritableBindingRequired())
+                throw new IllegalArgumentException("Pipe result binding target '" + definition.getParameterKey() + "' must be a bindable String");
+
+            return new ResolvedAlertParameter(definition.getParameterKey(), definition.getJavaType(), pipeInput.value(), null,
+                    false, AlertParameterSource.PIPE_OUTPUT, null, null, null, false, null, pipeInput.sensitive());
+        }
         if (configured == null) {
             String defaultValue = definition.getDefaultValue();
             return new ResolvedAlertParameter(

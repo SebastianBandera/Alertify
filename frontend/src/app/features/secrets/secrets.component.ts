@@ -53,11 +53,18 @@ interface OidcTokenSetForm {
   refreshExpiresAt: string;
 }
 
+/** Editor state for a USERNAME_PASSWORD secret; password whitespace is preserved. */
+interface UsernamePasswordSecretForm {
+  username: string;
+  password: string;
+}
+
 interface SecretForm {
   name: string;
   description: string;
   valueType: SecretValueType;
   newValue: string;
+  usernamePasswordValue: UsernamePasswordSecretForm;
   dbValue: DatabaseSecretForm;
   gitValue: GitSecretForm;
   oidcValue: OidcTokenSetForm;
@@ -279,6 +286,7 @@ export class SecretsComponent implements OnInit {
       description: secret.description ?? '',
       valueType: secret.valueType,
       newValue: '',
+      usernamePasswordValue: this.emptyUsernamePasswordForm(),
       dbValue: this.emptyDatabaseForm(),
       gitValue: this.emptyGitForm(),
       oidcValue: this.emptyOidcForm(),
@@ -343,6 +351,7 @@ export class SecretsComponent implements OnInit {
     this.patchSecretForm({
       valueType: editing.valueType,
       newValue: '',
+      usernamePasswordValue: this.emptyUsernamePasswordForm(),
       dbValue: this.emptyDatabaseForm(),
       gitValue: this.emptyGitForm(),
       oidcValue: this.emptyOidcForm(),
@@ -376,7 +385,7 @@ export class SecretsComponent implements OnInit {
   }
 
   protected changeValueType(valueType: SecretValueType): void {
-    this.patchSecretForm({ valueType, newValue: '', dbValue: this.emptyDatabaseForm(), gitValue: this.emptyGitForm(), oidcValue: this.emptyOidcForm(), binaryFile: null });
+    this.patchSecretForm({ valueType, newValue: '', usernamePasswordValue: this.emptyUsernamePasswordForm(), dbValue: this.emptyDatabaseForm(), gitValue: this.emptyGitForm(), oidcValue: this.emptyOidcForm(), binaryFile: null });
   }
 
   protected selectBinaryFile(event: Event): void {
@@ -466,6 +475,11 @@ export class SecretsComponent implements OnInit {
 
   protected patchGitForm(patch: Partial<GitSecretForm>): void {
     this.secretForm.update((form) => ({ ...form, gitValue: { ...form.gitValue, ...patch } }));
+    this.formError.set(null);
+  }
+
+  protected patchUsernamePasswordForm(patch: Partial<UsernamePasswordSecretForm>): void {
+    this.secretForm.update((form) => ({ ...form, usernamePasswordValue: { ...form.usernamePasswordValue, ...patch } }));
     this.formError.set(null);
   }
 
@@ -638,6 +652,12 @@ export class SecretsComponent implements OnInit {
 
   private parseValue(form: SecretForm): SecretValue {
     switch (form.valueType) {
+      case 'USERNAME_PASSWORD': {
+        const credentials = form.usernamePasswordValue;
+        const username = credentials.username.trim();
+        if (!credentials.password) throw new Error(this.localization.translate('secrets.value.usernamePasswordRequired'));
+        return { username: username || null, password: credentials.password };
+      }
       case 'DB_SECRET': {
         const db = form.dbValue;
         const host = db.host.trim();
@@ -680,7 +700,11 @@ export class SecretsComponent implements OnInit {
   }
 
   private emptySecretForm(): SecretForm {
-    return { name: '', description: '', valueType: 'STRING', newValue: '', dbValue: this.emptyDatabaseForm(), gitValue: this.emptyGitForm(), oidcValue: this.emptyOidcForm(), binaryFile: null, tagIds: [], writable: false };
+    return { name: '', description: '', valueType: 'STRING', newValue: '', usernamePasswordValue: this.emptyUsernamePasswordForm(), dbValue: this.emptyDatabaseForm(), gitValue: this.emptyGitForm(), oidcValue: this.emptyOidcForm(), binaryFile: null, tagIds: [], writable: false };
+  }
+
+  private emptyUsernamePasswordForm(): UsernamePasswordSecretForm {
+    return { username: '', password: '' };
   }
 
   private emptyDatabaseForm(): DatabaseSecretForm {

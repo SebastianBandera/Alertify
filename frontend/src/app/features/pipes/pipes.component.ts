@@ -21,6 +21,7 @@ import {
 import { LocalizationService } from '../../core/i18n/localization.service';
 import { EditorDraftService } from '../../shared/editor-drafts/editor-draft.service';
 import { EditorViewportService } from '../../shared/editor-viewport/editor-viewport.service';
+import { ExpressionEditorComponent, ExpressionEditorNames } from '../../shared/expression-editor/expression-editor.component';
 
 type PipeTab = 'pipes' | 'history';
 
@@ -36,6 +37,10 @@ interface PipeStepForm {
   bindings: PipeBinding[];
   bindingTarget: string;
   bindingSource: string;
+  resultBindingTarget: string;
+  resultBindingSourceStep: string;
+  resultBindingPointer: string;
+  resultBindingExpression: string;
 }
 
 interface PipeForm {
@@ -53,7 +58,7 @@ interface BindingSourceOption {
   readonly label: string;
 }
 
-const EMPTY_OPTIONS: PipeOptions = { resources: [] };
+const EMPTY_OPTIONS: PipeOptions = { resources: [], expressionUtilityFunctions: [] };
 const ALL_OUTCOMES: readonly PipeOutcome[] = ['SUCCESS', 'WARN', 'ERROR'];
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100, 250, 500, 1000] as const;
 const PAGE_SIZE_STORAGE_KEY = 'alertify.pipes.page-size';
@@ -69,7 +74,7 @@ function readStoredPageSize(): number {
 
 @Component({
   selector: 'app-pipes',
-  imports: [DatePipe, FormsModule],
+  imports: [DatePipe, FormsModule, ExpressionEditorComponent],
   templateUrl: './pipes.component.html',
   styleUrl: './pipes.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -122,6 +127,8 @@ export class PipesComponent implements OnInit, OnDestroy {
   protected readonly newStepType = signal<PipeStepType>('PROCEDURE');
   protected readonly newStepResourceId = signal<number | null>(null);
   protected readonly outcomes = ALL_OUTCOMES;
+  protected readonly pipeExpressionScopes = ['pipe', 'utils'] as const;
+  protected readonly pipeExpressionNames: ExpressionEditorNames = { pipe: ['VALUE'], utils: [] };
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor() {
@@ -245,9 +252,13 @@ export class PipesComponent implements OnInit, OnDestroy {
         resourceEnabled: step.resourceEnabled,
         timeoutMinutes: this.durationMinutes(step.timeout) ?? 30,
         continueOn: [...step.continueOn],
-        bindings: step.bindings.map((binding) => ({ ...binding })),
+        bindings: step.bindings.map((binding) => ({ ...binding, valueExpression: binding.valueExpression ?? null })),
         bindingTarget: '',
         bindingSource: '',
+        resultBindingTarget: '',
+        resultBindingSourceStep: '',
+        resultBindingPointer: '',
+        resultBindingExpression: '',
       })),
     });
     this.formError.set(null);
@@ -267,7 +278,17 @@ export class PipesComponent implements OnInit, OnDestroy {
     const draft = this.drafts.read<PipeForm, Pipe>('pipes');
     if (!draft || this.saving()) return;
     this.editorViewport.capture(draft.editing ? `pipe-${draft.editing.id}` : 'pipe-create');
-    this.form.set(draft.form);
+    this.form.set({
+      ...draft.form,
+      steps: draft.form.steps.map((step) => ({
+        ...step,
+        bindings: step.bindings.map((binding) => ({ ...binding, valueExpression: binding.valueExpression ?? null })),
+        resultBindingTarget: step.resultBindingTarget ?? '',
+        resultBindingSourceStep: step.resultBindingSourceStep ?? '',
+        resultBindingPointer: step.resultBindingPointer ?? '',
+        resultBindingExpression: step.resultBindingExpression ?? '',
+      })),
+    });
     this.editing.set(draft.editing);
     this.formError.set(null);
     this.editorOpen.set(true);
@@ -312,6 +333,10 @@ export class PipesComponent implements OnInit, OnDestroy {
         bindings: [],
         bindingTarget: '',
         bindingSource: '',
+        resultBindingTarget: '',
+        resultBindingSourceStep: '',
+        resultBindingPointer: '',
+        resultBindingExpression: '',
       }],
     }));
     this.newStepResourceId.set(null);
@@ -322,14 +347,17 @@ export class PipesComponent implements OnInit, OnDestroy {
       const previousKey = form.steps[index]?.key;
       return {
         ...form,
-        steps: form.steps.map((step, candidate) => ({
-          ...(candidate === index ? { ...step, [key]: value } : step),
-          bindings: key === 'key' && previousKey
-            ? step.bindings.map((binding) => binding.sourceStepKey === previousKey
-              ? { ...binding, sourceStepKey: String(value) }
-              : binding)
-            : step.bindings,
-        })),
+        steps: form.steps.map((step, candidate) => {
+          const patchedStep = candidate === index ? { ...step, [key]: value } : step;
+          return {
+            ...patchedStep,
+            bindings: key === 'key' && previousKey
+              ? patchedStep.bindings.map((binding) => binding.sourceStepKey === previousKey
+                ? { ...binding, sourceStepKey: String(value) }
+                : binding)
+              : patchedStep.bindings,
+          };
+        }),
       };
     });
   }
@@ -354,7 +382,15 @@ export class PipesComponent implements OnInit, OnDestroy {
           steps.findIndex((candidate) => candidate.key === binding.sourceStepKey) < position) };
 
       const moved = steps.findIndex((candidate) => candidate.key === movedKey);
-      if (moved >= 0) steps[moved] = { ...steps[moved], bindingSource: '', bindingTarget: '' };
+      if (moved >= 0) steps[moved] = {
+        ...steps[moved],
+        bindingSource: '',
+        bindingTarget: '',
+        resultBindingSourceStep: '',
+        resultBindingTarget: '',
+        resultBindingPointer: '',
+        resultBindingExpression: '',
+      };
       return { ...form, steps };
     });
   }
@@ -383,6 +419,17 @@ export class PipesComponent implements OnInit, OnDestroy {
       ?.artifactInputs ?? [];
   }
 
+  protected stringInputs(index: number): readonly string[] {
+    const step = this.form().steps[index];
+    return this.options().resources.find((option) => option.type === step.type && option.id === step.resourceId)
+      ?.stringInputs ?? [];
+  }
+
+  protected resultSourceSteps(index: number): readonly PipeStepForm[] {
+    return this.form().steps.slice(0, index).filter((step) => step.type === 'PROCEDURE'
+      && !(this.form().steps[index].phase === 'MAIN' && step.phase === 'FINALLY'));
+  }
+
   protected bindingSources(index: number): readonly BindingSourceOption[] {
     const sources: BindingSourceOption[] = [];
     for (const step of this.form().steps.slice(0, index)) {
@@ -399,7 +446,13 @@ export class PipesComponent implements OnInit, OnDestroy {
     const step = this.form().steps[index];
     if (!step.bindingTarget || !step.bindingSource) return;
     const [sourceStepKey, sourceOutputKey] = step.bindingSource.split('\u0000', 2);
-    const binding: PipeBinding = { targetParameterKey: step.bindingTarget, sourceStepKey, sourceOutputKey };
+    const binding: PipeBinding = {
+      targetParameterKey: step.bindingTarget,
+      sourceStepKey,
+      sourceOutputKey,
+      sourceResultPointer: null,
+      valueExpression: null,
+    };
     this.patchStep(index, 'bindings', [
       ...step.bindings.filter((candidate) => candidate.targetParameterKey !== binding.targetParameterKey),
       binding,
@@ -408,8 +461,36 @@ export class PipesComponent implements OnInit, OnDestroy {
     this.patchStep(index, 'bindingSource', '');
   }
 
+  protected addResultBinding(index: number): void {
+    const step = this.form().steps[index];
+    const pointer = (step.resultBindingPointer ?? '').trim();
+    if (!step.resultBindingTarget || !step.resultBindingSourceStep || !pointer.startsWith('/')) return;
+    const expression = step.resultBindingExpression ?? '';
+    const binding: PipeBinding = {
+      targetParameterKey: step.resultBindingTarget,
+      sourceStepKey: step.resultBindingSourceStep,
+      sourceOutputKey: null,
+      sourceResultPointer: pointer,
+      valueExpression: expression.trim() ? expression : null,
+    };
+    this.patchStep(index, 'bindings', [
+      ...step.bindings.filter((candidate) => candidate.targetParameterKey !== binding.targetParameterKey),
+      binding,
+    ]);
+    this.patchStep(index, 'resultBindingTarget', '');
+    this.patchStep(index, 'resultBindingSourceStep', '');
+    this.patchStep(index, 'resultBindingPointer', '');
+    this.patchStep(index, 'resultBindingExpression', '');
+  }
+
   protected removeBinding(stepIndex: number, bindingIndex: number): void {
     const bindings = this.form().steps[stepIndex].bindings.filter((_, index) => index !== bindingIndex);
+    this.patchStep(stepIndex, 'bindings', bindings);
+  }
+
+  protected patchBindingExpression(stepIndex: number, bindingIndex: number, value: string): void {
+    const bindings = this.form().steps[stepIndex].bindings.map((binding, index) => index === bindingIndex
+      ? { ...binding, valueExpression: value.trim() ? value : null } : binding);
     this.patchStep(stepIndex, 'bindings', bindings);
   }
 

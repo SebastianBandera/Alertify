@@ -10,6 +10,7 @@ public record PipeOptionResponse(
     boolean enabled,
     PipeStepType type,
     List<String> outputs,
-    List<String> artifactInputs
+    List<String> artifactInputs,
+    List<String> stringInputs
 ) {
 }

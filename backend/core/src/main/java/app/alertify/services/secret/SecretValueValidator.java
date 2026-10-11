@@ -13,6 +13,7 @@ import app.alertify.worker.contract.DatabaseCredentials;
 import app.alertify.worker.contract.GitCredentials;
 import app.alertify.worker.contract.OidcTokenSet;
 import app.alertify.worker.contract.KubeconfigCredentials;
+import app.alertify.worker.contract.UsernamePasswordCredentials;
 
 /**
  * Validates a submitted secret value against its declared type and returns the
@@ -39,6 +40,7 @@ public class SecretValueValidator {
 
         return switch (type) {
             case STRING -> validateString(value, "STRING");
+            case USERNAME_PASSWORD -> validateUsernamePasswordCredentials(value);
             case DB_SECRET -> validateDatabaseCredentials(value);
             case GIT_SECRET -> validateGitCredentials(value);
             case OIDC_TOKEN_SET -> validateOidcTokenSet(value);
@@ -61,6 +63,13 @@ public class SecretValueValidator {
 
         return switch (type) {
             case STRING -> raw;
+            case USERNAME_PASSWORD -> {
+                try {
+                    yield UsernamePasswordCredentials.fromJson(raw).toJson();
+                } catch (IllegalArgumentException exception) {
+                    throw new InvalidSecretValueException("USERNAME_PASSWORD value is invalid: " + exception.getMessage());
+                }
+            }
             case DB_SECRET -> {
                 try {
                     yield DatabaseCredentials.fromJson(raw).toJson();
@@ -121,6 +130,17 @@ public class SecretValueValidator {
             return DatabaseCredentials.fromJson(value).toJson();
         } catch (IllegalArgumentException exception) {
             throw new InvalidSecretValueException("DB_SECRET value is invalid: " + exception.getMessage());
+        }
+    }
+
+    private static String validateUsernamePasswordCredentials(JsonNode value) {
+        if (!value.isObject())
+            throw new InvalidSecretValueException("USERNAME_PASSWORD requires a JSON object with username and password fields");
+
+        try {
+            return UsernamePasswordCredentials.fromJson(value).toJson();
+        } catch (IllegalArgumentException exception) {
+            throw new InvalidSecretValueException("USERNAME_PASSWORD value is invalid: " + exception.getMessage());
         }
     }
 

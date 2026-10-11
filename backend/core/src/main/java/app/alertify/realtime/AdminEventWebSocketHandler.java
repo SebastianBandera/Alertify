@@ -20,6 +20,8 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtException;
+
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
@@ -29,6 +31,7 @@ import org.springframework.web.socket.WebSocketMessage;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 
+import app.alertify.logging.ApplicationEventLogger;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -45,6 +48,7 @@ public class AdminEventWebSocketHandler extends TextWebSocketHandler implements 
     private static final Duration HEARTBEAT_INTERVAL = Duration.ofSeconds(25);
     private static final String ADMIN_AUTHORITY = "ROLE_ADMIN";
 
+    private final ApplicationEventLogger eventLogger;
     private final JwtDecoder jwtDecoder;
     private final JwtAuthenticationConverter jwtAuthenticationConverter;
     private final JsonMapper jsonMapper;
@@ -53,7 +57,8 @@ public class AdminEventWebSocketHandler extends TextWebSocketHandler implements 
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
     private final ConcurrentMap<String, SessionState> sessions = new ConcurrentHashMap<>();
 
-    public AdminEventWebSocketHandler(JwtDecoder jwtDecoder, JwtAuthenticationConverter jwtAuthenticationConverter, JsonMapper jsonMapper, ApplicationEventPublisher applicationEventPublisher, List<AdminRequestHandler> requestHandlers) {
+    public AdminEventWebSocketHandler(JwtDecoder jwtDecoder, JwtAuthenticationConverter jwtAuthenticationConverter, JsonMapper jsonMapper, ApplicationEventPublisher applicationEventPublisher, List<AdminRequestHandler> requestHandlers, ApplicationEventLogger eventLogger) {
+        this.eventLogger = eventLogger;
         this.jwtDecoder = jwtDecoder;
         this.jwtAuthenticationConverter = jwtAuthenticationConverter;
         this.jsonMapper = jsonMapper;
@@ -64,10 +69,17 @@ public class AdminEventWebSocketHandler extends TextWebSocketHandler implements 
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) {
-        SessionState state = new SessionState(session);
+        SessionState state = new SessionState(session, new WebSocketAuthenticationAudit(eventLogger, session, AUTH_TIMEOUT));
         sessions.put(session.getId(), state);
         synchronized (state.lifecycleLock) {
-            state.authTimeout = scheduler.schedule(() -> close(session), AUTH_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+            state.authTimeout = scheduler.schedule(() -> {
+                synchronized (state.lifecycleLock) {
+                    if (state.audit.timedOut()) {
+                        state.authenticated = false;
+                        close(session);
+                    }
+                }
+            }, AUTH_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
         }
     }
 
@@ -83,6 +95,7 @@ public class AdminEventWebSocketHandler extends TextWebSocketHandler implements 
             JsonNode frame = jsonMapper.readTree(message.getPayload());
             JsonNode typeNode = frame.get("type");
             if (typeNode == null || !typeNode.isString()) {
+                state.audit.failedBeforeAuthentication("PROTOCOL_INVALID");
                 close(session);
                 return;
             }
@@ -90,9 +103,13 @@ public class AdminEventWebSocketHandler extends TextWebSocketHandler implements 
             switch (typeNode.stringValue()) {
                 case "AUTH" -> authenticate(state, frame);
                 case "REQUEST" -> handleRequest(state, frame);
-                default -> close(session);
+                default -> {
+                    state.audit.failedBeforeAuthentication("PROTOCOL_INVALID");
+                    close(session);
+                }
             }
         } catch (RuntimeException exception) {
+            state.audit.failedBeforeAuthentication("PROTOCOL_INVALID");
             close(session);
         }
     }
@@ -121,39 +138,68 @@ public class AdminEventWebSocketHandler extends TextWebSocketHandler implements 
     private void authenticate(SessionState state, JsonNode frame) {
         JsonNode tokenNode = frame.get("token");
         if (tokenNode == null || !tokenNode.isString()) {
-            close(state.session);
+            rejectAuthentication(state, "TOKEN_MISSING");
             return;
         }
 
-        Jwt jwt = jwtDecoder.decode(tokenNode.stringValue());
+        Jwt jwt;
+        try {
+            jwt = jwtDecoder.decode(tokenNode.stringValue());
+        } catch (JwtException exception) {
+            rejectAuthentication(state, "TOKEN_INVALID");
+            return;
+        }
         Authentication authentication = jwtAuthenticationConverter.convert(jwt);
         if (authentication == null || authentication.getAuthorities().stream().noneMatch(authority -> ADMIN_AUTHORITY.equals(authority.getAuthority()))) {
-            close(state.session);
+            rejectAuthentication(state, "ROLE_INSUFFICIENT");
             return;
         }
 
         Instant expiresAt = jwt.getExpiresAt();
         if (expiresAt == null || !expiresAt.isAfter(Instant.now())) {
-            close(state.session);
+            rejectAuthentication(state, "TOKEN_EXPIRED");
             return;
         }
 
         boolean initiallyAuthenticated;
         synchronized (state.lifecycleLock) {
+            if (!state.audit.authenticated(authentication)) {
+                state.authenticated = false;
+                close(state.session);
+                return;
+            }
             initiallyAuthenticated = !state.authenticated;
             cancel(state.authTimeout);
             cancel(state.expiration);
             state.authentication = authentication;
             state.authenticated = true;
-            state.expiration = scheduler.schedule(() -> close(state.session), Duration.between(Instant.now(), expiresAt).toMillis(), TimeUnit.MILLISECONDS);
+            state.expiration = scheduler.schedule(() -> {
+                synchronized (state.lifecycleLock) {
+                    if (state.authentication != authentication)
+                        return;
+
+                    state.audit.disconnected();
+                    state.authenticated = false;
+                    close(state.session);
+                }
+            }, Math.max(0, Duration.between(Instant.now(), expiresAt).toMillis()), TimeUnit.MILLISECONDS);
         }
         sendJson(state, new AuthenticatedMessage("AUTHENTICATED"));
         if (initiallyAuthenticated)
             applicationEventPublisher.publishEvent(new AdminSessionAuthenticatedEvent(state.session.getId()));
     }
 
+    private static void rejectAuthentication(SessionState state, String reason) {
+        synchronized (state.lifecycleLock) {
+            state.audit.failed(reason);
+            state.authenticated = false;
+            close(state.session);
+        }
+    }
+
     private void handleRequest(SessionState state, JsonNode frame) {
         if (!state.authenticated()) {
+            state.audit.failedBeforeAuthentication("AUTH_REQUIRED");
             close(state.session);
             return;
         }
@@ -220,6 +266,8 @@ public class AdminEventWebSocketHandler extends TextWebSocketHandler implements 
         SessionState state = sessions.remove(sessionId);
         if (state != null) {
             synchronized (state.lifecycleLock) {
+                state.audit.disconnected();
+                state.authenticated = false;
                 cancel(state.authTimeout);
                 cancel(state.expiration);
             }
@@ -235,6 +283,8 @@ public class AdminEventWebSocketHandler extends TextWebSocketHandler implements 
     public void close() {
         sessions.values().forEach(state -> {
             synchronized (state.lifecycleLock) {
+                state.audit.disconnected();
+                state.authenticated = false;
                 cancel(state.authTimeout);
                 cancel(state.expiration);
             }
@@ -253,13 +303,15 @@ public class AdminEventWebSocketHandler extends TextWebSocketHandler implements 
         private final Object lifecycleLock = new Object();
         private final Object sendLock = new Object();
         private final WebSocketSession session;
+        private final WebSocketAuthenticationAudit audit;
         private volatile boolean authenticated;
         private Authentication authentication;
         private ScheduledFuture<?> authTimeout;
         private ScheduledFuture<?> expiration;
 
-        private SessionState(WebSocketSession session) {
+        private SessionState(WebSocketSession session, WebSocketAuthenticationAudit audit) {
             this.session = session;
+            this.audit = audit;
         }
 
         private boolean authenticated() { return authenticated; }

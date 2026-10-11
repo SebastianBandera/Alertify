@@ -37,6 +37,31 @@ class SecretValueValidatorTest {
     }
 
     @Test
+    void normalizesUsernamePasswordSecretsToCanonicalJson() {
+        JsonNode value = json("{\"password\":\" p a s s \",\"username\":\" user \"}");
+
+        String canonical = validator.validateAndNormalize(SecretValueType.USERNAME_PASSWORD, value);
+
+        assertThat(canonical).isEqualTo("{\"username\":\"user\",\"password\":\" p a s s \"}");
+        assertThat(validator.validateAndNormalizeRaw(SecretValueType.USERNAME_PASSWORD, canonical)).isEqualTo(canonical);
+        assertThat(validator.validateAndNormalize(SecretValueType.USERNAME_PASSWORD, json("{\"password\":\"secret\"}")))
+                .isEqualTo("{\"username\":null,\"password\":\"secret\"}");
+    }
+
+    @Test
+    void rejectsMalformedUsernamePasswordSecrets() {
+        assertThatThrownBy(() -> validator.validateAndNormalize(SecretValueType.USERNAME_PASSWORD, StringNode.valueOf("secret")))
+                .isInstanceOf(InvalidSecretValueException.class)
+                .hasMessageContaining("JSON object");
+        assertThatThrownBy(() -> validator.validateAndNormalize(SecretValueType.USERNAME_PASSWORD, json("{\"username\":\"user\"}")))
+                .isInstanceOf(InvalidSecretValueException.class)
+                .hasMessageContaining("password");
+        assertThatThrownBy(() -> validator.validateAndNormalizeRaw(SecretValueType.USERNAME_PASSWORD, "not json"))
+                .isInstanceOf(InvalidSecretValueException.class)
+                .hasMessageContaining("USERNAME_PASSWORD");
+    }
+
+    @Test
     void normalizesDatabaseSecretsToCanonicalJson() {
         JsonNode value = json("{\"password\":\"p\",\"options\":\"\",\"username\":\" u \",\"database\":\"d\","
                 + "\"port\":5432,\"host\":\" db.local \",\"engine\":\"POSTGRESQL\"}");

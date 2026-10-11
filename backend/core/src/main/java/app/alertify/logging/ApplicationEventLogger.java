@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.security.core.Authentication;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
@@ -44,6 +45,20 @@ public class ApplicationEventLogger {
 
     public void success(String event, Map<String, ?> data) {
         write(command(ApplicationLogLevel.INFO, event, ApplicationLogOutcome.SUCCESS, data));
+    }
+
+    /** Uses verified WebSocket authentication without changing thread security context. */
+    public void success(String event, Map<String, ?> data, Authentication authentication, RequestLogContext context) {
+        write(command(ApplicationLogLevel.INFO, event, ApplicationLogOutcome.SUCCESS, data, authentication, context));
+    }
+
+    public void failure(String event, Map<String, ?> data, Authentication authentication, RequestLogContext context) {
+        write(command(ApplicationLogLevel.WARN, event, ApplicationLogOutcome.FAILURE, data, authentication, context));
+    }
+
+    private ApplicationLogCommand command(ApplicationLogLevel level, String event, ApplicationLogOutcome outcome, Map<String, ?> data, Authentication authentication, RequestLogContext context) {
+        LogActor actor = authentication == null ? new LogActor("anonymous", "anonymous") : CurrentLogActor.resolve(authentication);
+        return new ApplicationLogCommand(Instant.now(), level, source, event, outcome, actor, context.requestId(), context.path(), Map.copyOf(data));
     }
 
     public void failure(String event, Map<String, ?> data) {

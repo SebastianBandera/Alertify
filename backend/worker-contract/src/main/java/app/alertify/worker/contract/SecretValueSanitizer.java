@@ -19,6 +19,7 @@ public final class SecretValueSanitizer {
 
     public static final String REDACTED = "[REDACTED]";
     private static final JsonMapper JSON = JsonMapper.builder().build();
+    private static final Pattern AUTHORIZATION = Pattern.compile("(?i)^(?:Authorization\\s*:\\s*)?(?:Bearer|Basic)\\s+(.+)$");
 
     private SecretValueSanitizer() {
     }
@@ -85,7 +86,7 @@ public final class SecretValueSanitizer {
         if (value == null || value.isEmpty())
             return;
 
-        candidates.add(value);
+        addTextCandidate(candidates, value);
         try {
             collectTextValues(JSON.readTree(value), candidates);
         } catch (RuntimeException ignored) {
@@ -99,7 +100,7 @@ public final class SecretValueSanitizer {
 
         if (node.isString()) {
             if (!node.stringValue().isEmpty())
-                candidates.add(node.stringValue());
+                addTextCandidate(candidates, node.stringValue());
 
             return;
         }
@@ -111,5 +112,12 @@ public final class SecretValueSanitizer {
         }
         if (node.isObject())
             node.properties().forEach(entry -> collectTextValues(entry.getValue(), candidates));
+    }
+
+    private static void addTextCandidate(Set<String> candidates, String value) {
+        candidates.add(value);
+        Matcher header = AUTHORIZATION.matcher(value);
+        if (header.matches())
+            candidates.add(header.group(1));
     }
 }

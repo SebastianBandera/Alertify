@@ -27,15 +27,20 @@ public record ResolvedProcedureParameter(
     Long bindingVersion,
     String binaryFileName,
     String binaryMediaType,
-    Long binarySize
+    Long binarySize,
+    boolean sensitive
 ) {
 
+    public ResolvedProcedureParameter(String name, String javaType, String value, byte[] binaryZip, boolean nullValue, AlertParameterSource source, Long configurationId, Long secretId, Long procedureId, Long pipeId, boolean writable, Long bindingVersion, String binaryFileName, String binaryMediaType, Long binarySize) {
+        this(name, javaType, value, binaryZip, nullValue, source, configurationId, secretId, procedureId, pipeId, writable, bindingVersion, binaryFileName, binaryMediaType, binarySize, source == AlertParameterSource.SECRET);
+    }
+
     public ResolvedProcedureParameter(String name, String javaType, String value, byte[] binaryZip, boolean nullValue, AlertParameterSource source, Long configurationId, Long secretId, Long procedureId, boolean writable) {
-        this(name, javaType, value, binaryZip, nullValue, source, configurationId, secretId, procedureId, null, writable, null, null, null, null);
+        this(name, javaType, value, binaryZip, nullValue, source, configurationId, secretId, procedureId, null, writable, null, null, null, null, source == AlertParameterSource.SECRET);
     }
 
     public ResolvedProcedureParameter(String name, String javaType, String value, byte[] binaryZip, boolean nullValue, AlertParameterSource source, Long configurationId, Long secretId, Long procedureId, boolean writable, Long bindingVersion) {
-        this(name, javaType, value, binaryZip, nullValue, source, configurationId, secretId, procedureId, null, writable, bindingVersion, null, null, null);
+        this(name, javaType, value, binaryZip, nullValue, source, configurationId, secretId, procedureId, null, writable, bindingVersion, null, null, null, source == AlertParameterSource.SECRET);
     }
 
     @Override
@@ -58,11 +63,13 @@ public record ResolvedProcedureParameter(
                 var otherBindingVersion,
                 var otherBinaryFileName,
                 var otherBinaryMediaType,
-                var otherBinarySize)))
+                var otherBinarySize,
+                var otherSensitive)))
             return false;
 
         return nullValue == otherNullValue
                 && writable == otherWritable
+                && sensitive == otherSensitive
                 && Objects.equals(name, otherName)
                 && Objects.equals(javaType, otherJavaType)
                 && Objects.equals(value, otherValue)
@@ -82,7 +89,7 @@ public record ResolvedProcedureParameter(
     public int hashCode() {
         int result = Objects.hash(
             name, javaType, value, nullValue, source, configurationId, secretId, procedureId, pipeId, writable, bindingVersion,
-            binaryFileName, binaryMediaType, binarySize
+            binaryFileName, binaryMediaType, binarySize, sensitive
         );
         return 31 * result + Arrays.hashCode(binaryZip);
     }
@@ -105,6 +112,7 @@ public record ResolvedProcedureParameter(
                 + ", binaryFileName=" + binaryFileName
                 + ", binaryMediaType=" + binaryMediaType
                 + ", binarySize=" + binarySize
+                + ", sensitive=" + sensitive
                 + "]";
     }
 }

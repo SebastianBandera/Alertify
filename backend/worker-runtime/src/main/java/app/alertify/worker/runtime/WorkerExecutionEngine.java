@@ -198,7 +198,8 @@ class WorkerExecutionEngine implements AutoCloseable {
 
     private static List<String> secretValues(ExecuteAlertRequest request) {
         List<String> values = new java.util.ArrayList<>(request.getParametersList().stream()
-                .filter(parameter -> parameter.getSource() == AlertParameterValueSource.ALERT_PARAMETER_VALUE_SOURCE_SECRET)
+                .filter(parameter -> parameter.getSensitive()
+                        || parameter.getSource() == AlertParameterValueSource.ALERT_PARAMETER_VALUE_SOURCE_SECRET)
                 .filter(parameter -> !parameter.getNullValue() && !parameter.getValue().isEmpty())
                 .map(AlertParameter::getValue)
                 .toList());

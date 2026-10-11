@@ -22,6 +22,7 @@ public class AdminEventWebSocketConfig implements WebSocketConfigurer {
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
         registry.addHandler(handler, "/api/admin/events")
+                .addInterceptors(new EventHandshakeInterceptor())
                 .setAllowedOrigins(allowedOrigin);
     }
 }

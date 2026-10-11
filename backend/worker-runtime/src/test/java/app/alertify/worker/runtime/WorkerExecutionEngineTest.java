@@ -145,6 +145,29 @@ class WorkerExecutionEngineTest {
             assertThat(execution.getError().getMessage()).isEqualTo("credential=[REDACTED]");
             assertThat(execution.getError().getStackTrace()).doesNotContain("opaque-token");
             assertThat(execution.getState()).isEqualTo("credential=[REDACTED]");
+
+            CompletableFuture<AlertExecutionResult> derivedResult = new CompletableFuture<>();
+            engine.execute(
+                    ExecuteAlertRequest.newBuilder()
+                            .setExecutionId("execution-sensitive-pipe-output-failure")
+                            .setAlertId(10)
+                            .setAlertName("Sensitive Pipe output failure sample")
+                            .setTemplateClassName("dynamic.SecretFailingAlert")
+                            .setSourceChecksum(checksum)
+                            .addParameters(AlertParameter.newBuilder()
+                                    .setName("token")
+                                    .setJavaType(String.class.getName())
+                                    .setValue("derived-token")
+                                    .setSource(AlertParameterValueSource.ALERT_PARAMETER_VALUE_SOURCE_PIPE_OUTPUT)
+                                    .setSensitive(true))
+                            .build(),
+                    observer(derivedResult)
+            );
+
+            AlertExecutionResult derived = derivedResult.get(5, TimeUnit.SECONDS);
+            assertThat(derived.getError().getMessage()).isEqualTo("credential=[REDACTED]");
+            assertThat(derived.getError().getStackTrace()).doesNotContain("derived-token");
+            assertThat(derived.getState()).isEqualTo("credential=[REDACTED]");
         }
     }
 

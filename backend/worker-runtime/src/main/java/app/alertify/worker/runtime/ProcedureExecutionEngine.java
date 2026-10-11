@@ -17,6 +17,7 @@ import app.alertify.worker.grpc.AlertParameter;
 import app.alertify.worker.grpc.AlertParameterValueSource;
 import app.alertify.worker.grpc.ExecuteProcedureRequest;
 import app.alertify.worker.grpc.ProcedureExecutionResult;
+import app.alertify.worker.contract.SecretValueSanitizer;
 import io.grpc.Deadline;
 import io.grpc.stub.StreamObserver;
 import tools.jackson.databind.JsonNode;
@@ -63,6 +64,12 @@ class ProcedureExecutionEngine implements AutoCloseable {
 
     private void run(ExecuteProcedureRequest request, StreamObserver<ProcedureExecutionResult> observer, ExecutionTimeline timeline, Deadline deadline, ProcedureHandleFactory handles) {
         CompiledProcedureTemplate.Instance instance = null;
+        var sensitiveValues = request.getParametersList().stream()
+                .filter(parameter -> parameter.getSensitive()
+                        || parameter.getSource() == AlertParameterValueSource.ALERT_PARAMETER_VALUE_SOURCE_SECRET)
+                .filter(parameter -> !parameter.getNullValue() && !parameter.getValue().isEmpty())
+                .map(AlertParameter::getValue)
+                .toList();
         try (WorkerExecutionTracker.ProcedurePermit permit = tracker.startProcedure(request, timeline.next());
                 BinaryExecutionGuard.Lease ignored = binaryExecutionGuard.acquire(request)) {
             Map<String, AlertParameterSource> sources = request.getParametersList().stream()
@@ -106,7 +113,7 @@ class ProcedureExecutionEngine implements AutoCloseable {
                     .setStartedAt(WorkerExecutionEngine.timestamp(timeline.startedAt()))
                     .setWorkStartedAt(WorkerExecutionEngine.timestamp(timeline.startedAt()))
                     .setFinishedAt(WorkerExecutionEngine.timestamp(now))
-                    .setError(WorkerExecutionEngine.error(exception))
+                    .setError(SecretValueSanitizer.sanitize(WorkerExecutionEngine.error(exception), sensitiveValues))
                     .setWorkerName(properties.name())
                     .setWorkerInstanceId(identity.id())
                     .build());

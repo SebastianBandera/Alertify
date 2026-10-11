@@ -15,11 +15,13 @@ import app.alertify.worker.contract.DatabaseCredentials;
 import app.alertify.worker.contract.GitCredentials;
 import app.alertify.worker.contract.KubeconfigCredentials;
 import app.alertify.worker.contract.OidcTokenSet;
+import app.alertify.worker.contract.UsernamePasswordCredentials;
 
 class ParameterValueTypeCompatibilityTest {
 
     private static final String BYTE_ARRAY = byte[].class.getName();
     private static final String DATABASE_CREDENTIALS = DatabaseCredentials.class.getName();
+    private static final String USERNAME_PASSWORD_CREDENTIALS = UsernamePasswordCredentials.class.getName();
     private static final String GIT_CREDENTIALS = GitCredentials.class.getName();
     private static final String OIDC_TOKEN_SET = OidcTokenSet.class.getName();
     private static final String KUBECONFIG_CREDENTIALS = KubeconfigCredentials.class.getName();
@@ -38,6 +40,8 @@ class ParameterValueTypeCompatibilityTest {
                 .contains(SecretValueType.BINARY);
         assertThat(ParameterValueTypeCompatibility.requiredSecretValueType(DATABASE_CREDENTIALS))
                 .contains(SecretValueType.DB_SECRET);
+        assertThat(ParameterValueTypeCompatibility.requiredSecretValueType(USERNAME_PASSWORD_CREDENTIALS))
+                .contains(SecretValueType.USERNAME_PASSWORD);
         assertThat(ParameterValueTypeCompatibility.requiredSecretValueType(GIT_CREDENTIALS))
                 .contains(SecretValueType.GIT_SECRET);
         assertThat(ParameterValueTypeCompatibility.requiredSecretValueType(OIDC_TOKEN_SET))
@@ -59,6 +63,9 @@ class ParameterValueTypeCompatibilityTest {
     @Test
     void secretCompatibilityMirrorsThePhysicalRequirement() {
         assertThat(ParameterValueTypeCompatibility.isSecretValueTypeCompatible(DATABASE_CREDENTIALS, SecretValueType.DB_SECRET)).isTrue();
+        assertThat(ParameterValueTypeCompatibility.isSecretValueTypeCompatible(USERNAME_PASSWORD_CREDENTIALS, SecretValueType.USERNAME_PASSWORD)).isTrue();
+        assertThat(ParameterValueTypeCompatibility.isSecretValueTypeCompatible(USERNAME_PASSWORD_CREDENTIALS, SecretValueType.STRING)).isFalse();
+        assertThat(ParameterValueTypeCompatibility.isSecretValueTypeCompatible(STRING, SecretValueType.USERNAME_PASSWORD)).isFalse();
         assertThat(ParameterValueTypeCompatibility.isSecretValueTypeCompatible(STRING, SecretValueType.DB_SECRET)).isFalse();
         assertThat(ParameterValueTypeCompatibility.isSecretValueTypeCompatible(STRING, SecretValueType.STRING)).isTrue();
         assertThat(ParameterValueTypeCompatibility.isSecretValueTypeCompatible(BYTE_ARRAY, SecretValueType.BINARY)).isTrue();
@@ -77,6 +84,8 @@ class ParameterValueTypeCompatibilityTest {
                 .containsExactly("BINARY");
         assertThat(ParameterValueTypeCompatibility.effectiveAllowedSecretValueTypes(DATABASE_CREDENTIALS, List.of(), "field"))
                 .containsExactly("DB_SECRET");
+        assertThat(ParameterValueTypeCompatibility.effectiveAllowedSecretValueTypes(USERNAME_PASSWORD_CREDENTIALS, List.of(), "field"))
+                .containsExactly("USERNAME_PASSWORD");
         assertThat(ParameterValueTypeCompatibility.effectiveAllowedSecretValueTypes(OIDC_TOKEN_SET, List.of(), "field"))
                 .containsExactly("OIDC_TOKEN_SET");
         assertThat(ParameterValueTypeCompatibility.effectiveAllowedConfigurationValueTypes(STRING, List.of(), "field")).isEmpty();

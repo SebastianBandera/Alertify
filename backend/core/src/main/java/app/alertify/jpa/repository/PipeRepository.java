@@ -16,7 +16,8 @@ public interface PipeRepository extends JpaRepository<Pipe, Long> {
     Page<Pipe> findAllByNameContainingIgnoreCase(String name, Pageable pageable);
 
     @EntityGraph(attributePaths = { "steps", "steps.alert", "steps.procedure", "steps.bindings", "tags",
-            "steps.bindings.targetParameter", "steps.bindings.sourceStep", "steps.bindings.sourceOutput" })
+            "steps.bindings.targetProcedureParameter", "steps.bindings.targetAlertParameter",
+            "steps.bindings.sourceStep", "steps.bindings.sourceOutput" })
     @Query("select p from Pipe p where p.id = :id")
     Optional<Pipe> findDetailedById(Long id);
 }
