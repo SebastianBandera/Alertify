@@ -54,7 +54,7 @@ function redactUrl(raw) {
 }
 
 function isSecretEnvironment(key, entry) {
-  if (/PASSWORD|SECRET|TOKEN|KEY_ENV_PART/.test(key)) return true;
+  if (/PASSWORD|SECRET|TOKEN|KEY_ENV_PART|STATE_KEY/.test(key)) return true;
   try {
     const url = new URL(String(entry));
     return Boolean(url.username || url.password || [...url.searchParams.keys()].some((parameter) => /PASSWORD|SECRET|TOKEN|KEY/i.test(parameter)));
@@ -158,7 +158,7 @@ function createResources(compose, environment, namespace, templates) {
         : String(entry ?? '');
       (isSecretEnvironment(key, mapped) ? secrets : publicEnvironment)[key] = mapped;
     }
-    if (name.startsWith('worker-') && value(environment, name === 'worker-standard' ? 'WORKER_STANDARD_UNIQUE_NAMES' : 'WORKER_PLAYWRIGHT_UNIQUE_NAMES') === 'true') {
+    if (['worker-standard', 'worker-playwright'].includes(name) && value(environment, name === 'worker-standard' ? 'WORKER_STANDARD_UNIQUE_NAMES' : 'WORKER_PLAYWRIGHT_UNIQUE_NAMES') === 'true') {
       delete publicEnvironment.WORKER_NAME;
     }
     if (name === 'publisher') {
@@ -200,6 +200,15 @@ function createResources(compose, environment, namespace, templates) {
       container.volumeMounts.push({ name: 'routing-template', mountPath: '/etc/nginx/templates/default.conf.template', subPath: 'default.conf.template', readOnly: true });
     }
     if (name === 'worker-standard') container.securityContext = { capabilities: { add: ['SYS_ADMIN'] } };
+    if (name === 'worker-codex') {
+      const claim = { accessModes: ['ReadWriteOnce'], resources: { requests: { storage: value(environment, 'KUBERNETES_AI_WORKER_STORAGE') } } };
+      if (value(environment, 'KUBERNETES_STORAGE_CLASS')) claim.storageClassName = value(environment, 'KUBERNETES_STORAGE_CLASS');
+      resources.push(render('pvc', { NAME: 'worker-codex-data', SPEC: claim }));
+      podSpec.volumes ??= [];
+      container.volumeMounts ??= [];
+      podSpec.volumes.push({ name: 'ai-state', persistentVolumeClaim: { claimName: 'worker-codex-data' } });
+      container.volumeMounts.push({ name: 'ai-state', mountPath: '/application/data' });
+    }
     if (name === 'identity') {
       container.lifecycle = { postStart: { exec: { command: ['/bin/bash', '/opt/keycloak/config/configure-permanent-admin.sh'] } } };
       const realmTemplate = templates.keycloakRealm.replace('"webOrigins": ["${APP_PUBLIC_URL}"]', '"webOrigins": ["${APP_PUBLIC_ORIGIN}"]');
@@ -298,7 +307,7 @@ async function deploy(environment, plan, options, projectDirectory, certificateH
   if (!clusterDns) throw new Error('Kubernetes cluster DNS Service could not be discovered (k8s-app=kube-dns).');
   environment = new Map(environment);
   environment.set('KUBERNETES_CLUSTER_DNS', clusterDns);
-  for (const role of ['infra', 'application', 'worker-standard', 'worker-playwright']) {
+  for (const role of ['infra', 'application', 'worker-standard', 'worker-playwright', 'worker-codex']) {
     if (!nodes.some((node) => node.metadata.labels['alertify-role'] === role)) console.warn(`Warning: no node has alertify-role=${role}; preferred affinity permits other nodes.`);
   }
   const registry = value(environment, 'KUBERNETES_REGISTRY').replace(/\/$/, '');

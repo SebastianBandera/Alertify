@@ -12,6 +12,7 @@ import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.support.ToolUtils;
 import org.springframework.aop.support.AopUtils;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.MethodIntrospector;
 import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.security.core.Authentication;
@@ -35,6 +36,7 @@ public class AiToolCatalog {
 
     private final Map<AiToolGroup, List<AiToolDescriptor>> descriptors;
 
+    @Autowired
     public AiToolCatalog(AlertAiTools alerts, ProcedureAiTools procedures, PipeAiTools pipes, HookAiTools hooks, ConfigurationAiTools configuration, DashboardAiTools dashboard, SystemAiTools system) {
         EnumMap<AiToolGroup, List<AiToolDescriptor>> values = new EnumMap<>(AiToolGroup.class);
         values.put(AiToolGroup.ALERTS, descriptors(alerts));

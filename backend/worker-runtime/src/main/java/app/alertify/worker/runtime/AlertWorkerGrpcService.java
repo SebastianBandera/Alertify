@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import com.google.protobuf.Empty;
 
 import app.alertify.procedures.ProcedureExecutionException;
+import app.alertify.worker.contract.WorkerResourceMonitor;
 import app.alertify.worker.grpc.ArtifactChunk;
 import app.alertify.worker.grpc.ArtifactDescriptor;
 import app.alertify.worker.grpc.ArtifactRequest;

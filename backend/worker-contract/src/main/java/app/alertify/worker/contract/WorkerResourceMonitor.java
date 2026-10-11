@@ -1,4 +1,4 @@
-package app.alertify.worker.runtime;
+package app.alertify.worker.contract;
 
 import java.io.IOException;
 import java.lang.management.ManagementFactory;
@@ -27,7 +27,7 @@ import app.alertify.worker.grpc.WorkerResourceUsage;
  * is recomputed at most once per sampling window so the frequent status polls
  * do not produce noisy figures.</p>
  */
-class WorkerResourceMonitor {
+public class WorkerResourceMonitor {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(WorkerResourceMonitor.class);
     private static final Duration SAMPLE_WINDOW = Duration.ofSeconds(2);
@@ -44,7 +44,7 @@ class WorkerResourceMonitor {
     private long lastSampledAtNanos;
     private double cpuUsage = -1;
 
-    WorkerResourceMonitor() {
+    public WorkerResourceMonitor() {
         cgroupCpuAccounting = CGROUP_CPU_ACCOUNTINGS.stream()
                 .filter(accounting -> accounting.usageNanos().isPresent())
                 .findFirst()
@@ -53,7 +53,7 @@ class WorkerResourceMonitor {
         sampleCpu();
     }
 
-    synchronized WorkerResourceUsage usage() {
+    public synchronized WorkerResourceUsage usage() {
         sampleCpu();
         long totalMemory = operatingSystem.getTotalMemorySize();
         long freeMemory = operatingSystem.getFreeMemorySize();

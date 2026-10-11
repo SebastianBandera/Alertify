@@ -37,6 +37,7 @@
         <module>core</module>
         <module>worker-standard</module>
         <module>worker-playwright</module>
+        <module>worker-codex</module>
     </modules>
 
     <dependencyManagement>

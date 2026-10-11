@@ -10,7 +10,6 @@ import java.util.List;
 import java.util.Locale;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.security.access.prepost.PreAuthorize;
 
 import app.alertify.ai.api.AiSecretReference;
@@ -33,9 +32,9 @@ class AiToolSurfaceTest {
     void toolNamesAreUniqueAndExcludeCredentialRotationAndBinaryContent() {
         List<String> names = TOOL_CLASSES.stream()
                 .flatMap(type -> Arrays.stream(type.getMethods()))
-                .map(method -> method.getAnnotation(Tool.class))
+                .map(method -> method.getAnnotation(AlertifyTool.class))
                 .filter(java.util.Objects::nonNull)
-                .map(Tool::name)
+                .map(AlertifyTool::name)
                 .toList();
 
         assertTrue(names.size() >= 80);
@@ -60,11 +59,11 @@ class AiToolSurfaceTest {
         TOOL_CLASSES.stream().filter(type -> type != DashboardAiTools.class).forEach(type ->
                 assertEquals(AuthorizationPolicies.ADMIN, type.getAnnotation(PreAuthorize.class).value()));
         Arrays.stream(DashboardAiTools.class.getMethods())
-                .filter(method -> method.isAnnotationPresent(Tool.class))
+                .filter(method -> method.isAnnotationPresent(AlertifyTool.class))
                 .forEach(method -> assertTrue(method.isAnnotationPresent(PreAuthorize.class)));
         assertEquals(AuthorizationPolicies.DASHBOARD_RUN, Arrays.stream(DashboardAiTools.class.getMethods())
-                .filter(method -> method.getAnnotation(Tool.class) != null)
-                .filter(method -> method.getAnnotation(Tool.class).name().equals("alertify_dashboard_alert_run"))
+                .filter(method -> method.getAnnotation(AlertifyTool.class) != null)
+                .filter(method -> method.getAnnotation(AlertifyTool.class).name().equals("alertify_dashboard_alert_run"))
                 .findFirst()
                 .orElseThrow()
                 .getAnnotation(PreAuthorize.class)

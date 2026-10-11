@@ -53,7 +53,11 @@ public class SecurityConfig {
         configuration.setExposedHeaders(List.of(ApiRequestLoggingFilter.REQUEST_ID_HEADER, "Location"));
         configuration.setMaxAge(3600L);
 
+        CorsConfiguration extensionRelayConfiguration = new CorsConfiguration(configuration);
+        extensionRelayConfiguration.setAllowedOriginPatterns(List.of("chrome-extension://*", "moz-extension://*"));
+
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/api/ai/codex/oauth/callback/relay", extensionRelayConfiguration);
         source.registerCorsConfiguration("/api/**", configuration);
         return source;
     }
@@ -74,6 +78,10 @@ public class SecurityConfig {
                                 .requestMatchers(HttpMethod.GET, "/api/admin/events")
                                 .permitAll()
                                 .requestMatchers(HttpMethod.GET, "/api/viewer/events")
+                                .permitAll()
+                                .requestMatchers(HttpMethod.GET, "/api/ai/codex/oauth/callback")
+                                .permitAll()
+                                .requestMatchers(HttpMethod.POST, "/api/ai/codex/oauth/callback/relay")
                                 .permitAll()
                                 .anyRequest()
                                 .authenticated()

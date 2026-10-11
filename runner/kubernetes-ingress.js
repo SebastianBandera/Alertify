@@ -25,9 +25,19 @@ function createIngressResources(environment, namespace, templates, renderTemplat
   const value = (key) => (environment.get(key) ?? '').replace(/^(["'])(.*)\1$/, '$2');
   const hostname = new URL(value('APP_PUBLIC_URL')).hostname;
   const secure = !/^localhost$|\.localhost$/i.test(hostname);
-  const dynamic = secure ? { http: { serversTransports: { publisher: {
-    serverName: hostname, rootCAs: ['/etc/traefik/ca/alertify-local-ca.crt'],
-  } } } } : {};
+  const context = value('APP_CONTEXT_PATH').replace(/\/$/, '');
+  const callbackPath = `${context}/api/ai/codex/oauth/callback`;
+  const clusterDomain = value('KUBERNETES_CLUSTER_DOMAIN') || 'cluster.local';
+  const dynamic = { http: {
+    routers: { 'ai-oauth-loopback': {
+      entryPoints: ['web'], rule: `Host(\`127.0.0.1\`) && Path(\`${callbackPath}\`)`,
+      priority: 1000, service: 'ai-oauth-backend',
+    } },
+    services: { 'ai-oauth-backend': { loadBalancer: { servers: [{ url: `http://backend.${namespace}.svc.${clusterDomain}:8080` }] } } },
+    ...(secure ? { serversTransports: { publisher: {
+      serverName: hostname, rootCAs: ['/etc/traefik/ca/alertify-local-ca.crt'],
+    } } } : {}),
+  } };
   const args = [
     '--entrypoints.web.address=:8000', '--entrypoints.websecure.address=:8443',
     '--entrypoints.traefik.address=:9000', '--ping=true', '--ping.entrypoint=traefik',
@@ -38,7 +48,8 @@ function createIngressResources(environment, namespace, templates, renderTemplat
     '--global.checknewversion=false', '--global.sendanonymoususage=false',
   ];
   if (secure) args.push('--entrypoints.web.http.redirections.entrypoint.scheme=https',
-    `--entrypoints.web.http.redirections.entrypoint.to=:${value('PUBLIC_PORT') || '443'}`);
+    `--entrypoints.web.http.redirections.entrypoint.to=:${value('PUBLIC_PORT') || '443'}`,
+    '--entrypoints.web.http.redirections.entrypoint.priority=10');
   // Local routes and leaf certificates are owned outside the Alertify deployment.
   const volumes = [
     { name: 'dynamic', projected: { sources: [

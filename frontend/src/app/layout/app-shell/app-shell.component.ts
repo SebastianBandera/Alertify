@@ -30,7 +30,7 @@ import { AdminStatusBarComponent } from '../admin-status-bar/admin-status-bar.co
 interface NavigationItem {
   readonly labelKey: TranslationKey;
   readonly path: string;
-  readonly icon: 'dashboard' | 'alerts' | 'procedures' | 'pipes' | 'hooks' | 'status' | 'configs' | 'system-configs' | 'secrets' | 'logs';
+  readonly icon: 'dashboard' | 'alerts' | 'procedures' | 'pipes' | 'hooks' | 'status' | 'ai' | 'configs' | 'system-configs' | 'secrets' | 'logs';
 }
 
 @Component({
@@ -70,6 +70,9 @@ export class AppShellComponent {
       : []),
     ...(this.authService.isAdmin
       ? [{ labelKey: 'navigation.status' as const, path: '/status', icon: 'status' as const }]
+      : []),
+    ...(this.authService.isAdmin
+      ? [{ labelKey: 'navigation.ai' as const, path: '/ai', icon: 'ai' as const }]
       : []),
     ...(this.authService.isAdmin
       ? [{ labelKey: 'navigation.configs' as const, path: '/configs', icon: 'configs' as const }]
@@ -253,6 +256,9 @@ export class AppShellComponent {
     }
     if (url.startsWith('/status')) {
       return 'navigation.status';
+    }
+    if (url.startsWith('/ai')) {
+      return 'navigation.ai';
     }
     if (url.startsWith('/system-configs')) {
       return 'navigation.systemConfigs';

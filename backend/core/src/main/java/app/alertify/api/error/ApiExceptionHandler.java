@@ -21,6 +21,7 @@ import app.alertify.hooks.HookInvocationRejectedException;
 import app.alertify.logging.ApiRequestLoggingFilter;
 import app.alertify.logging.ApiResponseLogLevelResolver;
 import app.alertify.logging.ApplicationEventLogger;
+import app.alertify.codex.AiWorkerException;
 
 /**
  * Converts domain, validation and persistence exceptions into the stable API
@@ -33,6 +34,17 @@ public class ApiExceptionHandler {
 
     public ApiExceptionHandler(ApplicationEventLogger eventLogger) {
         this.eventLogger = eventLogger;
+    }
+
+    @ExceptionHandler(AiWorkerException.class)
+    ResponseEntity<ApiError> handleAiWorker(AiWorkerException exception, HttpServletRequest request) {
+        HttpStatus status = switch (exception.getCode()) {
+            case "AI_WORKER_UNAVAILABLE", "AI_WORKER_AMBIGUOUS" -> HttpStatus.SERVICE_UNAVAILABLE;
+            case "AI_INVALID_REQUEST" -> HttpStatus.BAD_REQUEST;
+            case "AI_OPERATION_CONFLICT" -> HttpStatus.CONFLICT;
+            default -> HttpStatus.BAD_GATEWAY;
+        };
+        return response(status, exception.getCode(), exception.getMessage(), Map.of(), exception, request);
     }
 
     @ExceptionHandler(ResourceNotFoundException.class)

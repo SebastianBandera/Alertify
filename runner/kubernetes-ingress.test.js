@@ -27,6 +27,10 @@ test('Ingress routes root and contextual paths without rewriting and verifies pu
   assert.equal(pod.containers[0].args.includes('--api.dashboard=false'), true);
   assert.deepEqual(pod.volumes.filter((volume) => volume.secret).map((volume) => volume.secret.secretName), ['traefik-custom-tls', 'traefik-publisher-ca']);
   const transport = JSON.parse(find('ConfigMap', 'traefik-config').data['config.yaml']).http.serversTransports.publisher;
+  const dynamic = JSON.parse(find('ConfigMap', 'traefik-config').data['config.yaml']).http;
+  assert.equal(dynamic.routers['ai-oauth-loopback'].rule, 'Host(`127.0.0.1`) && Path(`/api/ai/codex/oauth/callback`)');
+  assert.equal(dynamic.routers['ai-oauth-loopback'].priority, 1000);
+  assert.equal(dynamic.services['ai-oauth-backend'].loadBalancer.servers[0].url, 'http://backend.demo.svc.cluster.local:8080');
   assert.equal(transport.serverName, 'alertify.dev');
   assert.equal(transport.insecureSkipVerify, undefined);
   assert.equal(find('Role', 'traefik').metadata.namespace, 'demo');

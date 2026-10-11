@@ -9,7 +9,9 @@ import java.util.Locale;
 public enum WorkerCapability {
 
     STANDARD,
-    PLAYWRIGHT;
+    PLAYWRIGHT,
+    AI,
+    CODEX;
 
     private static final String HEALTH_SERVICE_PREFIX = "app.alertify.worker.capability.";
 

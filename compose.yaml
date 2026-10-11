@@ -244,6 +244,44 @@ services:
     mem_limit: ${WORKER_PLAYWRIGHT_CONTAINER_MEMORY:?Set WORKER_PLAYWRIGHT_CONTAINER_MEMORY in .env}
     restart: unless-stopped
 
+  worker-codex:
+    profiles:
+      - local-worker-codex
+      - local-backend
+    container_name: ${COMPOSE_PROJECT_NAME}-worker-codex
+    build:
+      context: ./backend
+      dockerfile: worker-codex/Dockerfile
+      args:
+        BACKEND_BUILD_IMAGE: ${BACKEND_BUILD_IMAGE:?Set BACKEND_BUILD_IMAGE in .env}
+        WORKER_RUNTIME_IMAGE: ${WORKER_RUNTIME_IMAGE:?Set WORKER_RUNTIME_IMAGE in .env}
+    image: ${WORKER_CODEX_IMAGE:?Set WORKER_CODEX_IMAGE in .env}
+    pull_policy: build
+    environment:
+      WORKER_NAME: ${WORKER_CODEX_NAME:?Set WORKER_CODEX_NAME in .env}
+      WORKER_GRPC_PORT: ${WORKER_GRPC_PORT:?Set WORKER_GRPC_PORT in .env}
+      WORKER_GRPC_MAX_MESSAGE_BYTES: ${WORKER_GRPC_MAX_MESSAGE_BYTES:?Set WORKER_GRPC_MAX_MESSAGE_BYTES in .env}
+      WORKER_GRPC_TLS_ENABLED: ${WORKER_GRPC_TLS_ENABLED:?Set WORKER_GRPC_TLS_ENABLED in .env}
+      AI_WORKER_STATE_KEY: ${AI_WORKER_STATE_KEY:?Set AI_WORKER_STATE_KEY in .env}
+      AI_REFRESH_TOKEN_LIFETIME: ${AI_REFRESH_TOKEN_LIFETIME:?Set AI_REFRESH_TOKEN_LIFETIME in .env}
+      AI_DEFAULT_MODEL: ${AI_DEFAULT_MODEL:?Set AI_DEFAULT_MODEL in .env}
+      AI_DEFAULT_REASONING_EFFORT: ${AI_DEFAULT_REASONING_EFFORT:?Set AI_DEFAULT_REASONING_EFFORT in .env}
+      AI_DEFAULT_REFRESH_POLICY: ${AI_DEFAULT_REFRESH_POLICY:?Set AI_DEFAULT_REFRESH_POLICY in .env}
+      TZ: ${TIME_ZONE:?Set TIME_ZONE in .env}
+    expose:
+      - "${WORKER_GRPC_PORT:?Set WORKER_GRPC_PORT in .env}"
+    networks:
+      default:
+        aliases:
+          - ${WORKER_GRPC_HOST:?Set WORKER_GRPC_HOST in .env}
+    deploy:
+      replicas: 1
+    volumes:
+      - grpc_worker_tls:/run/alertify-grpc-tls:ro
+      - ai_worker_data:/application/data
+    mem_limit: ${WORKER_CODEX_CONTAINER_MEMORY:?Set WORKER_CODEX_CONTAINER_MEMORY in .env}
+    restart: unless-stopped
+
   backend:
     profiles:
       - local-backend
@@ -281,6 +319,8 @@ services:
       OIDC_BACKEND_AUDIENCE: ${OIDC_BACKEND_AUDIENCE:?Set OIDC_BACKEND_AUDIENCE in .env}
       APP_PUBLIC_URL: ${APP_PUBLIC_URL:?Set APP_PUBLIC_URL in .env}
       APP_PUBLIC_ORIGIN: ${APP_PUBLIC_ORIGIN:?Derived from APP_PUBLIC_URL by the runner}
+      AI_OAUTH_CALLBACK_URI: ${AI_OAUTH_CALLBACK_URI:?Derived by the runner}
+      AI_OAUTH_EXTENSION_CALLBACK_URI: ${AI_OAUTH_EXTENSION_CALLBACK_URI:?Derived by the runner}
       JAVA_DEBUG_ENABLED: ${BACKEND_DEBUG_ENABLED:?Set BACKEND_DEBUG_ENABLED in .env}
       JAVA_DEBUG_PORT: ${BACKEND_DEBUG_PORT:?Set BACKEND_DEBUG_PORT in .env}
       JAVA_DEBUG_SUSPEND: ${BACKEND_DEBUG_SUSPEND:?Set BACKEND_DEBUG_SUSPEND in .env}
@@ -347,6 +387,7 @@ services:
 volumes:
   identity_database_data:
   database_data:
+  ai_worker_data:
   grpc_ca:
     external: true
     name: ${COMPOSE_PROJECT_NAME:?Set COMPOSE_PROJECT_NAME in .env}-grpc-ca

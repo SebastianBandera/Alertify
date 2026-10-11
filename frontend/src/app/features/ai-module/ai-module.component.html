@@ -1,0 +1,140 @@
+<section class="ai-page">
+  <header>
+    <h1>{{ localization.translate('ai.title') }}</h1>
+    <p>{{ localization.translate('ai.description') }}</p>
+  </header>
+
+  @if (loading()) {
+    <div class="notice">{{ localization.translate('ai.loading') }}</div>
+  } @else {
+    @if (unavailable()) {
+      <div class="notice notice--error"><strong>{{ localization.translate('ai.workerUnavailable') }}</strong> {{ localization.translate('ai.workerUnavailableHelp') }}</div>
+    }
+
+    <nav class="tabs" [attr.aria-label]="localization.translate('ai.tabs.label')">
+      <button type="button" [class.active]="tab() === 'general'" (click)="selectTab('general')">{{ localization.translate('ai.tabs.general') }}</button>
+      <button type="button" [class.active]="tab() === 'codex'" (click)="selectTab('codex')">{{ localization.translate('ai.tabs.codex') }}</button>
+    </nav>
+
+    @if (message()) { <div class="notice notice--success">{{ messageText() }}</div> }
+    @if (error()) { <div class="notice notice--error">{{ error() }}</div> }
+
+    @if (tab() === 'general') {
+      <form class="card form" (submit)="$event.preventDefault(); save()">
+        <fieldset [disabled]="busy() || unavailable()">
+          <label class="check"><input type="checkbox" [ngModel]="form().enabled" (ngModelChange)="patch('enabled', $event)" name="enabled"> {{ localization.translate('ai.general.enabled') }}</label>
+          <label>{{ localization.translate('ai.general.provider') }}<input value="CODEX" readonly></label>
+          <label>{{ localization.translate('ai.general.defaultModel') }}<input type="text" [ngModel]="form().model" (ngModelChange)="patch('model', $event)" name="model" maxlength="128" required></label>
+          <label>{{ localization.translate('ai.general.reasoningEffort') }}
+            <select [ngModel]="form().reasoningEffort" (ngModelChange)="patch('reasoningEffort', $event)" name="reasoningEffort">
+              <option value="low">{{ localization.translate('ai.reasoning.low') }}</option>
+              <option value="medium">{{ localization.translate('ai.reasoning.medium') }}</option>
+              <option value="high">{{ localization.translate('ai.reasoning.high') }}</option>
+              <option value="xhigh">{{ localization.translate('ai.reasoning.xhigh') }}</option>
+            </select>
+          </label>
+          <label>{{ localization.translate('ai.general.agents') }}<textarea rows="12" [ngModel]="form().agentInstructions" (ngModelChange)="patch('agentInstructions', $event)" name="agentInstructions" maxlength="65536" [placeholder]="localization.translate('ai.general.agentsPlaceholder')"></textarea></label>
+          <label>{{ localization.translate('ai.general.refreshPolicy') }}
+            <select [ngModel]="form().refreshPolicy" (ngModelChange)="patch('refreshPolicy', $event)" name="refreshPolicy">
+              <option value="AUTOMATIC">{{ localization.translate('ai.refreshPolicy.AUTOMATIC') }}</option>
+              <option value="ON_USE">{{ localization.translate('ai.refreshPolicy.ON_USE') }}</option>
+              <option value="NONE">{{ localization.translate('ai.refreshPolicy.NONE') }}</option>
+            </select>
+          </label>
+          <button class="primary" type="submit">{{ localization.translate('ai.save') }}</button>
+        </fieldset>
+      </form>
+    } @else {
+      <div class="card">
+        <dl class="state">
+          <div><dt>{{ localization.translate('ai.codex.worker') }}</dt><dd>{{ localization.translate(module()?.workerAvailable ? 'ai.codex.workerActive' : 'ai.codex.workerInactive') }}</dd></div>
+          <div><dt>{{ localization.translate('ai.codex.session') }}</dt><dd>{{ localization.translateDynamic('ai.sessionStatus.' + module()?.sessionStatus) }}</dd></div>
+          <div><dt>{{ localization.translate('ai.codex.mode') }}</dt><dd>{{ module()?.authMode ? localization.translateDynamic('ai.authMode.' + module()?.authMode) : '—' }}</dd></div>
+          <div><dt>{{ localization.translate('ai.codex.account') }}</dt><dd>{{ module()?.accountLabel || '—' }}</dd></div>
+          <div><dt>{{ localization.translate('ai.codex.expiresAt') }}</dt><dd>{{ formatDate(module()?.expiresAt || '') }}</dd></div>
+          <div><dt>{{ localization.translate('ai.codex.refreshExpiresAt') }}</dt><dd>{{ refreshExpiration(module()?.refreshExpiresAt || '') }}</dd></div>
+          <div><dt>{{ localization.translate('ai.codex.lastRefreshedAt') }}</dt><dd>{{ lastRefresh(module()?.lastRefreshedAt || '') }}</dd></div>
+          <div><dt>{{ localization.translate('ai.codex.refreshPolicy') }}</dt><dd>{{ module()?.workerAvailable ? localization.translateDynamic('ai.refreshPolicy.' + module()?.refreshPolicy) : '—' }}</dd></div>
+        </dl>
+
+        <section class="extension-setup">
+          <div>
+            <h2>{{ localization.translate('ai.extension.title') }}</h2>
+            <p class="help">{{ localization.translate('ai.extension.description') }}</p>
+            <p class="extension-status" [class.extension-status--ready]="extensionCompatible()">
+              {{ localization.translate(extensionStatusKey()) }}
+            </p>
+          </div>
+          <div class="actions">
+            @for (browser of browserOrder(); track browser; let first = $first) {
+              <button type="button" [class.primary]="first" [disabled]="busy()" (click)="downloadExtension(browser)">
+                {{ localization.translate(first ? 'ai.extension.downloadRecommended' : 'ai.extension.downloadOther') }} {{ browserName(browser) }}
+              </button>
+            }
+          </div>
+          <details>
+            <summary>{{ localization.translate('ai.extension.instructions') }}</summary>
+            <div class="instructions">
+              <section>
+                <h3>{{ localization.translate('ai.extension.chrome') }}</h3>
+                <ol>
+                  <li>{{ localization.translate('ai.extension.chromeStep1') }}</li>
+                  <li>{{ localization.translate('ai.extension.chromeStep2') }}</li>
+                  <li>{{ localization.translate('ai.extension.chromeStep3') }}</li>
+                  <li>{{ localization.translate('ai.extension.reload') }}</li>
+                </ol>
+              </section>
+              <section>
+                <h3>{{ localization.translate('ai.extension.firefox') }}</h3>
+                <ol>
+                  <li>{{ localization.translate('ai.extension.firefoxStep1') }}</li>
+                  <li>{{ localization.translate('ai.extension.firefoxStep2') }}</li>
+                  <li>{{ localization.translate('ai.extension.firefoxStep3') }}</li>
+                  <li>{{ localization.translate('ai.extension.reload') }}</li>
+                </ol>
+                <p class="help">{{ localization.translate('ai.extension.firefoxTemporary') }}</p>
+              </section>
+            </div>
+          </details>
+        </section>
+
+        @if (module()?.workerAvailable && module()?.sessionStatus === 'SIGNED_OUT' && !module()?.loginPending) {
+          <section class="login-options">
+            <h2>{{ localization.translate('ai.codex.browserLogin') }}</h2>
+            <div class="choice-group">
+              <label><input type="radio" name="loginChoice" value="AUTO" [ngModel]="loginChoice()" (ngModelChange)="setLoginChoice($event)"> {{ localization.translate('ai.loginMode.AUTO') }}</label>
+              <label><input type="radio" name="loginChoice" value="EXTENSION" [ngModel]="loginChoice()" (ngModelChange)="setLoginChoice($event)"> {{ localization.translate('ai.loginMode.EXTENSION') }}</label>
+              <label><input type="radio" name="loginChoice" value="DIRECT" [ngModel]="loginChoice()" (ngModelChange)="setLoginChoice($event)"> {{ localization.translate('ai.loginMode.DIRECT') }}</label>
+            </div>
+            <p class="help">{{ localization.translate('ai.extension.remoteWarning') }}</p>
+            <div class="actions">
+              <button class="primary" type="button" [disabled]="busy()" (click)="browserLogin()">{{ localization.translate('ai.codex.continueBrowserLogin') }}</button>
+              <button type="button" [disabled]="busy()" (click)="deviceLogin()">{{ localization.translate('ai.codex.deviceLogin') }}</button>
+            </div>
+            <p class="help">{{ localization.translate('ai.codex.deviceHelp') }}</p>
+          </section>
+        }
+
+        @if (module()?.loginPending) {
+          <div class="device-box">
+            <strong>{{ localization.translate(module()?.pendingLoginMode === 'DEVICE' ? 'ai.codex.authorizationDevice' : 'ai.codex.authorizationBrowser') }}</strong>
+            @if (device(); as attempt) {
+              <p>{{ localization.translate('ai.codex.openVerification') }} <a [href]="attempt.verificationUri" target="_blank" rel="noopener">{{ attempt.verificationUri }}</a> {{ localization.translate('ai.codex.enterCode') }}</p>
+              <div class="device-code">{{ attempt.userCode }} <button type="button" (click)="copyCode()">{{ localization.translate('ai.codex.copy') }}</button></div>
+              <p>{{ localization.translate('ai.codex.status') }}: {{ localization.translateDynamic('ai.deviceStatus.' + attempt.status) }} · {{ localization.translate('ai.codex.expires') }} {{ formatDate(attempt.expiresAt) }}</p>
+            }
+            <button type="button" [disabled]="busy()" (click)="cancelLogin()">{{ localization.translate('ai.codex.cancel') }}</button>
+          </div>
+        }
+
+        @if (module()?.sessionStatus === 'ACTIVE' || module()?.sessionStatus === 'REAUTH_REQUIRED') {
+          <div class="actions">
+            <button type="button" [disabled]="busy()" (click)="test()">{{ localization.translate('ai.codex.test') }}</button>
+            <button type="button" [disabled]="busy()" (click)="refresh()">{{ localization.translate('ai.codex.refreshDebug') }}</button>
+            <button class="danger" type="button" [disabled]="busy()" (click)="logout()">{{ localization.translate('ai.codex.logout') }}</button>
+          </div>
+        }
+      </div>
+    }
+  }
+</section>

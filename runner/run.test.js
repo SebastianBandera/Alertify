@@ -100,6 +100,7 @@ const SKIP_ALL_OPTIONS = {
   skipPublisher: true,
   skipWorkerStandard: true,
   skipWorkerPlaywright: true,
+  skipWorkerCodex: true,
 };
 
 test('dockerBuildCachePruneArguments preserves dependency cache mounts', () => {
@@ -284,6 +285,25 @@ test('applyApplicationContext derives a path-free public origin independently of
   assert.equal(contextualEnvironment.get('APP_CONTEXT_PATH'), '/tenant/alertify');
   assert.equal(contextualEnvironment.get('APP_PUBLIC_URL'), 'https://alertify.example:8443/tenant/alertify');
   assert.equal(contextualEnvironment.get('APP_PUBLIC_ORIGIN'), 'https://alertify.example:8443');
+  assert.equal(contextualEnvironment.get('AI_OAUTH_CALLBACK_URI'), 'http://127.0.0.1:80/tenant/alertify/api/ai/codex/oauth/callback');
+  assert.equal(contextualEnvironment.get('AI_OAUTH_EXTENSION_CALLBACK_URI'), 'http://127.0.0.1:53682/tenant/alertify/api/ai/codex/oauth/callback');
+});
+
+test('buildPlan enforces one dedicated worker with AI and CODEX capabilities', () => {
+  const environment = applyApplicationContext(templateEnvironment());
+  environment.set('WORKER_CODEX_REPLICAS', '2');
+  assert.throws(() => buildPlan(environment, SKIP_ALL_OPTIONS), /WORKER_CODEX_REPLICAS must be exactly 1/);
+
+  environment.set('WORKER_CODEX_REPLICAS', '1');
+  environment.set('WORKER_CODEX_CAPABILITIES', 'AI');
+  assert.throws(() => buildPlan(environment, SKIP_ALL_OPTIONS), /must contain AI and CODEX/);
+});
+
+test('buildPlan requires externally configured initial AI settings', () => {
+  const environment = applyApplicationContext(templateEnvironment());
+  environment.delete('AI_DEFAULT_MODEL');
+
+  assert.throws(() => buildPlan(environment, SKIP_ALL_OPTIONS), /AI_DEFAULT_MODEL/);
 });
 
 test('applyApplicationContext derives the public origin when the application is published at root', () => {

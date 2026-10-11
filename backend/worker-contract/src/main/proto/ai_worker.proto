@@ -1,0 +1,93 @@
+syntax = "proto3";
+
+package alertify.worker.ai.v1;
+
+option java_multiple_files = true;
+option java_package = "app.alertify.worker.ai.grpc";
+option java_outer_classname = "AiWorkerProto";
+
+import "google/protobuf/empty.proto";
+
+service AiWorkerService {
+  rpc GetModuleState(google.protobuf.Empty) returns (ModuleStateResponse);
+  rpc GetSettings(google.protobuf.Empty) returns (AiSettings);
+  rpc UpdateSettings(UpdateSettingsRequest) returns (AiSettings);
+  rpc BeginBrowserLogin(BeginBrowserLoginRequest) returns (BrowserLoginResponse);
+  rpc CompleteBrowserLogin(CompleteBrowserLoginRequest) returns (OperationResponse);
+  rpc BeginDeviceLogin(google.protobuf.Empty) returns (DeviceLoginResponse);
+  rpc GetDeviceLogin(google.protobuf.Empty) returns (DeviceLoginResponse);
+  rpc CancelLogin(google.protobuf.Empty) returns (OperationResponse);
+  rpc RefreshSession(google.protobuf.Empty) returns (RefreshResponse);
+  rpc Logout(google.protobuf.Empty) returns (OperationResponse);
+  rpc TestConnection(google.protobuf.Empty) returns (OperationResponse);
+}
+
+message ModuleStateResponse {
+  bool enabled = 1;
+  string auth_mode = 2;
+  string session_status = 3;
+  string account_label = 4;
+  string expires_at = 5;
+  string refresh_policy = 6;
+  bool login_pending = 7;
+  string pending_login_mode = 8;
+  string last_error = 9;
+  string refresh_expires_at = 10;
+  string last_refreshed_at = 11;
+}
+
+message AiSettings {
+  bool enabled = 1;
+  string provider = 2;
+  string model = 3;
+  string reasoning_effort = 4;
+  string agent_instructions = 5;
+  string refresh_policy = 6;
+}
+
+message UpdateSettingsRequest {
+  AiSettings settings = 1;
+}
+
+message BeginBrowserLoginRequest {
+  string redirect_uri = 1;
+  string login_mode = 2;
+  string admin_subject = 3;
+}
+
+message BrowserLoginResponse {
+  string authorization_url = 1;
+  string expires_at = 2;
+  string callback_ticket = 3;
+}
+
+message CompleteBrowserLoginRequest {
+  string code = 1;
+  string state = 2;
+  string scope = 3;
+  string client_id = 4;
+  string callback_ticket = 5;
+}
+
+message DeviceLoginResponse {
+  string status = 1;
+  string verification_uri = 2;
+  string user_code = 3;
+  string expires_at = 4;
+  int32 interval_seconds = 5;
+  string error = 6;
+}
+
+message RefreshResponse {
+  bool successful = 1;
+  string previous_expires_at = 2;
+  string expires_at = 3;
+  string message = 4;
+  string refresh_expires_at = 5;
+  string last_refreshed_at = 6;
+}
+
+message OperationResponse {
+  bool successful = 1;
+  string message = 2;
+}

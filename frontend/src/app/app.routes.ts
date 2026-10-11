@@ -62,6 +62,15 @@ export const routes: Routes = [
           ),
       },
       {
+        path: 'ai',
+        title: 'AI Module | Alertify',
+        canActivate: [adminGuard],
+        loadComponent: () =>
+          import('./features/ai-module/ai-module.component').then(
+            (component) => component.AiModuleComponent,
+          ),
+      },
+      {
         path: 'configs',
         title: 'Configs | Alertify',
         canActivate: [adminGuard],
