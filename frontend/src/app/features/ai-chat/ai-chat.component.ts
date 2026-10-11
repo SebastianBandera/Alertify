@@ -164,6 +164,8 @@ export class AiChatComponent implements OnInit {
   private conversationListRequestGeneration = 0;
 
   ngOnInit(): void {
+    /* The popout route does not render AppShellComponent, so it must start its own administrative event channel. */
+    this.events.start();
     void this.refreshAvailability();
     this.availabilityIntervalId = window.setInterval(
       () => void this.refreshAvailability(),

@@ -1797,7 +1797,7 @@ export const EN_TRANSLATIONS = {
   'ai.chat.role.system': 'SYSTEM',
   'ai.chat.detach': 'Open window',
   'ai.chat.reattach': 'Return to Alertify',
-  'ai.chat.working': 'The model is working on the response…',
+  'ai.chat.working': 'The model is working…',
   'ai.chat.resize': 'Resize AI Chat panel',
   'ai.chat.usage.conversation': 'Tokens used',
   'ai.chat.usage.requests': 'Model requests',

@@ -24,6 +24,7 @@ interface ComponentHarness {
 
 describe('AiChatComponent', () => {
   let api: { conversation: ReturnType<typeof vi.fn>; conversations: ReturnType<typeof vi.fn> };
+  let eventChannel: { on: ReturnType<typeof vi.fn>; start: ReturnType<typeof vi.fn> };
   let component: ComponentHarness;
 
   beforeEach(async () => {
@@ -31,6 +32,7 @@ describe('AiChatComponent', () => {
       conversation: vi.fn(),
       conversations: vi.fn().mockResolvedValue([]),
     };
+    eventChannel = { on: vi.fn().mockReturnValue(EMPTY), start: vi.fn() };
     const moduleState = signal(activeModuleState());
     await TestBed.configureTestingModule({
       imports: [AiChatComponent],
@@ -39,10 +41,20 @@ describe('AiChatComponent', () => {
         { provide: AiModuleApiService, useValue: { moduleState, module: vi.fn().mockResolvedValue(moduleState()) } },
         { provide: AuthService, useValue: { displayName: 'Administrator' } },
         { provide: LocalizationService, useValue: { locale: signal('en'), translateDynamic: (key: string) => key } },
-        { provide: AdminEventChannelService, useValue: { on: () => EMPTY } },
+        { provide: AdminEventChannelService, useValue: eventChannel },
       ],
     }).compileComponents();
     component = TestBed.createComponent(AiChatComponent).componentInstance as unknown as ComponentHarness;
+  });
+
+  it('starts the administrative event channel when rendered outside the application shell', () => {
+    eventChannel.start.mockClear();
+    const fixture = TestBed.createComponent(AiChatComponent);
+
+    fixture.detectChanges();
+
+    expect(eventChannel.start).toHaveBeenCalled();
+    fixture.destroy();
   });
 
   it('discards an older detail response that arrives after the latest selection', async () => {

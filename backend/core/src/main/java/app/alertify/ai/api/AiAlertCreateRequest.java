@@ -9,6 +9,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
 
 public record AiAlertCreateRequest(
@@ -22,7 +23,7 @@ public record AiAlertCreateRequest(
     @NotNull @Size(max = 100) Set<@Positive Long> tagIds,
     Boolean persistentIssues,
     Boolean smartExecutionEnabled,
-    @Positive Integer smartExecutionIntervalHours,
+    @PositiveOrZero Integer smartExecutionIntervalHours,
     SmartExecutionPolicy smartExecutionPolicy
 ) {
 

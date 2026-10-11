@@ -23,7 +23,7 @@ public record AiAlertUpdateRequest(
     @NotNull @Size(max = 100) Set<@Positive Long> tagIds,
     Boolean persistentIssues,
     Boolean smartExecutionEnabled,
-    @Positive Integer smartExecutionIntervalHours,
+    @PositiveOrZero Integer smartExecutionIntervalHours,
     SmartExecutionPolicy smartExecutionPolicy
 ) {
 

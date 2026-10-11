@@ -20,6 +20,7 @@ import {
 } from '../../core/api/hook-api.service';
 import { SecretApiService } from '../../core/api/secret-api.service';
 import { LocalizationService } from '../../core/i18n/localization.service';
+import { AdminEventChannelService } from '../../core/realtime/admin-event-channel.service';
 import { EditorDraftService } from '../../shared/editor-drafts/editor-draft.service';
 import { EditorViewportService } from '../../shared/editor-viewport/editor-viewport.service';
 
@@ -87,6 +88,7 @@ export class HooksComponent implements OnInit, OnDestroy {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly events = inject(AdminEventChannelService);
   private readonly editorViewport = inject(EditorViewportService);
 
   protected readonly activeTab = signal<HookTab>('hooks');
@@ -138,6 +140,10 @@ export class HooksComponent implements OnInit, OnDestroy {
   }
 
   async ngOnInit(): Promise<void> {
+    this.events.on('AI_RESOURCES_INVALIDATED').pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event) => {
+      if (event.targets.includes('ALL') || event.targets.includes('HOOKS'))
+        void this.loadAll(false);
+    });
     const requestedTab = this.route.snapshot.queryParamMap.get('tab');
     this.activeTab.set(hookTab(requestedTab));
     this.route.queryParamMap

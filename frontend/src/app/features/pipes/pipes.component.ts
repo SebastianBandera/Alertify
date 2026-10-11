@@ -1,5 +1,6 @@
 import { DatePipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, ElementRef, OnDestroy, OnInit, effect, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, OnDestroy, OnInit, effect, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 
@@ -19,6 +20,7 @@ import {
   PipeStepWriteRequest,
 } from '../../core/api/pipe-api.service';
 import { LocalizationService } from '../../core/i18n/localization.service';
+import { AdminEventChannelService } from '../../core/realtime/admin-event-channel.service';
 import { EditorDraftService } from '../../shared/editor-drafts/editor-draft.service';
 import { EditorViewportService } from '../../shared/editor-viewport/editor-viewport.service';
 import { ExpressionEditorComponent, ExpressionEditorNames } from '../../shared/expression-editor/expression-editor.component';
@@ -86,6 +88,8 @@ export class PipesComponent implements OnInit, OnDestroy {
   private readonly api = inject(PipeApiService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+  private readonly destroyRef = inject(DestroyRef);
+  private readonly events = inject(AdminEventChannelService);
   private readonly elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly editorViewport = inject(EditorViewportService);
 
@@ -140,6 +144,10 @@ export class PipesComponent implements OnInit, OnDestroy {
   }
 
   async ngOnInit(): Promise<void> {
+    this.events.on('AI_RESOURCES_INVALIDATED').pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event) => {
+      if (event.targets.includes('ALL') || event.targets.includes('PIPES'))
+        void this.loadAll(false);
+    });
     const tab = this.route.snapshot.queryParamMap.get('tab');
     const executionId = this.route.snapshot.queryParamMap.get('executionId');
     if (tab === 'history' || executionId) this.activeTab.set('history');

@@ -21,6 +21,7 @@ import {
 } from '../../core/api/alert-api.service';
 import { ApiRequestError, SortDirection, TagMatchMode } from '../../core/api/configuration-api.service';
 import { LocalizationService } from '../../core/i18n/localization.service';
+import { AdminEventChannelService } from '../../core/realtime/admin-event-channel.service';
 import { isCompatibleConfigurationValueType, isCompatibleSecretValueType } from '../../core/utils/parameter-binding-compatibility';
 import { templateClassName } from '../../core/utils/template-key';
 import { EditorDraftService } from '../../shared/editor-drafts/editor-draft.service';
@@ -114,6 +115,7 @@ export class AlertsComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly events = inject(AdminEventChannelService);
   private readonly elementRef: ElementRef<HTMLElement> = inject(ElementRef);
   private readonly injector = inject(Injector);
   private readonly editorViewport = inject(EditorViewportService);
@@ -283,6 +285,10 @@ export class AlertsComponent implements OnInit {
 
   async ngOnInit(): Promise<void> {
     this.destroyRef.onDestroy(() => this.clearNoticeTimer());
+    this.events.on('AI_RESOURCES_INVALIDATED').pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event) => {
+      if (event.targets.includes('ALL') || event.targets.includes('ALERTS'))
+        void this.refreshAfterAiChange();
+    });
     const requestedTab = this.route.snapshot.queryParamMap.get('tab');
     const requestedExecutionId = this.route.snapshot.queryParamMap.get('executionId');
     const requestedEditAlertId = Number(this.route.snapshot.queryParamMap.get('editAlertId'));
@@ -324,6 +330,13 @@ export class AlertsComponent implements OnInit {
     } finally {
       this.countsLoaded.set(true);
     }
+  }
+
+  private async refreshAfterAiChange(): Promise<void> {
+    const requests = [this.loadTemplates(), this.loadTags()];
+    if (this.activeTab() === 'alerts') requests.push(this.loadAlerts());
+    if (this.activeTab() === 'history') requests.push(this.loadHistory());
+    await Promise.all(requests);
   }
 
   protected async selectTab(tab: AlertTab): Promise<void> {
