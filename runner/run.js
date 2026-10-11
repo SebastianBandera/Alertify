@@ -598,6 +598,9 @@ function buildPlan(environment, options = {}) {
     backendDebugEnabled: false,
     backendDebugPort: null,
     backendDebugSuspend: null,
+    workerCodexDebugEnabled: false,
+    workerCodexDebugPort: null,
+    workerCodexDebugSuspend: null,
     workerGrpcHost: null,
     workerGrpcPort: null,
     workerGrpcTlsEnabled: false,
@@ -775,6 +778,22 @@ function buildPlan(environment, options = {}) {
         'BACKEND_DEBUG_ENABLED=true requires PUBLISH_ADDITIONAL_PORTS=true so the debugger is reachable from the host.',
       );
     }
+    plan.workerCodexDebugEnabled = booleanValue(environment, 'WORKER_CODEX_DEBUG_ENABLED');
+    plan.workerCodexDebugPort = portValue(environment, 'WORKER_CODEX_DEBUG_PORT');
+    plan.workerCodexDebugSuspend = allowedValue(
+      environment,
+      'WORKER_CODEX_DEBUG_SUSPEND',
+      ['y', 'n'],
+    );
+    if (plan.workerCodexDebugEnabled && !publishAdditionalPorts) {
+      throw new Error(
+        'WORKER_CODEX_DEBUG_ENABLED=true requires PUBLISH_ADDITIONAL_PORTS=true so the debugger is reachable from the host.',
+      );
+    }
+    if (plan.backendDebugEnabled && plan.workerCodexDebugEnabled
+        && plan.backendDebugPort === plan.workerCodexDebugPort) {
+      throw new Error('BACKEND_DEBUG_PORT and WORKER_CODEX_DEBUG_PORT must be different.');
+    }
 
     if (plan.applicationDatabaseMode === 'local') {
       required(environment, 'DATABASE_IMAGE');
@@ -921,11 +940,19 @@ function printPlan(plan, environment) {
     console.log(`  - Procedures: bidirectional worker streams, maximum nested depth ${plan.procedureMaxDepth}`);
     if (plan.backendDebugEnabled) {
       console.log(
-        `  - Java remote debug: enabled on port ${plan.backendDebugPort} ` +
+        `  - Backend Java remote debug: enabled on port ${plan.backendDebugPort} ` +
           `(suspend=${plan.backendDebugSuspend})`,
       );
     } else {
-      console.log('  - Java remote debug: disabled');
+      console.log('  - Backend Java remote debug: disabled');
+    }
+    if (plan.workerCodexDebugEnabled) {
+      console.log(
+        `  - Codex worker Java remote debug: enabled on port ${plan.workerCodexDebugPort} ` +
+          `(suspend=${plan.workerCodexDebugSuspend})`,
+      );
+    } else {
+      console.log('  - Codex worker Java remote debug: disabled');
     }
     if (plan.applicationDatabaseMode === 'local') {
       if (plan.skipDatabase) {
@@ -1177,10 +1204,12 @@ function createRuntimeComposeOverride(plan, projectDirectory) {
   const publishKeycloakAdminPort = plan.keycloakAdminPort != null;
   const publishApplicationDatabasePort = plan.applicationDatabaseHostPort != null;
   const publishBackendDebugPort = plan.publishAdditionalPorts === true && plan.backendDebugEnabled === true;
+  const publishWorkerCodexDebugPort = plan.publishAdditionalPorts === true && plan.workerCodexDebugEnabled === true;
   const hasAdditionalPortOverrides = publishIdentityDatabasePort
     || publishKeycloakAdminPort
     || publishApplicationDatabasePort
-    || publishBackendDebugPort;
+    || publishBackendDebugPort
+    || publishWorkerCodexDebugPort;
   if (workerGroups.length === 0 && !plan.publisherTlsEnabled && !hasAdditionalPortOverrides) {
     return null;
   }
@@ -1228,6 +1257,13 @@ function createRuntimeComposeOverride(plan, projectDirectory) {
       '  backend:',
       '    ports:',
       '      - "${BIND_ADDRESS:?Set BIND_ADDRESS in .env}:${BACKEND_DEBUG_PORT:?Set BACKEND_DEBUG_PORT in .env}:${BACKEND_DEBUG_PORT:?Set BACKEND_DEBUG_PORT in .env}"',
+    );
+  }
+  if (publishWorkerCodexDebugPort) {
+    lines.push(
+      '  worker-codex:',
+      '    ports:',
+      '      - "${BIND_ADDRESS:?Set BIND_ADDRESS in .env}:${WORKER_CODEX_DEBUG_PORT:?Set WORKER_CODEX_DEBUG_PORT in .env}:${WORKER_CODEX_DEBUG_PORT:?Set WORKER_CODEX_DEBUG_PORT in .env}"',
     );
   }
   for (const group of workerGroups) {

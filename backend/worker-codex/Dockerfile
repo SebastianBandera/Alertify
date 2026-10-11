@@ -22,8 +22,11 @@ RUN addgroup -S application && adduser -S -G application application \
 WORKDIR /application
 
 COPY --from=builder --chown=application:application /build/worker-codex/target/alertify-worker-codex.jar /application/alertify-worker-codex.jar
+COPY --chown=application:application worker-codex/start-worker-codex.sh /application/start-worker-codex.sh
+
+RUN chmod 0755 /application/start-worker-codex.sh
 
 USER application
 EXPOSE 9090
 
-ENTRYPOINT ["java", "-XX:MaxRAMPercentage=80.0", "-jar", "/application/alertify-worker-codex.jar"]
+ENTRYPOINT ["/application/start-worker-codex.sh"]

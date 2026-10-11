@@ -13,6 +13,7 @@
 
     <nav class="tabs" [attr.aria-label]="localization.translate('ai.tabs.label')">
       <button type="button" [class.active]="tab() === 'general'" (click)="selectTab('general')">{{ localization.translate('ai.tabs.general') }}</button>
+      <button type="button" [class.active]="tab() === 'conversations'" (click)="selectTab('conversations')">{{ localization.translate('ai.tabs.conversations') }}</button>
       <button type="button" [class.active]="tab() === 'codex'" (click)="selectTab('codex')">{{ localization.translate('ai.tabs.codex') }}</button>
     </nav>
 
@@ -33,6 +34,15 @@
               <option value="xhigh">{{ localization.translate('ai.reasoning.xhigh') }}</option>
             </select>
           </label>
+          <label>{{ localization.translate('ai.general.reviewerModel') }}<input type="text" [ngModel]="form().reviewerModel" (ngModelChange)="patch('reviewerModel', $event)" name="reviewerModel" maxlength="128" [placeholder]="localization.translate('ai.general.reviewerModelPlaceholder')"></label>
+          <label>{{ localization.translate('ai.general.reviewerReasoningEffort') }}
+            <select [ngModel]="form().reviewerReasoningEffort" (ngModelChange)="patch('reviewerReasoningEffort', $event)" name="reviewerReasoningEffort">
+              <option value="low">{{ localization.translate('ai.reasoning.low') }}</option>
+              <option value="medium">{{ localization.translate('ai.reasoning.medium') }}</option>
+              <option value="high">{{ localization.translate('ai.reasoning.high') }}</option>
+              <option value="xhigh">{{ localization.translate('ai.reasoning.xhigh') }}</option>
+            </select>
+          </label>
           <label>{{ localization.translate('ai.general.agents') }}<textarea rows="12" [ngModel]="form().agentInstructions" (ngModelChange)="patch('agentInstructions', $event)" name="agentInstructions" maxlength="65536" [placeholder]="localization.translate('ai.general.agentsPlaceholder')"></textarea></label>
           <label>{{ localization.translate('ai.general.refreshPolicy') }}
             <select [ngModel]="form().refreshPolicy" (ngModelChange)="patch('refreshPolicy', $event)" name="refreshPolicy">
@@ -44,6 +54,155 @@
           <button class="primary" type="submit">{{ localization.translate('ai.save') }}</button>
         </fieldset>
       </form>
+    } @else if (tab() === 'conversations') {
+      <section class="card conversation-management">
+        <header class="conversation-management__header">
+          <div>
+            <h2>{{ localization.translate('ai.conversations.title') }}</h2>
+            <p class="help">{{ localization.translate('ai.conversations.description') }}</p>
+          </div>
+          <div class="actions">
+            <button type="button" [disabled]="conversationsLoading() || busy()" (click)="loadManagedConversations()">{{ localization.translate('ai.conversations.refresh') }}</button>
+            <button class="danger" type="button" [disabled]="conversationsLoading() || busy() || managedConversations().length === 0" (click)="deleteAllManagedConversations()">{{ localization.translate('ai.conversations.deleteAll') }}</button>
+          </div>
+        </header>
+
+        @if (conversationsLoading()) {
+          <div class="notice">{{ localization.translate('ai.conversations.loading') }}</div>
+        } @else {
+          <div class="conversation-table-scroll">
+            <table class="conversation-table">
+              <thead>
+                <tr>
+                  <th>{{ localization.translate('ai.conversations.id') }}</th>
+                  <th>{{ localization.translate('ai.conversations.name') }}</th>
+                  <th>{{ localization.translate('ai.conversations.user') }}</th>
+                  <th>{{ localization.translate('ai.conversations.mode') }}</th>
+                  <th>{{ localization.translate('ai.conversations.status') }}</th>
+                  <th>{{ localization.translate('ai.conversations.updatedAt') }}</th>
+                  <th>{{ localization.translate('ai.conversations.actions') }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (conversation of managedConversations(); track conversation.id) {
+                  <tr [class.conversation-table__selected]="selectedConversation()?.id === conversation.id">
+                    <td>{{ conversation.id }}</td>
+                    <td class="conversation-table__title" [attr.title]="conversation.title">{{ conversation.title }}</td>
+                    <td>{{ conversation.username }}</td>
+                    <td>{{ modeLabel(conversation.mode) }}</td>
+                    <td>{{ localization.translateDynamic('ai.conversations.status.' + conversation.status) }}</td>
+                    <td>{{ formatDate(conversation.updatedAt) }}</td>
+                    <td>
+                      <div class="conversation-table__actions">
+                        <button type="button" [disabled]="conversationDetailLoading() || busy()" (click)="selectManagedConversation(conversation.id)">{{ localization.translate('ai.conversations.view') }}</button>
+                        <button class="danger danger--subtle" type="button" [disabled]="busy()" (click)="deleteManagedConversation(conversation)">{{ localization.translate('ai.conversations.delete') }}</button>
+                      </div>
+                    </td>
+                  </tr>
+                } @empty {
+                  <tr><td colspan="7" class="conversation-table__empty">{{ localization.translate('ai.conversations.empty') }}</td></tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+
+        @if (conversationDetailLoading()) {
+          <div class="notice">{{ localization.translate('ai.conversations.detailLoading') }}</div>
+        } @else if (selectedConversation(); as conversation) {
+          <section class="conversation-detail">
+            <header class="conversation-detail__header">
+              <div>
+                <h2>{{ conversation.title }}</h2>
+                <p class="help">{{ localization.translate('ai.conversations.detail') }} #{{ conversation.id }}</p>
+              </div>
+              <button class="danger" type="button" [disabled]="busy()" (click)="deleteManagedConversation(conversation)">{{ localization.translate('ai.conversations.delete') }}</button>
+            </header>
+
+            <dl class="state conversation-detail__metadata">
+              <div><dt>{{ localization.translate('ai.conversations.user') }}</dt><dd>{{ conversation.username }}</dd></div>
+              <div><dt>{{ localization.translate('ai.conversations.subject') }}</dt><dd><code>{{ conversation.userSubject }}</code></dd></div>
+              <div><dt>{{ localization.translate('ai.conversations.mode') }}</dt><dd>{{ modeLabel(conversation.mode) }}</dd></div>
+              <div><dt>{{ localization.translate('ai.conversations.approval') }}</dt><dd>{{ approvalLabel(conversation.approvalPolicy) }}</dd></div>
+              <div><dt>{{ localization.translate('ai.conversations.status') }}</dt><dd>{{ localization.translateDynamic('ai.conversations.status.' + conversation.status) }}</dd></div>
+              <div><dt>{{ localization.translate('ai.conversations.createdAt') }}</dt><dd>{{ formatDate(conversation.createdAt) }}</dd></div>
+              <div><dt>{{ localization.translate('ai.conversations.updatedAt') }}</dt><dd>{{ formatDate(conversation.updatedAt) }}</dd></div>
+            </dl>
+
+            <section>
+              <h3>{{ localization.translate('ai.conversations.usage') }}</h3>
+              <pre class="stored-value">{{ formatJson(conversation.usage) }}</pre>
+            </section>
+
+            <section>
+              <h3>{{ localization.translate('ai.conversations.messages') }} ({{ conversation.messages.length }})</h3>
+              <div class="stored-records">
+                @for (messageItem of conversation.messages; track messageItem.id) {
+                  <article class="stored-record">
+                    <header><strong>#{{ messageItem.id }} · {{ messageItem.role }}</strong><span>{{ formatDate(messageItem.createdAt) }}</span></header>
+                    <small>{{ localization.translate('ai.conversations.turn') }}: {{ messageItem.turnId ?? '—' }}</small>
+                    <pre class="stored-value">{{ messageItem.content }}</pre>
+                  </article>
+                } @empty {
+                  <p class="help">{{ localization.translate('ai.conversations.noMessages') }}</p>
+                }
+              </div>
+            </section>
+
+            <section>
+              <h3>{{ localization.translate('ai.conversations.turns') }} ({{ conversation.turns.length }})</h3>
+              <div class="stored-records">
+                @for (turn of conversation.turns; track turn.id) {
+                  <details class="stored-record">
+                    <summary>#{{ turn.id }} · {{ turn.status }} · {{ turn.model }}</summary>
+                    <dl class="state stored-record__metadata">
+                      <div><dt>{{ localization.translate('ai.conversations.reasoning') }}</dt><dd>{{ turn.reasoningEffort }}</dd></div>
+                      <div><dt>{{ localization.translate('ai.conversations.reasoningUpgraded') }}</dt><dd>{{ booleanLabel(turn.reasoningUpgraded) }}</dd></div>
+                      <div><dt>{{ localization.translate('ai.conversations.rejections') }}</dt><dd>{{ turn.rejectionCount }}</dd></div>
+                      <div><dt>{{ localization.translate('ai.conversations.createdAt') }}</dt><dd>{{ formatDate(turn.createdAt) }}</dd></div>
+                      <div><dt>{{ localization.translate('ai.conversations.finishedAt') }}</dt><dd>{{ formatOptionalDate(turn.finishedAt) }}</dd></div>
+                      <div><dt>{{ localization.translate('ai.conversations.errorCode') }}</dt><dd>{{ turn.errorCode || '—' }}</dd></div>
+                    </dl>
+                    @if (turn.errorMessage) {
+                      <div><strong>{{ localization.translate('ai.conversations.error') }}</strong><pre class="stored-value">{{ turn.errorMessage }}</pre></div>
+                    }
+                    <div><strong>{{ localization.translate('ai.conversations.usage') }}</strong><pre class="stored-value">{{ formatJson(turn.usage) }}</pre></div>
+                    <div class="tool-records">
+                      <h4>{{ localization.translate('ai.conversations.tools') }} ({{ turn.tools.length }})</h4>
+                      @for (tool of turn.tools; track tool.id) {
+                        <article class="tool-record">
+                          <header><strong>#{{ tool.id }} · {{ tool.toolName }} <span class="tool-kind">{{ localization.translateDynamic('ai.conversations.kind.' + tool.kind) }}</span></strong><span>{{ tool.status }}</span></header>
+                          <dl class="tool-record__hints">
+                            <div><dt>{{ localization.translate('ai.conversations.callId') }}</dt><dd><code>{{ tool.callId }}</code></dd></div>
+                            <div><dt>{{ localization.translate('ai.conversations.generation') }}</dt><dd>{{ tool.generation }}</dd></div>
+                            <div><dt>{{ localization.translate('ai.conversations.declared') }}</dt><dd>{{ booleanLabel(tool.declared) }}</dd></div>
+                            <div><dt>{{ localization.translate('ai.conversations.allowed') }}</dt><dd>{{ booleanLabel(tool.allowed) }}</dd></div>
+                            <div><dt>readOnly</dt><dd>{{ booleanLabel(tool.readOnly) }}</dd></div>
+                            <div><dt>destructiveHint</dt><dd>{{ booleanLabel(tool.destructiveHint) }}</dd></div>
+                            <div><dt>idempotentHint</dt><dd>{{ booleanLabel(tool.idempotentHint) }}</dd></div>
+                            <div><dt>openWorldHint</dt><dd>{{ booleanLabel(tool.openWorldHint) }}</dd></div>
+                            <div><dt>{{ localization.translate('ai.conversations.refreshTargets') }}</dt><dd>{{ tool.refreshTargets.join(', ') || '—' }}</dd></div>
+                            <div><dt>{{ localization.translate('ai.conversations.createdAt') }}</dt><dd>{{ formatDate(tool.createdAt) }}</dd></div>
+                            <div><dt>{{ localization.translate('ai.conversations.finishedAt') }}</dt><dd>{{ formatOptionalDate(tool.finishedAt) }}</dd></div>
+                          </dl>
+                          @if (tool.diagnosticCode) { <div><strong>{{ localization.translate('ai.conversations.diagnosticCode') }}</strong><pre class="stored-value">{{ tool.diagnosticCode }}</pre></div> }
+                          @if (tool.reviewReason) { <div><strong>{{ localization.translate('ai.conversations.reviewReason') }}</strong><pre class="stored-value">{{ tool.reviewReason }}</pre></div> }
+                          <div><strong>{{ localization.translate('ai.conversations.arguments') }}</strong><pre class="stored-value">{{ tool.arguments }}</pre></div>
+                          <div><strong>{{ localization.translate('ai.conversations.result') }}</strong><pre class="stored-value">{{ tool.result ?? '—' }}</pre></div>
+                        </article>
+                      } @empty {
+                        <p class="help">{{ localization.translate('ai.conversations.noTools') }}</p>
+                      }
+                    </div>
+                  </details>
+                } @empty {
+                  <p class="help">{{ localization.translate('ai.conversations.noTurns') }}</p>
+                }
+              </div>
+            </section>
+          </section>
+        }
+      </section>
     } @else {
       <div class="card">
         <dl class="state">

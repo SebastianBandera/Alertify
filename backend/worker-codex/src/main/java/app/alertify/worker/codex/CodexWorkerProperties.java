@@ -14,6 +14,8 @@ public record CodexWorkerProperties(
     Duration refreshTokenLifetime,
     String defaultModel,
     String defaultReasoningEffort,
+    String defaultReviewerModel,
+    String defaultReviewerReasoningEffort,
     String defaultRefreshPolicy,
     Path stateFile,
     String stateKey,

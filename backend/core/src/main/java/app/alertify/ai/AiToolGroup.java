@@ -8,5 +8,6 @@ public enum AiToolGroup {
     HOOKS,
     CONFIGURATION,
     DASHBOARD,
+    LOCALIZATION,
     SYSTEM
 }

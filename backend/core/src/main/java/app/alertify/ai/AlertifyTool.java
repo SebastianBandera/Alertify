@@ -32,4 +32,13 @@ public @interface AlertifyTool {
 
     /** Whether the tool avoids domain mutations, executions and external side effects. */
     boolean readOnly();
+
+    boolean destructiveHint() default false;
+
+    boolean idempotentHint() default false;
+
+    boolean openWorldHint() default false;
+
+    /** Frontend resource families invalidated after a successful write. Read-only tools must leave this empty. */
+    AiRefreshTarget[] refreshTargets() default {};
 }

@@ -233,6 +233,7 @@ test('createRuntimeComposeOverride publishes enabled local service ports without
   assert.match(content, /KEYCLOAK_HTTP_PORT.*:8080/);
   assert.match(content, /DATABASE_HOST_PORT.*:5432/);
   assert.doesNotMatch(content, /BACKEND_DEBUG_PORT/);
+  assert.doesNotMatch(content, /WORKER_CODEX_DEBUG_PORT/);
 });
 
 test('buildPlan rejects remote debug when additional host ports are disabled', () => {
@@ -258,6 +259,31 @@ test('createRuntimeComposeOverride publishes remote debug when both switches are
   const content = fs.readFileSync(override.path, 'utf8');
 
   assert.match(content, /BACKEND_DEBUG_PORT.*:.*BACKEND_DEBUG_PORT/);
+});
+
+test('buildPlan rejects Codex worker remote debug when additional host ports are disabled', () => {
+  const environment = templateEnvironment();
+  environment.set('WORKER_CODEX_DEBUG_ENABLED', 'true');
+
+  assert.throws(
+    () => buildPlan(applyApplicationContext(environment), SKIP_ALL_OPTIONS),
+    /WORKER_CODEX_DEBUG_ENABLED=true requires PUBLISH_ADDITIONAL_PORTS=true/,
+  );
+});
+
+test('createRuntimeComposeOverride publishes Codex worker remote debug', (context) => {
+  const environment = templateEnvironment();
+  environment.set('PUBLISH_ADDITIONAL_PORTS', 'true');
+  environment.set('WORKER_CODEX_DEBUG_ENABLED', 'true');
+  const plan = buildPlan(applyApplicationContext(environment), SKIP_ALL_OPTIONS);
+  const projectDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'alertify-runner-test-'));
+  context.after(() => fs.rmSync(projectDirectory, { recursive: true, force: true }));
+
+  const override = createRuntimeComposeOverride(plan, projectDirectory);
+  context.after(() => fs.rmSync(override.directory, { recursive: true, force: true }));
+  const content = fs.readFileSync(override.path, 'utf8');
+
+  assert.match(content, /WORKER_CODEX_DEBUG_PORT.*:.*WORKER_CODEX_DEBUG_PORT/);
 });
 
 test('additional host ports do not create overrides for external services', () => {

@@ -17,6 +17,7 @@ import app.alertify.ai.tools.AlertAiTools;
 import app.alertify.ai.tools.ConfigurationAiTools;
 import app.alertify.ai.tools.DashboardAiTools;
 import app.alertify.ai.tools.HookAiTools;
+import app.alertify.ai.tools.LocalizationAiTools;
 import app.alertify.ai.tools.PipeAiTools;
 import app.alertify.ai.tools.ProcedureAiTools;
 import app.alertify.ai.tools.SystemAiTools;
@@ -26,7 +27,7 @@ class AiToolSurfaceTest {
 
     private static final List<Class<?>> TOOL_CLASSES = List.of(AlertAiTools.class, ProcedureAiTools.class,
             PipeAiTools.class, HookAiTools.class, ConfigurationAiTools.class, DashboardAiTools.class,
-            SystemAiTools.class);
+            LocalizationAiTools.class, SystemAiTools.class);
 
     @Test
     void toolNamesAreUniqueAndExcludeCredentialRotationAndBinaryContent() {
@@ -68,5 +69,21 @@ class AiToolSurfaceTest {
                 .orElseThrow()
                 .getAnnotation(PreAuthorize.class)
                 .value());
+    }
+
+    @Test
+    void readToolsDoNotInvalidateResourcesAndEveryWriteToolDeclaresSpecificTargets() {
+        TOOL_CLASSES.stream()
+                .flatMap(type -> Arrays.stream(type.getMethods()))
+                .map(method -> method.getAnnotation(AlertifyTool.class))
+                .filter(java.util.Objects::nonNull)
+                .forEach(tool -> {
+                    if (tool.readOnly())
+                        assertEquals(0, tool.refreshTargets().length, tool.name());
+                    else
+                        assertTrue(tool.refreshTargets().length > 0, tool.name());
+
+                    assertFalse(Arrays.asList(tool.refreshTargets()).contains(AiRefreshTarget.ALL), tool.name());
+                });
     }
 }

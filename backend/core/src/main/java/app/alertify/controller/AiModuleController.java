@@ -1,10 +1,13 @@
 package app.alertify.controller;
 
+import java.util.List;
+
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -17,6 +20,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import app.alertify.ai.chat.AiChatService;
 import app.alertify.codex.AiModuleService;
 
 @RestController
@@ -25,9 +29,11 @@ import app.alertify.codex.AiModuleService;
 public class AiModuleController {
 
     private final AiModuleService service;
+    private final AiChatService chats;
 
-    public AiModuleController(AiModuleService service) {
+    public AiModuleController(AiModuleService service, AiChatService chats) {
         this.service = service;
+        this.chats = chats;
     }
 
     @GetMapping("/module")
@@ -96,6 +102,61 @@ public class AiModuleController {
     @PostMapping("/codex/test")
     public AiModuleService.OperationResponse test() {
         return service.test();
+    }
+
+    @GetMapping("/chat/conversations")
+    public List<AiChatService.ConversationSummary> conversations(Authentication authentication) {
+        return chats.conversations(authentication);
+    }
+
+    @GetMapping("/chat/conversations/{id}")
+    public AiChatService.ConversationDetail conversation(@PathVariable Long id, Authentication authentication) {
+        return chats.conversation(authentication, id);
+    }
+
+    @GetMapping("/chat/management/conversations")
+    public List<AiChatService.ManagedConversationSummary> managedConversations() {
+        return chats.managedConversations();
+    }
+
+    @GetMapping("/chat/management/conversations/{id}")
+    public AiChatService.ManagedConversationDetail managedConversation(@PathVariable Long id) {
+        return chats.managedConversation(id);
+    }
+
+    @DeleteMapping("/chat/management/conversations")
+    public ResponseEntity<Void> deleteAllManagedConversations() {
+        chats.deleteAllManagedConversations();
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/chat/management/conversations/{id}")
+    public ResponseEntity<Void> deleteManagedConversation(@PathVariable Long id) {
+        chats.deleteManagedConversation(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/chat/turns")
+    public AiChatService.SubmitResponse submit(@RequestBody AiChatService.SubmitRequest request, Authentication authentication) {
+        return chats.submit(authentication, request);
+    }
+
+    @PostMapping("/chat/tool-invocations/{id}/approve")
+    public ResponseEntity<Void> approve(@PathVariable Long id, Authentication authentication) {
+        chats.approve(authentication, id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/chat/tool-invocations/{id}/reject")
+    public ResponseEntity<Void> reject(@PathVariable Long id, Authentication authentication) {
+        chats.reject(authentication, id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/chat/turns/{id}")
+    public ResponseEntity<Void> cancelTurn(@PathVariable Long id, Authentication authentication) {
+        chats.cancel(authentication, id);
+        return ResponseEntity.noContent().build();
     }
 
     public record BrowserLoginRequest(String mode) {

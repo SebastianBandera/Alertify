@@ -1,4 +1,4 @@
-.ai-page { display: grid; gap: 1.25rem; max-width: 980px; margin: 0 auto; }
+.ai-page { display: grid; gap: 1.25rem; max-width: 1200px; margin: 0 auto; }
 .ai-page h1 { margin: 0 0 .35rem; }
 .ai-page header p, .help { color: var(--text-muted, #64748b); }
 .tabs { display: flex; gap: .5rem; border-bottom: 1px solid var(--border-color, #dbe2ea); }
@@ -14,6 +14,7 @@ textarea { resize: vertical; }
 button { padding: .65rem .9rem; border: 1px solid #94a3b8; border-radius: 7px; background: #fff; cursor: pointer; }
 button.primary { color: #fff; background: #2563eb; border-color: #2563eb; }
 button.danger { color: #fff; background: #b91c1c; border-color: #b91c1c; }
+button.danger--subtle { color: #991b1b; background: #fff; border-color: #fecaca; }
 button:disabled { opacity: .55; cursor: wait; }
 .notice { padding: .8rem 1rem; border-radius: 8px; background: #e0f2fe; }
 .notice--success { background: #dcfce7; color: #166534; }
@@ -35,3 +36,37 @@ summary { cursor: pointer; font-weight: 700; }
 .instructions { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1.25rem; padding-top: .75rem; }
 .instructions h3 { margin-bottom: .4rem; }
 .instructions ol { margin: 0; padding-left: 1.25rem; }
+.conversation-management { min-width: 0; }
+.conversation-management__header, .conversation-detail__header, .stored-record header, .tool-record header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+.conversation-management__header h2, .conversation-detail__header h2 { margin: 0 0 .3rem; }
+.conversation-management__header p, .conversation-detail__header p { margin: 0; }
+.conversation-table-scroll { overflow-x: auto; border: 1px solid var(--border-color, #dbe2ea); border-radius: 9px; }
+.conversation-table { width: 100%; min-width: 880px; border-collapse: collapse; }
+.conversation-table th, .conversation-table td { padding: .75rem; border-bottom: 1px solid var(--border-color, #e2e8f0); text-align: left; vertical-align: middle; }
+.conversation-table th { color: #475569; background: #f8fafc; font-size: .8rem; text-transform: uppercase; letter-spacing: .035em; }
+.conversation-table tbody tr:last-child td { border-bottom: 0; }
+.conversation-table__selected td { background: #eff6ff; }
+.conversation-table__title { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.conversation-table__actions { display: flex; gap: .45rem; }
+.conversation-table__actions button { padding: .45rem .65rem; white-space: nowrap; }
+.conversation-table__empty { color: #64748b; text-align: center !important; }
+.conversation-detail { display: grid; gap: 1.25rem; padding-top: 1.25rem; border-top: 1px solid var(--border-color, #dbe2ea); }
+.conversation-detail h3, .conversation-detail h4 { margin: 0 0 .65rem; }
+.conversation-detail__metadata { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.stored-records, .tool-records { display: grid; gap: .75rem; }
+.stored-record { display: grid; gap: .75rem; margin: 0; padding: 1rem; border: 1px solid var(--border-color, #dbe2ea); border-radius: 9px; background: #f8fafc; }
+details.stored-record > summary { margin: -.25rem 0; }
+details.stored-record[open] > summary { margin-bottom: .5rem; }
+.stored-record header span, .stored-record small, .tool-record header span { color: #64748b; }
+.stored-record__metadata { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+.stored-value { max-height: 320px; margin: .45rem 0 0; padding: .75rem; overflow: auto; border: 1px solid #e2e8f0; border-radius: 7px; background: #fff; font: .82rem/1.45 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.tool-record { display: grid; gap: .7rem; padding: .85rem; border: 1px solid #dbeafe; border-radius: 8px; background: #fff; }
+.tool-kind { display: inline-flex; margin-left: .35rem; padding: .15rem .4rem; border-radius: 999px; background: #e2e8f0; color: #475569; font-size: .7rem; font-weight: 700; vertical-align: middle; }
+.tool-record__hints { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .7rem; margin: 0; }
+.tool-record__hints div { min-width: 0; }
+.tool-record__hints dt { color: #64748b; font-size: .78rem; }
+.tool-record__hints dd { margin: .2rem 0 0; overflow-wrap: anywhere; }
+
+@media (max-width: 700px) {
+  .conversation-management__header, .conversation-detail__header { align-items: stretch; flex-direction: column; }
+}

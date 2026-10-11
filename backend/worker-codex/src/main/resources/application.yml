@@ -16,6 +16,8 @@ alertify:
     refresh-token-lifetime: ${AI_REFRESH_TOKEN_LIFETIME:30d}
     default-model: ${AI_DEFAULT_MODEL}
     default-reasoning-effort: ${AI_DEFAULT_REASONING_EFFORT}
+    default-reviewer-model: ${AI_DEFAULT_REVIEWER_MODEL:gpt-6.1-sol}
+    default-reviewer-reasoning-effort: ${AI_DEFAULT_REVIEWER_REASONING_EFFORT:low}
     default-refresh-policy: ${AI_DEFAULT_REFRESH_POLICY}
     state-file: ${AI_WORKER_STATE_FILE:/application/data/state.enc}
     state-key: ${AI_WORKER_STATE_KEY:}

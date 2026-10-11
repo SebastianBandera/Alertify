@@ -1,7 +1,26 @@
-import { inject, Injectable } from '@angular/core';
+import { inject, Injectable, signal } from '@angular/core';
 
 import { AuthService } from '../auth/auth.service';
 import { RUNTIME_CONFIG } from '../config/runtime-config';
+import { AiApprovalPolicy, AiChatMessage, AiChatMode, AiChatTurn, AiUsageTotals } from './ai-chat-api.service';
+
+export interface AiManagedConversationSummary {
+  readonly id: number;
+  readonly userSubject: string;
+  readonly username: string;
+  readonly title: string;
+  readonly mode: AiChatMode;
+  readonly approvalPolicy: AiApprovalPolicy;
+  readonly status: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+export interface AiManagedConversationDetail extends AiManagedConversationSummary {
+  readonly messages: readonly AiChatMessage[];
+  readonly turns: readonly AiChatTurn[];
+  readonly usage: AiUsageTotals;
+}
 
 export interface AiSettings {
   readonly enabled: boolean;
@@ -10,6 +29,8 @@ export interface AiSettings {
   readonly reasoningEffort: string;
   readonly agentInstructions: string;
   readonly refreshPolicy: string;
+  readonly reviewerModel: string;
+  readonly reviewerReasoningEffort: string;
 }
 
 export interface AiModuleState {
@@ -67,13 +88,18 @@ export interface OperationResult {
 export class AiModuleApiService {
   private readonly auth = inject(AuthService);
   private readonly apiBaseUrl = inject(RUNTIME_CONFIG).apiBaseUrl;
+  readonly moduleState = signal<AiModuleState | null>(null);
 
-  module(): Promise<AiModuleState> {
-    return this.request('/api/ai/module');
+  async module(): Promise<AiModuleState> {
+    const state = await this.request<AiModuleState>('/api/ai/module');
+    this.moduleState.set(state);
+    return state;
   }
 
-  update(settings: AiSettings): Promise<AiSettings> {
-    return this.request('/api/ai/settings', 'PUT', settings);
+  async update(settings: AiSettings): Promise<AiSettings> {
+    const updated = await this.request<AiSettings>('/api/ai/settings', 'PUT', settings);
+    this.moduleState.update((state) => state ? { ...state, enabled: updated.enabled, settings: updated } : state);
+    return updated;
   }
 
   beginBrowser(mode: 'DIRECT' | 'EXTENSION'): Promise<BrowserLogin> {
@@ -102,6 +128,22 @@ export class AiModuleApiService {
 
   test(): Promise<OperationResult> {
     return this.request('/api/ai/codex/test', 'POST');
+  }
+
+  managedConversations(): Promise<readonly AiManagedConversationSummary[]> {
+    return this.request('/api/ai/chat/management/conversations');
+  }
+
+  managedConversation(id: number): Promise<AiManagedConversationDetail> {
+    return this.request(`/api/ai/chat/management/conversations/${id}`);
+  }
+
+  deleteManagedConversation(id: number): Promise<void> {
+    return this.request(`/api/ai/chat/management/conversations/${id}`, 'DELETE');
+  }
+
+  deleteAllManagedConversations(): Promise<void> {
+    return this.request('/api/ai/chat/management/conversations', 'DELETE');
   }
 
   async downloadExtension(browser: 'chrome' | 'firefox'): Promise<void> {
@@ -140,6 +182,7 @@ export class AiModuleApiService {
       const error = await response.json().catch(() => null) as { message?: string } | null;
       throw new Error(error?.message ?? `Request failed with status ${response.status}.`);
     }
+    if (response.status === 204) return undefined as T;
     return await response.json() as T;
   }
 }

@@ -20,6 +20,8 @@ service AiWorkerService {
   rpc RefreshSession(google.protobuf.Empty) returns (RefreshResponse);
   rpc Logout(google.protobuf.Empty) returns (OperationResponse);
   rpc TestConnection(google.protobuf.Empty) returns (OperationResponse);
+  rpc Chat(stream ChatClientMessage) returns (stream ChatWorkerMessage);
+  rpc ReviewToolCall(ReviewToolCallRequest) returns (ReviewToolCallResponse);
 }
 
 message ModuleStateResponse {
@@ -43,6 +45,8 @@ message AiSettings {
   string reasoning_effort = 4;
   string agent_instructions = 5;
   string refresh_policy = 6;
+  string reviewer_model = 7;
+  string reviewer_reasoning_effort = 8;
 }
 
 message UpdateSettingsRequest {
@@ -90,4 +94,122 @@ message RefreshResponse {
 message OperationResponse {
   bool successful = 1;
   string message = 2;
+}
+
+message ChatToolDefinition {
+  string name = 1;
+  string description = 2;
+  string input_schema = 3;
+  bool read_only = 4;
+  bool destructive_hint = 5;
+  bool idempotent_hint = 6;
+  bool open_world_hint = 7;
+  repeated string refresh_targets = 8;
+}
+
+message ChatHistoryMessage {
+  string role = 1;
+  string content = 2;
+}
+
+message ChatStart {
+  int64 conversation_id = 1;
+  int64 turn_id = 2;
+  string model = 3;
+  string reasoning_effort = 4;
+  string instructions = 5;
+  repeated ChatHistoryMessage history = 6;
+  repeated ChatToolDefinition tools = 7;
+  string mode = 8;
+  string approval_policy = 9;
+}
+
+message ChatToolResult {
+  string call_id = 1;
+  string output = 2;
+  bool failed = 3;
+  repeated ChatToolDefinition additional_tools = 4;
+  string diagnostic_code = 5;
+}
+
+message ChatClientMessage {
+  oneof payload {
+    ChatStart start = 1;
+    ChatToolResult tool_result = 2;
+    bool cancel = 3;
+  }
+}
+
+message ChatToolCall {
+  string call_id = 1;
+  string name = 2;
+  string arguments = 3;
+}
+
+message ChatCompleted {
+  string model = 1;
+  string reasoning_effort = 2;
+}
+
+message ChatTokenUsage {
+  int64 input_tokens = 1;
+  int64 cached_input_tokens = 2;
+  int64 cache_write_input_tokens = 3;
+  int64 output_tokens = 4;
+  int64 reasoning_output_tokens = 5;
+  int64 total_tokens = 6;
+}
+
+message ChatRateLimitWindow {
+  string key = 1;
+  string label = 2;
+  optional double used_percent = 3;
+  optional double remaining_percent = 4;
+  optional int64 limit = 5;
+  optional int64 remaining = 6;
+  optional int64 window_minutes = 7;
+  optional int64 resets_at_epoch_seconds = 8;
+}
+
+message ChatUsageUpdate {
+  ChatTokenUsage request = 1;
+  int64 model_context_window = 2;
+  repeated ChatRateLimitWindow rate_limits = 3;
+  string plan_type = 4;
+  int64 observed_at_epoch_seconds = 5;
+}
+
+message ChatFailure {
+  string code = 1;
+  string message = 2;
+}
+
+message ChatWorkerMessage {
+  oneof payload {
+    string output_text = 1;
+    ChatToolCall tool_call = 2;
+    ChatCompleted completed = 3;
+    ChatFailure failure = 4;
+    ChatUsageUpdate usage = 5;
+  }
+}
+
+message ReviewToolCallRequest {
+  string model = 1;
+  string reasoning_effort = 2;
+  string user_request = 3;
+  string tool_name = 4;
+  string tool_description = 5;
+  string arguments = 6;
+  bool destructive_hint = 7;
+  bool idempotent_hint = 8;
+  bool open_world_hint = 9;
+  int64 conversation_id = 10;
+  int64 turn_id = 11;
+}
+
+message ReviewToolCallResponse {
+  bool allowed = 1;
+  string reason = 2;
+  ChatUsageUpdate usage = 3;
 }

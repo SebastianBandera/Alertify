@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -84,9 +85,11 @@ class AlertExecutionClosureJpaIntegrationTest {
                     VALUES (-1, ?, 3, 'WARN', current_timestamp, current_timestamp, current_timestamp)
                 """, HISTORICAL_EXECUTION);
         jdbc.execute(Files.readString(migrations.resolve("3.alert-execution-origin.sql")));
+        List<Path> laterMigrations;
         try (var files = Files.list(migrations)) {
-            for (Path file : files.filter(path -> path.getFileName().toString().matches("[4-9][0-9]*\\..*\\.sql"))
-                    .sorted(java.util.Comparator.comparingInt(path -> Integer.parseInt(path.getFileName().toString().split("\\.")[0]))).toList())
+            laterMigrations = files.filter(path -> path.getFileName().toString().matches("[4-9][0-9]*\\..*\\.sql"))
+                    .sorted(java.util.Comparator.comparingInt(AlertExecutionClosureJpaIntegrationTest::migrationOrdinal)).toList();
+            for (Path file : laterMigrations.stream().filter(path -> migrationOrdinal(path) < 6).toList())
                 jdbc.execute(Files.readString(file));
         }
         jdbc.update("""
@@ -94,7 +97,9 @@ class AlertExecutionClosureJpaIntegrationTest {
                     (id, execution_id, alert_id, closed, actor_subject, actor_name, note, changed_at)
                 VALUES (-1, ?, 3, true, 'historical-subject', 'historical-admin', 'retained', ?)
                 """, HISTORICAL_EXECUTION, java.time.OffsetDateTime.ofInstant(AT, java.time.ZoneOffset.UTC));
-        jdbc.execute(Files.readString(migrations.resolve("6.ai-tool-audit.sql")));
+        jdbc.execute(Files.readString(migrations.resolve("6.ai-chat-and-tool-audit.sql")));
+        for (Path file : laterMigrations.stream().filter(path -> migrationOrdinal(path) > 6).toList())
+            jdbc.execute(Files.readString(file));
 
         factory = new LocalContainerEntityManagerFactoryBean();
         factory.setDataSource(dataSource);
@@ -105,6 +110,10 @@ class AlertExecutionClosureJpaIntegrationTest {
         entityManager = SharedEntityManagerCreator.createSharedEntityManager(factory.getObject());
         audits = new JpaRepositoryFactory(entityManager).getRepository(AlertExecutionClosureAuditRepository.class);
         transactions = new TransactionTemplate(new JpaTransactionManager(factory.getObject()));
+    }
+
+    private static int migrationOrdinal(Path path) {
+        return Integer.parseInt(path.getFileName().toString().split("\\.")[0]);
     }
 
     @AfterAll

@@ -135,6 +135,12 @@ public class AdminEventWebSocketHandler extends TextWebSocketHandler implements 
                 send(state, new TextMessage(payload));
     }
 
+    void sendTextToSubject(String subject, String payload) {
+        for (SessionState state : sessions.values())
+            if (state.authenticated() && subject.equals(state.authentication.getName()))
+                send(state, new TextMessage(payload));
+    }
+
     private void authenticate(SessionState state, JsonNode frame) {
         JsonNode tokenNode = frame.get("token");
         if (tokenNode == null || !tokenNode.isString()) {

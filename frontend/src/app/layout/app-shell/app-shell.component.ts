@@ -26,6 +26,7 @@ import { TranslationKey } from '../../core/i18n/localization.types';
 import { DashboardLiveService } from '../../features/dashboard/dashboard-live.service';
 import { EditorDraftService } from '../../shared/editor-drafts/editor-draft.service';
 import { AdminStatusBarComponent } from '../admin-status-bar/admin-status-bar.component';
+import { AiChatComponent } from '../../features/ai-chat/ai-chat.component';
 
 interface NavigationItem {
   readonly labelKey: TranslationKey;
@@ -35,7 +36,7 @@ interface NavigationItem {
 
 @Component({
   selector: 'app-shell',
-  imports: [FormsModule, RouterLink, RouterLinkActive, RouterOutlet, AdminStatusBarComponent],
+  imports: [FormsModule, RouterLink, RouterLinkActive, RouterOutlet, AdminStatusBarComponent, AiChatComponent],
   templateUrl: './app-shell.component.html',
   styleUrl: './app-shell.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,

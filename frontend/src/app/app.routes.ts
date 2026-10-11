@@ -5,6 +5,12 @@ import { adminGuard } from './core/auth/admin.guard';
 
 export const routes: Routes = [
   {
+    path: 'ai-chat',
+    title: 'AI Chat | Alertify',
+    canActivate: [adminGuard],
+    loadComponent: () => import('./features/ai-chat/ai-chat-popout.component').then((component) => component.AiChatPopoutComponent),
+  },
+  {
     path: '',
     component: AppShellComponent,
     children: [

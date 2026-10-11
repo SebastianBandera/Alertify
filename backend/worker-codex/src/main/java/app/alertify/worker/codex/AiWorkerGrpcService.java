@@ -16,6 +16,10 @@ import app.alertify.worker.ai.grpc.ModuleStateResponse;
 import app.alertify.worker.ai.grpc.OperationResponse;
 import app.alertify.worker.ai.grpc.RefreshResponse;
 import app.alertify.worker.ai.grpc.UpdateSettingsRequest;
+import app.alertify.worker.ai.grpc.ChatClientMessage;
+import app.alertify.worker.ai.grpc.ChatWorkerMessage;
+import app.alertify.worker.ai.grpc.ReviewToolCallRequest;
+import app.alertify.worker.ai.grpc.ReviewToolCallResponse;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
 
@@ -23,9 +27,11 @@ import io.grpc.stub.StreamObserver;
 class AiWorkerGrpcService extends AiWorkerServiceGrpc.AiWorkerServiceImplBase {
 
     private final CodexSessionService sessions;
+    private final CodexChatService chats;
 
-    AiWorkerGrpcService(CodexSessionService sessions) {
+    AiWorkerGrpcService(CodexSessionService sessions, CodexChatService chats) {
         this.sessions = sessions;
+        this.chats = chats;
     }
 
     @Override
@@ -58,7 +64,8 @@ class AiWorkerGrpcService extends AiWorkerServiceGrpc.AiWorkerServiceImplBase {
         execute(observer, () -> response(sessions.updateSettings(new AiSettingsState(
                 request.getSettings().getEnabled(), request.getSettings().getProvider(), request.getSettings().getModel(),
                 request.getSettings().getReasoningEffort(), request.getSettings().getAgentInstructions(),
-                request.getSettings().getRefreshPolicy()))));
+                request.getSettings().getRefreshPolicy(), request.getSettings().getReviewerModel(),
+                request.getSettings().getReviewerReasoningEffort()))));
     }
 
     @Override
@@ -133,10 +140,22 @@ class AiWorkerGrpcService extends AiWorkerServiceGrpc.AiWorkerServiceImplBase {
         });
     }
 
+    @Override
+    public StreamObserver<ChatClientMessage> chat(StreamObserver<ChatWorkerMessage> observer) {
+        return chats.chat(observer);
+    }
+
+    @Override
+    public void reviewToolCall(ReviewToolCallRequest request, StreamObserver<ReviewToolCallResponse> observer) {
+        execute(observer, () -> chats.review(request));
+    }
+
     private static AiSettings response(AiSettingsState settings) {
         return AiSettings.newBuilder().setEnabled(settings.enabled()).setProvider(settings.provider())
                 .setModel(settings.model()).setReasoningEffort(settings.reasoningEffort())
-                .setAgentInstructions(nullSafe(settings.agentInstructions())).setRefreshPolicy(settings.refreshPolicy()).build();
+                .setAgentInstructions(nullSafe(settings.agentInstructions())).setRefreshPolicy(settings.refreshPolicy())
+                .setReviewerModel(nullSafe(settings.reviewerModel()))
+                .setReviewerReasoningEffort(settings.reviewerReasoningEffort()).build();
     }
 
     private static DeviceLoginResponse device(PendingDeviceLogin login) {

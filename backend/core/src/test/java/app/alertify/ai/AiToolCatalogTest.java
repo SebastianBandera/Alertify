@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Stream;
+import java.util.stream.StreamSupport;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.tool.ToolCallback;
@@ -23,15 +24,23 @@ import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.MissingNode;
+
+import app.alertify.ai.api.AiPageRequest;
 import app.alertify.ai.tools.AlertAiTools;
 import app.alertify.ai.tools.ConfigurationAiTools;
 import app.alertify.ai.tools.DashboardAiTools;
 import app.alertify.ai.tools.HookAiTools;
+import app.alertify.ai.tools.LocalizationAiTools;
 import app.alertify.ai.tools.PipeAiTools;
 import app.alertify.ai.tools.ProcedureAiTools;
 import app.alertify.ai.tools.SystemAiTools;
 
 class AiToolCatalogTest {
+
+    private static final JsonMapper JSON = JsonMapper.builder().build();
 
     @Test
     void exposesOnlyRequestedGroupsAllowedByTheCurrentRoles() {
@@ -54,7 +63,7 @@ class AiToolCatalogTest {
     void buildsSpringAiSchemasForTheCompleteFacadeSurface() throws Exception {
         AiToolCatalog catalog = new AiToolCatalog(instantiate(AlertAiTools.class), instantiate(ProcedureAiTools.class),
                 instantiate(PipeAiTools.class), instantiate(HookAiTools.class), instantiate(ConfigurationAiTools.class),
-                instantiate(DashboardAiTools.class), instantiate(SystemAiTools.class));
+                instantiate(DashboardAiTools.class), instantiate(LocalizationAiTools.class), instantiate(SystemAiTools.class));
 
         List<ToolCallback> callbacks = catalog.toolsFor(authentication("ROLE_ADMIN", "ROLE_DASHBOARD", "ROLE_DASHBOARD_RUN"),
                 Set.of(AiToolGroup.values()));
@@ -67,10 +76,66 @@ class AiToolCatalogTest {
                 authentication("ROLE_ADMIN", "ROLE_DASHBOARD", "ROLE_DASHBOARD_RUN"), Set.of(AiToolGroup.values())).stream()
                 .collect(java.util.stream.Collectors.toMap(AiToolDescriptor::name, descriptor -> descriptor));
         assertTrue(descriptors.get("alertify_alert_search").readOnly());
-        assertEquals("Search Alertify alert definitions with bounded pagination",
-                descriptors.get("alertify_alert_search").description());
+        assertTrue(descriptors.get("alertify_alert_search").description().contains("updatedAt DESC"));
+        assertTrue(descriptors.get("alertify_alert_search").inputSchema().contains("Optional bounded pagination"));
+        assertTrue(descriptors.get("alertify_alert_templates").description().contains("alertify_alert_template_source"));
+        assertTrue(descriptors.get("alertify_alert_template_source").readOnly());
+        assertTrue(descriptors.get("alertify_alert_template_source").idempotentHint());
+        assertEquals(Set.of(), descriptors.get("alertify_alert_search").refreshTargets());
+        assertEquals(Set.of(AiRefreshTarget.ALERTS, AiRefreshTarget.DASHBOARD), descriptors.get("alertify_alert_create").refreshTargets());
+        assertTrue(descriptors.get("alertify_procedure_templates").description().contains("alertify_procedure_template_source"));
+        assertTrue(descriptors.get("alertify_procedure_template_source").readOnly());
+        assertTrue(descriptors.get("alertify_procedure_template_source").idempotentHint());
+        assertTrue(descriptors.get("alertify_configuration_search").description().contains("~*Google*"));
+        assertTrue(descriptors.get("alertify_configuration_search").description().contains("capped at 50"));
+        JsonNode configurationSearchSchema = JSON.readTree(descriptors.get("alertify_configuration_search").inputSchema());
+        assertEquals(1, schemaProperty(configurationSearchSchema, "size").path("minimum").intValue());
+        assertEquals(AiPageRequest.MAX_SIZE, schemaProperty(configurationSearchSchema, "size").path("maximum").intValue());
         assertFalse(descriptors.get("alertify_alert_create").readOnly());
+        assertTrue(descriptors.get("alertify_alert_update").description().contains("null or 0"));
+        JsonNode alertUpdateSchema = JSON.readTree(descriptors.get("alertify_alert_update").inputSchema());
+        assertEquals(List.of("TEXT", "CONFIGURATION", "SECRET", "PROCEDURE"),
+                StreamSupport.stream(schemaProperty(alertUpdateSchema, "source").path("enum").spliterator(), false)
+                        .map(JsonNode::stringValue).toList());
+        assertTrue(schemaProperty(alertUpdateSchema, "configurationId").path("description").stringValue().contains("null or 0"));
+        JsonNode procedureUpdateSchema = JSON.readTree(descriptors.get("alertify_procedure_update").inputSchema());
+        assertEquals(List.of("TEXT", "CONFIGURATION", "SECRET", "PROCEDURE", "PIPE"),
+                StreamSupport.stream(schemaProperty(procedureUpdateSchema, "source").path("enum").spliterator(), false)
+                        .map(JsonNode::stringValue).toList());
+        assertTrue(schemaProperty(procedureUpdateSchema, "pipeId").path("description").stringValue().contains("null or 0"));
+        JsonNode hookUpdateSchema = JSON.readTree(descriptors.get("alertify_hook_update").inputSchema());
+        assertEquals("string", schemaProperty(hookUpdateSchema, "rateLimitWindow").path("type").stringValue());
+        assertTrue(schemaProperty(hookUpdateSchema, "tokenSecretId").path("description").stringValue().contains("null or 0"));
+        JsonNode pipeUpdateSchema = JSON.readTree(descriptors.get("alertify_pipe_update").inputSchema());
+        assertEquals("string", schemaProperty(pipeUpdateSchema, "finallyTimeout").path("type").stringValue());
+        assertEquals("string", schemaProperty(pipeUpdateSchema, "timeout").path("type").stringValue());
+        assertTrue(schemaProperty(pipeUpdateSchema, "sourceOutputKey").path("description").stringValue().contains("never both"));
+        JsonNode expressionSchema = JSON.readTree(descriptors.get("alertify_configuration_expression_evaluate").inputSchema());
+        assertTrue(schemaProperty(expressionSchema, "configurationId").path("description").stringValue().contains("null or 0"));
         assertFalse(descriptors.get("alertify_procedure_run").readOnly());
+        assertEquals(Set.of(AiRefreshTarget.PROCEDURES), descriptors.get("alertify_procedure_run").refreshTargets());
+        assertEquals(Set.of(AiRefreshTarget.CONFIGURATIONS), descriptors.get("alertify_configuration_create").refreshTargets());
+        assertEquals(Set.of(AiRefreshTarget.SYSTEM), descriptors.get("alertify_system_configuration_update").refreshTargets());
+        assertTrue(descriptors.get(LocalizationAiTools.TOOL_NAME).readOnly());
+        assertTrue(descriptors.get(LocalizationAiTools.TOOL_NAME).idempotentHint());
+        JsonNode configurationCreateSchema = JSON.readTree(descriptors.get("alertify_configuration_create").inputSchema());
+        assertEquals("string", schemaProperty(configurationCreateSchema, "stringValue").path("type").stringValue());
+        assertEquals("string", schemaProperty(configurationCreateSchema, "expressionValue").path("type").stringValue());
+        assertEquals("integer", schemaProperty(configurationCreateSchema, "integerValue").path("type").stringValue());
+        assertEquals("number", schemaProperty(configurationCreateSchema, "decimalValue").path("type").stringValue());
+        assertEquals("boolean", schemaProperty(configurationCreateSchema, "booleanValue").path("type").stringValue());
+        assertEquals("string", schemaProperty(configurationCreateSchema, "dateValue").path("type").stringValue());
+        assertEquals("string", schemaProperty(configurationCreateSchema, "timeValue").path("type").stringValue());
+        assertEquals("string", schemaProperty(configurationCreateSchema, "dateTimeValue").path("type").stringValue());
+        assertEquals("string", schemaProperty(configurationCreateSchema, "jsonValue").path("type").stringValue());
+        JsonNode systemUpdateSchema = JSON.readTree(descriptors.get("alertify_system_configuration_update").inputSchema());
+        assertEquals("string", schemaProperty(systemUpdateSchema, "valueJson").path("type").stringValue());
+
+        List<String> schemasWithUnboundedObjects = descriptors.values().stream()
+                .filter(descriptor -> hasUnboundedObject(JSON.readTree(descriptor.inputSchema())))
+                .map(AiToolDescriptor::name).sorted().toList();
+        assertEquals(List.of(), schemasWithUnboundedObjects,
+                "strict tools cannot contain object schemas without declared properties");
     }
 
     @Test
@@ -91,7 +156,8 @@ class AiToolCatalogTest {
         ToolCallback callback = mock(ToolCallback.class);
         when(callback.getToolDefinition()).thenReturn(definition);
         when(callback.getToolMetadata()).thenReturn(ToolMetadata.builder().build());
-        return new AiToolDescriptor(callback, name, name, false, DefaultToolCallResultConverter.class, readOnly);
+        return new AiToolDescriptor(callback, name, name, false, DefaultToolCallResultConverter.class, readOnly,
+                false, false, false, Set.of());
     }
 
     private static UsernamePasswordAuthenticationToken authentication(String... authorities) {
@@ -103,6 +169,31 @@ class AiToolCatalogTest {
         var constructor = type.getConstructors()[0];
         Object[] arguments = Stream.of(constructor.getParameterTypes()).map(org.mockito.Mockito::mock).toArray();
         return type.cast(constructor.newInstance(arguments));
+    }
+
+    private static boolean hasUnboundedObject(JsonNode schema) {
+        if (schema.isObject() && schema.path("type").isString() && "object".equals(schema.path("type").stringValue()) && !schema.has("properties")
+                && !schema.path("additionalProperties").isBoolean())
+            return true;
+
+        for (JsonNode child : schema)
+            if (hasUnboundedObject(child))
+                return true;
+
+        return false;
+    }
+
+    private static JsonNode schemaProperty(JsonNode schema, String name) {
+        JsonNode properties = schema.path("properties");
+        if (properties.isObject() && properties.has(name))
+            return properties.get(name);
+
+        for (JsonNode child : schema) {
+            JsonNode found = schemaProperty(child, name);
+            if (!found.isMissingNode())
+                return found;
+        }
+        return MissingNode.getInstance();
     }
 
     private static class ToolAttributeFixture {

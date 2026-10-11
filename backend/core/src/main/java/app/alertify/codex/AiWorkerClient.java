@@ -3,6 +3,8 @@ package app.alertify.codex;
 import java.time.Duration;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 
 import org.springframework.stereotype.Service;
 
@@ -16,9 +18,14 @@ import app.alertify.worker.ai.grpc.AiWorkerServiceGrpc;
 import app.alertify.worker.ai.grpc.BeginBrowserLoginRequest;
 import app.alertify.worker.ai.grpc.CompleteBrowserLoginRequest;
 import app.alertify.worker.ai.grpc.UpdateSettingsRequest;
+import app.alertify.worker.ai.grpc.ChatClientMessage;
+import app.alertify.worker.ai.grpc.ChatWorkerMessage;
+import app.alertify.worker.ai.grpc.ReviewToolCallRequest;
+import app.alertify.worker.ai.grpc.ReviewToolCallResponse;
 import app.alertify.worker.contract.WorkerCapability;
 import io.grpc.ManagedChannel;
 import io.grpc.StatusRuntimeException;
+import io.grpc.stub.StreamObserver;
 
 @Service
 public class AiWorkerClient {
@@ -80,6 +87,50 @@ public class AiWorkerClient {
         return invoke(stub -> stub.testConnection(Empty.getDefaultInstance()));
     }
 
+    public ReviewToolCallResponse review(ReviewToolCallRequest request) {
+        return invoke(stub -> stub.reviewToolCall(request));
+    }
+
+    public ChatHandle chat(Consumer<ChatWorkerMessage> messages, Consumer<Throwable> failure, Runnable completed) {
+        WorkerEndpoint endpoint = endpoint();
+        ManagedChannel channel = channels.create(endpoint);
+        AtomicBoolean closed = new AtomicBoolean();
+        Runnable close = () -> {
+            if (closed.compareAndSet(false, true))
+                channel.shutdownNow();
+        };
+        StreamObserver<ChatClientMessage> requests;
+        try {
+            requests = AiWorkerServiceGrpc.newStub(channel).chat(new StreamObserver<>() {
+                @Override
+                public void onNext(ChatWorkerMessage message) {
+                    try {
+                        messages.accept(message);
+                    } catch (RuntimeException exception) {
+                        close.run();
+                        failure.accept(exception);
+                    }
+                }
+
+                @Override
+                public void onError(Throwable throwable) {
+                    close.run();
+                    failure.accept(throwable);
+                }
+
+                @Override
+                public void onCompleted() {
+                    close.run();
+                    completed.run();
+                }
+            });
+        } catch (RuntimeException exception) {
+            close.run();
+            throw exception;
+        }
+        return new ChatHandle(requests, close);
+    }
+
     private <T> T invoke(GrpcCall<T> call) {
         WorkerEndpoint endpoint = endpoint();
         ManagedChannel channel = channels.create(endpoint);
@@ -112,5 +163,28 @@ public class AiWorkerClient {
     @FunctionalInterface
     private interface GrpcCall<T> {
         T call(AiWorkerServiceGrpc.AiWorkerServiceBlockingStub stub);
+    }
+
+    public static final class ChatHandle implements AutoCloseable {
+        private final StreamObserver<ChatClientMessage> requests;
+        private final Runnable close;
+
+        private ChatHandle(StreamObserver<ChatClientMessage> requests, Runnable close) {
+            this.requests = requests;
+            this.close = close;
+        }
+
+        public void send(ChatClientMessage message) {
+            requests.onNext(message);
+        }
+
+        @Override
+        public void close() {
+            try {
+                requests.onCompleted();
+            } finally {
+                close.run();
+            }
+        }
     }
 }

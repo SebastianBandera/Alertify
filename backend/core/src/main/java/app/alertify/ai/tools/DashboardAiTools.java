@@ -7,6 +7,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Component;
 
 import app.alertify.ai.AiInvocationContextHolder;
+import app.alertify.ai.AiRefreshTarget;
 import app.alertify.ai.AiToolExecutor;
 import app.alertify.ai.AlertifyTool;
 import app.alertify.alerts.api.AlertExecutionResponse;
@@ -42,7 +43,7 @@ public class DashboardAiTools {
                 () -> acknowledgements.forUser(AiInvocationContextHolder.current().userSubject()));
     }
 
-    @AlertifyTool(name = "alertify_dashboard_acknowledge_alert", description = "Acknowledge one alert's persistent issues for the current user", readOnly = false)
+    @AlertifyTool(name = "alertify_dashboard_acknowledge_alert", description = "Acknowledge one alert's persistent issues for the current user", readOnly = false, refreshTargets = AiRefreshTarget.DASHBOARD)
     @PreAuthorize(AuthorizationPolicies.ADMIN_OR_DASHBOARD)
     public AlertIssueAcknowledgementResponse acknowledge(long alertId) {
         return tools.execute("alertify_dashboard_acknowledge_alert",
@@ -61,7 +62,7 @@ public class DashboardAiTools {
         });
     }
 
-    @AlertifyTool(name = "alertify_dashboard_alert_run", description = "Run one alert with the current dashboard user's normal rate limit", readOnly = false)
+    @AlertifyTool(name = "alertify_dashboard_alert_run", description = "Run one alert with the current dashboard user's normal rate limit", readOnly = false, openWorldHint = true, refreshTargets = { AiRefreshTarget.DASHBOARD, AiRefreshTarget.ALERTS })
     @PreAuthorize(AuthorizationPolicies.DASHBOARD_RUN)
     public void run(long alertId) {
         tools.execute("alertify_dashboard_alert_run", () -> {

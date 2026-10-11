@@ -23,6 +23,7 @@ import app.alertify.ai.tools.AlertAiTools;
 import app.alertify.ai.tools.ConfigurationAiTools;
 import app.alertify.ai.tools.DashboardAiTools;
 import app.alertify.ai.tools.HookAiTools;
+import app.alertify.ai.tools.LocalizationAiTools;
 import app.alertify.ai.tools.PipeAiTools;
 import app.alertify.ai.tools.ProcedureAiTools;
 import app.alertify.ai.tools.SystemAiTools;
@@ -37,7 +38,7 @@ public class AiToolCatalog {
     private final Map<AiToolGroup, List<AiToolDescriptor>> descriptors;
 
     @Autowired
-    public AiToolCatalog(AlertAiTools alerts, ProcedureAiTools procedures, PipeAiTools pipes, HookAiTools hooks, ConfigurationAiTools configuration, DashboardAiTools dashboard, SystemAiTools system) {
+    public AiToolCatalog(AlertAiTools alerts, ProcedureAiTools procedures, PipeAiTools pipes, HookAiTools hooks, ConfigurationAiTools configuration, DashboardAiTools dashboard, LocalizationAiTools localization, SystemAiTools system) {
         EnumMap<AiToolGroup, List<AiToolDescriptor>> values = new EnumMap<>(AiToolGroup.class);
         values.put(AiToolGroup.ALERTS, descriptors(alerts));
         values.put(AiToolGroup.PROCEDURES, descriptors(procedures));
@@ -45,6 +46,7 @@ public class AiToolCatalog {
         values.put(AiToolGroup.HOOKS, descriptors(hooks));
         values.put(AiToolGroup.CONFIGURATION, descriptors(configuration));
         values.put(AiToolGroup.DASHBOARD, descriptors(dashboard));
+        values.put(AiToolGroup.LOCALIZATION, descriptors(localization));
         values.put(AiToolGroup.SYSTEM, descriptors(system));
         descriptors = immutableDescriptors(values);
     }
@@ -97,8 +99,14 @@ public class AiToolCatalog {
             String name = callback.getToolDefinition().name();
             AlertifyTool metadata = metadataByName.get(name);
             Assert.state(metadata != null, () -> "Missing @AlertifyTool metadata for tool: " + name);
+            Set<AiRefreshTarget> refreshTargets = Set.of(metadata.refreshTargets());
+            Assert.state(metadata.readOnly() == refreshTargets.isEmpty(),
+                    () -> "Read-only tools must have no refresh targets and write tools must have at least one: " + name);
+            Assert.state(!refreshTargets.contains(AiRefreshTarget.ALL) || refreshTargets.size() == 1,
+                    () -> "ALL cannot be combined with specific refresh targets: " + name);
             return new AiToolDescriptor(callback, name, callback.getToolDefinition().description(),
-                    callback.getToolMetadata().returnDirect(), metadata.resultConverter(), metadata.readOnly());
+                    callback.getToolMetadata().returnDirect(), metadata.resultConverter(), metadata.readOnly(),
+                    metadata.destructiveHint(), metadata.idempotentHint(), metadata.openWorldHint(), refreshTargets);
         }).toList();
     }
 

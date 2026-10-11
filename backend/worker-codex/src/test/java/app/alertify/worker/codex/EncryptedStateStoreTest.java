@@ -13,6 +13,8 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import tools.jackson.databind.json.JsonMapper;
+
 class EncryptedStateStoreTest {
 
     @TempDir
@@ -23,18 +25,35 @@ class EncryptedStateStoreTest {
         Path file = directory.resolve("state.enc");
         String key = Base64.getUrlEncoder().withoutPadding().encodeToString(new byte[32]);
         EncryptedStateStore store = new EncryptedStateStore(new CodexWorkerProperties("worker", 0, 1024,
-                Duration.ofSeconds(1), Duration.ofDays(30), "configured-model", "low", "ON_USE", file, key, null));
+                Duration.ofSeconds(1), Duration.ofDays(30), "configured-model", "low", "", "low", "ON_USE", file, key, null));
         OAuthSession session = new OAuthSession("BROWSER", "private-access-token", "private-refresh-token",
-                "private-id-token", "client", "account", "user@example.test",
+                "private-id-token", "client", "subject", "", "user@example.test",
                 Instant.parse("2026-10-10T15:00:00Z"), Instant.parse("2026-11-09T15:00:00Z"),
                 Instant.parse("2026-10-10T14:00:00Z"));
-        PersistentAiState expected = new PersistentAiState(new AiSettingsState(true, "CODEX", "configured-model", "low", "", "ON_USE"), session,
-                Map.of("http://127.0.0.1/callback", new DynamicClient("client", "account", "User")), "urn:uuid:test-host");
+        PersistentAiState expected = new PersistentAiState(new AiSettingsState(true, "CODEX", "configured-model", "low", "", "ON_USE", "", "low"), session,
+                Map.of("http://127.0.0.1/callback", new DynamicClient("client", "subject", "", "User")), "urn:uuid:test-host");
 
         store.save(expected);
 
         assertThat(store.load()).isEqualTo(expected);
         assertThat(new String(Files.readAllBytes(file), StandardCharsets.ISO_8859_1))
                 .doesNotContain("private-access-token", "private-refresh-token");
+    }
+
+    @Test
+    void readsLegacyStateRecordsThatDoNotContainOidcSubjects() {
+        PersistentAiState state = JsonMapper.builder().findAndAddModules().build().readValue("""
+                {
+                  "session": {"authMode":"BROWSER","clientId":"client","accountId":"workspace-account"},
+                  "dynamicClients": {
+                    "http://127.0.0.1/callback": {
+                      "clientId":"client","accountId":"workspace-account","accountLabel":"User"
+                    }
+                  }
+                }
+                """, PersistentAiState.class);
+
+        assertThat(state.session().subject()).isNull();
+        assertThat(state.dynamicClients().get("http://127.0.0.1/callback").subject()).isNull();
     }
 }

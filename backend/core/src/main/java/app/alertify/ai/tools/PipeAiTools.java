@@ -7,24 +7,25 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Component;
 import org.springframework.validation.annotation.Validated;
 
+import app.alertify.ai.AiRefreshTarget;
 import app.alertify.ai.AiToolExecutor;
 import app.alertify.ai.AiToolSupport;
 import app.alertify.ai.AlertifyTool;
 import app.alertify.ai.api.AiFilter;
 import app.alertify.ai.api.AiPage;
 import app.alertify.ai.api.AiPageRequest;
+import app.alertify.ai.api.AiPipeCreateRequest;
+import app.alertify.ai.api.AiPipeUpdateRequest;
 import app.alertify.ai.api.AiTextFile;
 import app.alertify.config.AuthorizationPolicies;
 import app.alertify.configuration.api.TagCreateRequest;
 import app.alertify.configuration.api.TagResponse;
 import app.alertify.configuration.api.TagUpdateRequest;
-import app.alertify.pipes.api.PipeCreateRequest;
 import app.alertify.pipes.api.PipeDeletionImpactResponse;
 import app.alertify.pipes.api.PipeExecutionResponse;
 import app.alertify.pipes.api.PipeImportResult;
 import app.alertify.pipes.api.PipeOptionsResponse;
 import app.alertify.pipes.api.PipeResponse;
-import app.alertify.pipes.api.PipeUpdateRequest;
 import app.alertify.pipes.service.PipeCsvService;
 import app.alertify.pipes.service.PipeExecutionQueryService;
 import app.alertify.pipes.service.PipeManagementService;
@@ -69,20 +70,20 @@ public class PipeAiTools {
         return tools.execute("alertify_pipe_deletion_impact", () -> pipes.deletionImpact(id));
     }
 
-    @AlertifyTool(name = "alertify_pipe_create", description = "Create a pipe using administration validation", readOnly = false)
-    public PipeResponse create(@Valid PipeCreateRequest request) {
-        return tools.execute("alertify_pipe_create", () -> pipes.create(request));
+    @AlertifyTool(name = "alertify_pipe_create", description = "Create a pipe using administration validation", readOnly = false, refreshTargets = AiRefreshTarget.PIPES)
+    public PipeResponse create(@Valid AiPipeCreateRequest request) {
+        return tools.execute("alertify_pipe_create", () -> pipes.create(request.toRequest()));
     }
 
-    @AlertifyTool(name = "alertify_pipe_update", description = "Update a pipe using its current optimistic version", readOnly = false)
-    public PipeResponse update(long id, @Valid PipeUpdateRequest request) {
-        return tools.execute("alertify_pipe_update", () -> pipes.update(id, request));
+    @AlertifyTool(name = "alertify_pipe_update", description = "Update a pipe using its current optimistic version", readOnly = false, refreshTargets = AiRefreshTarget.PIPES)
+    public PipeResponse update(long id, @Valid AiPipeUpdateRequest request) {
+        return tools.execute("alertify_pipe_update", () -> pipes.update(id, request.toRequest()));
     }
 
-    @AlertifyTool(name = "alertify_pipe_run", description = "Trigger an immediate pipe execution and return its execution ID", readOnly = false)
+    @AlertifyTool(name = "alertify_pipe_run", description = "Trigger an immediate pipe execution and return its execution ID", readOnly = false, openWorldHint = true, refreshTargets = AiRefreshTarget.PIPES)
     public UUID run(long id) { return tools.execute("alertify_pipe_run", () -> pipes.run(id)); }
 
-    @AlertifyTool(name = "alertify_pipe_delete", description = "Delete a pipe using its current optimistic version", readOnly = false)
+    @AlertifyTool(name = "alertify_pipe_delete", description = "Delete a pipe using its current optimistic version", readOnly = false, destructiveHint = true, refreshTargets = AiRefreshTarget.PIPES)
     public void delete(long id, long version) { tools.execute("alertify_pipe_delete", () -> pipes.delete(id, version)); }
 
     @AlertifyTool(name = "alertify_pipe_export_csv", description = "Export pipes as a bounded UTF-8 CSV text file", readOnly = true)
@@ -90,7 +91,7 @@ public class PipeAiTools {
         return tools.execute("alertify_pipe_export_csv", () -> support.csv("alertify-pipes.csv", csv.exportCsv()));
     }
 
-    @AlertifyTool(name = "alertify_pipe_import_csv", description = "Import pipes from a bounded UTF-8 CSV text file", readOnly = false)
+    @AlertifyTool(name = "alertify_pipe_import_csv", description = "Import pipes from a bounded UTF-8 CSV text file", readOnly = false, refreshTargets = AiRefreshTarget.PIPES)
     public PipeImportResult importCsv(@Valid AiTextFile file) {
         return tools.execute("alertify_pipe_import_csv", () -> csv.importCsv(support.csvUpload(file)));
     }
@@ -110,16 +111,16 @@ public class PipeAiTools {
         return tools.execute("alertify_pipe_tag_search", () -> AiPage.from(tags.search(support.filters(filters), page.pageable())));
     }
 
-    @AlertifyTool(name = "alertify_pipe_tag_create", description = "Create a tag scoped to pipes", readOnly = false)
+    @AlertifyTool(name = "alertify_pipe_tag_create", description = "Create a tag scoped to pipes", readOnly = false, refreshTargets = AiRefreshTarget.PIPES)
     public TagResponse tagCreate(@Valid TagCreateRequest request) {
         return tools.execute("alertify_pipe_tag_create", () -> tags.create(request));
     }
 
-    @AlertifyTool(name = "alertify_pipe_tag_update", description = "Update a pipe tag using its current version", readOnly = false)
+    @AlertifyTool(name = "alertify_pipe_tag_update", description = "Update a pipe tag using its current version", readOnly = false, refreshTargets = AiRefreshTarget.PIPES)
     public TagResponse tagUpdate(long id, @Valid TagUpdateRequest request) {
         return tools.execute("alertify_pipe_tag_update", () -> tags.update(id, request));
     }
 
-    @AlertifyTool(name = "alertify_pipe_tag_delete", description = "Delete a pipe tag using its current version", readOnly = false)
+    @AlertifyTool(name = "alertify_pipe_tag_delete", description = "Delete a pipe tag using its current version", readOnly = false, destructiveHint = true, refreshTargets = AiRefreshTarget.PIPES)
     public void tagDelete(long id, long version) { tools.execute("alertify_pipe_tag_delete", () -> tags.delete(id, version)); }
 }

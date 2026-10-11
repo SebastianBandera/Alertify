@@ -1,5 +1,6 @@
 package app.alertify.alerts.service;
 
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
@@ -20,6 +21,8 @@ import app.alertify.logging.ApplicationEventLogger;
 public class AlertExecutionQueryService {
 
     private static final Set<String> SORT_FIELDS = Set.of("id", "status", "startedAt", "finishedAt");
+    private static final UUID UNUSED_EXECUTION_ID = new UUID(0, 0);
+    private static final Instant UNUSED_TIME = Instant.EPOCH;
 
     private final AlertExecutionRepository executionRepository;
     private final ApplicationEventLogger eventLogger;
@@ -31,8 +34,21 @@ public class AlertExecutionQueryService {
 
     @Transactional(readOnly = true)
     public Page<AlertExecutionResponse> search(Long alertId, Long templateId, AlertExecutionStatus status, UUID executionId, Pageable pageable) {
+        return search(alertId, templateId, status, executionId, null, null, pageable);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<AlertExecutionResponse> search(Long alertId, Long templateId, AlertExecutionStatus status, UUID executionId, Instant from, Instant to, Pageable pageable) {
+        if (from != null && to != null && from.isAfter(to))
+            throw new IllegalArgumentException("Execution history lower time bound must not be after the upper bound");
+
         SearchValidation.validateSort(pageable, SORT_FIELDS);
-        Page<AlertExecutionResponse> result = executionRepository.search(alertId, templateId, status, executionId, pageable).map(AlertMapper::toExecution);
+        Page<AlertExecutionResponse> result = executionRepository.search(alertId != null, alertId == null ? 0L : alertId,
+                templateId != null, templateId == null ? 0L : templateId,
+                status != null, status == null ? AlertExecutionStatus.SUCCESS : status,
+                executionId != null, executionId == null ? UNUSED_EXECUTION_ID : executionId,
+                from != null, from == null ? UNUSED_TIME : from,
+                to != null, to == null ? UNUSED_TIME : to, pageable).map(AlertMapper::toExecution);
 
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("page", result.getNumber());
@@ -49,6 +65,12 @@ public class AlertExecutionQueryService {
 
         if (executionId != null)
             data.put("executionId", executionId);
+
+        if (from != null)
+            data.put("from", from);
+
+        if (to != null)
+            data.put("to", to);
 
         eventLogger.success("ALERT_EXECUTION_HISTORY_VIEWED", data);
         return result;

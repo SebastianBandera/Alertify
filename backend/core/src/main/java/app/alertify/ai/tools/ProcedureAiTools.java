@@ -4,29 +4,33 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.UUID;
 
+import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Component;
 import org.springframework.validation.annotation.Validated;
 
+import app.alertify.ai.AiRefreshTarget;
 import app.alertify.ai.AlertifyTool;
 import app.alertify.ai.AiToolExecutor;
 import app.alertify.ai.AiToolSupport;
 import app.alertify.ai.api.AiFilter;
 import app.alertify.ai.api.AiPage;
 import app.alertify.ai.api.AiPageRequest;
+import app.alertify.ai.api.AiProcedureCreateRequest;
+import app.alertify.ai.api.AiProcedureUpdateRequest;
 import app.alertify.ai.api.AiTextFile;
+import app.alertify.ai.template.AiTemplateSource;
+import app.alertify.ai.template.AiTemplateSourceService;
 import app.alertify.config.AuthorizationPolicies;
 import app.alertify.configuration.api.TagCreateRequest;
 import app.alertify.configuration.api.TagResponse;
 import app.alertify.configuration.api.TagUpdateRequest;
 import app.alertify.procedures.api.ProcedureBindingOptionsResponse;
-import app.alertify.procedures.api.ProcedureCreateRequest;
 import app.alertify.procedures.api.ProcedureDeletionImpactResponse;
 import app.alertify.procedures.api.ProcedureExecutionResponse;
 import app.alertify.procedures.api.ProcedureImportResult;
 import app.alertify.procedures.api.ProcedureResponse;
 import app.alertify.procedures.api.ProcedureTemplateResponse;
-import app.alertify.procedures.api.ProcedureUpdateRequest;
 import app.alertify.procedures.execution.ProcedureExecutionStatus;
 import app.alertify.procedures.service.ProcedureCatalogService;
 import app.alertify.procedures.service.ProcedureCsvService;
@@ -45,17 +49,19 @@ public class ProcedureAiTools {
     private final ProcedureCsvService csv;
     private final ProcedureExecutionQueryService executions;
     private final ProcedureTagService tags;
+    private final AiTemplateSourceService templateSources;
     private final AiToolExecutor tools;
     private final AiToolSupport support;
 
     public ProcedureAiTools(ProcedureManagementService procedures, ProcedureCatalogService catalog,
             ProcedureCsvService csv, ProcedureExecutionQueryService executions, ProcedureTagService tags,
-            AiToolExecutor tools, AiToolSupport support) {
+            AiTemplateSourceService templateSources, AiToolExecutor tools, AiToolSupport support) {
         this.procedures = procedures;
         this.catalog = catalog;
         this.csv = csv;
         this.executions = executions;
         this.tags = tags;
+        this.templateSources = templateSources;
         this.tools = tools;
         this.support = support;
     }
@@ -66,9 +72,14 @@ public class ProcedureAiTools {
                 tagIds == null ? java.util.Set.of() : new LinkedHashSet<>(tagIds), requireAllTags, page.pageable())));
     }
 
-    @AlertifyTool(name = "alertify_procedure_templates", description = "List procedure templates, parameters, outputs and sensitive-result flags", readOnly = true)
+    @AlertifyTool(name = "alertify_procedure_templates", description = "List procedure templates, parameters, outputs and sensitive-result flags. Each result includes the fully qualified templateKey accepted by alertify_procedure_template_source.", readOnly = true)
     public List<ProcedureTemplateResponse> templates() {
         return tools.execute("alertify_procedure_templates", catalog::templates);
+    }
+
+    @AlertifyTool(name = "alertify_procedure_template_source", description = "Return the exact Java source of one registered procedure template. First use alertify_procedure_templates to discover its fully qualified templateKey.", readOnly = true, idempotentHint = true)
+    public AiTemplateSource templateSource(@ToolParam(description = "Exact fully qualified templateKey returned by alertify_procedure_templates") String templateKey) {
+        return tools.execute("alertify_procedure_template_source", () -> templateSources.procedure(templateKey));
     }
 
     @AlertifyTool(name = "alertify_procedure_binding_options", description = "List resources that procedure parameters may reference", readOnly = true)
@@ -81,20 +92,20 @@ public class ProcedureAiTools {
         return tools.execute("alertify_procedure_deletion_impact", () -> procedures.deletionImpact(id));
     }
 
-    @AlertifyTool(name = "alertify_procedure_create", description = "Create a procedure using administration validation", readOnly = false)
-    public ProcedureResponse create(@Valid ProcedureCreateRequest request) {
-        return tools.execute("alertify_procedure_create", () -> procedures.create(request));
+    @AlertifyTool(name = "alertify_procedure_create", description = "Create a procedure using administration validation. Each parameter source selects its matching value field; use neutral placeholders for the unselected fields because Alertify ignores them.", readOnly = false, refreshTargets = AiRefreshTarget.PROCEDURES)
+    public ProcedureResponse create(@Valid AiProcedureCreateRequest request) {
+        return tools.execute("alertify_procedure_create", () -> procedures.create(request.toRequest()));
     }
 
-    @AlertifyTool(name = "alertify_procedure_update", description = "Update a procedure using its current optimistic version", readOnly = false)
-    public ProcedureResponse update(long id, @Valid ProcedureUpdateRequest request) {
-        return tools.execute("alertify_procedure_update", () -> procedures.update(id, request));
+    @AlertifyTool(name = "alertify_procedure_update", description = "Update a procedure using its current optimistic version. Each parameter source selects its matching value field; use neutral placeholders for the unselected fields because Alertify ignores them.", readOnly = false, refreshTargets = AiRefreshTarget.PROCEDURES)
+    public ProcedureResponse update(long id, @Valid AiProcedureUpdateRequest request) {
+        return tools.execute("alertify_procedure_update", () -> procedures.update(id, request.toRequest()));
     }
 
-    @AlertifyTool(name = "alertify_procedure_run", description = "Trigger an immediate procedure execution", readOnly = false)
+    @AlertifyTool(name = "alertify_procedure_run", description = "Trigger an immediate procedure execution", readOnly = false, openWorldHint = true, refreshTargets = AiRefreshTarget.PROCEDURES)
     public void run(long id) { tools.execute("alertify_procedure_run", () -> procedures.runNow(id)); }
 
-    @AlertifyTool(name = "alertify_procedure_delete", description = "Delete a procedure using its current optimistic version", readOnly = false)
+    @AlertifyTool(name = "alertify_procedure_delete", description = "Delete a procedure using its current optimistic version", readOnly = false, destructiveHint = true, refreshTargets = AiRefreshTarget.PROCEDURES)
     public void delete(long id, long version) { tools.execute("alertify_procedure_delete", () -> procedures.delete(id, version)); }
 
     @AlertifyTool(name = "alertify_procedure_export_csv", description = "Export procedures as a bounded UTF-8 CSV text file", readOnly = true)
@@ -102,7 +113,7 @@ public class ProcedureAiTools {
         return tools.execute("alertify_procedure_export_csv", () -> support.csv("alertify-procedures.csv", csv.exportCsv()));
     }
 
-    @AlertifyTool(name = "alertify_procedure_import_csv", description = "Import procedures from a bounded UTF-8 CSV text file", readOnly = false)
+    @AlertifyTool(name = "alertify_procedure_import_csv", description = "Import procedures from a bounded UTF-8 CSV text file", readOnly = false, refreshTargets = AiRefreshTarget.PROCEDURES)
     public ProcedureImportResult importCsv(@Valid AiTextFile file) {
         return tools.execute("alertify_procedure_import_csv", () -> csv.importCsv(support.csvUpload(file)));
     }
@@ -118,17 +129,17 @@ public class ProcedureAiTools {
         return tools.execute("alertify_procedure_tag_search", () -> AiPage.from(tags.search(support.filters(filters), page.pageable())));
     }
 
-    @AlertifyTool(name = "alertify_procedure_tag_create", description = "Create a tag scoped to procedures", readOnly = false)
+    @AlertifyTool(name = "alertify_procedure_tag_create", description = "Create a tag scoped to procedures", readOnly = false, refreshTargets = AiRefreshTarget.PROCEDURES)
     public TagResponse tagCreate(@Valid TagCreateRequest request) {
         return tools.execute("alertify_procedure_tag_create", () -> tags.create(request));
     }
 
-    @AlertifyTool(name = "alertify_procedure_tag_update", description = "Update a procedure tag using its current version", readOnly = false)
+    @AlertifyTool(name = "alertify_procedure_tag_update", description = "Update a procedure tag using its current version", readOnly = false, refreshTargets = AiRefreshTarget.PROCEDURES)
     public TagResponse tagUpdate(long id, @Valid TagUpdateRequest request) {
         return tools.execute("alertify_procedure_tag_update", () -> tags.update(id, request));
     }
 
-    @AlertifyTool(name = "alertify_procedure_tag_delete", description = "Delete a procedure tag using its current version", readOnly = false)
+    @AlertifyTool(name = "alertify_procedure_tag_delete", description = "Delete a procedure tag using its current version", readOnly = false, destructiveHint = true, refreshTargets = AiRefreshTarget.PROCEDURES)
     public void tagDelete(long id, long version) {
         tools.execute("alertify_procedure_tag_delete", () -> tags.delete(id, version));
     }

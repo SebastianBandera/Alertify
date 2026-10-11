@@ -3,6 +3,7 @@ package app.alertify.worker.codex;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
+import java.net.http.HttpHeaders;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
@@ -10,38 +11,62 @@ import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtDecoders;
 import org.springframework.stereotype.Service;
 import org.springframework.scheduling.annotation.Scheduled;
 
+import app.alertify.worker.ai.grpc.ChatRateLimitWindow;
+import app.alertify.worker.ai.grpc.ChatTokenUsage;
+import app.alertify.worker.ai.grpc.ChatUsageUpdate;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
 
 @Service
 class CodexSessionService {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(CodexSessionService.class);
 
     static final String AUTH_ISSUER = "https://auth.openai.com";
     static final String API_RESOURCE = "https://api.openai.com/v1";
     static final String DEVICE_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
     static final String DEVICE_VERIFICATION_URI = "https://auth.openai.com/codex/device";
+    static final String PRIVATE_CODEX_RESPONSES_URI = "https://chatgpt.com/backend-api/codex/responses";
+    static final String PRIVATE_CODEX_USAGE_URI = "https://chatgpt.com/backend-api/wham/usage";
+    static final String PUBLIC_RESPONSES_URI = "https://api.openai.com/v1/responses";
+    private static final String PRIVATE_CODEX_MODELS_URI = "https://chatgpt.com/backend-api/codex/models?client_version=0.0.0";
+    private static final String PUBLIC_MODELS_URI = "https://api.openai.com/v1/models";
+    private static final String ORIGINATOR = "codex_cli_rs";
     private static final String DYNAMIC_CLIENT_ID = "dynamic_agent_client";
     private static final String SCOPES = "openid profile email offline_access resource.invoke chatgpt.tokens.use.direct";
     private static final String LOGIN_MODE_DIRECT = "DIRECT";
     private static final String LOGIN_MODE_EXTENSION = "EXTENSION";
+    private static final String LOGIN_MODE_DEVICE = "DEVICE";
     private static final Duration LOGIN_LIFETIME = Duration.ofMinutes(15);
+    private static final Duration MODEL_CATALOG_LIFETIME = Duration.ofHours(1);
+    private static final Duration USAGE_SNAPSHOT_LIFETIME = Duration.ofSeconds(30);
     private static final int MAX_INSTRUCTIONS_BYTES = 64 * 1024;
+    private static final Pattern RATE_LIMIT_DURATION_PART = Pattern.compile("([0-9]+(?:\\.[0-9]+)?)(ms|s|m|h|d)");
 
     private final EncryptedStateStore store;
     private final Duration refreshTokenLifetime;
@@ -53,17 +78,27 @@ class CodexSessionService {
     private volatile PersistentAiState state;
     private volatile PendingBrowserLogin browserLogin;
     private volatile PendingDeviceLogin deviceLogin;
+    private Map<String, CodexModelProfile> modelProfiles = Map.of();
+    private Instant modelCatalogExpiresAt = Instant.EPOCH;
+    private String modelCatalogIdentity = "";
+    private JsonNode usageSnapshot;
+    private Instant usageSnapshotExpiresAt = Instant.EPOCH;
+    private String usageSnapshotIdentity = "";
 
     CodexSessionService(EncryptedStateStore store, CodexWorkerProperties properties) {
         this.store = store;
         refreshTokenLifetime = properties.refreshTokenLifetime();
+        usageSnapshot = json.createObjectNode();
         if (refreshTokenLifetime == null || refreshTokenLifetime.isNegative() || refreshTokenLifetime.isZero())
             throw new IllegalStateException("The refresh token lifetime must be positive");
 
         AiSettingsState initialSettings = new AiSettingsState(true, "CODEX", properties.defaultModel(), properties.defaultReasoningEffort(), "",
-                properties.defaultRefreshPolicy());
+                properties.defaultRefreshPolicy(), properties.defaultReviewerModel(), properties.defaultReviewerReasoningEffort());
         validateSettings(initialSettings);
-        state = normalize(store.load(), initialSettings);
+        PersistentAiState loaded = store.load();
+        state = normalize(loaded, initialSettings);
+        if (!Objects.equals(loaded, state))
+            store.save(state);
     }
 
     PersistentAiState state() {
@@ -99,7 +134,7 @@ class CodexSessionService {
             String callbackTicket = LOGIN_MODE_EXTENSION.equals(normalizedMode) ? randomUrlSafe(32) : "";
             browserLogin = new PendingBrowserLogin(redirectUri, normalizedMode, subject,
                     callbackTicket.isEmpty() ? "" : sha256UrlSafe(callbackTicket), randomUrlSafe(32), randomUrlSafe(32), verifier,
-                    client == null ? DYNAMIC_CLIENT_ID : client.clientId(), client == null ? "" : client.accountId(),
+                    client == null ? DYNAMIC_CLIENT_ID : client.clientId(), client == null ? "" : firstNonBlank(client.subject()),
                     Instant.now().plus(LOGIN_LIFETIME));
             return new BrowserLoginStart(browserLogin, callbackTicket);
         } finally {
@@ -161,14 +196,15 @@ class CodexSessionService {
             JsonNode token = postForm(AUTH_ISSUER + "/api/accounts/oauth/token", values);
             requireScopes(token.path("scope").asText(scope));
             String authMode = LOGIN_MODE_EXTENSION.equals(pending.loginMode()) ? "BROWSER_EXTENSION" : "BROWSER";
-            OAuthSession session = tokenSession(authMode, token, issuedClientId, pending.nonce());
-            if (!pending.expectedAccountId().isBlank() && !pending.expectedAccountId().equals(session.accountId()))
+            OAuthSession session = tokenSession(authMode, token, issuedClientId, pending.nonce(), true);
+            if (!pending.expectedSubject().isBlank() && !pending.expectedSubject().equals(session.subject()))
                 throw new IllegalArgumentException("The authorized account did not match the selected registration");
             Map<String, DynamicClient> clients = new HashMap<>(state.dynamicClients());
-            clients.put(pending.redirectUri(), new DynamicClient(issuedClientId, session.accountId(), session.accountLabel()));
+            clients.put(pending.redirectUri(), new DynamicClient(issuedClientId, session.subject(), session.accountId(), session.accountLabel()));
             state = new PersistentAiState(state.settings(), session, Map.copyOf(clients), state.hostId());
             store.save(state);
             browserLogin = null;
+            invalidateModelCatalog();
         } finally {
             lock.unlock();
         }
@@ -254,6 +290,7 @@ class CodexSessionService {
             store.save(state);
             browserLogin = null;
             deviceLogin = null;
+            invalidateModelCatalog();
             return revoked;
         } finally {
             lock.unlock();
@@ -264,15 +301,82 @@ class CodexSessionService {
         lock.lock();
         try {
             OAuthSession session = usableSession();
-            String endpoint = "DEVICE".equals(session.authMode())
-                    ? "https://chatgpt.com/backend-api/codex/models"
-                    : API_RESOURCE + "/models";
-            HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(endpoint)).timeout(Duration.ofSeconds(30))
-                    .header("Authorization", "Bearer " + session.accessToken()).GET();
-            if ("DEVICE".equals(session.authMode()) && session.accountId() != null && !session.accountId().isBlank())
-                request.header("ChatGPT-Account-Id", session.accountId());
+            String uri = usesPrivateCodex(session) ? PRIVATE_CODEX_MODELS_URI : PUBLIC_MODELS_URI;
+            HttpRequest.Builder request = authenticatedRequest(uri, session).timeout(Duration.ofSeconds(30)).GET();
+            if (usesPrivateCodex(session))
+                addPrivateCodexHeaders(request, session, "0.0.0");
 
             send(request.build());
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    CodexRequestMetadata requestMetadata(String model, Long conversationId, Long turnId) {
+        lock.lock();
+        try {
+            OAuthSession session = usableSession();
+            String identity = firstNonBlank(session.subject(), session.accountId(), session.clientId());
+            String catalogIdentity = (usesPrivateCodex(session) ? "PRIVATE:" : "PUBLIC:") + identity;
+            if (Instant.now().isAfter(modelCatalogExpiresAt) || !catalogIdentity.equals(modelCatalogIdentity))
+                refreshModelCatalog(session, catalogIdentity);
+
+            CodexModelProfile profile = modelProfiles.get(model);
+            if (profile == null)
+                throw new IllegalArgumentException("The configured model is not available in the Codex model catalog");
+
+            String sessionId = conversationId == null ? UUID.randomUUID().toString()
+                    : deterministicId(state.hostId() + ":conversation:" + conversationId);
+            String threadId = sessionId;
+            String windowId = deterministicId(sessionId + ":window");
+            String requestTurnId = turnId == null ? UUID.randomUUID().toString()
+                    : deterministicId(state.hostId() + ":turn:" + turnId);
+            String installationId = state.hostId().startsWith("urn:uuid:") ? state.hostId().substring("urn:uuid:".length()) : state.hostId();
+            return new CodexRequestMetadata(model, profile.responsesLite(), profile.namespacedTools(), profile.clientVersion(), profile.privateCodex(), profile.contextWindow(), installationId,
+                    sessionId, threadId, windowId, requestTurnId);
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    CodexResponse codexResponse(Map<String, ?> body, CodexRequestMetadata metadata) {
+        lock.lock();
+        try {
+            OAuthSession session = usableSession();
+            Map<String, Object> requestBody = new LinkedHashMap<>(body);
+            requestBody.put("prompt_cache_key", metadata.sessionId());
+            String uri = metadata.privateCodex() ? PRIVATE_CODEX_RESPONSES_URI : PUBLIC_RESPONSES_URI;
+            HttpRequest.Builder request = authenticatedRequest(uri, session).timeout(Duration.ofMinutes(5))
+                    .header("Content-Type", "application/json")
+                    .header("Accept", "text/event-stream")
+                    .POST(HttpRequest.BodyPublishers.ofByteArray(json.writeValueAsBytes(requestBody)));
+            if (metadata.privateCodex()) {
+                requestBody.put("client_metadata", Map.of(
+                        "x-codex-installation-id", metadata.installationId(),
+                        "session_id", metadata.sessionId(),
+                        "thread_id", metadata.threadId(),
+                        "turn_id", metadata.turnId(),
+                        "x-codex-window-id", metadata.windowId()));
+                request = authenticatedRequest(uri, session).timeout(Duration.ofMinutes(5))
+                        .header("Content-Type", "application/json")
+                        .header("Accept", "text/event-stream")
+                        .POST(HttpRequest.BodyPublishers.ofByteArray(json.writeValueAsBytes(requestBody)));
+                addPrivateCodexHeaders(request, session, metadata.clientVersion());
+                request.header("version", metadata.clientVersion())
+                        .header("session-id", metadata.sessionId())
+                        .header("thread-id", metadata.threadId())
+                        .header("x-client-request-id", metadata.threadId())
+                        .header("x-codex-window-id", metadata.windowId())
+                        .header("x-codex-routing-hint", "model=" + metadata.model());
+                if (metadata.responsesLite())
+                    request.header("x-openai-internal-codex-responses-lite", "true");
+            }
+
+            HttpResponse<String> httpResponse = send(request.build());
+            JsonNode response = parseCodexStream(json, httpResponse.body());
+            Instant observedAt = Instant.now();
+            JsonNode quota = metadata.privateCodex() ? codexUsageSnapshot(session, metadata.clientVersion(), observedAt) : null;
+            return new CodexResponse(response, usage(response, httpResponse.headers(), quota, metadata.contextWindow(), observedAt));
         } finally {
             lock.unlock();
         }
@@ -338,12 +442,13 @@ class CodexSessionService {
             token = postForm(AUTH_ISSUER + "/api/accounts/oauth/token", values);
         }
         Instant refreshedAt = Instant.now();
-        OAuthSession refreshed = tokenSession(current.authMode(), token, current.clientId(), null);
+        OAuthSession refreshed = tokenSession(current.authMode(), token, current.clientId(), null, false);
         boolean refreshTokenRotated = refreshed.refreshToken() != null && !refreshed.refreshToken().isBlank();
         String refreshToken = refreshTokenRotated ? refreshed.refreshToken() : current.refreshToken();
         String idToken = refreshed.idToken() == null || refreshed.idToken().isBlank() ? current.idToken() : refreshed.idToken();
         return new OAuthSession(refreshed.authMode(), refreshed.accessToken(), refreshToken, idToken,
-                refreshed.clientId(), firstNonBlank(refreshed.accountId(), current.accountId()),
+                refreshed.clientId(), firstNonBlank(refreshed.subject(), current.subject()),
+                firstNonBlank(refreshed.accountId(), current.accountId()),
                 firstNonBlank(refreshed.accountLabel(), current.accountLabel()), refreshed.expiresAt(),
                 refreshTokenRotated ? refreshedAt.plus(refreshTokenLifetime) : current.refreshExpiresAt(), refreshedAt);
     }
@@ -369,10 +474,11 @@ class CodexSessionService {
                 try {
                     if (deviceLogin != attempt)
                         return;
-                    OAuthSession session = tokenSession("DEVICE", token, DEVICE_CLIENT_ID, null);
+                    OAuthSession session = tokenSession(LOGIN_MODE_DEVICE, token, DEVICE_CLIENT_ID, null, true);
                     state = new PersistentAiState(state.settings(), session, state.dynamicClients(), state.hostId());
                     store.save(state);
                     deviceLogin = null;
+                    invalidateModelCatalog();
                     return;
                 } finally {
                     lock.unlock();
@@ -390,26 +496,52 @@ class CodexSessionService {
             deviceLogin = attempt.withStatus("EXPIRED", "Device authorization expired");
     }
 
-    private OAuthSession tokenSession(String mode, JsonNode token, String clientId, String expectedNonce) {
+    private OAuthSession tokenSession(String mode, JsonNode token, String clientId, String expectedNonce, boolean requireIdentity) {
         Instant receivedAt = Instant.now();
         String accessToken = text(token, "access_token");
         String refreshToken = token.path("refresh_token").asText("");
         String idToken = token.path("id_token").asText("");
         long expiresIn = Math.max(1, token.path("expires_in").asLong(3600));
+        String subject = "";
         String accountId = "";
         String accountLabel = "";
-        if (!idToken.isBlank()) {
+        if (idToken.isBlank()) {
+            if (requireIdentity)
+                throw new IllegalArgumentException("The token response did not contain an ID token");
+        } else {
             Jwt jwt = jwtDecoder().decode(idToken);
             if (expectedNonce != null && !Objects.equals(expectedNonce, jwt.getClaimAsString("nonce")))
                 throw new IllegalArgumentException("The ID token nonce did not match the login attempt");
             if (!jwt.getAudience().contains(clientId))
                 throw new IllegalArgumentException("The ID token audience did not match this client");
-            accountId = firstNonBlank(jwt.getClaimAsString("chatgpt_account_id"), jwt.getSubject());
-            accountLabel = firstNonBlank(jwt.getClaimAsString("email"), jwt.getClaimAsString("name"), accountId);
+            JsonNode claims = json.valueToTree(jwt.getClaims());
+            TokenIdentity identity = tokenIdentity(mode, claims, requireIdentity);
+            subject = identity.subject();
+            accountId = identity.accountId();
+
+            accountLabel = firstNonBlank(jwt.getClaimAsString("email"),
+                    claims.path("https://api.openai.com/profile").path("email").asText(""),
+                    jwt.getClaimAsString("name"), subject, accountId);
         }
         return new OAuthSession(mode, accessToken, refreshToken, idToken, clientId,
-                accountId, accountLabel, receivedAt.plusSeconds(expiresIn),
+                subject, accountId, accountLabel, receivedAt.plusSeconds(expiresIn),
                 refreshToken.isBlank() ? null : receivedAt.plus(refreshTokenLifetime), null);
+    }
+
+    static TokenIdentity tokenIdentity(String mode, JsonNode claims, boolean required) {
+        String subject = claims.path("sub").asText("");
+        if (required && subject.isBlank())
+            throw new IllegalArgumentException("The ID token did not contain a subject");
+
+        return new TokenIdentity(subject, chatGptAccountId(claims, required && LOGIN_MODE_DEVICE.equals(mode)));
+    }
+
+    static String chatGptAccountId(JsonNode claims, boolean required) {
+        String accountId = claims.path("https://api.openai.com/auth").path("chatgpt_account_id").asText("");
+        if (required && accountId.isBlank())
+            throw new IllegalArgumentException("The ID token did not contain a ChatGPT account ID");
+
+        return accountId;
     }
 
     private JsonNode postForm(String url, Map<String, String> values) {
@@ -449,7 +581,7 @@ class CodexSessionService {
         try {
             HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() < 200 || response.statusCode() >= 300)
-                throw new IllegalStateException("The remote service returned HTTP " + response.statusCode());
+                throw remoteServiceError(response);
             return response;
         } catch (java.io.IOException exception) {
             throw new IllegalStateException("The remote service request failed", exception);
@@ -459,8 +591,432 @@ class CodexSessionService {
         }
     }
 
+    private RemoteServiceException remoteServiceError(HttpResponse<String> response) {
+        String code = "";
+        String parameter = "";
+        try {
+            JsonNode error = parse(response.body()).path("error");
+            code = safeDiagnostic(error.path("code").asText(""));
+            parameter = safeDiagnostic(error.path("param").asText(""));
+        } catch (RuntimeException ignored) {
+            // Remote response bodies are intentionally excluded from diagnostics.
+        }
+        StringBuilder message = new StringBuilder("The remote service returned HTTP ").append(response.statusCode());
+        if (!code.isBlank())
+            message.append(" (code=").append(code).append(')');
+        if (!parameter.isBlank())
+            message.append(" (param=").append(parameter).append(')');
+        return new RemoteServiceException(message.toString());
+    }
+
+    private static String safeDiagnostic(String value) {
+        return value != null && value.matches("[A-Za-z0-9_.-]{1,64}") ? value : "";
+    }
+
     private JsonNode parse(String value) {
         return json.readTree(value);
+    }
+
+    private HttpRequest.Builder authenticatedRequest(String uri, OAuthSession session) {
+        return HttpRequest.newBuilder(URI.create(uri)).header("Authorization", "Bearer " + session.accessToken());
+    }
+
+    private void addPrivateCodexHeaders(HttpRequest.Builder request, OAuthSession session, String clientVersion) {
+        request.header("originator", ORIGINATOR)
+                .header("User-Agent", "codex_cli_rs/" + clientVersion + " (Alertify; Java)");
+        if (session.accountId() != null && !session.accountId().isBlank())
+            request.header("ChatGPT-Account-Id", session.accountId());
+    }
+
+    private JsonNode codexUsageSnapshot(OAuthSession session, String clientVersion, Instant observedAt) {
+        String identity = firstNonBlank(session.subject(), session.accountId(), session.clientId());
+        if (identity.equals(usageSnapshotIdentity) && observedAt.isBefore(usageSnapshotExpiresAt))
+            return usageSnapshot;
+
+        if (!identity.equals(usageSnapshotIdentity))
+            usageSnapshot = json.createObjectNode();
+        usageSnapshotIdentity = identity;
+        usageSnapshotExpiresAt = observedAt.plus(USAGE_SNAPSHOT_LIFETIME);
+        try {
+            HttpRequest.Builder request = authenticatedRequest(PRIVATE_CODEX_USAGE_URI, session).timeout(Duration.ofSeconds(30))
+                    .header("Accept", "application/json").GET();
+            addPrivateCodexHeaders(request, session, clientVersion);
+            JsonNode refreshed = parse(send(request.build()).body());
+            if (refreshed.isObject())
+                usageSnapshot = refreshed;
+        } catch (RemoteServiceException exception) {
+            LOGGER.warn("Codex usage metadata is unavailable: {}", exception.getMessage());
+        } catch (RuntimeException exception) {
+            LOGGER.warn("Codex usage metadata is unavailable: {}", exception.getClass().getSimpleName());
+        }
+        return usageSnapshot;
+    }
+
+    private void refreshModelCatalog(OAuthSession session, String catalogIdentity) {
+        boolean privateCodex = usesPrivateCodex(session);
+        String uri = privateCodex ? PRIVATE_CODEX_MODELS_URI : PUBLIC_MODELS_URI;
+        HttpRequest.Builder request = authenticatedRequest(uri, session).timeout(Duration.ofSeconds(30)).GET();
+        if (privateCodex)
+            addPrivateCodexHeaders(request, session, "0.0.0");
+
+        Map<String, CodexModelProfile> refreshed = parseModelCatalog(parse(send(request.build()).body()), privateCodex);
+        if (refreshed.isEmpty())
+            throw new IllegalStateException("The Codex model catalog was empty");
+
+        modelProfiles = Map.copyOf(refreshed);
+        modelCatalogIdentity = catalogIdentity;
+        modelCatalogExpiresAt = Instant.now().plus(MODEL_CATALOG_LIFETIME);
+    }
+
+    private void invalidateModelCatalog() {
+        modelProfiles = Map.of();
+        modelCatalogIdentity = "";
+        modelCatalogExpiresAt = Instant.EPOCH;
+    }
+
+    static Map<String, CodexModelProfile> parseModelCatalog(JsonNode response, boolean privateCodex) {
+        JsonNode models = response.path("models");
+        if (!models.isArray())
+            models = response.path("data");
+        if (!models.isArray())
+            throw new IllegalStateException("The Codex model catalog did not contain a model array");
+
+        Map<String, CodexModelProfile> profiles = new HashMap<>();
+        models.forEach(model -> {
+            String slug = firstNonBlank(model.path("slug").asText(""), model.path("id").asText(""));
+            if (!slug.isBlank())
+                profiles.put(slug, new CodexModelProfile(privateCodex && model.path("use_responses_lite").asBoolean(false),
+                        !privateCodex, privateCodex ? clientVersion(model.path("minimal_client_version").asText("")) : "0.0.0",
+                        privateCodex, effectiveContextWindow(model)));
+        });
+        return Map.copyOf(profiles);
+    }
+
+    static ChatUsageUpdate usage(JsonNode response, HttpHeaders headers, long contextWindow, Instant observedAt) {
+        return usage(response, headers, null, contextWindow, observedAt);
+    }
+
+    static ChatUsageUpdate usage(JsonNode response, HttpHeaders headers, JsonNode quota, long contextWindow, Instant observedAt) {
+        JsonNode usage = response.path("usage");
+        long inputTokens = nonNegative(usage.path("input_tokens").asLong(0));
+        long cachedInputTokens = nonNegative(usage.path("input_tokens_details").path("cached_tokens").asLong(0));
+        long cacheWriteInputTokens = nonNegative(usage.path("input_tokens_details").path("cache_write_tokens").asLong(0));
+        long outputTokens = nonNegative(usage.path("output_tokens").asLong(0));
+        long reasoningOutputTokens = nonNegative(usage.path("output_tokens_details").path("reasoning_tokens").asLong(0));
+        long totalTokens = nonNegative(usage.path("total_tokens").asLong(0));
+        if (totalTokens == 0 && (inputTokens > 0 || outputTokens > 0))
+            totalTokens = Math.addExact(inputTokens, outputTokens);
+
+        ChatTokenUsage tokens = ChatTokenUsage.newBuilder().setInputTokens(inputTokens)
+                .setCachedInputTokens(cachedInputTokens).setCacheWriteInputTokens(cacheWriteInputTokens)
+                .setOutputTokens(outputTokens).setReasoningOutputTokens(reasoningOutputTokens)
+                .setTotalTokens(totalTokens).build();
+        String planType = firstNonBlank(headers.firstValue("x-codex-plan-type").orElse(""),
+                optionalText(quota, "plan_type"), optionalText(quota, "planType"));
+        ChatUsageUpdate.Builder result = ChatUsageUpdate.newBuilder().setRequest(tokens)
+                .setModelContextWindow(Math.max(0, contextWindow)).setObservedAtEpochSeconds(observedAt.getEpochSecond())
+                .setPlanType(planType);
+        addStandardRateLimit(result, headers, "requests", "Requests", "x-ratelimit-limit-requests",
+                "x-ratelimit-remaining-requests", "x-ratelimit-reset-requests", observedAt);
+        addStandardRateLimit(result, headers, "tokens", "Tokens", "x-ratelimit-limit-tokens",
+                "x-ratelimit-remaining-tokens", "x-ratelimit-reset-tokens", observedAt);
+        addStandardRateLimit(result, headers, "project-tokens", "Project tokens", "x-ratelimit-limit-project-tokens",
+                "x-ratelimit-remaining-project-tokens", "x-ratelimit-reset-project-tokens", observedAt);
+        if (!addCodexRateLimit(result, headers, "primary", "Primary"))
+            addCodexRateLimit(result, quota, "primary", "Primary", observedAt);
+        if (!addCodexRateLimit(result, headers, "secondary", "Secondary"))
+            addCodexRateLimit(result, quota, "secondary", "Secondary", observedAt);
+        return result.build();
+    }
+
+    private static void addStandardRateLimit(ChatUsageUpdate.Builder target, HttpHeaders headers, String key, String label,
+            String limitHeader, String remainingHeader, String resetHeader, Instant observedAt) {
+        Long limit = headerLong(headers, limitHeader);
+        Long remaining = headerLong(headers, remainingHeader);
+        if (limit == null && remaining == null)
+            return;
+
+        ChatRateLimitWindow.Builder window = ChatRateLimitWindow.newBuilder().setKey(key).setLabel(label);
+        if (limit != null)
+            window.setLimit(limit);
+        if (remaining != null)
+            window.setRemaining(remaining);
+        if (limit != null && limit > 0 && remaining != null) {
+            double remainingPercent = clampPercent(remaining * 100.0 / limit);
+            window.setRemainingPercent(remainingPercent).setUsedPercent(100.0 - remainingPercent);
+        }
+        Long resetsAt = resetAt(headers.firstValue(resetHeader).orElse(""), observedAt);
+        if (resetsAt != null)
+            window.setResetsAtEpochSeconds(resetsAt);
+        target.addRateLimits(window);
+    }
+
+    private static boolean addCodexRateLimit(ChatUsageUpdate.Builder target, HttpHeaders headers, String kind, String fallbackLabel) {
+        Double usedPercent = headerDouble(headers, "x-codex-" + kind + "-used-percent");
+        Long windowMinutes = headerLong(headers, "x-codex-" + kind + "-window-minutes");
+        Long resetsAt = headerLong(headers, "x-codex-" + kind + "-reset-at");
+        if (usedPercent == null && windowMinutes == null && resetsAt == null)
+            return false;
+
+        String configuredName = headers.firstValue("x-codex-limit-name").orElse("");
+        ChatRateLimitWindow.Builder window = ChatRateLimitWindow.newBuilder()
+                .setKey("codex-" + kind).setLabel(configuredName.isBlank() ? fallbackLabel : configuredName + " " + fallbackLabel);
+        if (usedPercent != null) {
+            double used = clampPercent(usedPercent);
+            window.setUsedPercent(used).setRemainingPercent(100.0 - used);
+        }
+        if (windowMinutes != null)
+            window.setWindowMinutes(windowMinutes);
+        if (resetsAt != null)
+            window.setResetsAtEpochSeconds(resetsAt);
+        target.addRateLimits(window);
+        return true;
+    }
+
+    private static void addCodexRateLimit(ChatUsageUpdate.Builder target, JsonNode quota, String kind, String fallbackLabel, Instant observedAt) {
+        JsonNode limits = firstObject(quota, "rate_limit", "rate_limits", "rateLimits");
+        JsonNode window = firstObject(limits, kind + "_window", kind);
+        Double usedPercent = number(window, "used_percent", "usedPercent");
+        Long windowMinutes = integer(window, "window_minutes", "windowDurationMins", "limit_window_minutes");
+        if (windowMinutes == null) {
+            Long windowSeconds = integer(window, "limit_window_seconds", "window_seconds");
+            if (windowSeconds != null)
+                windowMinutes = Math.max(1, Math.ceilDiv(windowSeconds, 60));
+        }
+        Long resetsAt = integer(window, "reset_at", "resets_at", "resetsAt");
+        if (resetsAt == null) {
+            Long resetAfterSeconds = integer(window, "reset_after_seconds", "resetAfterSeconds");
+            if (resetAfterSeconds != null)
+                resetsAt = observedAt.plusSeconds(resetAfterSeconds).getEpochSecond();
+        }
+        if (usedPercent == null && windowMinutes == null && resetsAt == null)
+            return;
+
+        String configuredName = firstNonBlank(optionalText(quota, "limit_name"), optionalText(quota, "limitName"),
+                optionalText(quota, "metered_limit_name"));
+        ChatRateLimitWindow.Builder result = ChatRateLimitWindow.newBuilder().setKey("codex-" + kind)
+                .setLabel(configuredName.isBlank() ? fallbackLabel : configuredName + " " + fallbackLabel);
+        if (usedPercent != null) {
+            double used = clampPercent(usedPercent);
+            result.setUsedPercent(used).setRemainingPercent(100.0 - used);
+        }
+        if (windowMinutes != null)
+            result.setWindowMinutes(windowMinutes);
+        if (resetsAt != null)
+            result.setResetsAtEpochSeconds(resetsAt);
+        target.addRateLimits(result);
+    }
+
+    private static JsonNode firstObject(JsonNode root, String... names) {
+        if (root == null)
+            return null;
+
+        for (String name : names) {
+            JsonNode candidate = root.path(name);
+            if (candidate.isObject())
+                return candidate;
+        }
+        return root.isObject() ? root : null;
+    }
+
+    private static String optionalText(JsonNode root, String name) {
+        return root == null ? "" : root.path(name).asText("");
+    }
+
+    private static Double number(JsonNode root, String... names) {
+        if (root == null)
+            return null;
+
+        for (String name : names) {
+            String value = root.path(name).asText("").trim();
+            if (value.isEmpty())
+                continue;
+            try {
+                double parsed = Double.parseDouble(value);
+                if (Double.isFinite(parsed) && parsed >= 0)
+                    return parsed;
+            } catch (NumberFormatException ignored) {
+                // Try the next compatible protocol field.
+            }
+        }
+        return null;
+    }
+
+    private static Long integer(JsonNode root, String... names) {
+        Double value = number(root, names);
+        if (value == null || value > Long.MAX_VALUE)
+            return null;
+
+        return value.longValue();
+    }
+
+    private static long effectiveContextWindow(JsonNode model) {
+        long contextWindow = nonNegative(model.path("context_window").asLong(
+                model.path("model_context_window").asLong(0)));
+        if (contextWindow == 0)
+            return 0;
+
+        long effectivePercent = Math.max(1, Math.min(100,
+                model.path("effective_context_window_percent").asLong(100)));
+        return Math.multiplyExact(contextWindow, effectivePercent) / 100;
+    }
+
+    private static Long headerLong(HttpHeaders headers, String name) {
+        String value = headers.firstValue(name).orElse("").trim();
+        if (value.isEmpty())
+            return null;
+        try {
+            return nonNegative(Long.parseLong(value));
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
+    private static Double headerDouble(HttpHeaders headers, String name) {
+        String value = headers.firstValue(name).orElse("").trim();
+        if (value.isEmpty())
+            return null;
+        try {
+            double parsed = Double.parseDouble(value);
+            return Double.isFinite(parsed) ? Math.max(0, parsed) : null;
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
+    private static Long resetAt(String value, Instant observedAt) {
+        if (value == null || value.isBlank())
+            return null;
+
+        Matcher matcher = RATE_LIMIT_DURATION_PART.matcher(value.trim());
+        int end = 0;
+        double seconds = 0;
+        while (matcher.find()) {
+            if (matcher.start() != end)
+                return null;
+            double amount = Double.parseDouble(matcher.group(1));
+            seconds += switch (matcher.group(2)) {
+                case "ms" -> amount / 1000.0;
+                case "s" -> amount;
+                case "m" -> amount * 60;
+                case "h" -> amount * 3600;
+                case "d" -> amount * 86400;
+                default -> 0;
+            };
+            end = matcher.end();
+        }
+        if (end != value.trim().length() || seconds < 0 || !Double.isFinite(seconds))
+            return null;
+        return observedAt.plusMillis((long) Math.ceil(seconds * 1000)).getEpochSecond();
+    }
+
+    private static long nonNegative(long value) {
+        return Math.max(0, value);
+    }
+
+    private static double clampPercent(double value) {
+        return Math.max(0, Math.min(100, value));
+    }
+
+    static boolean usesPrivateCodex(OAuthSession session) {
+        return LOGIN_MODE_DEVICE.equals(session.authMode());
+    }
+
+    private static String clientVersion(String value) {
+        return value != null && value.matches("[0-9]+\\.[0-9]+\\.[0-9]+") ? value : "0.0.0";
+    }
+
+    private static String deterministicId(String value) {
+        return UUID.nameUUIDFromBytes(value.getBytes(StandardCharsets.UTF_8)).toString();
+    }
+
+    record CodexModelProfile(boolean responsesLite, boolean namespacedTools, String clientVersion, boolean privateCodex, long contextWindow) {
+    }
+
+    record CodexRequestMetadata(String model, boolean responsesLite, boolean namespacedTools, String clientVersion,
+            boolean privateCodex, long contextWindow, String installationId, String sessionId, String threadId, String windowId, String turnId) {
+    }
+
+    record CodexResponse(JsonNode body, ChatUsageUpdate usage) {
+    }
+
+    record TokenIdentity(String subject, String accountId) {
+    }
+
+    static JsonNode parseCodexStream(JsonMapper json, String value) {
+        CodexStreamAccumulator accumulator = new CodexStreamAccumulator();
+        StringBuilder data = new StringBuilder();
+        for (String line : value.split("\\R", -1)) {
+            if (line.isEmpty()) {
+                acceptCodexEvent(json, data, accumulator);
+                data.setLength(0);
+                continue;
+            }
+            if (line.startsWith("data:")) {
+                if (!data.isEmpty())
+                    data.append('\n');
+                data.append(line.substring(5).stripLeading());
+            }
+        }
+        acceptCodexEvent(json, data, accumulator);
+        if (accumulator.completed == null)
+            throw new IllegalStateException("The Codex response stream ended without a completed response");
+
+        ObjectNode completed = (ObjectNode) accumulator.completed.deepCopy();
+        if (!completed.path("output").isArray() || completed.path("output").isEmpty()) {
+            ArrayNode output = json.createArrayNode();
+            accumulator.outputItems.forEach(item -> output.add(item.deepCopy()));
+            if (output.isEmpty())
+                accumulator.fallbackCalls.forEach(item -> output.add(item.deepCopy()));
+            if (output.isEmpty() && !accumulator.outputText.isEmpty()) {
+                ObjectNode message = output.addObject();
+                message.put("type", "message");
+                message.put("role", "assistant");
+                message.put("status", "completed");
+                message.putArray("content").addObject().put("type", "output_text").put("text", accumulator.outputText.toString());
+            }
+            completed.set("output", output);
+        }
+
+        return completed;
+    }
+
+    private static void acceptCodexEvent(JsonMapper json, StringBuilder data, CodexStreamAccumulator accumulator) {
+        if (data.isEmpty() || "[DONE]".contentEquals(data))
+            return;
+
+        JsonNode event = json.readTree(data.toString());
+        String type = event.path("type").asText("");
+        if ("response.completed".equals(type)) {
+            JsonNode response = event.path("response");
+            if (!response.isObject())
+                throw new IllegalStateException("The Codex completion event did not contain a response");
+
+            accumulator.completed = response;
+        } else if ("response.output_item.done".equals(type) && event.path("item").isObject()) {
+            accumulator.outputItems.add(event.path("item"));
+        } else if ("response.output_text.delta".equals(type)) {
+            accumulator.outputText.append(event.path("delta").asText(""));
+        } else if ("response.function_call_arguments.done".equals(type) && event.path("item").isObject()) {
+            accumulator.fallbackCalls.add(event.path("item"));
+        }
+        if ("response.failed".equals(type) || "response.incomplete".equals(type) || "error".equals(type))
+            throw new IllegalStateException("The Codex response stream reported a failure");
+    }
+
+    private static final class CodexStreamAccumulator {
+        private JsonNode completed;
+        private final List<JsonNode> outputItems = new ArrayList<>();
+        private final List<JsonNode> fallbackCalls = new ArrayList<>();
+        private final StringBuilder outputText = new StringBuilder();
+    }
+
+    static final class RemoteServiceException extends IllegalStateException {
+        private static final long serialVersionUID = 1L;
+
+        private RemoteServiceException(String message) {
+            super(message);
+        }
     }
 
     private void requireNoSessionOrAttempt() {
@@ -497,6 +1053,10 @@ class CodexSessionService {
             throw new IllegalArgumentException("Unsupported reasoning effort");
         if (!java.util.Set.of("AUTOMATIC", "ON_USE", "NONE").contains(settings.refreshPolicy()))
             throw new IllegalArgumentException("Unsupported refresh policy");
+        if (settings.reviewerModel() != null && settings.reviewerModel().length() > 128)
+            throw new IllegalArgumentException("The reviewer model must not exceed 128 characters");
+        if (!java.util.Set.of("low", "medium", "high", "xhigh").contains(settings.reviewerReasoningEffort()))
+            throw new IllegalArgumentException("Unsupported reviewer reasoning effort");
         if (settings.agentInstructions() != null && settings.agentInstructions().getBytes(StandardCharsets.UTF_8).length > MAX_INSTRUCTIONS_BYTES)
             throw new IllegalArgumentException("Agent instructions must not exceed 64 KiB");
     }
@@ -513,13 +1073,54 @@ class CodexSessionService {
             throw new IllegalArgumentException("The browser redirect URI must be an absolute 127.0.0.1 HTTP URL");
     }
 
-    private static PersistentAiState normalize(PersistentAiState loaded, AiSettingsState initialSettings) {
+    private PersistentAiState normalize(PersistentAiState loaded, AiSettingsState initialSettings) {
         AiSettingsState settings = loaded == null || loaded.settings() == null ? initialSettings : loaded.settings();
-        Map<String, DynamicClient> clients = loaded == null || loaded.dynamicClients() == null ? Map.of() : Map.copyOf(loaded.dynamicClients());
+        settings = new AiSettingsState(settings.enabled(), settings.provider(), settings.model(), settings.reasoningEffort(),
+                settings.agentInstructions(), settings.refreshPolicy(),
+                settings.reviewerModel() == null ? initialSettings.reviewerModel() : settings.reviewerModel(),
+                settings.reviewerReasoningEffort() == null ? initialSettings.reviewerReasoningEffort() : settings.reviewerReasoningEffort());
+        validateSettings(settings);
+        Map<String, DynamicClient> clients = loaded == null || loaded.dynamicClients() == null
+                ? Map.of() : new HashMap<>(loaded.dynamicClients());
         String hostId = loaded == null || loaded.hostId() == null || loaded.hostId().isBlank()
                 ? "urn:uuid:" + java.util.UUID.randomUUID() : loaded.hostId();
-        PersistentAiState normalized = new PersistentAiState(settings, loaded == null ? null : loaded.session(), clients, hostId);
+        OAuthSession session = normalizeSessionClaims(loaded == null ? null : loaded.session());
+        if (session != null) {
+            clients.replaceAll((redirectUri, client) -> client.clientId().equals(session.clientId())
+                    ? new DynamicClient(client.clientId(), session.subject(), session.accountId(), session.accountLabel()) : client);
+        }
+        PersistentAiState normalized = new PersistentAiState(settings, session, Map.copyOf(clients), hostId);
         return normalized;
+    }
+
+    private OAuthSession normalizeSessionClaims(OAuthSession session) {
+        if (session == null || session.idToken() == null || session.idToken().isBlank())
+            return session;
+
+        try {
+            JsonNode claims = decodeJwtPayload(session.idToken());
+            TokenIdentity identity = tokenIdentity(session.authMode(), claims, false);
+            String subject = firstNonBlank(identity.subject(), session.subject());
+            String accountId = firstNonBlank(identity.accountId(), session.accountId());
+            if (subject.isBlank() && accountId.isBlank())
+                return session;
+
+            String accountLabel = firstNonBlank(claims.path("email").asText(""),
+                    claims.path("https://api.openai.com/profile").path("email").asText(""),
+                    claims.path("name").asText(""), subject, accountId);
+            return new OAuthSession(session.authMode(), session.accessToken(), session.refreshToken(), session.idToken(),
+                    session.clientId(), subject, accountId, accountLabel, session.expiresAt(), session.refreshExpiresAt(), session.lastRefreshedAt());
+        } catch (RuntimeException ignored) {
+            return session;
+        }
+    }
+
+    private JsonNode decodeJwtPayload(String token) {
+        String[] parts = token.split("\\.", -1);
+        if (parts.length != 3 || parts[1].isBlank())
+            throw new IllegalArgumentException("Invalid JWT format");
+
+        return json.readTree(Base64.getUrlDecoder().decode(parts[1]));
     }
 
     private static void requireScopes(String scope) {

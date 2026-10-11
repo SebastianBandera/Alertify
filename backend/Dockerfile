@@ -36,6 +36,14 @@ COPY --from=builder --chown=application:application \
     /runtime-alert-template-sources \
     /application/alert-template-sources
 
+COPY --from=frontend-localization --chown=application:application \
+    localization.types.ts \
+    /application/frontend-localization/localization.types.ts
+
+COPY --from=frontend-localization --chown=application:application \
+    translations \
+    /application/frontend-localization/translations
+
 COPY --chown=application:application start-backend.sh /application/start-backend.sh
 COPY --chown=application:application secrets-tool.sh /application/secrets-tool.sh
 
@@ -44,6 +52,9 @@ RUN chmod 0755 /application/start-backend.sh /application/secrets-tool.sh \
     && chown application:application /application/export
 
 USER application
+
+ENV AI_LOCALIZATION_SOURCE_ROOT=/application/frontend-localization \
+    ALERT_TEMPLATE_SOURCE_ROOT=/application/alert-template-sources
 
 EXPOSE 8080
 EXPOSE 5005

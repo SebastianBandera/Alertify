@@ -4,6 +4,8 @@ import { FormsModule } from '@angular/forms';
 import {
   AiModuleApiService,
   AiModuleState,
+  AiManagedConversationDetail,
+  AiManagedConversationSummary,
   AiSettings,
   BrowserLogin,
   DeviceLogin,
@@ -25,7 +27,7 @@ export class AiModuleComponent implements OnInit {
   private readonly api = inject(AiModuleApiService);
   private readonly destroyRef = inject(DestroyRef);
   protected readonly localization = inject(LocalizationService);
-  protected readonly tab = signal<'general' | 'codex'>('general');
+  protected readonly tab = signal<'general' | 'conversations' | 'codex'>('general');
   protected readonly module = signal<AiModuleState | null>(null);
   protected readonly device = signal<DeviceLogin | null>(null);
   protected readonly loading = signal(true);
@@ -39,6 +41,10 @@ export class AiModuleComponent implements OnInit {
   protected readonly message = signal<TranslationKey | ''>('');
   private readonly messageParameter = signal('');
   protected readonly error = signal('');
+  protected readonly managedConversations = signal<readonly AiManagedConversationSummary[]>([]);
+  protected readonly selectedConversation = signal<AiManagedConversationDetail | null>(null);
+  protected readonly conversationsLoading = signal(false);
+  protected readonly conversationDetailLoading = signal(false);
   protected readonly form = signal<AiSettings>({
     enabled: false,
     provider: 'CODEX',
@@ -46,6 +52,8 @@ export class AiModuleComponent implements OnInit {
     reasoningEffort: '',
     agentInstructions: '',
     refreshPolicy: '',
+    reviewerModel: '',
+    reviewerReasoningEffort: 'low',
   });
   private intervalId: number | null = null;
 
@@ -60,8 +68,62 @@ export class AiModuleComponent implements OnInit {
     });
   }
 
-  protected selectTab(tab: 'general' | 'codex'): void {
+  protected selectTab(tab: 'general' | 'conversations' | 'codex'): void {
     this.tab.set(tab);
+    if (tab === 'conversations') void this.loadManagedConversations();
+  }
+
+  protected async loadManagedConversations(): Promise<void> {
+    if (this.conversationsLoading()) return;
+    this.conversationsLoading.set(true);
+    this.error.set('');
+    try {
+      this.managedConversations.set(await this.api.managedConversations());
+    } catch (error) {
+      this.error.set(error instanceof Error ? error.message : String(error));
+    } finally {
+      this.conversationsLoading.set(false);
+    }
+  }
+
+  protected async selectManagedConversation(id: number): Promise<void> {
+    if (this.conversationDetailLoading()) return;
+    this.conversationDetailLoading.set(true);
+    this.error.set('');
+    try {
+      this.selectedConversation.set(await this.api.managedConversation(id));
+    } catch (error) {
+      this.error.set(error instanceof Error ? error.message : String(error));
+    } finally {
+      this.conversationDetailLoading.set(false);
+    }
+  }
+
+  protected async deleteManagedConversation(conversation: AiManagedConversationSummary): Promise<void> {
+    const confirmation = this.localization.translate('ai.conversations.deleteConfirm').replace('{title}', conversation.title);
+    if (!window.confirm(confirmation)) return;
+
+    await this.action(async () => {
+      await this.api.deleteManagedConversation(conversation.id);
+      if (this.selectedConversation()?.id === conversation.id) this.selectedConversation.set(null);
+      this.managedConversations.set(await this.api.managedConversations());
+      this.message.set('ai.message.conversationDeleted');
+    });
+  }
+
+  protected async deleteAllManagedConversations(): Promise<void> {
+    const count = this.managedConversations().length;
+    if (count === 0) return;
+
+    const confirmation = this.localization.translate('ai.conversations.deleteAllConfirm').replace('{count}', String(count));
+    if (!window.confirm(confirmation)) return;
+
+    await this.action(async () => {
+      await this.api.deleteAllManagedConversations();
+      this.selectedConversation.set(null);
+      this.managedConversations.set([]);
+      this.message.set('ai.message.conversationsDeleted');
+    });
   }
 
   protected patch<K extends keyof AiSettings>(key: K, value: AiSettings[K]): void {
@@ -181,6 +243,27 @@ export class AiModuleComponent implements OnInit {
 
   protected formatDate(value: string): string {
     return value ? new Intl.DateTimeFormat(this.localization.locale(), { dateStyle: 'medium', timeStyle: 'medium' }).format(new Date(value)) : '—';
+  }
+
+  protected formatOptionalDate(value: string | null): string {
+    return value ? this.formatDate(value) : '—';
+  }
+
+  protected formatJson(value: unknown): string {
+    return JSON.stringify(value, null, 2) ?? '—';
+  }
+
+  protected modeLabel(mode: string): string {
+    const suffix = mode === 'READ_ONLY' ? 'readOnly' : mode === 'DIRECT' ? 'direct' : 'plan';
+    return this.localization.translateDynamic(`ai.chat.mode.${suffix}`);
+  }
+
+  protected approvalLabel(approvalPolicy: string): string {
+    return this.localization.translateDynamic(approvalPolicy === 'AUTO' ? 'ai.chat.approval.auto' : 'ai.chat.approval.ask');
+  }
+
+  protected booleanLabel(value: boolean): string {
+    return this.localization.translate(value ? 'ai.conversations.yes' : 'ai.conversations.no');
   }
 
   protected refreshExpiration(value: string): string {
