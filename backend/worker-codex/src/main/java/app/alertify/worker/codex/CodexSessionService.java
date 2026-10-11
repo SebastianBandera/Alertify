@@ -381,18 +381,9 @@ class CodexSessionService {
     }
 
     ProviderCall codexRequest(Map<String, ?> body, CodexRequestMetadata metadata, Long conversationId, Long turnId) {
-        SessionSnapshot snapshot = usableSessionSnapshot();
-        if (snapshot.revision() != metadata.sessionRevision())
-            throw new SessionChangedException();
-
-        OAuthSession session = snapshot.session();
+        sessionSnapshot(metadata.sessionRevision());
         Map<String, Object> requestBody = new LinkedHashMap<>(body);
         requestBody.put("prompt_cache_key", metadata.sessionId());
-        String uri = metadata.privateCodex() ? PRIVATE_CODEX_RESPONSES_URI : PUBLIC_RESPONSES_URI;
-        HttpRequest.Builder request = authenticatedRequest(uri, session).timeout(Duration.ofMinutes(5))
-                .header("Content-Type", "application/json")
-                .header("Accept", "text/event-stream")
-                .POST(HttpRequest.BodyPublishers.ofByteArray(json.writeValueAsBytes(requestBody)));
         if (metadata.privateCodex()) {
             requestBody.put("client_metadata", Map.of(
                     "x-codex-installation-id", metadata.installationId(),
@@ -400,10 +391,21 @@ class CodexSessionService {
                     "thread_id", metadata.threadId(),
                     "turn_id", metadata.turnId(),
                     "x-codex-window-id", metadata.windowId()));
-            request = authenticatedRequest(uri, session).timeout(Duration.ofMinutes(5))
-                    .header("Content-Type", "application/json")
-                    .header("Accept", "text/event-stream")
-                    .POST(HttpRequest.BodyPublishers.ofByteArray(json.writeValueAsBytes(requestBody)));
+        }
+        return new ProviderCall(json.writeValueAsBytes(requestBody), metadata, conversationId, turnId);
+    }
+
+    private HttpRequest codexHttpRequest(byte[] body, SessionSnapshot snapshot, CodexRequestMetadata metadata) {
+        OAuthSession session = snapshot.session();
+        if (usesPrivateCodex(session) != metadata.privateCodex())
+            throw new SessionChangedException();
+
+        String uri = metadata.privateCodex() ? PRIVATE_CODEX_RESPONSES_URI : PUBLIC_RESPONSES_URI;
+        HttpRequest.Builder request = authenticatedRequest(uri, session).timeout(Duration.ofMinutes(5))
+                .header("Content-Type", "application/json")
+                .header("Accept", "text/event-stream")
+                .POST(HttpRequest.BodyPublishers.ofByteArray(body));
+        if (metadata.privateCodex()) {
             addPrivateCodexHeaders(request, session, metadata.clientVersion());
             request.header("version", metadata.clientVersion())
                     .header("session-id", metadata.sessionId())
@@ -414,8 +416,7 @@ class CodexSessionService {
             if (metadata.responsesLite())
                 request.header("x-openai-internal-codex-responses-lite", "true");
         }
-
-        return new ProviderCall(request.build(), snapshot, metadata, conversationId, turnId);
+        return request.build();
     }
 
     String sessionStatus() {
@@ -446,6 +447,15 @@ class CodexSessionService {
 
     private SessionSnapshot usableSessionSnapshot() {
         SessionSnapshot current = sessionSnapshot();
+        return usableSessionSnapshot(current);
+    }
+
+    private SessionSnapshot usableSessionSnapshot(long expectedRevision) {
+        SessionSnapshot current = sessionSnapshot(expectedRevision);
+        return usableSessionSnapshot(current);
+    }
+
+    private SessionSnapshot usableSessionSnapshot(SessionSnapshot current) {
         OAuthSession session = current.session();
         if (!"NONE".equals(current.refreshPolicy()) && session.expiresAt() != null && session.expiresAt().isBefore(Instant.now().plusSeconds(60)))
             return refreshSession(current, false);
@@ -456,8 +466,15 @@ class CodexSessionService {
     }
 
     private SessionSnapshot sessionSnapshot() {
+        return sessionSnapshot(null);
+    }
+
+    private SessionSnapshot sessionSnapshot(Long expectedRevision) {
         stateLock.lock();
         try {
+            if (expectedRevision != null && sessionRevision != expectedRevision)
+                throw new SessionChangedException();
+
             OAuthSession current = requireSession();
             if (current.refreshExpiresAt() != null && !current.refreshExpiresAt().isAfter(Instant.now()))
                 throw new IllegalStateException("The refresh token expired; sign in again");
@@ -722,19 +739,32 @@ class CodexSessionService {
             request.header("ChatGPT-Account-Id", session.accountId());
     }
 
-    private JsonNode codexUsageSnapshot(SessionSnapshot snapshot, String clientVersion, Instant observedAt, ProviderCall providerCall) {
+    private JsonNode codexUsageSnapshot(CodexRequestMetadata metadata, Instant observedAt, ProviderCall providerCall) {
         usageSnapshotLock.lock();
         try {
-            OAuthSession session = snapshot.session();
-            String identity = firstNonBlank(session.subject(), session.accountId(), session.clientId());
+            SessionSnapshot current;
+            try {
+                current = sessionSnapshot(metadata.sessionRevision());
+            } catch (SessionChangedException exception) {
+                throw exception;
+            } catch (RuntimeException exception) {
+                LOGGER.warn("Codex usage metadata is unavailable: {}", exception.getClass().getSimpleName());
+                return json.createObjectNode();
+            }
+
+            OAuthSession currentSession = current.session();
+            String identity = firstNonBlank(currentSession.subject(), currentSession.accountId(), currentSession.clientId());
             if (identity.equals(usageSnapshotIdentity) && observedAt.isBefore(usageSnapshotExpiresAt))
                 return usageSnapshot;
 
             JsonNode refreshed = json.createObjectNode();
             try {
+                SessionSnapshot snapshot = usableSessionSnapshot(metadata.sessionRevision());
+                OAuthSession session = snapshot.session();
+                identity = firstNonBlank(session.subject(), session.accountId(), session.clientId());
                 HttpRequest.Builder request = authenticatedRequest(PRIVATE_CODEX_USAGE_URI, session).timeout(Duration.ofSeconds(30))
                         .header("Accept", "application/json").GET();
-                addPrivateCodexHeaders(request, session, clientVersion);
+                addPrivateCodexHeaders(request, session, metadata.clientVersion());
                 JsonNode response = parse(providerCall.sendCancelable(request.build()).body());
                 if (response.isObject())
                     refreshed = response;
@@ -748,7 +778,7 @@ class CodexSessionService {
 
             stateLock.lock();
             try {
-                if (sessionRevision != snapshot.revision() || state.session() == null)
+                if (sessionRevision != metadata.sessionRevision() || state.session() == null)
                     throw new SessionChangedException();
 
                 usageSnapshot = refreshed;
@@ -1080,8 +1110,7 @@ class CodexSessionService {
 
     final class ProviderCall {
         private final UUID id = UUID.randomUUID();
-        private final HttpRequest request;
-        private final SessionSnapshot snapshot;
+        private final byte[] body;
         private final CodexRequestMetadata metadata;
         private final Long conversationId;
         private final Long turnId;
@@ -1089,9 +1118,8 @@ class CodexSessionService {
         private volatile Thread owner;
         private volatile CancellationReason cancellationReason;
 
-        private ProviderCall(HttpRequest request, SessionSnapshot snapshot, CodexRequestMetadata metadata, Long conversationId, Long turnId) {
-            this.request = request;
-            this.snapshot = snapshot;
+        private ProviderCall(byte[] body, CodexRequestMetadata metadata, Long conversationId, Long turnId) {
+            this.body = body;
             this.metadata = metadata;
             this.conversationId = conversationId;
             this.turnId = turnId;
@@ -1105,20 +1133,20 @@ class CodexSessionService {
             LOGGER.info("event=AI_MODEL_HTTP outcome=QUEUED conversationId={} turnId={} activeRequests={} availablePermits={}", conversationId, turnId, activeProviderCalls.size(), modelRequests.availablePermits());
             try {
                 throwIfCancelled();
-                ensureCurrent(snapshot);
+                validateSession(metadata);
                 modelRequests.acquire();
                 acquired = true;
                 throwIfCancelled();
-                ensureCurrent(snapshot);
+                SessionSnapshot requestSnapshot = usableSessionSnapshot(metadata.sessionRevision());
                 LOGGER.info("event=AI_MODEL_HTTP outcome=STARTED conversationId={} turnId={} queueMs={}", conversationId, turnId, elapsedMillis(queuedAt));
-                HttpResponse<String> httpResponse = sendCancelable(request);
+                HttpResponse<String> httpResponse = sendCancelable(codexHttpRequest(body, requestSnapshot, metadata));
                 throwIfCancelled();
-                ensureCurrent(snapshot);
+                ensureCurrent(requestSnapshot);
                 JsonNode response = parseCodexStream(json, httpResponse.body());
                 Instant observedAt = Instant.now();
-                JsonNode quota = metadata.privateCodex() ? codexUsageSnapshot(snapshot, metadata.clientVersion(), observedAt, this) : null;
+                JsonNode quota = metadata.privateCodex() ? codexUsageSnapshot(metadata, observedAt, this) : null;
                 throwIfCancelled();
-                ensureCurrent(snapshot);
+                validateSession(metadata);
                 LOGGER.info("event=AI_MODEL_HTTP outcome=COMPLETED conversationId={} turnId={} durationMs={}", conversationId, turnId, elapsedMillis(queuedAt));
                 return new CodexResponse(response, usage(response, httpResponse.headers(), quota, metadata.contextWindow(), observedAt));
             } catch (InterruptedException exception) {

@@ -281,6 +281,43 @@ class CodexSessionServiceTest {
 
     @Test
     @Timeout(10)
+    void queuedRequestUsesTheSessionRefreshedWhileWaitingForAPermit() throws Exception {
+        ControlledTransport transport = new ControlledTransport();
+        CodexSessionService service = authenticatedService(transport, "BROWSER", 1);
+        CodexSessionService.ProviderCall firstCall = service.codexRequest(Map.of(), metadata(1), 1L, 1L);
+        CodexSessionService.ProviderCall queuedCall = service.codexRequest(Map.of(), metadata(2), 2L, 2L);
+        CompletableFuture<CodexSessionService.CodexResponse> firstResult = execute(firstCall);
+        assertThat(transport.awaitStarted(1)).isTrue();
+        CompletableFuture<CodexSessionService.CodexResponse> queuedResult = execute(queuedCall);
+
+        service.refresh();
+        transport.completeOne();
+        assertThat(transport.awaitStarted(1)).isTrue();
+        transport.completeAll();
+
+        assertThat(firstResult.join().body().path("id").stringValue()).isEqualTo("complete");
+        assertThat(queuedResult.join().body().path("id").stringValue()).isEqualTo("complete");
+        assertThat(transport.modelAuthorizations()).containsExactly("Bearer access", "Bearer refreshed-access");
+    }
+
+    @Test
+    @Timeout(10)
+    void usageRequestUsesTheSessionRefreshedDuringModelGeneration() throws Exception {
+        ControlledTransport transport = new ControlledTransport();
+        CodexSessionService service = authenticatedService(transport, "DEVICE", 1);
+        CodexSessionService.ProviderCall call = service.codexRequest(Map.of(), metadata(1, true), 1L, 1L);
+        CompletableFuture<CodexSessionService.CodexResponse> result = execute(call);
+        assertThat(transport.awaitStarted(1)).isTrue();
+
+        service.refresh();
+        transport.completeOne();
+
+        assertThat(result.join().body().path("id").stringValue()).isEqualTo("complete");
+        assertThat(transport.usageAuthorizations()).containsExactly("Bearer refreshed-access");
+    }
+
+    @Test
+    @Timeout(10)
     void logoutCancelsTheActiveHttpRequestAndRejectsItsLateResult() throws Exception {
         ControlledTransport transport = new ControlledTransport();
         CodexSessionService service = authenticatedService(transport);
@@ -329,14 +366,22 @@ class CodexSessionServiceTest {
     }
 
     private CodexSessionService authenticatedService(CodexHttpTransport transport) {
-        CodexWorkerProperties properties = properties(directory.resolve("authenticated-state.enc"));
+        return authenticatedService(transport, "BROWSER", 3);
+    }
+
+    private CodexSessionService authenticatedService(CodexHttpTransport transport, String authMode, int maxConcurrentModelRequests) {
+        CodexWorkerProperties properties = properties(directory.resolve("authenticated-state.enc"), maxConcurrentModelRequests);
         EncryptedStateStore store = new EncryptedStateStore(properties);
-        store.save(new PersistentAiState(settings(), session("BROWSER"), Map.of(), "urn:uuid:test-host"));
+        store.save(new PersistentAiState(settings(), session(authMode), Map.of(), "urn:uuid:test-host"));
         return new CodexSessionService(store, properties, transport);
     }
 
     private static CodexSessionService.CodexRequestMetadata metadata(long turnId) {
-        return new CodexSessionService.CodexRequestMetadata("configured-model", false, false, "0.0.0", false, 272000,
+        return metadata(turnId, false);
+    }
+
+    private static CodexSessionService.CodexRequestMetadata metadata(long turnId, boolean privateCodex) {
+        return new CodexSessionService.CodexRequestMetadata("configured-model", false, false, "0.0.0", privateCodex, 272000,
                 "installation", "session", "thread", "window", Long.toString(turnId), 0);
     }
 
@@ -353,7 +398,11 @@ class CodexSessionServiceTest {
     }
 
     private static CodexWorkerProperties properties(Path stateFile) {
-        return new CodexWorkerProperties("worker", 0, 1024, Duration.ofSeconds(1), Duration.ofDays(30), 3, "configured-model",
+        return properties(stateFile, 3);
+    }
+
+    private static CodexWorkerProperties properties(Path stateFile, int maxConcurrentModelRequests) {
+        return new CodexWorkerProperties("worker", 0, 1024, Duration.ofSeconds(1), Duration.ofDays(30), maxConcurrentModelRequests, "configured-model",
                 "low", "", "low", "ON_USE", stateFile, Base64.getUrlEncoder().withoutPadding().encodeToString(new byte[32]), null);
     }
 
@@ -377,13 +426,24 @@ class CodexSessionServiceTest {
         private final AtomicInteger cancelledModelRequests = new AtomicInteger();
         private final Semaphore started = new Semaphore(0);
         private final Queue<CompletableFuture<HttpResponse<String>>> pending = new ConcurrentLinkedQueue<>();
+        private final Queue<String> modelAuthorizations = new ConcurrentLinkedQueue<>();
+        private final Queue<String> usageAuthorizations = new ConcurrentLinkedQueue<>();
 
         @Override
         public CompletableFuture<HttpResponse<String>> sendAsync(HttpRequest request) {
-            if (!request.uri().getPath().endsWith("/responses"))
+            String path = request.uri().getPath();
+            if (path.endsWith("/oauth/token"))
+                return CompletableFuture.completedFuture(new StubResponse(request, 200,
+                        "{\"access_token\":\"refreshed-access\",\"expires_in\":3600}"));
+            if (path.endsWith("/wham/usage")) {
+                usageAuthorizations.add(authorization(request));
+                return CompletableFuture.completedFuture(new StubResponse(request, 200, "{}"));
+            }
+            if (!path.endsWith("/responses"))
                 return CompletableFuture.completedFuture(new StubResponse(request, 200, "{}"));
 
             modelRequestCount.incrementAndGet();
+            modelAuthorizations.add(authorization(request));
             CompletableFuture<HttpResponse<String>> response = new CompletableFuture<>();
             response.whenComplete((ignored, error) -> {
                 if (response.isCancelled()) cancelledModelRequests.incrementAndGet();
@@ -405,6 +465,14 @@ class CodexSessionServiceTest {
             return cancelledModelRequests.get();
         }
 
+        List<String> modelAuthorizations() {
+            return List.copyOf(modelAuthorizations);
+        }
+
+        List<String> usageAuthorizations() {
+            return List.copyOf(usageAuthorizations);
+        }
+
         void completeOne() {
             pending.remove().complete(new StubResponse(null, 200, RESPONSE));
         }
@@ -413,6 +481,10 @@ class CodexSessionServiceTest {
             CompletableFuture<HttpResponse<String>> response;
             while ((response = pending.poll()) != null)
                 response.complete(new StubResponse(null, 200, RESPONSE));
+        }
+
+        private static String authorization(HttpRequest request) {
+            return request.headers().firstValue("Authorization").orElse("");
         }
     }
 
