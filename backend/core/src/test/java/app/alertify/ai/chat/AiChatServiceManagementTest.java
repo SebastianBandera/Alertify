@@ -6,6 +6,8 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 
 import java.time.Instant;
 import java.time.ZoneId;
@@ -14,6 +16,8 @@ import java.util.Optional;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.core.Authentication;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import app.alertify.ai.AiToolCatalog;
 import app.alertify.ai.localization.AiLocalizationSourceService;
@@ -23,6 +27,33 @@ import app.alertify.realtime.AdminEventPublisher;
 import tools.jackson.databind.json.JsonMapper;
 
 class AiChatServiceManagementTest {
+
+    @Test
+    void closesAHandleReturnedAfterTheTurnWasCancelled() {
+        AiWorkerClient worker = (AiWorkerClient) ReflectionTestUtils.getField(service, "worker");
+        AiChatPersistence persistence = (AiChatPersistence) ReflectionTestUtils.getField(service, "persistence");
+        AiToolCatalog catalog = (AiToolCatalog) ReflectionTestUtils.getField(service, "catalog");
+        AiLocalizationSourceService localization = (AiLocalizationSourceService) ReflectionTestUtils.getField(service, "localization");
+        Authentication authentication = mock(Authentication.class);
+        when(authentication.getName()).thenReturn("subject-1");
+        when(localization.resolveLocale(any())).thenReturn("en");
+        when(worker.state()).thenReturn(app.alertify.worker.ai.grpc.ModuleStateResponse.newBuilder().setEnabled(true).setSessionStatus("ACTIVE").build());
+        when(worker.settings()).thenReturn(app.alertify.worker.ai.grpc.AiSettings.newBuilder().setModel("model").setReasoningEffort("low").build());
+        when(persistence.start(any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(new AiChatPersistence.StartedTurn(7L, 8L));
+        when(catalog.descriptorsFor(any(), any())).thenReturn(List.of());
+        AiWorkerClient.ChatHandle handle = mock(AiWorkerClient.ChatHandle.class);
+        when(worker.chat(any(), any(), any())).thenAnswer(invocation -> {
+            service.cancel(authentication, 8L);
+            return handle;
+        });
+
+        service.submit(authentication, new AiChatService.SubmitRequest(null, "message", "READ_ONLY", "ASK", "en"));
+
+        verify(handle).close();
+        verify(handle, never()).send(any());
+        verify(persistence).cancelled(8L);
+        verify(events, times(1)).publishToSubject(eq("subject-1"), eq("AI_CHAT_UPDATED"), any());
+    }
 
     private AiConversationRepository conversations;
     private AiTurnRepository turns;

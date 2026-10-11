@@ -21,6 +21,7 @@ import {
 import { LocalizationService } from '../../core/i18n/localization.service';
 import { EditorViewportService } from '../../shared/editor-viewport/editor-viewport.service';
 import { ExpressionEditorComponent } from '../../shared/expression-editor/expression-editor.component';
+import { extractNumericDatabaseVersion } from './database-version';
 
 /** Editor state for a DB_SECRET; every field is kept as text and parsed on save, like configs' rawValue. */
 interface DatabaseSecretForm {
@@ -441,7 +442,7 @@ export class SecretsComponent implements OnInit {
   private databaseVersion(result: DatabaseSecretTestResult): string | null {
     const raw = result.productVersion?.split('\n')[0]?.trim();
     if (!raw) return null;
-    const numeric = /\d+(?:\.\d+)+/.exec(raw)?.[0];
+    const numeric = extractNumericDatabaseVersion(raw);
     if (numeric) return numeric;
     const product = result.productName?.trim();
     return product && raw.toLowerCase().startsWith(product.toLowerCase()) ? raw.slice(product.length).trim() || null : raw;

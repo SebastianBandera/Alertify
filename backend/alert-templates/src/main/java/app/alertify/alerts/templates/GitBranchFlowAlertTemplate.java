@@ -59,6 +59,8 @@ import tools.jackson.databind.json.JsonMapper;
     sourcePath = "app/alertify/alerts/templates/GitBranchFlowAlertTemplate.java"
 )
 public final class GitBranchFlowAlertTemplate implements AlertEvaluator {
+    private static final String DELAYED_FIELD = "delayed";
+
 
     private static final int MAX_BRANCHES = 10;
     private static final int MAX_STALE_DAYS = 3_650;
@@ -200,7 +202,7 @@ public final class GitBranchFlowAlertTemplate implements AlertEvaluator {
                 for (int index = 0; index < heads.size() - 1; index++) {
                     boolean last = index == heads.size() - 2;
                     Map<String, Object> transition = describeTransition(repo, index, heads.get(index), heads.get(index + 1), checkedAt, last);
-                    if (last && Boolean.TRUE.equals(transition.get("delayed")))
+                    if (last && Boolean.TRUE.equals(transition.get(DELAYED_FIELD)))
                         delayed = true;
 
                     transitions.add(transition);
@@ -291,9 +293,9 @@ public final class GitBranchFlowAlertTemplate implements AlertEvaluator {
             transition.put("oldestPendingCommit", describeCommit(oldest));
             transition.put("oldestPendingAgeDays", ageDays);
             if (last)
-                transition.put("delayed", ageDays > staleDaysThreshold);
+                transition.put(DELAYED_FIELD, ageDays > staleDaysThreshold);
         } else if (last) {
-            transition.put("delayed", false);
+            transition.put(DELAYED_FIELD, false);
         }
         return transition;
     }

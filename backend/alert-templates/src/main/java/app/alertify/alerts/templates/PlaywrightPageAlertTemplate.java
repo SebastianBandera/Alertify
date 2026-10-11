@@ -20,6 +20,7 @@ import com.microsoft.playwright.Locator;
 import com.microsoft.playwright.Page;
 import com.microsoft.playwright.Playwright;
 import com.microsoft.playwright.Response;
+import com.microsoft.playwright.TimeoutError;
 import com.microsoft.playwright.options.WaitForSelectorState;
 import com.microsoft.playwright.options.WaitUntilState;
 
@@ -46,6 +47,13 @@ import app.alertify.worker.contract.WorkerCapability;
     sourcePath = "app/alertify/alerts/templates/PlaywrightPageAlertTemplate.java"
 )
 public final class PlaywrightPageAlertTemplate implements AlertEvaluator {
+    private static final String STATUS_SUCCESS = "SUCCESS";
+    private static final String RELOAD_COMMAND = "RELOAD";
+    private static final String COMPLETED_COMMAND_COUNT_FIELD = "completedCommandCount";
+    private static final String FINAL_URL_FIELD = "finalUrl";
+    private static final String SELECT_COMMAND = "SELECT";
+    private static final String CHECK_COMMAND = "CHECK";
+
 
     private static final Pattern DURATION = Pattern.compile("^(\\d+)(ms|s)$", Pattern.CASE_INSENSITIVE);
     private static final Pattern SELECTOR_TIMEOUT = Pattern.compile("^(.*\\S)\\s+(\\d+(?:ms|s))$", Pattern.CASE_INSENSITIVE);
@@ -147,7 +155,7 @@ public final class PlaywrightPageAlertTemplate implements AlertEvaluator {
         for (BrowserEngine browser : browsers) {
             Map<String, Object> browserStatus = browserStatus(browser);
             boolean success = evaluateBrowser(context, configuredUrl, loadTimeoutMillis, elementTimeoutMillis, commands, browserStatus, browser);
-            browserStatus.put("status", success ? "SUCCESS" : "WARN");
+            browserStatus.put("status", success ? STATUS_SUCCESS : "WARN");
             if (success)
                 successfulBrowsers++;
 
@@ -158,7 +166,7 @@ public final class PlaywrightPageAlertTemplate implements AlertEvaluator {
         statusMessage.put("successfulBrowserCount", successfulBrowsers);
         statusMessage.put("warningBrowserCount", warningBrowsers);
         statusMessage.put("browserResults", List.copyOf(browserResults));
-        String status = warningBrowsers == 0 ? "SUCCESS" : "WARN";
+        String status = warningBrowsers == 0 ? STATUS_SUCCESS : "WARN";
         context.setState("endpoint=" + endpoint + ";status=" + status + ";browsers=" + browsers.size() + ";warnings=" + warningBrowsers);
         return warningBrowsers == 0 ? AlertResult.success(statusMessage) : AlertResult.warn(statusMessage);
     }
@@ -171,7 +179,7 @@ public final class PlaywrightPageAlertTemplate implements AlertEvaluator {
                 navigation = session.navigate(configuredUrl.toString(), loadTimeoutMillis);
             } catch (RuntimeException exception) {
                 statusMessage.put("loadDurationMs", elapsedMillis(startedNanos));
-                statusMessage.put("finalUrl", safeUrl(session.url()));
+                statusMessage.put(FINAL_URL_FIELD, safeUrl(session.url()));
                 warn(statusMessage, isPlaywrightTimeout(exception) ? "loadTimeout" : "navigationFailure", null, null);
                 return false;
             }
@@ -189,8 +197,8 @@ public final class PlaywrightPageAlertTemplate implements AlertEvaluator {
                         navigation = session.reload(loadTimeoutMillis);
                     } catch (RuntimeException exception) {
                         statusMessage.put("reloadDurationMs", elapsedMillis(startedNanos));
-                        statusMessage.put("finalUrl", safeUrl(session.url()));
-                        warn(statusMessage, isPlaywrightTimeout(exception) ? "reloadTimeout" : "reloadFailure", command, "RELOAD");
+                        statusMessage.put(FINAL_URL_FIELD, safeUrl(session.url()));
+                        warn(statusMessage, isPlaywrightTimeout(exception) ? "reloadTimeout" : "reloadFailure", command, RELOAD_COMMAND);
                         return false;
                     }
                     loadDurationMillis = elapsedMillis(startedNanos);
@@ -206,11 +214,11 @@ public final class PlaywrightPageAlertTemplate implements AlertEvaluator {
                     }
                 }
                 completed++;
-                statusMessage.put("completedCommandCount", completed);
+                statusMessage.put(COMPLETED_COMMAND_COUNT_FIELD, completed);
             }
 
-            statusMessage.put("completedCommandCount", completed);
-            statusMessage.put("finalUrl", safeUrl(session.url()));
+            statusMessage.put(COMPLETED_COMMAND_COUNT_FIELD, completed);
+            statusMessage.put(FINAL_URL_FIELD, safeUrl(session.url()));
             return true;
         }
     }
@@ -242,19 +250,19 @@ public final class PlaywrightPageAlertTemplate implements AlertEvaluator {
                 case "HOVER" -> command = currentCommand(lineNumber, CommandType.HOVER, arguments, currentElement);
                 case "FOCUS" -> command = currentCommand(lineNumber, CommandType.FOCUS, arguments, currentElement);
                 case "FILL" -> command = fillCommand(lineNumber, arguments, currentElement);
-                case "SELECT" -> {
-                    requireCurrent(currentElement, lineNumber, "SELECT");
-                    command = command(lineNumber, CommandType.SELECT, requireArgument(arguments, lineNumber, "SELECT"));
+                case SELECT_COMMAND -> {
+                    requireCurrent(currentElement, lineNumber, SELECT_COMMAND);
+                    command = command(lineNumber, CommandType.SELECT, requireArgument(arguments, lineNumber, SELECT_COMMAND));
                 }
                 case "WAIT" -> command = durationCommand(lineNumber, arguments);
                 case "WAIT_VISIBLE" -> command = selectorWaitCommand(lineNumber, CommandType.WAIT_VISIBLE, arguments);
                 case "WAIT_HIDDEN" -> command = selectorWaitCommand(lineNumber, CommandType.WAIT_HIDDEN, arguments);
-                case "RELOAD" -> {
-                    requireNoArguments(arguments, lineNumber, "RELOAD");
+                case RELOAD_COMMAND -> {
+                    requireNoArguments(arguments, lineNumber, RELOAD_COMMAND);
                     command = command(lineNumber, CommandType.RELOAD);
                     currentElement = false;
                 }
-                case "CHECK" -> command = checkCommand(lineNumber, arguments, currentElement);
+                case CHECK_COMMAND -> command = checkCommand(lineNumber, arguments, currentElement);
                 default -> throw lineError(lineNumber, "Unsupported command '" + tokens[0] + "'");
             }
             commands.add(command);
@@ -263,7 +271,7 @@ public final class PlaywrightPageAlertTemplate implements AlertEvaluator {
     }
 
     private static Command checkCommand(int lineNumber, String arguments, boolean currentElement) {
-        String value = requireArgument(arguments, lineNumber, "CHECK");
+        String value = requireArgument(arguments, lineNumber, CHECK_COMMAND);
         String[] tokens = value.split("\\s+", 2);
         String check = tokens[0].toUpperCase(Locale.ROOT);
         String checkArguments = tokens.length == 2 ? tokens[1].trim() : "";
@@ -391,12 +399,12 @@ public final class PlaywrightPageAlertTemplate implements AlertEvaluator {
 
     private static boolean navigationWarning(Map<String, Object> statusMessage, Navigation navigation, long durationMillis, long timeoutMillis, Command command) {
         if (durationMillis > timeoutMillis) {
-            warn(statusMessage, command == null ? "loadTimeout" : "reloadTimeout", command, command == null ? null : "RELOAD");
+            warn(statusMessage, command == null ? "loadTimeout" : "reloadTimeout", command, command == null ? null : RELOAD_COMMAND);
             return true;
         }
 
         if (navigation.statusCode() != null && navigation.statusCode() >= 400) {
-            warn(statusMessage, "httpStatus", command, command == null ? null : "RELOAD");
+            warn(statusMessage, "httpStatus", command, command == null ? null : RELOAD_COMMAND);
             return true;
         }
 
@@ -408,7 +416,7 @@ public final class PlaywrightPageAlertTemplate implements AlertEvaluator {
         if (navigation.statusCode() != null)
             statusMessage.put(prefix + "StatusCode", navigation.statusCode());
 
-        statusMessage.put("finalUrl", safeUrl(session.url()));
+        statusMessage.put(FINAL_URL_FIELD, safeUrl(session.url()));
     }
 
     private static void warn(Map<String, Object> statusMessage, String failureReason, Command command, String failedCommand) {
@@ -433,8 +441,8 @@ public final class PlaywrightPageAlertTemplate implements AlertEvaluator {
     private static Map<String, Object> browserStatus(BrowserEngine browser) {
         Map<String, Object> status = new LinkedHashMap<>();
         status.put("browser", browser.key());
-        status.put("status", "SUCCESS");
-        status.put("completedCommandCount", 0);
+        status.put("status", STATUS_SUCCESS);
+        status.put(COMPLETED_COMMAND_COUNT_FIELD, 0);
         return status;
     }
 
@@ -540,7 +548,7 @@ public final class PlaywrightPageAlertTemplate implements AlertEvaluator {
     }
 
     private static boolean isPlaywrightTimeout(RuntimeException exception) {
-        return "com.microsoft.playwright.TimeoutError".equals(exception.getClass().getName());
+        return exception instanceof TimeoutError;
     }
 
     enum CommandType {
@@ -601,7 +609,7 @@ public final class PlaywrightPageAlertTemplate implements AlertEvaluator {
 
         String keyword() {
             return switch (type) {
-                case CHECK_TEXT, CHECK_COUNT, CHECK_ENABLED, CHECK_DISABLED, CHECK_CHECKED, CHECK_UNCHECKED, CHECK_ATTRIBUTE, CHECK_URL -> "CHECK";
+                case CHECK_TEXT, CHECK_COUNT, CHECK_ENABLED, CHECK_DISABLED, CHECK_CHECKED, CHECK_UNCHECKED, CHECK_ATTRIBUTE, CHECK_URL -> CHECK_COMMAND;
                 default -> type.name();
             };
         }

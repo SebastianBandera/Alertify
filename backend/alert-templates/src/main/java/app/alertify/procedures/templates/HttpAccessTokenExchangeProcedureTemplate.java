@@ -36,6 +36,8 @@ import tools.jackson.databind.json.JsonMapper;
     sensitiveResult = true
 )
 public final class HttpAccessTokenExchangeProcedureTemplate implements ProcedureEvaluator {
+    private static final String BASIC_AUTHENTICATION = "BASIC";
+
     private static final int MAX_RESPONSE_BYTES = 1024 * 1024;
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
@@ -58,7 +60,7 @@ public final class HttpAccessTokenExchangeProcedureTemplate implements Procedure
     @ProcedureParameter(
         labelKey = "procedures.template.httpAccessTokenExchange.authenticationType",
         descriptionKey = "procedures.template.httpAccessTokenExchange.authenticationTypeDescription",
-        options = { "BASIC", "OAUTH2_PASSWORD" },
+        options = { BASIC_AUTHENTICATION, "OAUTH2_PASSWORD" },
         bindingAllowed = false,
         order = 3
     )
@@ -85,7 +87,7 @@ public final class HttpAccessTokenExchangeProcedureTemplate implements Procedure
     @ProcedureParameter(
         labelKey = "procedures.template.httpAccessTokenExchange.clientAuthenticationType",
         descriptionKey = "procedures.template.httpAccessTokenExchange.clientAuthenticationTypeDescription",
-        options = { "NONE", "CLIENT_ID_BODY", "BASIC" },
+        options = { "NONE", "CLIENT_ID_BODY", BASIC_AUTHENTICATION },
         bindingAllowed = false,
         defaultValue = "NONE",
         order = 6
@@ -198,7 +200,7 @@ public final class HttpAccessTokenExchangeProcedureTemplate implements Procedure
 
         String authentication = upper(authenticationType, "authenticationType");
         String clientAuthentication = upper(clientAuthenticationType, "clientAuthenticationType");
-        if (authentication.equals("BASIC")) {
+        if (authentication.equals(BASIC_AUTHENTICATION)) {
             String method = upper(basicMethod, "basicMethod");
             if (!method.equals("GET") && !method.equals("POST"))
                 throw new IllegalArgumentException("basicMethod must be GET or POST");
@@ -222,7 +224,7 @@ public final class HttpAccessTokenExchangeProcedureTemplate implements Procedure
                 if (optional(clientId) == null || clientCredentials != null)
                     throw new IllegalArgumentException("CLIENT_ID_BODY requires clientId and does not accept clientCredentials");
             }
-            case "BASIC" -> {
+            case BASIC_AUTHENTICATION -> {
                 if (optional(clientId) != null || clientCredentials == null)
                     throw new IllegalArgumentException("BASIC client authentication requires clientCredentials and does not accept clientId");
                 requireUsername(clientCredentials, "clientCredentials");
@@ -237,7 +239,7 @@ public final class HttpAccessTokenExchangeProcedureTemplate implements Procedure
                 .timeout(configuration.timeout())
                 .header("Accept", "application/json")
                 .header("User-Agent", "Alertify/HttpAccessTokenExchange");
-        if (configuration.authenticationType().equals("BASIC")) {
+        if (configuration.authenticationType().equals(BASIC_AUTHENTICATION)) {
             request.header("Authorization", basic(credentials, false));
             return request.method(configuration.method(), HttpRequest.BodyPublishers.noBody()).build();
         }
@@ -250,7 +252,7 @@ public final class HttpAccessTokenExchangeProcedureTemplate implements Procedure
             form.add(field("scope", configuration.scope()));
         if (configuration.clientAuthenticationType().equals("CLIENT_ID_BODY"))
             form.add(field("client_id", configuration.clientId()));
-        if (configuration.clientAuthenticationType().equals("BASIC"))
+        if (configuration.clientAuthenticationType().equals(BASIC_AUTHENTICATION))
             request.header("Authorization", basic(clientCredentials, true));
 
         return request.header("Content-Type", "application/x-www-form-urlencoded")

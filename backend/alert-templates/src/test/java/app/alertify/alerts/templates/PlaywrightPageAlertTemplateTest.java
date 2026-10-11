@@ -13,6 +13,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
 
 import org.junit.jupiter.api.Test;
+import com.microsoft.playwright.TimeoutError;
 
 import app.alertify.alerts.AlertExecutionContext;
 import app.alertify.alerts.AlertExecutionValue;
@@ -24,6 +25,22 @@ import app.alertify.alerts.template.annotation.AlertTemplate;
 import app.alertify.worker.contract.WorkerCapability;
 
 class PlaywrightPageAlertTemplateTest {
+
+    @Test
+    void classifiesTimeoutsIncludingSubclassesForNavigationAndReload() throws Exception {
+        for (RuntimeException failure : List.of(new TimeoutError("private-timeout"), new TimeoutError("private-timeout") { }, new IllegalStateException("private-error"))) {
+            FakeBrowserSession navigation = new FakeBrowserSession();
+            navigation.navigationFailure = failure;
+            AlertResult loadResult = template("https://example.test", "", navigation).evaluate(new AlertExecutionContext());
+            assertEquals(failure instanceof TimeoutError ? "loadTimeout" : "navigationFailure", browserResult(loadResult, 0).get("failureReason"));
+            assertFalse(loadResult.statusMessage().toString().contains("private-"));
+            FakeBrowserSession reload = new FakeBrowserSession();
+            reload.reloadFailure = failure;
+            AlertResult reloadResult = template("https://example.test", "RELOAD", reload).evaluate(new AlertExecutionContext());
+            assertEquals(failure instanceof TimeoutError ? "reloadTimeout" : "reloadFailure", browserResult(reloadResult, 0).get("failureReason"));
+            assertFalse(reloadResult.statusMessage().toString().contains("private-"));
+        }
+    }
 
     @Test
     void declaresPlaywrightCapabilityAndMultilineSteps() throws ReflectiveOperationException {
@@ -363,16 +380,24 @@ class PlaywrightPageAlertTemplateTest {
         private boolean currentChecked;
         private Map<String, String> attributes = Map.of();
         private boolean failQuery;
+        private RuntimeException navigationFailure;
+        private RuntimeException reloadFailure;
 
         @Override
         public PlaywrightPageAlertTemplate.Navigation navigate(String url, long timeoutMillis) {
             operations.add("navigate");
+            if (navigationFailure != null)
+                throw navigationFailure;
+
             return navigation;
         }
 
         @Override
         public PlaywrightPageAlertTemplate.Navigation reload(long timeoutMillis) {
             operations.add("reload:" + timeoutMillis);
+            if (reloadFailure != null)
+                throw reloadFailure;
+
             return reload;
         }
 

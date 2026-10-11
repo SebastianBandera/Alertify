@@ -31,6 +31,12 @@ import tools.jackson.databind.json.JsonMapper;
 
 @Service
 class CodexChatService {
+    private static final String CONTENT_FIELD = "content";
+    private static final String OUTPUT_FIELD = "output";
+    private static final String DESCRIPTION_FIELD = "description";
+    private static final String TOOLS_FIELD = "tools";
+    private static final String MESSAGE_TYPE = "message";
+
 
     private static final Logger LOGGER = LoggerFactory.getLogger(CodexChatService.class);
     private static final String REVIEW_INSTRUCTIONS = "You are a strict safety reviewer for an Alertify administrator. "
@@ -74,7 +80,7 @@ class CodexChatService {
                     + "\nHints: destructive=" + request.getDestructiveHint() + ", idempotent=" + request.getIdempotentHint()
                     + ", openWorld=" + request.getOpenWorldHint();
             List<Object> input = new ArrayList<>();
-            input.add(Map.of("role", "user", "content", prompt));
+            input.add(Map.of("role", "user", CONTENT_FIELD, prompt));
             CodexSessionService.CodexRequestMetadata metadata = sessions.requestMetadata(request.getModel(), null, null);
             CodexSessionService.ProviderCall call = sessions.codexRequest(requestBody(request.getModel(), request.getReasoningEffort(),
                     REVIEW_INSTRUCTIONS, input, List.of(), metadata.responsesLite(), metadata.namespacedTools()), metadata,
@@ -143,7 +149,7 @@ class CodexChatService {
             int toolCalls = 0;
             try {
                 List<Object> input = new ArrayList<>();
-                start.getHistoryList().forEach(message -> input.add(Map.of("role", message.getRole().toLowerCase(Locale.ROOT), "content", message.getContent())));
+                start.getHistoryList().forEach(message -> input.add(Map.of("role", message.getRole().toLowerCase(Locale.ROOT), CONTENT_FIELD, message.getContent())));
                 List<Object> tools = new ArrayList<>(start.getToolsList().stream().map(value -> (Object) tool(value)).toList());
                 CodexSessionService.CodexRequestMetadata metadata = sessions.requestMetadata(start.getModel(), start.getConversationId(), start.getTurnId());
                 int emptyResponses = 0;
@@ -166,7 +172,7 @@ class CodexChatService {
                     sessions.validateSession(metadata);
                     observer.onNext(ChatWorkerMessage.newBuilder().setUsage(codexResponse.usage()).build());
                     JsonNode response = codexResponse.body();
-                    JsonNode output = response.path("output");
+                    JsonNode output = response.path(OUTPUT_FIELD);
 
                     if (!output.isArray())
                         throw new IllegalStateException("The Codex response did not contain an output array");
@@ -213,7 +219,7 @@ class CodexChatService {
                     phase = "PROCESSING_TOOL_RESULT";
                     LOGGER.info("event=AI_TOOL_CALL outcome={} conversationId={} turnId={} step={} tool={} callId={} diagnosticCode={} resultBytes={} additionalTools={}", result.getFailed() ? "FAILED" : "COMPLETED", start.getConversationId(), start.getTurnId(), step + 1, name, callId, result.getDiagnosticCode(), byteLength(result.getOutput()), result.getAdditionalToolsCount());
                     result.getAdditionalToolsList().forEach(definition -> tools.add(tool(definition)));
-                    input.add(Map.of("type", "function_call_output", "call_id", callId, "output", result.getOutput()));
+                    input.add(Map.of("type", "function_call_output", "call_id", callId, OUTPUT_FIELD, result.getOutput()));
                 }
                 if (cancelled) {
                     observer.onCompleted();
@@ -285,7 +291,7 @@ class CodexChatService {
         Map<String, Object> value = new LinkedHashMap<>();
         value.put("type", "function");
         value.put("name", definition.getName());
-        value.put("description", definition.getDescription());
+        value.put(DESCRIPTION_FIELD, definition.getDescription());
         value.put("parameters", strictSchema(json.readValue(definition.getInputSchema(), Object.class)));
         value.put("strict", true);
         return value;
@@ -323,16 +329,16 @@ class CodexChatService {
         body.put("model", model);
         List<Object> requestInput = new ArrayList<>();
         if (responsesLite && !tools.isEmpty())
-            requestInput.add(Map.of("type", "additional_tools", "role", "developer", "tools", List.of(Map.of(
-                    "type", "namespace", "name", "functions", "description", "Alertify tools", "tools", tools))));
+            requestInput.add(Map.of("type", "additional_tools", "role", "developer", TOOLS_FIELD, List.of(Map.of(
+                    "type", "namespace", "name", "functions", DESCRIPTION_FIELD, "Alertify tools", TOOLS_FIELD, tools))));
         if (!instructions.isBlank())
-            requestInput.add(Map.of("type", "message", "role", "developer", "content",
+            requestInput.add(Map.of("type", MESSAGE_TYPE, "role", "developer", CONTENT_FIELD,
                     List.of(Map.of("type", "input_text", "text", instructions))));
         requestInput.addAll(input);
         body.put("input", requestInput);
         if (!responsesLite && !tools.isEmpty())
-            body.put("tools", namespacedTools ? List.of(Map.of("type", "namespace", "name", "functions",
-                    "description", "Alertify tools", "tools", tools)) : tools);
+            body.put(TOOLS_FIELD, namespacedTools ? List.of(Map.of("type", "namespace", "name", "functions",
+                    DESCRIPTION_FIELD, "Alertify tools", TOOLS_FIELD, tools)) : tools);
         body.put("tool_choice", "auto");
         body.put("parallel_tool_calls", false);
         Map<String, Object> reasoning = new LinkedHashMap<>();
@@ -364,10 +370,10 @@ class CodexChatService {
             return directOutput;
 
         StringBuilder output = new StringBuilder();
-        for (JsonNode item : response.path("output")) {
-            if (!"message".equals(text(item.path("type"), "")))
+        for (JsonNode item : response.path(OUTPUT_FIELD)) {
+            if (!MESSAGE_TYPE.equals(text(item.path("type"), "")))
                 continue;
-            for (JsonNode content : item.path("content")) {
+            for (JsonNode content : item.path(CONTENT_FIELD)) {
                 if ("output_text".equals(text(content.path("type"), "")))
                     output.append(text(content.path("text"), ""));
                 else if ("refusal".equals(text(content.path("type"), "")))
@@ -381,9 +387,9 @@ class CodexChatService {
         List<String> types = new ArrayList<>();
         for (JsonNode item : output) {
             String type = text(item.path("type"), "unknown");
-            if ("message".equals(type) && item.path("content").isArray()) {
+            if (MESSAGE_TYPE.equals(type) && item.path(CONTENT_FIELD).isArray()) {
                 List<String> contentTypes = new ArrayList<>();
-                item.path("content").forEach(content -> contentTypes.add(text(content.path("type"), "unknown")));
+                item.path(CONTENT_FIELD).forEach(content -> contentTypes.add(text(content.path("type"), "unknown")));
                 type += contentTypes;
             }
             types.add(type);

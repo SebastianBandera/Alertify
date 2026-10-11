@@ -6,7 +6,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -62,6 +64,24 @@ public class AiToolSupport {
     private record TextMultipartFile(String originalFilename, String contentType, byte[] content) implements MultipartFile {
         private TextMultipartFile {
             content = content.clone();
+        }
+
+        @Override
+        public boolean equals(Object other) {
+            return this == other || other instanceof TextMultipartFile that
+                    && Objects.equals(originalFilename, that.originalFilename)
+                    && Objects.equals(contentType, that.contentType)
+                    && Arrays.equals(content, that.content);
+        }
+
+        @Override
+        public int hashCode() {
+            return 31 * Objects.hash(originalFilename, contentType) + Arrays.hashCode(content);
+        }
+
+        @Override
+        public String toString() {
+            return "TextMultipartFile[originalFilename=" + originalFilename + ", contentType=" + contentType + ", contentLength=" + content.length + "]";
         }
 
         @Override

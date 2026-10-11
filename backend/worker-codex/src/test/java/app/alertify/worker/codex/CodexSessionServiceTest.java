@@ -27,6 +27,9 @@ import javax.net.ssl.SSLSession;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -35,6 +38,26 @@ class CodexSessionServiceTest {
 
     @TempDir
     Path directory;
+
+    @Test
+    void rejectsMissingEmptyAndWrongAudienceAndAcceptsTheClientAudience() {
+        CodexSessionService service = service();
+        JsonNode token = JsonMapper.builder().build().valueToTree(Map.of("access_token", "test-access", "id_token", "test-id"));
+        for (List<String> audience : List.of(List.<String>of(), List.of("other-client"))) {
+            Jwt jwt = Jwt.withTokenValue("test-id").header("alg", "none").subject("test-subject").audience(audience).build();
+            ReflectionTestUtils.setField(service, "jwtDecoder", (JwtDecoder) value -> jwt);
+            assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(service, "tokenSession", "BROWSER", token, "client", null, true))
+                    .isInstanceOf(IllegalArgumentException.class).hasMessage("The ID token audience did not match this client");
+        }
+        Jwt missing = Jwt.withTokenValue("test-id").header("alg", "none").subject("test-subject").build();
+        ReflectionTestUtils.setField(service, "jwtDecoder", (JwtDecoder) value -> missing);
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(service, "tokenSession", "BROWSER", token, "client", null, true))
+                .isInstanceOf(IllegalArgumentException.class).hasMessage("The ID token audience did not match this client");
+        Jwt valid = Jwt.withTokenValue("test-id").header("alg", "none").subject("test-subject").audience(List.of("other-client", "client")).build();
+        ReflectionTestUtils.setField(service, "jwtDecoder", (JwtDecoder) value -> valid);
+        OAuthSession session = ReflectionTestUtils.invokeMethod(service, "tokenSession", "BROWSER", token, "client", null, true);
+        assertThat(session.subject()).isEqualTo("test-subject");
+    }
 
     @Test
     void issuesAnOpaqueOneUseTicketOnlyForExtensionLogins() {

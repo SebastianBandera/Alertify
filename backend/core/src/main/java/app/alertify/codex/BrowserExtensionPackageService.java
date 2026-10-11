@@ -7,9 +7,11 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -23,8 +25,13 @@ import tools.jackson.databind.node.ObjectNode;
 
 @Service
 public class BrowserExtensionPackageService {
+    private static final String CALLBACK_HTML_FILE = "callback.html";
+    private static final String CALLBACK_CSS_FILE = "callback.css";
+    private static final String CALLBACK_SCRIPT_FILE = "callback.js";
+    private static final String CONFIG_SCRIPT_FILE = "config.js";
 
-    private static final List<String> COMMON_FILES = List.of("content.js", "callback.html", "callback.js", "callback.css");
+
+    private static final List<String> COMMON_FILES = List.of("content.js", CALLBACK_HTML_FILE, CALLBACK_SCRIPT_FILE, CALLBACK_CSS_FILE);
     private static final int PROTOCOL_VERSION = 3;
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
@@ -57,7 +64,7 @@ public class BrowserExtensionPackageService {
             ByteArrayOutputStream bytes = new ByteArrayOutputStream();
             try (ZipOutputStream zip = new ZipOutputStream(bytes, StandardCharsets.UTF_8)) {
                 add(zip, "manifest.json", manifest(browser));
-                add(zip, "config.js", config(browser));
+                add(zip, CONFIG_SCRIPT_FILE, config(browser));
                 add(zip, browser.backgroundFile, resource(browser.backgroundFile));
                 for (String file : COMMON_FILES)
                     add(zip, file, resource(file));
@@ -99,23 +106,23 @@ public class BrowserExtensionPackageService {
         if (browser == Browser.CHROME)
             background.put("service_worker", browser.backgroundFile);
         else {
-            background.set("scripts", array("config.js", browser.backgroundFile));
+            background.set("scripts", array(CONFIG_SCRIPT_FILE, browser.backgroundFile));
             background.put("persistent", true);
         }
 
         ObjectNode content = JSON.createObjectNode();
         content.set("matches", array(contentMatch()));
-        content.set("js", array("config.js", "content.js"));
+        content.set("js", array(CONFIG_SCRIPT_FILE, "content.js"));
         content.put("run_at", "document_start");
         manifest.set("content_scripts", JSON.createArrayNode().add(content));
 
         if (browser == Browser.CHROME) {
             ObjectNode accessible = JSON.createObjectNode();
-            accessible.set("resources", array("callback.html", "callback.js", "callback.css", "config.js"));
+            accessible.set("resources", array(CALLBACK_HTML_FILE, CALLBACK_SCRIPT_FILE, CALLBACK_CSS_FILE, CONFIG_SCRIPT_FILE));
             accessible.set("matches", array(callbackOrigin + "/*", "https://*.openai.com/*", "https://*.chatgpt.com/*"));
             manifest.set("web_accessible_resources", JSON.createArrayNode().add(accessible));
         } else {
-            manifest.set("web_accessible_resources", array("callback.html", "callback.js", "callback.css", "config.js"));
+            manifest.set("web_accessible_resources", array(CALLBACK_HTML_FILE, CALLBACK_SCRIPT_FILE, CALLBACK_CSS_FILE, CONFIG_SCRIPT_FILE));
         }
 
         if (browser == Browser.FIREFOX) {
@@ -206,6 +213,22 @@ public class BrowserExtensionPackageService {
     }
 
     public record ExtensionPackage(String fileName, byte[] contents) {
+        @Override
+        public boolean equals(Object other) {
+            return this == other || other instanceof ExtensionPackage that
+                    && Objects.equals(fileName, that.fileName)
+                    && Arrays.equals(contents, that.contents);
+        }
+
+        @Override
+        public int hashCode() {
+            return 31 * Objects.hashCode(fileName) + Arrays.hashCode(contents);
+        }
+
+        @Override
+        public String toString() {
+            return "ExtensionPackage[fileName=" + fileName + ", contentsLength=" + (contents == null ? null : contents.length) + "]";
+        }
     }
 
     private enum Browser {

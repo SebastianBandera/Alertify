@@ -33,6 +33,8 @@ import tools.jackson.databind.json.JsonMapper;
     sourcePath = "app/alertify/procedures/templates/MariaDbBackupProcedureTemplate.java"
 )
 public final class MariaDbBackupProcedureTemplate implements ProcedureEvaluator {
+    private static final String CONNECT_TIMEOUT_OPTION = "connecttimeout";
+
     private static final JsonMapper JSON = JsonMapper.builder().build();
     private static final String SQL_MEDIA_TYPE = "application/sql";
     private static final String GZIP_MEDIA_TYPE = "application/gzip";
@@ -182,8 +184,8 @@ public final class MariaDbBackupProcedureTemplate implements ProcedureEvaluator 
                 default -> command.addAll(List.of("--ssl", "--ssl-verify-server-cert"));
             }
         }
-        if (options.containsKey("connecttimeout"))
-            command.add("--connect-timeout=" + Math.max(1, (Long.parseLong(options.get("connecttimeout")) + 999) / 1000));
+        if (options.containsKey(CONNECT_TIMEOUT_OPTION))
+            command.add("--connect-timeout=" + Math.max(1, (Long.parseLong(options.get(CONNECT_TIMEOUT_OPTION)) + 999) / 1000));
 
         // The database is passed as a positional argument (not --databases) so the dump omits
         // CREATE DATABASE/USE statements and restores into any target database.
@@ -208,7 +210,7 @@ public final class MariaDbBackupProcedureTemplate implements ProcedureEvaluator 
                     if (!List.of("disable", "trust", "verify-ca", "verify-full").contains(value))
                         throw new IllegalArgumentException("Unsupported MariaDB sslMode");
                 }
-                case "connecttimeout" -> {
+                case CONNECT_TIMEOUT_OPTION -> {
                     long millis;
                     try { millis = Long.parseLong(value); }
                     catch (NumberFormatException exception) { throw new IllegalArgumentException("connectTimeout must be an integer number of milliseconds", exception); }

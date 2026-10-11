@@ -42,6 +42,8 @@ import tools.jackson.databind.json.JsonMapper;
  */
 @Component
 public class AdminEventWebSocketHandler extends TextWebSocketHandler implements AutoCloseable {
+    private static final String PROTOCOL_INVALID_REASON = "PROTOCOL_INVALID";
+
 
     private static final Logger LOGGER = LoggerFactory.getLogger(AdminEventWebSocketHandler.class);
     private static final Duration AUTH_TIMEOUT = Duration.ofSeconds(10);
@@ -95,7 +97,7 @@ public class AdminEventWebSocketHandler extends TextWebSocketHandler implements 
             JsonNode frame = jsonMapper.readTree(message.getPayload());
             JsonNode typeNode = frame.get("type");
             if (typeNode == null || !typeNode.isString()) {
-                state.audit.failedBeforeAuthentication("PROTOCOL_INVALID");
+                state.audit.failedBeforeAuthentication(PROTOCOL_INVALID_REASON);
                 close(session);
                 return;
             }
@@ -104,12 +106,12 @@ public class AdminEventWebSocketHandler extends TextWebSocketHandler implements 
                 case "AUTH" -> authenticate(state, frame);
                 case "REQUEST" -> handleRequest(state, frame);
                 default -> {
-                    state.audit.failedBeforeAuthentication("PROTOCOL_INVALID");
+                    state.audit.failedBeforeAuthentication(PROTOCOL_INVALID_REASON);
                     close(session);
                 }
             }
         } catch (RuntimeException exception) {
-            state.audit.failedBeforeAuthentication("PROTOCOL_INVALID");
+            state.audit.failedBeforeAuthentication(PROTOCOL_INVALID_REASON);
             close(session);
         }
     }

@@ -44,6 +44,8 @@ import tools.jackson.databind.json.JsonMapper;
 
 @Service
 public class PipeExecutionOrchestrator implements AutoCloseable {
+    private static final String MISSING_PIPE_OUTPUT_CODE = "MISSING_PIPE_OUTPUT";
+
     private final PipeExecutionPersistenceService persistence;
     private final AlertExecutionOrchestrator alertOrchestrator;
     private final ProcedureExecutionOrchestrator procedureOrchestrator;
@@ -192,11 +194,11 @@ public class PipeExecutionOrchestrator implements AutoCloseable {
                             if (!binding.isArtifactOutput()) {
                                 ResultValue source = results.get(binding.getSourceStep().getStepKey());
                                 if (source == null)
-                                    throw new PipeExecutionException("MISSING_PIPE_OUTPUT");
+                                    throw new PipeExecutionException(MISSING_PIPE_OUTPUT_CODE);
 
                                 JsonNode selected = source.value().at(binding.getSourceResultPointer());
                                 if (selected.isMissingNode() || selected.isNull())
-                                    throw new PipeExecutionException("MISSING_PIPE_OUTPUT");
+                                    throw new PipeExecutionException(MISSING_PIPE_OUTPUT_CODE);
 
                                 String value = selected.isString() ? selected.stringValue() : selected.toString();
                                 if (binding.getValueExpression() != null)
@@ -216,7 +218,7 @@ public class PipeExecutionOrchestrator implements AutoCloseable {
 
                                 ArtifactLocation artifact = outputs.get(new ArtifactKey(binding.getSourceStep().getStepKey(), binding.getSourceOutput().getOutputKey()));
                                 if (artifact == null)
-                                    throw new PipeExecutionException("MISSING_PIPE_OUTPUT");
+                                    throw new PipeExecutionException(MISSING_PIPE_OUTPUT_CODE);
 
                                 inputs.put(binding.getTargetParameterKey(), artifact);
                             }
@@ -243,9 +245,9 @@ public class PipeExecutionOrchestrator implements AutoCloseable {
                             }
                         }
                     } catch (RuntimeException exception) {
-                        String code = "MISSING_PIPE_OUTPUT".equals(exception.getMessage()) ? "MISSING_PIPE_OUTPUT"
+                        String code = MISSING_PIPE_OUTPUT_CODE.equals(exception.getMessage()) ? MISSING_PIPE_OUTPUT_CODE
                                 : "PIPE_PHASE_TIMEOUT".equals(exception.getMessage()) ? "PIPE_PHASE_TIMEOUT" : "PIPE_STEP_ERROR";
-                        run = new StepRun(PipeOutcome.ERROR, "MISSING_PIPE_OUTPUT".equals(code)
+                        run = new StepRun(PipeOutcome.ERROR, MISSING_PIPE_OUTPUT_CODE.equals(code)
                                 ? PipeStepStatus.MISSING_PIPE_OUTPUT : PipeStepStatus.ERROR, null, code);
                     }
                     persistence.completeStep(executionId, step.getStepKey(), run.status(), run.outcome(), run.executionId(), run.errorCode());

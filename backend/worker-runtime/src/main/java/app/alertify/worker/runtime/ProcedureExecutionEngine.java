@@ -78,7 +78,7 @@ class ProcedureExecutionEngine implements AutoCloseable {
             ProcedureExecutionContext context = new ProcedureExecutionContext(permit.workStartedAt(), sources);
             CompiledProcedureTemplate template = compiler.getProcedure(request.getTemplateClassName(), request.getSourceChecksum());
             Instant expiresAt = request.getArtifactExpiresAt().isBlank()
-                    ? Instant.now().plusSeconds(15 * 60) : Instant.parse(request.getArtifactExpiresAt());
+                    ? Instant.now().plusSeconds(15L * 60) : Instant.parse(request.getArtifactExpiresAt());
             instance = template.newInstance(request.getParametersList(), handles,
                     new PipeHandleFactory(handles.pipeInvoker()), deadline, artifactStore, expiresAt);
             ProcedureEvaluator evaluator = instance.evaluator();

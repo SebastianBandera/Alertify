@@ -58,7 +58,8 @@
     </header>
 
     <div class="ai-chat__toolbar">
-      <select [ngModel]="desiredConversationId() ?? ''" (ngModelChange)="$event ? select(+$event) : newConversation()" [attr.title]="selected()?.title ?? localization.translateDynamic('ai.chat.new')">
+      <label class="ai-chat__control-label" for="ai-chat-conversation">{{ localization.translateDynamic('ai.chat.conversation') }}</label>
+      <select id="ai-chat-conversation" [ngModel]="desiredConversationId() ?? ''" (ngModelChange)="$event ? select(+$event) : newConversation()" [attr.title]="selected()?.title ?? localization.translateDynamic('ai.chat.new')">
         <option value="">{{ localization.translateDynamic('ai.chat.new') }}</option>
         @for (conversation of conversations(); track conversation.id) {
           <option [value]="conversation.id">{{ conversation.title }}</option>
@@ -140,7 +141,8 @@
 
     @if (error()) { <p class="ai-chat__error">{{ error() }}</p> }
     <footer class="ai-chat__composer">
-      <textarea rows="3" maxlength="32768" [disabled]="!chatAvailable()" [value]="message()" (input)="updateMessage($event)" (keydown)="handleComposerKeydown($event)" [placeholder]="localization.translateDynamic('ai.chat.placeholder')"></textarea>
+      <label class="ai-chat__control-label" for="ai-chat-message">{{ localization.translateDynamic('ai.chat.message') }}</label>
+      <textarea id="ai-chat-message" rows="3" maxlength="32768" [disabled]="!chatAvailable()" [value]="message()" (input)="updateMessage($event)" (keydown)="handleComposerKeydown($event)" [placeholder]="localization.translateDynamic('ai.chat.placeholder')"></textarea>
       <div class="ai-chat__composer-bottom">
         <div class="ai-chat__usage" aria-live="polite">
           @if (selected()) {

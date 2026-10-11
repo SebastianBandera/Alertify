@@ -44,6 +44,8 @@ import tools.jackson.databind.json.JsonMapper;
  */
 @Service
 public class ProcedureExecutionPersistenceService {
+    private static final String EXECUTION_TYPE_PROCEDURE = "PROCEDURE";
+
     private final ProcedureRepository procedureRepository;
     private final ProcedureExecutionRepository executionRepository;
     private final WritableConfigurationService writableConfigurationService;
@@ -87,7 +89,7 @@ public class ProcedureExecutionPersistenceService {
     public JsonNode complete(UUID executionId, WorkerEndpoint endpoint, ProcedureExecutionResult result, boolean sensitiveResult) {
         ProcedureExecution execution = execution(executionId);
         AlertExecutionWorker worker = worker(endpoint, result.getWorkerName(), result.getWorkerInstanceId());
-        ExecutionTimestamps timestamps = ExecutionTimestamps.ordered("PROCEDURE", executionId, result.getWorkerName(),
+        ExecutionTimestamps timestamps = ExecutionTimestamps.ordered(EXECUTION_TYPE_PROCEDURE, executionId, result.getWorkerName(),
                 execution.getStartedAt(), instant(result.getWorkStartedAt()), instant(result.getFinishedAt()));
         if (!result.getSuccessful()) {
             ExecutionError error = result.getError();
@@ -116,7 +118,7 @@ public class ProcedureExecutionPersistenceService {
     @Transactional
     public void failRemote(UUID executionId, WorkerEndpoint endpoint, String workerName, String workerInstanceId, Instant workStartedAt, Instant finishedAt, ExecutionError error) {
         ProcedureExecution execution = execution(executionId);
-        ExecutionTimestamps timestamps = ExecutionTimestamps.ordered("PROCEDURE", executionId, workerName, execution.getStartedAt(), workStartedAt, finishedAt);
+        ExecutionTimestamps timestamps = ExecutionTimestamps.ordered(EXECUTION_TYPE_PROCEDURE, executionId, workerName, execution.getStartedAt(), workStartedAt, finishedAt);
         execution.fail(worker(endpoint, workerName, workerInstanceId), timestamps.workStartedAt(), timestamps.finishedAt(),
                 required(error.getType(), "Worker error type"), empty(error.getMessage()), empty(error.getStackTrace()));
         executionRepository.flush();
@@ -129,7 +131,7 @@ public class ProcedureExecutionPersistenceService {
         if (execution == null || execution.getStatus() != ProcedureExecutionStatus.RUNNING)
             return;
 
-        ExecutionTimestamps timestamps = ExecutionTimestamps.ordered("PROCEDURE", executionId, null,
+        ExecutionTimestamps timestamps = ExecutionTimestamps.ordered(EXECUTION_TYPE_PROCEDURE, executionId, null,
                 execution.getStartedAt(), execution.getStartedAt(), Instant.now());
         execution.fail(null, timestamps.workStartedAt(), timestamps.finishedAt(), error.getClass().getName(),
                 error.getMessage(), stackTrace(error));

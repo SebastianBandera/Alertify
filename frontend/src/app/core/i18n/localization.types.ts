@@ -1772,6 +1772,8 @@ export type TranslationKey =
   | 'draft.storage'
   | 'ai.chat.title'
   | 'ai.chat.new'
+  | 'ai.chat.conversation'
+  | 'ai.chat.message'
   | 'ai.chat.mode'
   | 'ai.chat.mode.readOnly'
   | 'ai.chat.mode.plan'

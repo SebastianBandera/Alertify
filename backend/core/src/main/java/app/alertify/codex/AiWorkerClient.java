@@ -166,8 +166,10 @@ public class AiWorkerClient {
     }
 
     public static final class ChatHandle implements AutoCloseable {
+        private final Object lock = new Object();
         private final StreamObserver<ChatClientMessage> requests;
         private final Runnable close;
+        private boolean closed;
 
         private ChatHandle(StreamObserver<ChatClientMessage> requests, Runnable close) {
             this.requests = requests;
@@ -175,15 +177,24 @@ public class AiWorkerClient {
         }
 
         public void send(ChatClientMessage message) {
-            requests.onNext(message);
+            synchronized (lock) {
+                if (!closed)
+                    requests.onNext(message);
+            }
         }
 
         @Override
         public void close() {
-            try {
-                requests.onCompleted();
-            } finally {
-                close.run();
+            synchronized (lock) {
+                if (closed)
+                    return;
+
+                closed = true;
+                try {
+                    requests.onCompleted();
+                } finally {
+                    close.run();
+                }
             }
         }
     }

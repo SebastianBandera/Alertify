@@ -51,6 +51,10 @@ import tools.jackson.databind.json.JsonMapper;
     sourcePath = "app/alertify/alerts/templates/GitLabPipelineAlertTemplate.java"
 )
 public final class GitLabPipelineAlertTemplate implements AlertEvaluator {
+    private static final String FAILURE_REASON_FIELD = "failureReason";
+    private static final String WARNING_FIELD = "warning";
+    private static final String PER_PAGE_QUERY = "?per_page=";
+
 
     private static final int PAGE_SIZE = 100;
     private static final int MAX_HISTORY_PAGES = 100;
@@ -194,7 +198,7 @@ public final class GitLabPipelineAlertTemplate implements AlertEvaluator {
         Instant checkedAt = clock.instant();
         Map<String, Object> statusMessage = baseStatusMessage(checkedAt);
         if (credentials.provider() != GitProvider.GITLAB) {
-            statusMessage.put("failureReason", "unsupported_provider");
+            statusMessage.put(FAILURE_REASON_FIELD, "unsupported_provider");
             context.setState(state(List.of(), "unsupported_provider"));
             return AlertResult.warn(statusMessage);
         }
@@ -211,8 +215,8 @@ public final class GitLabPipelineAlertTemplate implements AlertEvaluator {
             } catch (ApiFailure exception) {
                 Map<String, Object> failed = new LinkedHashMap<>();
                 failed.put("branch", branch);
-                failed.put("warning", true);
-                failed.put("failureReason", exception.reason());
+                failed.put(WARNING_FIELD, true);
+                failed.put(FAILURE_REASON_FIELD, exception.reason());
                 if (exception.statusCode() != null) {
                     failed.put("statusCode", exception.statusCode());
                 }
@@ -239,12 +243,12 @@ public final class GitLabPipelineAlertTemplate implements AlertEvaluator {
 
         if (search.pipeline() == null) {
             if (!branchExists(branch)) {
-                result.put("warning", true);
-                result.put("failureReason", "branch_not_found");
+                result.put(WARNING_FIELD, true);
+                result.put(FAILURE_REASON_FIELD, "branch_not_found");
                 return new BranchEvaluation(result, true);
             }
 
-            result.put("warning", false);
+            result.put(WARNING_FIELD, false);
             result.put("outcome", "no_executed_pipeline");
             return new BranchEvaluation(result, false);
         }
@@ -262,7 +266,7 @@ public final class GitLabPipelineAlertTemplate implements AlertEvaluator {
         }
 
         result.put("warnings", warnings);
-        result.put("warning", !warnings.isEmpty());
+        result.put(WARNING_FIELD, !warnings.isEmpty());
         return new BranchEvaluation(result, !warnings.isEmpty());
     }
 
@@ -345,7 +349,7 @@ public final class GitLabPipelineAlertTemplate implements AlertEvaluator {
                 childWarnings.add("child_pipeline_not_success");
             }
             childMessage.put("warnings", childWarnings);
-            childMessage.put("warning", !childWarnings.isEmpty());
+            childMessage.put(WARNING_FIELD, !childWarnings.isEmpty());
             children.add(childMessage);
             warning |= !childWarnings.isEmpty();
             externalDownstreamCount += nested.externalDownstreamCount();
@@ -354,11 +358,11 @@ public final class GitLabPipelineAlertTemplate implements AlertEvaluator {
     }
 
     private List<JsonNode> triggerJobs(long pipelineId) throws ApiFailure, InterruptedException {
-        String base = projectPath() + "/pipelines/" + pipelineId + "/trigger_jobs";
-        JsonNode first = requestJson(base + "?per_page=" + PAGE_SIZE + "&page=1", true);
+        String base = pipelinePath(pipelineId) + "/trigger_jobs";
+        JsonNode first = requestJson(base + PER_PAGE_QUERY + PAGE_SIZE + "&page=1", true);
         if (first == null) {
-            base = projectPath() + "/pipelines/" + pipelineId + "/bridges";
-            first = requestJson(base + "?per_page=" + PAGE_SIZE + "&page=1", false);
+            base = pipelinePath(pipelineId) + "/bridges";
+            first = requestJson(base + PER_PAGE_QUERY + PAGE_SIZE + "&page=1", false);
         }
         if (!first.isArray()) {
             throw new ApiFailure("invalid_response");
@@ -367,7 +371,7 @@ public final class GitLabPipelineAlertTemplate implements AlertEvaluator {
         List<JsonNode> jobs = new ArrayList<>();
         addNodes(jobs, first);
         for (int page = 2; first.size() == PAGE_SIZE && page <= MAX_HISTORY_PAGES; page++) {
-            JsonNode next = requestJson(base + "?per_page=" + PAGE_SIZE + "&page=" + page, false);
+            JsonNode next = requestJson(base + PER_PAGE_QUERY + PAGE_SIZE + "&page=" + page, false);
             if (!next.isArray()) {
                 throw new ApiFailure("invalid_response");
             }
@@ -381,7 +385,7 @@ public final class GitLabPipelineAlertTemplate implements AlertEvaluator {
     }
 
     private Pipeline currentProjectPipeline(long pipelineId) throws ApiFailure, InterruptedException {
-        JsonNode response = requestJson(projectPath() + "/pipelines/" + pipelineId, true);
+        JsonNode response = requestJson(pipelinePath(pipelineId), true);
         return response == null ? null : parsePipeline(response);
     }
 
@@ -502,6 +506,8 @@ public final class GitLabPipelineAlertTemplate implements AlertEvaluator {
         statusMessage.put("checkedAt", checkedAt.toString());
         return statusMessage;
     }
+
+    private String pipelinePath(long pipelineId) { return projectPath() + "/pipelines/" + pipelineId; }
 
     private String projectPath() {
         return "projects/" + encode(project);

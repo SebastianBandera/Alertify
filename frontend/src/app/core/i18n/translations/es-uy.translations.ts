@@ -1780,6 +1780,8 @@ export const ES_UY_TRANSLATIONS = {
   'draft.storage': 'Los valores de texto y archivos no se guardan al reiniciar el navegador.',
   'ai.chat.title': 'Chat IA',
   'ai.chat.new': 'Nueva conversación',
+  'ai.chat.conversation': 'Conversación',
+  'ai.chat.message': 'Mensaje',
   'ai.chat.mode': 'Modo',
   'ai.chat.mode.readOnly': 'Solo lectura',
   'ai.chat.mode.plan': 'Plan',

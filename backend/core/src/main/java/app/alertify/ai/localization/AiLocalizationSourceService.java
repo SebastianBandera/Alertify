@@ -15,6 +15,8 @@ import app.alertify.ai.localization.AiLocalizationSources.SourceFile;
 
 @Service
 public class AiLocalizationSourceService {
+    private static final String TRANSLATIONS_DIRECTORY = "translations";
+
 
     private static final long MAX_TOTAL_BYTES = 448L * 1024;
     private static final Pattern LOCALE = Pattern.compile("[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*");
@@ -35,8 +37,8 @@ public class AiLocalizationSourceService {
         String fileLocale = locale.toLowerCase(Locale.ROOT);
         Path root = sourceRoot();
         requireFile(root, root.resolve("localization.types.ts"));
-        requireFile(root, root.resolve("translations").resolve(fileLocale + ".translations.ts"));
-        requireFile(root, root.resolve("translations").resolve(fileLocale + ".extended.translations.ts"));
+        requireFile(root, root.resolve(TRANSLATIONS_DIRECTORY).resolve(fileLocale + ".translations.ts"));
+        requireFile(root, root.resolve(TRANSLATIONS_DIRECTORY).resolve(fileLocale + ".extended.translations.ts"));
         return locale;
     }
 
@@ -46,8 +48,8 @@ public class AiLocalizationSourceService {
         Path root = sourceRoot();
         List<Path> files = List.of(
                 root.resolve("localization.types.ts"),
-                root.resolve("translations").resolve(fileLocale + ".translations.ts"),
-                root.resolve("translations").resolve(fileLocale + ".extended.translations.ts"));
+                root.resolve(TRANSLATIONS_DIRECTORY).resolve(fileLocale + ".translations.ts"),
+                root.resolve(TRANSLATIONS_DIRECTORY).resolve(fileLocale + ".extended.translations.ts"));
         long totalBytes = files.stream().mapToLong(file -> size(root, file)).sum();
         if (totalBytes > MAX_TOTAL_BYTES)
             throw new IllegalStateException("Frontend localization sources exceed the AI tool size limit");

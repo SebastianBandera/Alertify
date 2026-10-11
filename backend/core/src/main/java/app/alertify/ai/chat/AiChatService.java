@@ -50,6 +50,13 @@ import tools.jackson.databind.json.JsonMapper;
 
 @Service
 public class AiChatService {
+    private static final String MODE_READ_ONLY = "READ_ONLY";
+    private static final String MODE_DIRECT = "DIRECT";
+    private static final String STATUS_CANCELLED = "CANCELLED";
+    private static final String CONVERSATION_NOT_FOUND_MESSAGE = "AI conversation not found";
+    private static final String CHAT_UPDATED_EVENT = "AI_CHAT_UPDATED";
+    private static final String STATUS_TOOL_RESULT = "TOOL_RESULT";
+
 
     private static final int MAX_MESSAGE_BYTES = 32 * 1024;
     private static final int MAX_TOOL_ARGUMENT_BYTES = 128 * 1024;
@@ -93,7 +100,7 @@ public class AiChatService {
 
     public synchronized SubmitResponse submit(Authentication authentication, SubmitRequest request) {
         requireMessage(request.message());
-        String mode = enumValue(request.mode(), Set.of("READ_ONLY", "PLAN", "DIRECT"), "READ_ONLY");
+        String mode = enumValue(request.mode(), Set.of(MODE_READ_ONLY, "PLAN", MODE_DIRECT), MODE_READ_ONLY);
         String approval = enumValue(request.approvalPolicy(), Set.of("ASK", "AUTO"), "ASK");
         String locale = localization.resolveLocale(request.locale());
         if (request.conversationId() != null && activeTurns.values().stream()
@@ -113,7 +120,9 @@ public class AiChatService {
                 settings, permitted.stream().collect(Collectors.toUnmodifiableMap(AiToolDescriptor::name, value -> value)));
         activeTurns.put(active.turnId, active);
         try {
-            open(active, settings.getReasoningEffort());
+            if (!open(active, settings.getReasoningEffort()))
+                return new SubmitResponse(active.conversationId, active.turnId);
+
         } catch (RuntimeException exception) {
             activeTurns.remove(active.turnId);
             persistence.failed(active.turnId, "AI_WORKER_FAILED", "The AI worker could not start the turn");
@@ -142,7 +151,7 @@ public class AiChatService {
         String message = userRejectionMessage(pending.active.locale, pending.descriptor.name());
         persistence.rejectedByUser(invocationId, message);
         finish(pending.active);
-        publish(pending.active, "CANCELLED", message);
+        publish(pending.active, STATUS_CANCELLED, message);
     }
 
     public void cancel(Authentication authentication, Long turnId) {
@@ -151,7 +160,7 @@ public class AiChatService {
             throw new ResourceNotFoundException("Active AI turn not found");
         persistence.cancelled(turnId);
         finish(active);
-        publish(active, "CANCELLED", null);
+        publish(active, STATUS_CANCELLED, null);
     }
 
     @Scheduled(fixedDelay = 60_000, initialDelay = 60_000)
@@ -165,7 +174,7 @@ public class AiChatService {
             persistence.toolRejected(entry.getKey(), "Approval expired after 15 minutes", "APPROVAL_EXPIRED");
             persistence.cancelled(pending.active.turnId);
             finish(pending.active);
-            publish(pending.active, "CANCELLED", "Approval expired");
+            publish(pending.active, STATUS_CANCELLED, "Approval expired");
         }
     }
 
@@ -179,7 +188,7 @@ public class AiChatService {
     @Transactional(readOnly = true)
     public ConversationDetail conversation(Authentication authentication, Long id) {
         AiConversation conversation = conversations.findByIdAndUserSubject(id, authentication.getName())
-                .orElseThrow(() -> new ResourceNotFoundException("AI conversation not found"));
+                .orElseThrow(() -> new ResourceNotFoundException(CONVERSATION_NOT_FOUND_MESSAGE));
         List<MessageResponse> messageResponses = messages.findAllByConversation_IdOrderById(id).stream()
                 .map(value -> new MessageResponse(value.getId(), value.getTurnId(), value.getRole(), value.getContent(), value.getCreatedAt())).toList();
         List<AiTurn> conversationTurns = turns.findAllByConversation_IdOrderById(id);
@@ -198,7 +207,7 @@ public class AiChatService {
     @Transactional(readOnly = true)
     public ManagedConversationDetail managedConversation(Long id) {
         AiConversation conversation = conversations.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("AI conversation not found"));
+                .orElseThrow(() -> new ResourceNotFoundException(CONVERSATION_NOT_FOUND_MESSAGE));
         List<MessageResponse> messageResponses = messages.findAllByConversation_IdOrderById(id).stream()
                 .map(value -> new MessageResponse(value.getId(), value.getTurnId(), value.getRole(), value.getContent(), value.getCreatedAt())).toList();
         List<AiTurn> conversationTurns = turns.findAllByConversation_IdOrderById(id);
@@ -211,14 +220,14 @@ public class AiChatService {
     @Transactional
     public synchronized void deleteManagedConversation(Long id) {
         AiConversation conversation = conversations.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("AI conversation not found"));
+                .orElseThrow(() -> new ResourceNotFoundException(CONVERSATION_NOT_FOUND_MESSAGE));
         activeTurns.values().stream().filter(active -> active.conversationId.equals(id)).toList().forEach(active -> {
             persistence.cancelled(active.turnId);
             finish(active);
         });
         conversations.delete(conversation);
         eventLogger.successAfterCommit("AI_CONVERSATION_DELETED", Map.of("conversationId", id, "conversationOwner", conversation.getUsername()));
-        runAfterCommit(() -> events.publishToSubject(conversation.getUserSubject(), "AI_CHAT_UPDATED", new ChatEvent(id, null, "DELETED", null)));
+        runAfterCommit(() -> events.publishToSubject(conversation.getUserSubject(), CHAT_UPDATED_EVENT, new ChatEvent(id, null, "DELETED", null)));
     }
 
     @Transactional
@@ -234,18 +243,27 @@ public class AiChatService {
         });
         conversations.deleteAllInBatch();
         eventLogger.successAfterCommit("AI_CONVERSATION_DELETED", Map.of("conversationCount", stored.size(), "all", true));
-        runAfterCommit(() -> stored.forEach(conversation -> events.publishToSubject(conversation.getUserSubject(), "AI_CHAT_UPDATED",
+        runAfterCommit(() -> stored.forEach(conversation -> events.publishToSubject(conversation.getUserSubject(), CHAT_UPDATED_EVENT,
                 new ChatEvent(conversation.getId(), null, "DELETED", null))));
         return stored.size();
     }
 
-    private void open(ActiveTurn active, String effort) {
+    private boolean open(ActiveTurn active, String effort) {
         long generation = active.generation.incrementAndGet();
         AiWorkerClient.ChatHandle handle = worker.chat(
                 message -> onMessage(active, generation, message),
                 failure -> onFailure(active, generation),
                 () -> onCompleted(active, generation));
-        active.handle = handle;
+        boolean accepted;
+        synchronized (active.handleLock) {
+            accepted = current(active, generation);
+            if (accepted)
+                active.handle = handle;
+        }
+        if (!accepted) {
+            handle.close();
+            return false;
+        }
         ChatStart.Builder start = ChatStart.newBuilder().setConversationId(active.conversationId).setTurnId(active.turnId)
                 .setModel(active.settings.getModel()).setReasoningEffort(effort).setInstructions(instructions(active))
                 .setMode(active.mode).setApprovalPolicy(active.approvalPolicy);
@@ -255,6 +273,7 @@ public class AiChatService {
         start.addTools(reasoningTool());
         start.addTools(restorationHistoryTool());
         handle.send(ChatClientMessage.newBuilder().setStart(start.build()).build());
+        return current(active, generation);
     }
 
     private void onMessage(ActiveTurn active, long generation, ChatWorkerMessage message) {
@@ -301,7 +320,7 @@ public class AiChatService {
             String output = audit.declared() ? "Failed: this tool is not allowed in the current mode." : "Failed: unknown tool.";
             persistence.toolDenied(invocation.getId(), output, code);
             sendResult(active, callId, output, true, code);
-            publish(active, "TOOL_RESULT", invocation.getId());
+            publish(active, STATUS_TOOL_RESULT, invocation.getId());
             return;
         }
         if (REASONING_TOOL.equals(name)) {
@@ -338,7 +357,7 @@ public class AiChatService {
                 String output = "Failed: the automatic reviewer could not evaluate this action.";
                 persistence.toolFailed(invocation.getId(), output, "REVIEW_FAILED");
                 sendResult(active, callId, output, true, "REVIEW_FAILED");
-                publish(active, "TOOL_RESULT", invocation.getId());
+                publish(active, STATUS_TOOL_RESULT, invocation.getId());
                 return;
             }
             if (review.hasUsage()) {
@@ -384,7 +403,7 @@ public class AiChatService {
             SecurityContextHolder.setContext(previous);
         }
         sendResult(active, callId, output, failed, failed ? "TOOL_EXECUTION_FAILED" : "");
-        publish(active, "TOOL_RESULT", invocation.getId());
+        publish(active, STATUS_TOOL_RESULT, invocation.getId());
     }
 
     private void upgrade(ActiveTurn active, AiToolInvocation invocation, String callId) {
@@ -398,13 +417,15 @@ public class AiChatService {
         active.loadedGroups.clear();
         persistence.upgraded(active.turnId, active.effort);
         active.generation.incrementAndGet();
-        AiWorkerClient.ChatHandle previous = active.handle;
+        AiWorkerClient.ChatHandle previous = active.handle();
         if (previous != null)
             previous.close();
         try {
-            open(active, active.effort);
+            if (!open(active, active.effort))
+                return;
+
             persistence.toolSucceeded(invocation.getId(), "Reasoning upgraded to " + active.effort + ".");
-            publish(active, "TOOL_RESULT", invocation.getId());
+            publish(active, STATUS_TOOL_RESULT, invocation.getId());
             publish(active, "REASONING_UPGRADED", active.effort);
         } catch (RuntimeException exception) {
             persistence.toolFailed(invocation.getId(), "Failed: the upgraded model request could not be started.", "REASONING_UPGRADE_FAILED");
@@ -421,7 +442,7 @@ public class AiChatService {
                 return;
             }
             List<ChatToolDefinition> tools = catalog.descriptorsFor(active.authentication, Set.of(group)).stream()
-                    .filter(descriptor -> "DIRECT".equals(active.mode) || descriptor.readOnly())
+                    .filter(descriptor -> MODE_DIRECT.equals(active.mode) || descriptor.readOnly())
                     .map(AiChatService::tool).toList();
             internalResult(active, invocation, callId, "Loaded " + tools.size() + " tools from group " + group + ".", false, "", tools);
         } catch (RuntimeException exception) {
@@ -462,7 +483,7 @@ public class AiChatService {
             persistence.toolSucceeded(invocation.getId(), output);
 
         sendResult(active, callId, output, failed, diagnosticCode, additionalTools);
-        publish(active, "TOOL_RESULT", invocation.getId());
+        publish(active, STATUS_TOOL_RESULT, invocation.getId());
     }
 
     private void auditStaleToolCall(ActiveTurn active, long generation, String callId, String name, String arguments) {
@@ -471,7 +492,7 @@ public class AiChatService {
                 bounded(arguments, MAX_TOOL_ARGUMENT_BYTES), audit.kind(), audit.declared(), false, audit.readOnly(),
                 audit.destructiveHint(), audit.idempotentHint(), audit.openWorldHint(), audit.refreshTargets(), false);
         persistence.toolDenied(invocation.getId(), "Ignored: tool call belongs to an inactive model stream.", "STALE_STREAM_GENERATION");
-        publish(active, "TOOL_RESULT", invocation.getId());
+        publish(active, STATUS_TOOL_RESULT, invocation.getId());
     }
 
     private static ToolAudit toolAudit(ActiveTurn active, String name) {
@@ -484,7 +505,7 @@ public class AiChatService {
         if (descriptor == null)
             return new ToolAudit(null, "UNKNOWN", false, false, false, false, false, false, "");
 
-        boolean allowed = "DIRECT".equals(active.mode) || descriptor.readOnly();
+        boolean allowed = MODE_DIRECT.equals(active.mode) || descriptor.readOnly();
         String refreshTargets = descriptor.refreshTargets().stream().map(Enum::name).sorted().collect(Collectors.joining(","));
         return new ToolAudit(descriptor, "DOMAIN", true, allowed, descriptor.readOnly(), descriptor.destructiveHint(),
                 descriptor.idempotentHint(), descriptor.openWorldHint(), refreshTargets);
@@ -503,7 +524,7 @@ public class AiChatService {
     }
 
     private void sendResult(ActiveTurn active, String callId, String output, boolean failed, String diagnosticCode, List<ChatToolDefinition> additionalTools) {
-        AiWorkerClient.ChatHandle handle = active.handle;
+        AiWorkerClient.ChatHandle handle = active.handle();
         if (handle != null)
             handle.send(ChatClientMessage.newBuilder().setToolResult(ChatToolResult.newBuilder()
                     .setCallId(callId).setOutput(output).setFailed(failed).setDiagnosticCode(diagnosticCode)
@@ -519,8 +540,11 @@ public class AiChatService {
     private void finish(ActiveTurn active) {
         activeTurns.remove(active.turnId, active);
         pendingApprovals.entrySet().removeIf(entry -> entry.getValue().active == active);
-        AiWorkerClient.ChatHandle handle = active.handle;
-        active.handle = null;
+        AiWorkerClient.ChatHandle handle;
+        synchronized (active.handleLock) {
+            handle = active.handle;
+            active.handle = null;
+        }
         if (handle != null)
             handle.close();
     }
@@ -540,7 +564,7 @@ public class AiChatService {
     }
 
     private void publish(ActiveTurn active, String status, Object detail) {
-        events.publishToSubject(active.subject, "AI_CHAT_UPDATED", new ChatEvent(active.conversationId, active.turnId, status, detail));
+        events.publishToSubject(active.subject, CHAT_UPDATED_EVENT, new ChatEvent(active.conversationId, active.turnId, status, detail));
     }
 
     private String instructions(ActiveTurn active) {
@@ -570,7 +594,7 @@ public class AiChatService {
         else
             value.append("Do not perform the destructive action when a useful restoration snapshot cannot be produced. ");
 
-        if ("READ_ONLY".equals(active.mode))
+        if (MODE_READ_ONLY.equals(active.mode))
             value.append("You can inspect state but cannot mutate it. Explain that limitation when the requested result requires a write. ");
         if ("PLAN".equals(active.mode)) {
             value.append("Inspect with read-only tools and return a plan. Do not claim that changes were applied. Available write operations include: ");
@@ -764,11 +788,18 @@ public class AiChatService {
         private final Map<String, AiToolDescriptor> descriptors;
         private final AtomicLong generation = new AtomicLong();
         private final Set<AiToolGroup> loadedGroups = ConcurrentHashMap.newKeySet();
-        private volatile AiWorkerClient.ChatHandle handle;
+        private final Object handleLock = new Object();
+        private AiWorkerClient.ChatHandle handle;
         private volatile String effort;
         private volatile boolean upgraded;
         private volatile boolean successfulWrite;
         private volatile int autoRejections;
+
+        private AiWorkerClient.ChatHandle handle() {
+            synchronized (handleLock) {
+                return handle;
+            }
+        }
 
         private ActiveTurn(Long conversationId, Long turnId, String subject, Authentication authentication, String locale, String mode,
                 String approvalPolicy, AiSettings settings, Map<String, AiToolDescriptor> descriptors) {

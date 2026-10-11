@@ -50,6 +50,22 @@ import tools.jackson.databind.node.ObjectNode;
 
 @Service
 class CodexSessionService {
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+    private static final String HOST_ID_URN_PREFIX = "urn:uuid:";
+    private static final String DEFAULT_CLIENT_VERSION = "0.0.0";
+    private static final String CONTENT_TYPE_HEADER = "Content-Type";
+    private static final String JSON_MEDIA_TYPE = "application/json";
+    private static final String EMAIL_CLAIM = "email";
+    private static final String CODEX_HEADER_PREFIX = "x-codex-";
+    private static final String OUTPUT_FIELD = "output";
+    private static final String CLIENT_ID_PARAMETER = "client_id";
+    private static final String REDIRECT_URI_PARAMETER = "redirect_uri";
+    private static final String RESOURCE_PARAMETER = "resource";
+    private static final String AUTHORIZATION_CODE = "authorization_code";
+    private static final String GRANT_TYPE_PARAMETER = "grant_type";
+    private static final String CODE_VERIFIER_PARAMETER = "code_verifier";
+    private static final String REFRESH_TOKEN = "refresh_token";
+
 
     private static final Logger LOGGER = LoggerFactory.getLogger(CodexSessionService.class);
 
@@ -166,10 +182,10 @@ class CodexSessionService {
     String browserAuthorizationUrl(PendingBrowserLogin login) {
         Map<String, String> parameters = new LinkedHashMap<>();
         parameters.put("response_type", "code");
-        parameters.put("client_id", login.clientId());
-        parameters.put("redirect_uri", login.redirectUri());
+        parameters.put(CLIENT_ID_PARAMETER, login.clientId());
+        parameters.put(REDIRECT_URI_PARAMETER, login.redirectUri());
         parameters.put("scope", SCOPES);
-        parameters.put("resource", API_RESOURCE);
+        parameters.put(RESOURCE_PARAMETER, API_RESOURCE);
         parameters.put("code_challenge", sha256UrlSafe(login.verifier()));
         parameters.put("code_challenge_method", "S256");
         parameters.put("state", login.state());
@@ -200,7 +216,7 @@ class CodexSessionService {
             if (!constantTimeEquals(pending.state(), receivedState))
                 throw new IllegalArgumentException("The OAuth callback did not match the pending login attempt");
             if (DYNAMIC_CLIENT_ID.equals(pending.clientId())) {
-                issuedClientId = required(clientId, "client_id");
+                issuedClientId = required(clientId, CLIENT_ID_PARAMETER);
                 if (DYNAMIC_CLIENT_ID.equals(issuedClientId))
                     throw new IllegalArgumentException("The OAuth callback did not issue a client ID");
             } else {
@@ -213,12 +229,12 @@ class CodexSessionService {
         }
 
         Map<String, String> values = new LinkedHashMap<>();
-        values.put("grant_type", "authorization_code");
+        values.put(GRANT_TYPE_PARAMETER, AUTHORIZATION_CODE);
         values.put("code", required(code, "code"));
-        values.put("redirect_uri", pending.redirectUri());
-        values.put("client_id", issuedClientId);
-        values.put("code_verifier", pending.verifier());
-        values.put("resource", API_RESOURCE);
+        values.put(REDIRECT_URI_PARAMETER, pending.redirectUri());
+        values.put(CLIENT_ID_PARAMETER, issuedClientId);
+        values.put(CODE_VERIFIER_PARAMETER, pending.verifier());
+        values.put(RESOURCE_PARAMETER, API_RESOURCE);
         JsonNode token = postForm(AUTH_ISSUER + "/api/accounts/oauth/token", values);
         requireScopes(token.path("scope").asText(scope));
         String authMode = LOGIN_MODE_EXTENSION.equals(pending.loginMode()) ? "BROWSER_EXTENSION" : "BROWSER";
@@ -255,7 +271,7 @@ class CodexSessionService {
 
         PendingDeviceLogin pending;
         try {
-            Map<String, Object> body = Map.of("client_id", DEVICE_CLIENT_ID);
+            Map<String, Object> body = Map.of(CLIENT_ID_PARAMETER, DEVICE_CLIENT_ID);
             JsonNode response = postJson(AUTH_ISSUER + "/api/accounts/deviceauth/usercode", body);
             int interval = Math.max(1, response.path("interval").asInt(5));
             Instant expiresAt = Instant.now().plusSeconds(Math.min(LOGIN_LIFETIME.toSeconds(), response.path("expires_in").asLong(LOGIN_LIFETIME.toSeconds())));
@@ -338,12 +354,12 @@ class CodexSessionService {
         if (current == null || current.refreshToken() == null || current.refreshToken().isBlank()) return true;
 
         try {
-            if ("DEVICE".equals(current.authMode()))
+            if (LOGIN_MODE_DEVICE.equals(current.authMode()))
                 postJson(AUTH_ISSUER + "/oauth/revoke", Map.of("token", current.refreshToken(),
-                        "token_type_hint", "refresh_token", "client_id", current.clientId()));
+                        "token_type_hint", REFRESH_TOKEN, CLIENT_ID_PARAMETER, current.clientId()));
             else
                 postForm(AUTH_ISSUER + "/oauth/revoke", Map.of("token", current.refreshToken(),
-                        "token_type_hint", "refresh_token", "client_id", current.clientId()));
+                        "token_type_hint", REFRESH_TOKEN, CLIENT_ID_PARAMETER, current.clientId()));
             return true;
         } catch (RuntimeException ignored) {
             return false;
@@ -356,7 +372,7 @@ class CodexSessionService {
         String uri = usesPrivateCodex(session) ? PRIVATE_CODEX_MODELS_URI : PUBLIC_MODELS_URI;
         HttpRequest.Builder request = authenticatedRequest(uri, session).timeout(Duration.ofSeconds(30)).GET();
         if (usesPrivateCodex(session))
-            addPrivateCodexHeaders(request, session, "0.0.0");
+            addPrivateCodexHeaders(request, session, DEFAULT_CLIENT_VERSION);
 
         send(request.build());
         ensureCurrent(snapshot);
@@ -375,7 +391,7 @@ class CodexSessionService {
         String windowId = deterministicId(sessionId + ":window");
         String requestTurnId = turnId == null ? UUID.randomUUID().toString()
                 : deterministicId(snapshot.hostId() + ":turn:" + turnId);
-        String installationId = snapshot.hostId().startsWith("urn:uuid:") ? snapshot.hostId().substring("urn:uuid:".length()) : snapshot.hostId();
+        String installationId = snapshot.hostId().startsWith(HOST_ID_URN_PREFIX) ? snapshot.hostId().substring(HOST_ID_URN_PREFIX.length()) : snapshot.hostId();
         return new CodexRequestMetadata(model, profile.responsesLite(), profile.namespacedTools(), profile.clientVersion(), profile.privateCodex(), profile.contextWindow(), installationId,
                 sessionId, threadId, windowId, requestTurnId, snapshot.revision());
     }
@@ -402,7 +418,7 @@ class CodexSessionService {
 
         String uri = metadata.privateCodex() ? PRIVATE_CODEX_RESPONSES_URI : PUBLIC_RESPONSES_URI;
         HttpRequest.Builder request = authenticatedRequest(uri, session).timeout(Duration.ofMinutes(5))
-                .header("Content-Type", "application/json")
+                .header(CONTENT_TYPE_HEADER, JSON_MEDIA_TYPE)
                 .header("Accept", "text/event-stream")
                 .POST(HttpRequest.BodyPublishers.ofByteArray(body));
         if (metadata.privateCodex()) {
@@ -441,7 +457,7 @@ class CodexSessionService {
         if (browserLogin != null)
             return "BROWSER";
         if (deviceLogin != null)
-            return "DEVICE";
+            return LOGIN_MODE_DEVICE;
         return "";
     }
 
@@ -529,15 +545,15 @@ class CodexSessionService {
             throw new IllegalStateException("The session has no refresh token");
 
         JsonNode token;
-        if ("DEVICE".equals(current.authMode())) {
-            token = postJson(AUTH_ISSUER + "/oauth/token", Map.of("grant_type", "refresh_token",
-                    "refresh_token", current.refreshToken(), "client_id", DEVICE_CLIENT_ID));
+        if (LOGIN_MODE_DEVICE.equals(current.authMode())) {
+            token = postJson(AUTH_ISSUER + "/oauth/token", Map.of(GRANT_TYPE_PARAMETER, REFRESH_TOKEN,
+                    REFRESH_TOKEN, current.refreshToken(), CLIENT_ID_PARAMETER, DEVICE_CLIENT_ID));
         } else {
             Map<String, String> values = new LinkedHashMap<>();
-            values.put("grant_type", "refresh_token");
-            values.put("refresh_token", current.refreshToken());
-            values.put("client_id", current.clientId());
-            values.put("resource", API_RESOURCE);
+            values.put(GRANT_TYPE_PARAMETER, REFRESH_TOKEN);
+            values.put(REFRESH_TOKEN, current.refreshToken());
+            values.put(CLIENT_ID_PARAMETER, current.clientId());
+            values.put(RESOURCE_PARAMETER, API_RESOURCE);
             token = postForm(AUTH_ISSUER + "/api/accounts/oauth/token", values);
         }
         Instant refreshedAt = Instant.now();
@@ -563,11 +579,11 @@ class CodexSessionService {
 
                 text(response, "code_challenge");
                 Map<String, String> exchange = new LinkedHashMap<>();
-                exchange.put("grant_type", "authorization_code");
-                exchange.put("code", text(response, "authorization_code"));
-                exchange.put("redirect_uri", AUTH_ISSUER + "/deviceauth/callback");
-                exchange.put("client_id", DEVICE_CLIENT_ID);
-                exchange.put("code_verifier", text(response, "code_verifier"));
+                exchange.put(GRANT_TYPE_PARAMETER, AUTHORIZATION_CODE);
+                exchange.put("code", text(response, AUTHORIZATION_CODE));
+                exchange.put(REDIRECT_URI_PARAMETER, AUTH_ISSUER + "/deviceauth/callback");
+                exchange.put(CLIENT_ID_PARAMETER, DEVICE_CLIENT_ID);
+                exchange.put(CODE_VERIFIER_PARAMETER, text(response, CODE_VERIFIER_PARAMETER));
                 JsonNode token = postForm(AUTH_ISSUER + "/oauth/token", exchange);
                 OAuthSession session = tokenSession(LOGIN_MODE_DEVICE, token, DEVICE_CLIENT_ID, null, true);
                 stateLock.lock();
@@ -609,7 +625,7 @@ class CodexSessionService {
     private OAuthSession tokenSession(String mode, JsonNode token, String clientId, String expectedNonce, boolean requireIdentity) {
         Instant receivedAt = Instant.now();
         String accessToken = text(token, "access_token");
-        String refreshToken = token.path("refresh_token").asText("");
+        String refreshToken = token.path(REFRESH_TOKEN).asText("");
         String idToken = token.path("id_token").asText("");
         long expiresIn = Math.max(1, token.path("expires_in").asLong(3600));
         String subject = "";
@@ -622,15 +638,17 @@ class CodexSessionService {
             Jwt jwt = jwtDecoder().decode(idToken);
             if (expectedNonce != null && !Objects.equals(expectedNonce, jwt.getClaimAsString("nonce")))
                 throw new IllegalArgumentException("The ID token nonce did not match the login attempt");
-            if (!jwt.getAudience().contains(clientId))
+            List<String> audience = jwt.getAudience();
+            if (audience == null || !audience.contains(clientId))
                 throw new IllegalArgumentException("The ID token audience did not match this client");
+
             JsonNode claims = json.valueToTree(jwt.getClaims());
             TokenIdentity identity = tokenIdentity(mode, claims, requireIdentity);
             subject = identity.subject();
             accountId = identity.accountId();
 
-            accountLabel = firstNonBlank(jwt.getClaimAsString("email"),
-                    claims.path("https://api.openai.com/profile").path("email").asText(""),
+            accountLabel = firstNonBlank(jwt.getClaimAsString(EMAIL_CLAIM),
+                    claims.path("https://api.openai.com/profile").path(EMAIL_CLAIM).asText(""),
                     jwt.getClaimAsString("name"), subject, accountId);
         }
         return new OAuthSession(mode, accessToken, refreshToken, idToken, clientId,
@@ -656,21 +674,21 @@ class CodexSessionService {
 
     private JsonNode postForm(String url, Map<String, String> values) {
         HttpRequest request = HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(30))
-                .header("Content-Type", "application/x-www-form-urlencoded")
+                .header(CONTENT_TYPE_HEADER, "application/x-www-form-urlencoded")
                 .POST(HttpRequest.BodyPublishers.ofString(form(values))).build();
         return parse(send(request).body());
     }
 
     private JsonNode postJson(String url, Map<String, ?> values) {
         HttpRequest request = HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(30))
-                .header("Content-Type", "application/json")
+                .header(CONTENT_TYPE_HEADER, JSON_MEDIA_TYPE)
                 .POST(HttpRequest.BodyPublishers.ofByteArray(json.writeValueAsBytes(values))).build();
         return parse(send(request).body());
     }
 
     private JsonNode postJsonAllowPending(String url, Map<String, ?> values) {
         HttpRequest request = HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(30))
-                .header("Content-Type", "application/json")
+                .header(CONTENT_TYPE_HEADER, JSON_MEDIA_TYPE)
                 .POST(HttpRequest.BodyPublishers.ofByteArray(json.writeValueAsBytes(values))).build();
         HttpResponse<String> response = await(http.sendAsync(request));
         if (response.statusCode() == 403 || response.statusCode() == 404)
@@ -763,7 +781,7 @@ class CodexSessionService {
                 OAuthSession session = snapshot.session();
                 identity = firstNonBlank(session.subject(), session.accountId(), session.clientId());
                 HttpRequest.Builder request = authenticatedRequest(PRIVATE_CODEX_USAGE_URI, session).timeout(Duration.ofSeconds(30))
-                        .header("Accept", "application/json").GET();
+                        .header("Accept", JSON_MEDIA_TYPE).GET();
                 addPrivateCodexHeaders(request, session, metadata.clientVersion());
                 JsonNode response = parse(providerCall.sendCancelable(request.build()).body());
                 if (response.isObject())
@@ -814,7 +832,7 @@ class CodexSessionService {
         String uri = privateCodex ? PRIVATE_CODEX_MODELS_URI : PUBLIC_MODELS_URI;
         HttpRequest.Builder request = authenticatedRequest(uri, session).timeout(Duration.ofSeconds(30)).GET();
         if (privateCodex)
-            addPrivateCodexHeaders(request, session, "0.0.0");
+            addPrivateCodexHeaders(request, session, DEFAULT_CLIENT_VERSION);
 
         Map<String, CodexModelProfile> refreshed = parseModelCatalog(parse(send(request.build()).body()), privateCodex);
         if (refreshed.isEmpty())
@@ -854,7 +872,7 @@ class CodexSessionService {
             String slug = firstNonBlank(model.path("slug").asText(""), model.path("id").asText(""));
             if (!slug.isBlank())
                 profiles.put(slug, new CodexModelProfile(privateCodex && model.path("use_responses_lite").asBoolean(false),
-                        !privateCodex, privateCodex ? clientVersion(model.path("minimal_client_version").asText("")) : "0.0.0",
+                        !privateCodex, privateCodex ? clientVersion(model.path("minimal_client_version").asText("")) : DEFAULT_CLIENT_VERSION,
                         privateCodex, effectiveContextWindow(model)));
         });
         return Map.copyOf(profiles);
@@ -920,9 +938,9 @@ class CodexSessionService {
     }
 
     private static boolean addCodexRateLimit(ChatUsageUpdate.Builder target, HttpHeaders headers, String kind, String fallbackLabel) {
-        Double usedPercent = headerDouble(headers, "x-codex-" + kind + "-used-percent");
-        Long windowMinutes = headerLong(headers, "x-codex-" + kind + "-window-minutes");
-        Long resetsAt = headerLong(headers, "x-codex-" + kind + "-reset-at");
+        Double usedPercent = headerDouble(headers, CODEX_HEADER_PREFIX + kind + "-used-percent");
+        Long windowMinutes = headerLong(headers, CODEX_HEADER_PREFIX + kind + "-window-minutes");
+        Long resetsAt = headerLong(headers, CODEX_HEADER_PREFIX + kind + "-reset-at");
         if (usedPercent == null && windowMinutes == null && resetsAt == null)
             return false;
 
@@ -1091,7 +1109,7 @@ class CodexSessionService {
     }
 
     private static String clientVersion(String value) {
-        return value != null && value.matches("[0-9]+\\.[0-9]+\\.[0-9]+") ? value : "0.0.0";
+        return value != null && value.matches("[0-9]+\\.[0-9]+\\.[0-9]+") ? value : DEFAULT_CLIENT_VERSION;
     }
 
     private static String deterministicId(String value) {
@@ -1268,7 +1286,7 @@ class CodexSessionService {
             throw new IllegalStateException("The Codex response stream ended without a completed response");
 
         ObjectNode completed = (ObjectNode) accumulator.completed.deepCopy();
-        if (!completed.path("output").isArray() || completed.path("output").isEmpty()) {
+        if (!completed.path(OUTPUT_FIELD).isArray() || completed.path(OUTPUT_FIELD).isEmpty()) {
             ArrayNode output = json.createArrayNode();
             accumulator.outputItems.forEach(item -> output.add(item.deepCopy()));
             if (output.isEmpty())
@@ -1280,7 +1298,7 @@ class CodexSessionService {
                 message.put("status", "completed");
                 message.putArray("content").addObject().put("type", "output_text").put("text", accumulator.outputText.toString());
             }
-            completed.set("output", output);
+            completed.set(OUTPUT_FIELD, output);
         }
 
         return completed;
@@ -1369,7 +1387,7 @@ class CodexSessionService {
     private static void validateLoopbackRedirectUri(String value) {
         URI uri;
         try {
-            uri = URI.create(required(value, "redirect_uri"));
+            uri = URI.create(required(value, REDIRECT_URI_PARAMETER));
         } catch (IllegalArgumentException exception) {
             throw new IllegalArgumentException("The browser redirect URI must be an absolute 127.0.0.1 HTTP URL", exception);
         }
@@ -1388,7 +1406,7 @@ class CodexSessionService {
         Map<String, DynamicClient> clients = loaded == null || loaded.dynamicClients() == null
                 ? Map.of() : new HashMap<>(loaded.dynamicClients());
         String hostId = loaded == null || loaded.hostId() == null || loaded.hostId().isBlank()
-                ? "urn:uuid:" + java.util.UUID.randomUUID() : loaded.hostId();
+                ? HOST_ID_URN_PREFIX + java.util.UUID.randomUUID() : loaded.hostId();
         OAuthSession session = normalizeSessionClaims(loaded == null ? null : loaded.session());
         if (session != null) {
             clients.replaceAll((redirectUri, client) -> client.clientId().equals(session.clientId())
@@ -1410,8 +1428,8 @@ class CodexSessionService {
             if (subject.isBlank() && accountId.isBlank())
                 return session;
 
-            String accountLabel = firstNonBlank(claims.path("email").asText(""),
-                    claims.path("https://api.openai.com/profile").path("email").asText(""),
+            String accountLabel = firstNonBlank(claims.path(EMAIL_CLAIM).asText(""),
+                    claims.path("https://api.openai.com/profile").path(EMAIL_CLAIM).asText(""),
                     claims.path("name").asText(""), subject, accountId);
             return new OAuthSession(session.authMode(), session.accessToken(), session.refreshToken(), session.idToken(),
                     session.clientId(), subject, accountId, accountLabel, session.expiresAt(), session.refreshExpiresAt(), session.lastRefreshedAt());
@@ -1445,7 +1463,7 @@ class CodexSessionService {
 
     private static String randomUrlSafe(int bytes) {
         byte[] value = new byte[bytes];
-        new SecureRandom().nextBytes(value);
+        SECURE_RANDOM.nextBytes(value);
         return Base64.getUrlEncoder().withoutPadding().encodeToString(value);
     }
 

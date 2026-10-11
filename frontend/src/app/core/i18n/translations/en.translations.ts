@@ -1779,6 +1779,8 @@ export const EN_TRANSLATIONS = {
   'draft.storage': 'Inline values and files are not saved across browser restarts.',
   'ai.chat.title': 'AI Chat',
   'ai.chat.new': 'New conversation',
+  'ai.chat.conversation': 'Conversation',
+  'ai.chat.message': 'Message',
   'ai.chat.mode': 'Mode',
   'ai.chat.mode.readOnly': 'Read only',
   'ai.chat.mode.plan': 'Plan',

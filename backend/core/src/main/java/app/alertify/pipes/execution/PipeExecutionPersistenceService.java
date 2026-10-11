@@ -37,13 +37,13 @@ public class PipeExecutionPersistenceService {
     @Transactional(readOnly = true)
     public Pipe definition(long pipeId) {
         return pipeRepository.findDetailedById(pipeId)
-                .orElseThrow(() -> new ResourceNotFoundException("Pipe " + pipeId + " was not found"));
+                .orElseThrow(() -> new ResourceNotFoundException(notFoundMessage("Pipe", pipeId)));
     }
 
     @Transactional
     public void start(UUID executionId, Pipe pipe, PipeExecutionTrigger trigger, UUID rootExecutionId, UUID parentProcedureExecutionId, int depth, String triggeredBy) {
         Pipe managed = pipeRepository.findDetailedById(pipe.getId())
-                .orElseThrow(() -> new ResourceNotFoundException("Pipe " + pipe.getId() + " was not found"));
+                .orElseThrow(() -> new ResourceNotFoundException(notFoundMessage("Pipe", pipe.getId())));
         PipeExecution execution = new PipeExecution(executionId, managed, trigger, rootExecutionId, parentProcedureExecutionId, depth, triggeredBy);
         execution.recordAiProvenance(AiInvocationContextHolder.currentProvenance());
         managed.getSteps().forEach(step -> execution.addStep(new PipeStepResult(execution, step)));
@@ -85,13 +85,15 @@ public class PipeExecutionPersistenceService {
         }
     }
 
+    private static String notFoundMessage(String resource, Object id) { return resource + " " + id + " was not found"; }
+
     private PipeExecution execution(UUID executionId) {
         return executionRepository.findByExecutionId(executionId)
-                .orElseThrow(() -> new IllegalStateException("Pipe execution " + executionId + " was not found"));
+                .orElseThrow(() -> new IllegalStateException(notFoundMessage("Pipe execution", executionId)));
     }
 
     private PipeStepResult step(UUID executionId, String stepKey) {
         return execution(executionId).getSteps().stream().filter(value -> value.getStepKey().equals(stepKey)).findFirst()
-                .orElseThrow(() -> new IllegalStateException("Pipe step " + stepKey + " was not found"));
+                .orElseThrow(() -> new IllegalStateException(notFoundMessage("Pipe step", stepKey)));
     }
 }

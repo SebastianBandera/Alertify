@@ -41,7 +41,7 @@ public final class CopyFileToNfsProcedureTemplate implements ProcedureEvaluator 
     private static final JsonMapper JSON = JsonMapper.builder().build();
     private static final Path HELPER_SOCKET = Path.of("/run/alertify-nfs-helper/helper.sock");
     private static final Path MOUNT_ROOT = Path.of("/run/alertify-nfs-mounts");
-    private static final Pattern SERVER = Pattern.compile("^[A-Za-z0-9._\\-:\\[\\]]{1,255}$");
+    private static final Pattern SERVER_PATTERN = Pattern.compile("^[A-Za-z0-9._\\-:\\[\\]]{1,255}$");
 
     @ProcedureParameter(
         labelKey = "procedures.template.copyFileToNfs.input",
@@ -228,7 +228,7 @@ public final class CopyFileToNfsProcedureTemplate implements ProcedureEvaluator 
     }
 
     private static void validateServer(String value) {
-        if (value == null || !SERVER.matcher(value.trim()).matches())
+        if (value == null || !SERVER_PATTERN.matcher(value.trim()).matches())
             throw new IllegalArgumentException("server contains unsupported characters");
     }
 

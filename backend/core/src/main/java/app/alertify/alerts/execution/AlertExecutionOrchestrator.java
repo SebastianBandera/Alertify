@@ -56,6 +56,8 @@ import app.alertify.worker.grpc.TemplateKind;
  */
 @Service
 public class AlertExecutionOrchestrator implements AutoCloseable {
+    private static final String EXECUTION_TRIGGERED_EVENT = "ALERT_EXECUTION_TRIGGERED";
+
 
     private final AlertExecutionPreparationService preparationService;
     private final AlertExecutionPersistenceService persistenceService;
@@ -120,7 +122,7 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
             eventLogger.failure("ALERT_EXECUTION_SKIPPED", data(alertId, alertName, source, triggeredBy, "reason", "ALREADY_RUNNING"));
             return false;
         }
-        eventLogger.success("ALERT_EXECUTION_TRIGGERED", data(alertId, alertName, source, triggeredBy));
+        eventLogger.success(EXECUTION_TRIGGERED_EVENT, data(alertId, alertName, source, triggeredBy));
         UUID executionId = UUID.randomUUID();
         executor.submit(AiInvocationContextHolder.wrap(() -> execute(alertId, source, triggeredBy, executionId, null)));
         return true;
@@ -143,7 +145,7 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
         }
 
         UUID executionId = UUID.randomUUID();
-        eventLogger.success("ALERT_EXECUTION_TRIGGERED", data(alertId, alertName, AlertExecutionTrigger.SMART, null));
+        eventLogger.success(EXECUTION_TRIGGERED_EVENT, data(alertId, alertName, AlertExecutionTrigger.SMART, null));
         try {
             executor.submit(AiInvocationContextHolder.wrap(() -> execute(alertId, AlertExecutionTrigger.SMART, null,
                     executionId, capacity.reservation())));
@@ -191,7 +193,7 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
 
         runCallback(acquiredCallback);
         UUID executionId = UUID.randomUUID();
-        eventLogger.success("ALERT_EXECUTION_TRIGGERED", data(alertId, alertName, source, triggeredBy));
+        eventLogger.success(EXECUTION_TRIGGERED_EVENT, data(alertId, alertName, source, triggeredBy));
         AlertExecutionStatus status = execute(alertId, source, triggeredBy, executionId, null, parentPipeExecutionId, parentStepKey, parentHookInvocationId, parentHookName, pipeDeadline, pipeInputs);
         return new AlertHookExecution(status == null ? null : executionId, status, status == null, false, false);
     }
