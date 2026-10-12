@@ -17,6 +17,7 @@ import { AiModuleApiService } from '../../core/api/ai-module-api.service';
 import { AuthService } from '../../core/auth/auth.service';
 import { LocalizationService } from '../../core/i18n/localization.service';
 import { AdminEventChannelService } from '../../core/realtime/admin-event-channel.service';
+import { AiChatMessageComponent } from './ai-chat-message.component';
 
 type AiChatTimelineItem =
   | Readonly<{ kind: 'message'; key: string; message: AiChatMessage }>
@@ -48,7 +49,7 @@ export function buildAiChatTimeline(messages: readonly AiChatMessage[], turns: r
 
 @Component({
   selector: 'app-ai-chat',
-  imports: [FormsModule],
+  imports: [FormsModule, AiChatMessageComponent],
   templateUrl: './ai-chat.component.html',
   styleUrl: './ai-chat.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -313,21 +314,6 @@ export class AiChatComponent implements OnInit {
 
   protected updateMessage(event: Event): void {
     this.message.set((event.target as HTMLTextAreaElement).value);
-  }
-
-  protected messageParts(content: string): readonly Readonly<{ text: string; bold: boolean }>[] {
-    const parts: Array<Readonly<{ text: string; bold: boolean }>> = [];
-    const boldPattern = /\*\*(.+?)\*\*/gs;
-    let start = 0;
-    for (const match of content.matchAll(boldPattern)) {
-      const index = match.index;
-      if (index > start) parts.push({ text: content.slice(start, index), bold: false });
-
-      parts.push({ text: match[1], bold: true });
-      start = index + match[0].length;
-    }
-    if (start < content.length) parts.push({ text: content.slice(start), bold: false });
-    return parts.length > 0 ? parts : [{ text: content, bold: false }];
   }
 
   protected messageAuthor(role: string): string {

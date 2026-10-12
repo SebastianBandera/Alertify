@@ -71,7 +71,7 @@ public class ConfigurationAiTools {
         this.json = json;
     }
 
-    @AlertifyTool(name = "alertify_configuration_search", description = "Search application configurations; binary entries expose metadata only. String filters are exact by default. For a case-insensitive, accent-insensitive partial name match like the frontend search, use a name filter with value ~*Google*, where ~ enables flexible text matching and * is the wildcard. Page size is capped at 50; use subsequent page numbers when totalPages indicates more results.", readOnly = true)
+    @AlertifyTool(name = "alertify_configuration_search", description = "Search application configurations; binary entries expose metadata only. String filters are exact by default. For a case-insensitive, accent-insensitive partial name match like the frontend search, use a name filter with value ~*Google*, where ~ enables flexible text matching and * is the wildcard. Page size is capped at 50; use subsequent page numbers when totalPages indicates more results. For resources without tags, inspect each returned tags array and include only empty arrays across every page; omitting a tag filter does not mean without tags.", readOnly = true)
     public AiPage<ConfigurationResponse> search(List<AiFilter> filters, @Valid AiPageRequest page) {
         return tools.execute("alertify_configuration_search", () -> {
             var result = configurations.search(support.filters(filters), page.pageable());

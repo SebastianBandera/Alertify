@@ -57,6 +57,69 @@ describe('AiChatComponent', () => {
     fixture.destroy();
   });
 
+  it('renders a safe table and starts the response without template whitespace', () => {
+    const fixture = TestBed.createComponent(AiChatComponent);
+    fixture.componentRef.setInput('popout', true);
+    const harness = fixture.componentInstance as unknown as ComponentHarness;
+    harness.selected.set({
+      ...conversation(1, 'COMPLETED'),
+      messages: [{ id: 1, turnId: null, role: 'ASSISTANT', content: '  Sí, **máximo**.\n\n| Nodo | Uso CPU |\n|---|---:|\n| `worker-codex` | <img src=x> |', createdAt: '2026-10-12T10:00:00Z' }],
+    });
+
+    fixture.detectChanges();
+
+    const article = fixture.nativeElement.querySelector('.ai-chat__message') as HTMLElement;
+    expect(article.querySelector('p')?.textContent).toBe('Sí, máximo.');
+    expect(article.querySelector('strong')?.textContent).toBe('máximo');
+    expect(article.querySelectorAll('th')).toHaveLength(2);
+    expect(article.querySelector('td code')?.textContent).toBe('worker-codex');
+    expect(article.querySelectorAll('td')[1].classList.contains('ai-chat__align-right')).toBe(true);
+    expect(article.querySelectorAll('td')[1].textContent).toBe('<img src=x>');
+    expect(article.querySelector('img')).toBeNull();
+    fixture.destroy();
+  });
+
+  it('renders nested formatting and quotes through Angular sanitization', () => {
+    const fixture = TestBed.createComponent(AiChatComponent);
+    fixture.componentRef.setInput('popout', true);
+    const harness = fixture.componentInstance as unknown as ComponentHarness;
+    harness.selected.set({
+      ...conversation(1, 'COMPLETED'),
+      messages: [{ id: 1, turnId: null, role: 'ASSISTANT', content: '- *Cursiva*\n- ***Ambas***\n- ~~Tachado~~\n\n> Cita\n\n[OpenAI](https://openai.com/)\n\n<script>alert(1)</script>', createdAt: '2026-10-12T10:00:00Z' }],
+    });
+
+    fixture.detectChanges();
+
+    const article = fixture.nativeElement.querySelector('.ai-chat__message') as HTMLElement;
+    expect(article.querySelector('li em')?.textContent).toBe('Cursiva');
+    expect(article.querySelector('em strong, strong em')?.textContent).toBe('Ambas');
+    expect(article.querySelector('s')?.textContent).toBe('Tachado');
+    expect(article.querySelector('blockquote')?.textContent?.trim()).toBe('Cita');
+    expect(article.querySelector('script')).toBeNull();
+    expect(article.querySelector('a')).toBeNull();
+    expect(article.textContent).toContain('https://openai.com/');
+    fixture.destroy();
+  });
+
+  it('preserves the allowed underline, superscript and subscript tags through Angular sanitization', () => {
+    const fixture = TestBed.createComponent(AiChatComponent);
+    fixture.componentRef.setInput('popout', true);
+    const harness = fixture.componentInstance as unknown as ComponentHarness;
+    harness.selected.set({
+      ...conversation(1, 'COMPLETED'),
+      messages: [{ id: 1, turnId: null, role: 'ASSISTANT', content: '<u>subrayado</u> x<sup>2</sup> H<sub>2</sub>O\n\n<u><img src=x onerror=alert(1)></u>', createdAt: '2026-10-12T10:00:00Z' }],
+    });
+
+    fixture.detectChanges();
+
+    const article = fixture.nativeElement.querySelector('.ai-chat__message') as HTMLElement;
+    expect(article.querySelector('u')?.textContent).toBe('subrayado');
+    expect(article.querySelector('sup')?.textContent).toBe('2');
+    expect(article.querySelector('sub')?.textContent).toBe('2');
+    expect(article.querySelector('img, a, script')).toBeNull();
+    fixture.destroy();
+  });
+
   it('discards an older detail response that arrives after the latest selection', async () => {
     const first = deferred<AiConversationDetail>();
     const second = deferred<AiConversationDetail>();

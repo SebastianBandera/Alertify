@@ -4,10 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
 import app.alertify.alerts.template.annotation.AlertParameterSource;
 import app.alertify.hooks.model.HookMode;
@@ -18,6 +21,23 @@ import app.alertify.pipes.model.PipeStepPhase;
 import app.alertify.pipes.model.PipeStepType;
 
 class AiAdministrativeRequestTest {
+
+    @Test
+    void mixedPipeBindingsKeepTheArtifactSourceWhenAnotherExpressionIsEdited() {
+        var artifact = new AiPipeBinding("artifact", "source", "backup", null, null);
+        var pointer = new AiPipeBinding("input", "source", null, "/status", "{{pipe.VALUE}}");
+        var copy = new AiPipeStep("copy", PipeStepType.PROCEDURE, null, 11L, null, Set.of(), List.of(artifact));
+        var consumer = new AiPipeStep("consumer", PipeStepType.PROCEDURE, null, 12L, null, Set.of(), List.of(pointer));
+        var request = new AiPipeUpdateRequest(3L, "pipe", null, false, false, null, List.of(copy, consumer), Set.of()).toRequest();
+        var first = request.steps().getFirst().bindings().getFirst();
+        var second = request.steps().getLast().bindings().getFirst();
+        assertThat(first.sourceOutputKey()).isEqualTo("backup");
+        assertThat(first.sourceResultPointer()).isNull();
+        assertThat(first.valueExpression()).isNull();
+        assertThat(second.sourceOutputKey()).isNull();
+        assertThat(second.sourceResultPointer()).isEqualTo("/status");
+        assertThat(second.valueExpression()).isEqualTo("{{pipe.VALUE}}");
+    }
 
     @Test
     void convertsProcedureParametersAndIgnoresUnselectedPlaceholders() {
@@ -42,14 +62,24 @@ class AiAdministrativeRequestTest {
         assertThat(pipeRequest.isSourceSelectionValid()).isTrue();
     }
 
-    @Test
-    void requiresTheSelectedProcedureParameterReference() {
-        var value = new AiProcedureParameterValue("secret", AiProcedureParameterSource.SECRET,
-                "", 0L, 0L, 0L, 0L);
+    @ParameterizedTest
+    @EnumSource(value = AiProcedureParameterSource.class, names = "TEXT", mode = EnumSource.Mode.EXCLUDE)
+    void requiresEverySelectedProcedureParameterReference(AiProcedureParameterSource source) {
+        for (Long invalidId : Arrays.asList(null, 0L, -1L)) {
+            var value = new AiProcedureParameterValue("value", source, null, invalidId, invalidId, invalidId, invalidId);
+            assertThatThrownBy(value::toRequest)
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("must be a positive ID for the selected source");
+        }
+    }
 
-        assertThatThrownBy(value::toRequest)
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("secretId must be a positive ID for the selected source");
+    @Test
+    void permitsNullInactiveProcedureFieldsButStillRequiresSelectedText() {
+        var value = new AiProcedureParameterValue("value", AiProcedureParameterSource.TEXT, "", null, null, null, null);
+        assertThat(value.toRequest().textValue()).isEmpty();
+        assertThat(value.toRequest().isSourceSelectionValid()).isTrue();
+        var missingText = new AiProcedureParameterValue("value", AiProcedureParameterSource.TEXT, null, null, null, null, null);
+        assertThatThrownBy(missingText::toRequest).hasMessage("textValue must be supplied when source is TEXT");
     }
 
     @Test

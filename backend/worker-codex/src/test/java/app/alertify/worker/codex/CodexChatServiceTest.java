@@ -4,14 +4,64 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
 import java.util.Map;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 
 import tools.jackson.databind.json.JsonMapper;
 
 class CodexChatServiceTest {
 
     private final JsonMapper json = JsonMapper.builder().build();
+
+    @Test
+    @EnabledIfEnvironmentVariable(named = "ALERTIFY_AI_SCHEMA_EVIDENCE_DIR", matches = ".+")
+    @SuppressWarnings("unchecked")
+    void actualAdministrativeSchemasRetainNullPreservationInStrictMode() throws Exception {
+        Path directory = Path.of(System.getenv("ALERTIFY_AI_SCHEMA_EVIDENCE_DIR"));
+        for (String file : List.of("alert-update-schema.json", "alert-create-schema.json", "procedure-update-schema.json", "procedure-create-schema.json", "pipe-update-schema.json")) {
+            Map<String, Object> schema = json.readValue(Files.readString(directory.resolve(file)), Map.class);
+            CodexChatService.strictSchema(schema);
+            var strict = json.readTree(json.writeValueAsString(schema));
+            List<String> nullable = file.equals("alert-update-schema.json")
+                    ? List.of("persistentIssues", "smartExecutionEnabled", "smartExecutionIntervalHours", "smartExecutionPolicy")
+                    : file.startsWith("pipe") ? List.of("sourceOutputKey", "sourceResultPointer", "valueExpression") : List.of();
+            for (String property : nullable) {
+                var value = schemaProperty(strict, property);
+                assertThat(value.path("anyOf").isArray()).as("%s in %s", property, file).isTrue();
+                assertThat(value.path("anyOf").get(1).path("type").stringValue()).isEqualTo("null");
+            }
+            if (!file.startsWith("pipe")) {
+                for (String property : List.of("textValue", "configurationId", "secretId", "procedureId")) {
+                    var value = schemaProperty(strict, property);
+                    assertThat(value.path("anyOf").isArray()).as("%s in %s", property, file).isTrue();
+                    assertThat(value.path("anyOf").get(1).path("type").stringValue()).isEqualTo("null");
+                }
+                if (file.startsWith("procedure"))
+                    assertThat(schemaProperty(strict, "pipeId").path("anyOf").get(1).path("type").stringValue()).isEqualTo("null");
+
+                assertThat(schemaProperty(strict, "parameterKey").has("anyOf")).isFalse();
+                assertThat(schemaProperty(strict, "source").has("anyOf")).isFalse();
+            }
+            Files.writeString(directory.resolve("strict-" + file), json.writeValueAsString(schema));
+        }
+    }
+
+    private static tools.jackson.databind.JsonNode schemaProperty(tools.jackson.databind.JsonNode schema, String name) {
+        var properties = schema.path("properties");
+        if (properties.has(name))
+            return properties.get(name);
+
+        for (var child : schema) {
+            var found = schemaProperty(child, name);
+            if (!found.isMissingNode())
+                return found;
+
+        }
+        return tools.jackson.databind.node.MissingNode.getInstance();
+    }
 
     @SuppressWarnings("unchecked")
     @Test

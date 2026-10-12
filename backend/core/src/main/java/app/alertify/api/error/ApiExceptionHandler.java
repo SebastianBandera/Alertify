@@ -5,6 +5,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.ConstraintViolationException;
 
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -70,6 +71,11 @@ public class ApiExceptionHandler {
     @ExceptionHandler(InvalidFilterException.class)
     ResponseEntity<ApiError> handleInvalidFilter(InvalidFilterException exception, HttpServletRequest request) {
         return response(HttpStatus.BAD_REQUEST, "INVALID_FILTER", exception.getMessage(), Map.of(), exception, request);
+    }
+
+    @ExceptionHandler(ConstraintViolationException.class)
+    ResponseEntity<ApiError> handleInvalidParameters(ConstraintViolationException exception, HttpServletRequest request) {
+        return response(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "Request parameters are invalid", Map.of(), exception, request);
     }
 
     @ExceptionHandler(InvalidConfigurationImportException.class)

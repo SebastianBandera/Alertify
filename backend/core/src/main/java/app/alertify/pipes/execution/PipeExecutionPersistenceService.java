@@ -3,6 +3,7 @@ package app.alertify.pipes.execution;
 import java.util.Map;
 import java.util.UUID;
 
+import org.hibernate.Hibernate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -36,8 +37,18 @@ public class PipeExecutionPersistenceService {
 
     @Transactional(readOnly = true)
     public Pipe definition(long pipeId) {
-        return pipeRepository.findDetailedById(pipeId)
+        Pipe pipe = pipeRepository.findDetailedById(pipeId)
                 .orElseThrow(() -> new ResourceNotFoundException(notFoundMessage("Pipe", pipeId)));
+        // The orchestrator uses this definition after the transaction closes.
+        // Load collections separately to avoid multiplying the ordered steps.
+        pipe.getTags().forEach(Hibernate::initialize);
+        pipe.getSteps().forEach(step -> step.getBindings().forEach(binding -> {
+            Hibernate.initialize(binding.getSourceStep());
+            Hibernate.initialize(binding.getSourceOutput());
+            Hibernate.initialize(binding.getTargetProcedureParameter());
+            Hibernate.initialize(binding.getTargetAlertParameter());
+        }));
+        return pipe;
     }
 
     @Transactional

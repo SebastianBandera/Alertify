@@ -59,6 +59,9 @@ import app.alertify.procedures.model.ProcedureParameterValue;
 import app.alertify.procedures.model.ProcedureTemplateDefinition;
 import app.alertify.procedures.model.ProcedureTemplateParameterDefinition;
 import app.alertify.pipes.model.Pipe;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
+import jakarta.persistence.OptimisticLockException;
 
 /**
  * CRUD and manual runs for user-configured procedures. Updates and deletions
@@ -92,6 +95,7 @@ public class ProcedureManagementService {
     private final ApplicationEventLogger eventLogger;
     private final ProcedureExecutionOrchestrator orchestrator;
     private final ProcedureScheduleService scheduleService;
+    private final EntityManager entityManager;
 
     public ProcedureManagementService(ProcedureRepository procedureRepository,
             ProcedureTemplateDefinitionRepository templateRepository,
@@ -103,7 +107,7 @@ public class ProcedureManagementService {
             ApplicationSecretRepository secretRepository, TagRepository tagRepository,
             PipeRepository pipeRepository,
             ApplicationEventLogger eventLogger, ProcedureExecutionOrchestrator orchestrator,
-            ProcedureScheduleService scheduleService) {
+            ProcedureScheduleService scheduleService, EntityManager entityManager) {
         this.procedureRepository = procedureRepository;
         this.templateRepository = templateRepository;
         this.templateParameterRepository = templateParameterRepository;
@@ -117,6 +121,7 @@ public class ProcedureManagementService {
         this.eventLogger = eventLogger;
         this.orchestrator = orchestrator;
         this.scheduleService = scheduleService;
+        this.entityManager = entityManager;
     }
 
     @Transactional(readOnly = true)
@@ -177,6 +182,15 @@ public class ProcedureManagementService {
         List<ProcedureParameterValue> values = synchronizeParameters(procedure, request.parameters(),
                 parameterValueRepository.findAllByOwnerIdOrdered(id));
         procedureRepository.flush();
+        // Parameter-only edits do not dirty the owner. Advance its version now so
+        // both the response and pending full-definition updates see the new version.
+        if (procedure.getVersion() == request.version()) {
+            try {
+                entityManager.lock(procedure, LockModeType.PESSIMISTIC_FORCE_INCREMENT);
+            } catch (OptimisticLockException exception) {
+                throw new ConflictException("Procedure was modified by another request; reload it and try again");
+            }
+        }
         eventLogger.successAfterCommit("PROCEDURE_UPDATED", Map.of(PROCEDURE_ID, id, "name", procedure.getName(), "version", procedure.getVersion(), ALLOW_CONCURRENT_EXECUTIONS, procedure.isConcurrentExecutionAllowed()));
         scheduleService.rescheduleAfterCommit(procedure.getId());
         return ProcedureMapper.toProcedure(procedure, values);

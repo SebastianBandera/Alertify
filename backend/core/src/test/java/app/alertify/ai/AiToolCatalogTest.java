@@ -10,6 +10,8 @@ import static org.mockito.Mockito.when;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
@@ -94,6 +96,15 @@ class AiToolCatalogTest {
         assertFalse(descriptors.get("alertify_alert_create").readOnly());
         assertTrue(descriptors.get("alertify_alert_update").description().contains("null or 0"));
         JsonNode alertUpdateSchema = JSON.readTree(descriptors.get("alertify_alert_update").inputSchema());
+        JsonNode alertRequest = schemaProperty(alertUpdateSchema, "request");
+        List<String> alertRequired = StreamSupport.stream(alertRequest.path("required").spliterator(), false).map(JsonNode::stringValue).toList();
+        assertFalse(alertRequired.contains("persistentIssues"));
+        assertFalse(alertRequired.contains("smartExecutionEnabled"));
+        assertFalse(alertRequired.contains("smartExecutionIntervalHours"));
+        assertFalse(alertRequired.contains("smartExecutionPolicy"));
+        assertTrue(alertRequired.contains("enabled"));
+        assertEquals("boolean", schemaProperty(alertRequest, "persistentIssues").path("type").stringValue());
+        assertTrue(schemaProperty(alertRequest, "persistentIssues").path("description").stringValue().contains("null preserves"));
         assertEquals(List.of("TEXT", "CONFIGURATION", "SECRET", "PROCEDURE"),
                 StreamSupport.stream(schemaProperty(alertUpdateSchema, "source").path("enum").spliterator(), false)
                         .map(JsonNode::stringValue).toList());
@@ -103,10 +114,30 @@ class AiToolCatalogTest {
                 StreamSupport.stream(schemaProperty(procedureUpdateSchema, "source").path("enum").spliterator(), false)
                         .map(JsonNode::stringValue).toList());
         assertTrue(schemaProperty(procedureUpdateSchema, "pipeId").path("description").stringValue().contains("null or 0"));
+        for (String toolName : List.of("alertify_alert_create", "alertify_alert_update", "alertify_procedure_create", "alertify_procedure_update")) {
+            JsonNode schema = JSON.readTree(descriptors.get(toolName).inputSchema());
+            JsonNode parameters = schemaProperty(schema, "parameters");
+            JsonNode items = parameters.path("items");
+            List<String> required = StreamSupport.stream(items.path("required").spliterator(), false).map(JsonNode::stringValue).toList();
+            assertEquals(Set.of("parameterKey", "source"), Set.copyOf(required), toolName);
+            assertTrue(items.path("properties").path("parameterKey").path("description").stringValue().contains("only once"), toolName);
+            assertTrue(items.path("properties").path("configurationId").path("description").stringValue().contains("0 is invalid"), toolName);
+            assertTrue(descriptors.get(toolName).description().contains("parameterKey"), toolName);
+            if (toolName.endsWith("update"))
+                assertTrue(parameters.path("description").stringValue().contains("Complete replacement list, not a patch"), toolName);
+
+        }
         JsonNode hookUpdateSchema = JSON.readTree(descriptors.get("alertify_hook_update").inputSchema());
         assertEquals("string", schemaProperty(hookUpdateSchema, "rateLimitWindow").path("type").stringValue());
         assertTrue(schemaProperty(hookUpdateSchema, "tokenSecretId").path("description").stringValue().contains("null or 0"));
         JsonNode pipeUpdateSchema = JSON.readTree(descriptors.get("alertify_pipe_update").inputSchema());
+        JsonNode bindingItems = schemaProperty(pipeUpdateSchema, "bindings").path("items");
+        List<String> bindingRequired = StreamSupport.stream(bindingItems.path("required").spliterator(), false).map(JsonNode::stringValue).toList();
+        assertTrue(bindingRequired.contains("targetParameterKey"));
+        assertTrue(bindingRequired.contains("sourceStepKey"));
+        assertFalse(bindingRequired.contains("sourceOutputKey"));
+        assertFalse(bindingRequired.contains("sourceResultPointer"));
+        assertFalse(bindingRequired.contains("valueExpression"));
         assertEquals("string", schemaProperty(pipeUpdateSchema, "finallyTimeout").path("type").stringValue());
         assertEquals("string", schemaProperty(pipeUpdateSchema, "timeout").path("type").stringValue());
         assertTrue(schemaProperty(pipeUpdateSchema, "sourceOutputKey").path("description").stringValue().contains("never both"));
@@ -136,6 +167,15 @@ class AiToolCatalogTest {
                 .map(AiToolDescriptor::name).sorted().toList();
         assertEquals(List.of(), schemasWithUnboundedObjects,
                 "strict tools cannot contain object schemas without declared properties");
+        String schemaEvidence = System.getenv("ALERTIFY_AI_SCHEMA_EVIDENCE_DIR");
+        if (schemaEvidence != null && !schemaEvidence.isBlank()) {
+            Path directory = Files.createDirectories(Path.of(schemaEvidence));
+            Files.writeString(directory.resolve("alert-update-schema.json"), descriptors.get("alertify_alert_update").inputSchema());
+            Files.writeString(directory.resolve("alert-create-schema.json"), descriptors.get("alertify_alert_create").inputSchema());
+            Files.writeString(directory.resolve("procedure-update-schema.json"), descriptors.get("alertify_procedure_update").inputSchema());
+            Files.writeString(directory.resolve("procedure-create-schema.json"), descriptors.get("alertify_procedure_create").inputSchema());
+            Files.writeString(directory.resolve("pipe-update-schema.json"), descriptors.get("alertify_pipe_update").inputSchema());
+        }
     }
 
     @Test

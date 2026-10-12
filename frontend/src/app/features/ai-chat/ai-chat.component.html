@@ -100,11 +100,7 @@
         @if (item.kind === 'message') {
           <article [class.ai-chat__message--user]="item.message.role === 'USER'" class="ai-chat__message">
             <small>{{ messageAuthor(item.message.role) }}</small>
-            <p>
-              @for (part of messageParts(item.message.content); track $index) {
-                @if (part.bold) { <strong>{{ part.text }}</strong> } @else { {{ part.text }} }
-              }
-            </p>
+            <app-ai-chat-message [content]="item.message.content" />
           </article>
         } @else {
           <article class="ai-chat__turn-failure" role="alert">

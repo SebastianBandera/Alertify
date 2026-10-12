@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.UUID;
 
 import org.springframework.ai.tool.annotation.ToolParam;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Component;
 import org.springframework.validation.annotation.Validated;
@@ -66,10 +67,15 @@ public class ProcedureAiTools {
         this.support = support;
     }
 
-    @AlertifyTool(name = "alertify_procedure_search", description = "Search procedure definitions with bounded pagination", readOnly = true)
-    public AiPage<ProcedureResponse> search(String name, Long templateId, List<Long> tagIds, boolean requireAllTags, @Valid AiPageRequest page) {
-        return tools.execute("alertify_procedure_search", () -> AiPage.from(procedures.search(name, templateId,
-                tagIds == null ? java.util.Set.of() : new LinkedHashSet<>(tagIds), requireAllTags, page.pageable())));
+    @AlertifyTool(name = "alertify_procedure_search", description = "Search procedure definitions. Omit templateId or use 0 for no template filter. Pagination defaults to page 0, size 20, updatedAt DESC. An empty tagIds list means no tag filter, not resources without tags; inspect the returned tags and every page for that request.", readOnly = true)
+    public AiPage<ProcedureResponse> search(@ToolParam(description = "Optional case-insensitive name fragment", required = false) String name, @ToolParam(description = "Optional positive template ID; omit or use 0 for every template", required = false) Long templateId, @ToolParam(description = "Optional procedure tag IDs; empty means no tag filter", required = false) List<Long> tagIds, @ToolParam(description = "Require every tag instead of any tag; defaults to false", required = false) Boolean requireAllTags, @ToolParam(description = "Optional bounded pagination; defaults to page 0, size 20, updatedAt DESC", required = false) @Valid AiPageRequest page) {
+        if (templateId != null && templateId < 0)
+            throw new IllegalArgumentException("Template ID must be zero or greater");
+
+        Long templateFilter = templateId == null || templateId == 0 ? null : templateId;
+        AiPageRequest pagination = page == null ? new AiPageRequest(0, 20, "updatedAt", Sort.Direction.DESC) : page;
+        return tools.execute("alertify_procedure_search", () -> AiPage.from(procedures.search(name, templateFilter,
+                tagIds == null ? java.util.Set.of() : new LinkedHashSet<>(tagIds), Boolean.TRUE.equals(requireAllTags), pagination.pageable())));
     }
 
     @AlertifyTool(name = "alertify_procedure_templates", description = "List procedure templates, parameters, outputs and sensitive-result flags. Each result includes the fully qualified templateKey accepted by alertify_procedure_template_source.", readOnly = true)
@@ -92,12 +98,12 @@ public class ProcedureAiTools {
         return tools.execute("alertify_procedure_deletion_impact", () -> procedures.deletionImpact(id));
     }
 
-    @AlertifyTool(name = "alertify_procedure_create", description = "Create a procedure using administration validation. Each parameter source selects its matching value field; use neutral placeholders for the unselected fields because Alertify ignores them.", readOnly = false, refreshTargets = AiRefreshTarget.PROCEDURES)
+    @AlertifyTool(name = "alertify_procedure_create", description = "Create a procedure using administration validation. Read the selected template's parameter definitions; include each parameterKey at most once and match every requested source to its text value or positive existing compatible reference ID. Use null for inactive fields; legacy null or 0 reference placeholders are ignored only for unselected sources.", readOnly = false, refreshTargets = AiRefreshTarget.PROCEDURES)
     public ProcedureResponse create(@Valid AiProcedureCreateRequest request) {
         return tools.execute("alertify_procedure_create", () -> procedures.create(request.toRequest()));
     }
 
-    @AlertifyTool(name = "alertify_procedure_update", description = "Update a procedure using its current optimistic version. Each parameter source selects its matching value field; use neutral placeholders for the unselected fields because Alertify ignores them.", readOnly = false, refreshTargets = AiRefreshTarget.PROCEDURES)
+    @AlertifyTool(name = "alertify_procedure_update", description = "Update a procedure using its current optimistic version; first read its complete current definition and the selected template's parameters. Parameters is a complete replacement list: replace the requested entry by parameterKey exactly once, preserve all other parameters and fields, and never append a duplicate. Omitted parameters may reset to defaults or be removed. Match the requested source to its active text value or positive existing compatible reference ID. Use null for inactive fields; legacy null or 0 reference placeholders are ignored only for unselected sources. After success, read the definition again and compare the requested and preserved fields before reporting verified completion.", readOnly = false, refreshTargets = AiRefreshTarget.PROCEDURES)
     public ProcedureResponse update(long id, @Valid AiProcedureUpdateRequest request) {
         return tools.execute("alertify_procedure_update", () -> procedures.update(id, request.toRequest()));
     }

@@ -3,6 +3,8 @@ package app.alertify.ai.api;
 import java.util.List;
 import java.util.Set;
 
+import org.springframework.ai.tool.annotation.ToolParam;
+
 import app.alertify.alerts.api.AlertCreateRequest;
 import app.alertify.alerts.model.SmartExecutionPolicy;
 import jakarta.validation.Valid;
@@ -19,7 +21,7 @@ public record AiAlertCreateRequest(
     @NotNull @Size(max = 255) String cronExpression,
     boolean enabled,
     boolean allowConcurrentExecutions,
-    @NotNull @Size(max = 100) List<@NotNull @Valid AiAlertParameterValue> parameters,
+    @ToolParam(description = "Parameter bindings for the selected template. Each parameterKey must appear at most once. Supply all required parameters without defaults and every explicitly requested binding; omission may use a template default. Match each source to its required value or positive reference ID.") @NotNull @Size(max = 100) List<@NotNull @Valid AiAlertParameterValue> parameters,
     @NotNull @Size(max = 100) Set<@Positive Long> tagIds,
     Boolean persistentIssues,
     Boolean smartExecutionEnabled,

@@ -15,8 +15,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.time.Instant;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
@@ -41,6 +44,9 @@ import app.alertify.alerts.model.AlertTemplateDefinition;
 import app.alertify.alerts.model.AlertTemplateParameterDefinition;
 import app.alertify.alerts.model.SmartExecutionPolicy;
 import app.alertify.alerts.template.annotation.AlertParameterSource;
+import app.alertify.ai.api.AiAlertUpdateRequest;
+import app.alertify.ai.api.AiAlertParameterValue;
+import app.alertify.ai.api.AiAlertParameterSource;
 import app.alertify.api.error.ConflictException;
 import app.alertify.api.error.ResourceNotFoundException;
 import app.alertify.dashboard.DashboardEventPublisher;
@@ -54,6 +60,8 @@ import app.alertify.jpa.repository.ApplicationConfigurationRepository;
 import app.alertify.jpa.repository.ApplicationSecretRepository;
 import app.alertify.jpa.repository.TagRepository;
 import app.alertify.jpa.repository.ProcedureRepository;
+import app.alertify.jpa.entity.ApplicationConfiguration;
+import app.alertify.jpa.entity.ConfigurationValueType;
 import app.alertify.logging.ApplicationEventLogger;
 import app.alertify.worker.contract.WorkerCapability;
 
@@ -116,6 +124,23 @@ class AlertManagementServiceTest {
         assertThatThrownBy(() -> service().create(new AlertCreateRequest(
                 7L, "playwright", null, "-", true, List.of(), Set.of()
         ))).hasMessageContaining("Required parameter 'steps' has no value");
+    }
+
+    @Test
+    void rejectsDuplicateParameterKeysBeforeSavingAnyParameter() {
+        var snapshot = alert("duplicate-parameters");
+        when(alertRepository.findById(5L)).thenReturn(Optional.of(snapshot));
+        when(templateParameterRepository.findAllByTemplate_IdOrderByParameterOrderAscIdAsc(7L))
+                .thenReturn(List.of(requiredSteps(snapshot.getTemplate())));
+        when(parameterValueRepository.findAllByAlertIdOrdered(5L)).thenReturn(List.of());
+        var request = new AlertUpdateRequest(snapshot.getVersion(), snapshot.getName(), snapshot.getDescription(),
+                snapshot.getCronExpression(), snapshot.isEnabled(), snapshot.isConcurrentExecutionAllowed(), List.of(
+                        new AlertParameterValueRequest("steps", AlertParameterSource.TEXT, "FIRST", null, null),
+                        new AlertParameterValueRequest("steps", AlertParameterSource.TEXT, "DUPLICATE", null, null)), Set.of());
+
+        assertThatThrownBy(() -> service().update(5L, request)).hasMessageContaining("provided more than once");
+        verify(parameterValueRepository, never()).save(any());
+        verify(alertRepository, never()).flush();
     }
 
     @Test
@@ -207,6 +232,56 @@ class AlertManagementServiceTest {
 
         assertThat(response.smartExecutionPolicy()).isEqualTo(SmartExecutionPolicy.NORMAL);
         assertThat(response.smartExecutionIntervalHours()).isEqualTo(23);
+    }
+
+    @ParameterizedTest
+    @CsvSource({ "true,smart", "false,smart", "true,enabled", "false,enabled", "true,binding", "false,binding" })
+    void unrelatedAiUpdatesPreserveIssuePersistence(boolean persistent, String field) {
+        Alert alert = alert("preserve");
+        Instant since = Instant.parse("2026-10-01T00:00:00Z");
+        alert.changePersistentIssues(persistent, since);
+        alert.changeSmartExecution(true, 23, SmartExecutionPolicy.NORMAL);
+        when(alertRepository.findById(5L)).thenReturn(Optional.of(alert));
+        List<AiAlertParameterValue> parameters = List.of();
+        if ("binding".equals(field)) {
+            var definition = requiredSteps(alert.getTemplate());
+            when(templateParameterRepository.findAllByTemplate_IdOrderByParameterOrderAscIdAsc(7L)).thenReturn(List.of(definition));
+            when(parameterValueRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+            var configuration = mock(ApplicationConfiguration.class);
+            when(configuration.getId()).thenReturn(23L);
+            when(configuration.getValueType()).thenReturn(ConfigurationValueType.STRING);
+            when(configurationRepository.findById(23L)).thenReturn(Optional.of(configuration));
+            parameters = List.of(new AiAlertParameterValue("steps", AiAlertParameterSource.CONFIGURATION,
+                    null, 23L, null, null));
+        }
+        var request = new AiAlertUpdateRequest(0L, "preserve", null, "-",
+                !"enabled".equals(field), false, parameters, Set.of(), null,
+                "smart".equals(field) ? false : null, null, null);
+        AlertResponse response = service().update(5L, request.toRequest());
+        assertThat(response.persistentIssues()).isEqualTo(persistent);
+        assertThat(response.persistentIssuesSince()).isEqualTo(persistent ? since : null);
+        if ("binding".equals(field))
+            assertThat(response.parameters()).singleElement().satisfies(value -> {
+                assertThat(value.source()).isEqualTo(AlertParameterSource.CONFIGURATION);
+                assertThat(value.configurationId()).isEqualTo(23L);
+            });
+
+    }
+
+    @ParameterizedTest
+    @CsvSource({ "true,false", "false,true" })
+    void explicitAiPersistenceChangesRemainEffective(boolean initial, boolean requested) {
+        Alert alert = alert("explicit persistence");
+        alert.changePersistentIssues(initial, Instant.parse("2026-10-01T00:00:00Z"));
+        when(alertRepository.findById(5L)).thenReturn(Optional.of(alert));
+        var request = new AiAlertUpdateRequest(0L, "explicit persistence", null, "-", true, false,
+                List.of(), Set.of(), requested, null, null, null);
+        AlertResponse response = service().update(5L, request.toRequest());
+        assertThat(response.persistentIssues()).isEqualTo(requested);
+        var json = tools.jackson.databind.json.JsonMapper.builder().build();
+        var serialized = json.readTree(json.writeValueAsString(response));
+        assertThat(serialized.path("persistentIssues").booleanValue()).isEqualTo(requested);
+        assertThat(serialized.path("persistentIssuesSince").isNull()).isEqualTo(!requested);
     }
 
     @Test

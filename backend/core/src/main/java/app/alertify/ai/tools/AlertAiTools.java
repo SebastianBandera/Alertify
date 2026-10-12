@@ -121,12 +121,12 @@ public class AlertAiTools {
         return tools.execute("alertify_alert_deletion_impact", () -> alerts.deletionImpact(id));
     }
 
-    @AlertifyTool(name = "alertify_alert_create", description = "Create an alert using the same validation as the administration API. For each parameter binding, only the value selected by source is used; use null or 0 for unused reference IDs.", readOnly = false, refreshTargets = { AiRefreshTarget.ALERTS, AiRefreshTarget.DASHBOARD })
+    @AlertifyTool(name = "alertify_alert_create", description = "Create an alert using the same validation as the administration API. Read the selected template's parameter definitions; include each parameterKey at most once and match every requested source to its text value or positive existing compatible reference ID. Use null for inactive fields; legacy null or 0 reference placeholders are ignored only for unselected sources.", readOnly = false, refreshTargets = { AiRefreshTarget.ALERTS, AiRefreshTarget.DASHBOARD })
     public AlertResponse create(@Valid AiAlertCreateRequest request) {
         return tools.execute("alertify_alert_create", () -> alerts.create(request.toRequest()));
     }
 
-    @AlertifyTool(name = "alertify_alert_update", description = "Update an alert; first read the complete current alert and preserve every unchanged field. The request must contain its current optimistic version. For each parameter binding, only the value selected by source is used; use null or 0 for unused reference IDs.", readOnly = false, refreshTargets = { AiRefreshTarget.ALERTS, AiRefreshTarget.DASHBOARD })
+    @AlertifyTool(name = "alertify_alert_update", description = "Update an alert; first read the complete current alert and preserve every unchanged field. The request must contain its current optimistic version. Parameters is a complete replacement list: replace the requested entry by parameterKey exactly once, preserve all other parameters and never append a duplicate. Omitted parameters may reset to defaults or be removed. Match the requested source to its active text value or positive existing compatible reference ID; use null for inactive fields, with legacy null or 0 placeholders ignored only for unselected references. Set persistentIssues to null unless the user explicitly requested a change to issue persistence; smart execution, enabled and parameter bindings do not authorize changing that option. After success, read the alert again and compare the requested and preserved fields before reporting verified completion.", readOnly = false, refreshTargets = { AiRefreshTarget.ALERTS, AiRefreshTarget.DASHBOARD })
     public AlertResponse update(long id, @Valid AiAlertUpdateRequest request) {
         return tools.execute("alertify_alert_update", () -> alerts.update(id, request.toRequest()));
     }

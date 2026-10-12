@@ -3,7 +3,11 @@ package app.alertify.ai.api;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.Arrays;
+
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
 import app.alertify.alerts.template.annotation.AlertParameterSource;
 
@@ -23,12 +27,23 @@ class AiAlertParameterValueTest {
         assertThat(request.isSourceSelectionValid()).isTrue();
     }
 
-    @Test
-    void requiresAPositiveIdForTheSelectedReferenceSource() {
-        var value = new AiAlertParameterValue("url", AiAlertParameterSource.CONFIGURATION, "", 0L, 0L, 0L);
+    @ParameterizedTest
+    @EnumSource(value = AiAlertParameterSource.class, names = "TEXT", mode = EnumSource.Mode.EXCLUDE)
+    void requiresAPositiveIdForEverySelectedReferenceSource(AiAlertParameterSource source) {
+        for (Long invalidId : Arrays.asList(null, 0L, -1L)) {
+            var value = new AiAlertParameterValue("url", source, null, invalidId, invalidId, invalidId);
+            assertThatThrownBy(value::toRequest)
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("must be a positive ID for the selected source");
+        }
+    }
 
-        assertThatThrownBy(value::toRequest)
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("configurationId must be a positive ID for the selected source");
+    @Test
+    void permitsNullInactiveFieldsButStillRequiresSelectedText() {
+        var value = new AiAlertParameterValue("url", AiAlertParameterSource.TEXT, "", null, null, null);
+        assertThat(value.toRequest().textValue()).isEmpty();
+        assertThat(value.toRequest().isSourceSelectionValid()).isTrue();
+        var missingText = new AiAlertParameterValue("url", AiAlertParameterSource.TEXT, null, null, null, null);
+        assertThatThrownBy(missingText::toRequest).hasMessage("textValue must be supplied when source is TEXT");
     }
 }

@@ -75,7 +75,7 @@ public class PipeAiTools {
         return tools.execute("alertify_pipe_create", () -> pipes.create(request.toRequest()));
     }
 
-    @AlertifyTool(name = "alertify_pipe_update", description = "Update a pipe using its current optimistic version", readOnly = false, refreshTargets = AiRefreshTarget.PIPES)
+    @AlertifyTool(name = "alertify_pipe_update", description = "Update a pipe using its current optimistic version. Read its complete definition first and preserve every unchanged step and binding. Each binding selects either an artifact sourceOutputKey or a JSON sourceResultPointer, never both; use null for the unselected source. Changing a valueExpression does not authorize changing another binding's source.", readOnly = false, refreshTargets = AiRefreshTarget.PIPES)
     public PipeResponse update(long id, @Valid AiPipeUpdateRequest request) {
         return tools.execute("alertify_pipe_update", () -> pipes.update(id, request.toRequest()));
     }

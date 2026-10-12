@@ -570,6 +570,18 @@ public class AiChatService {
     private String instructions(ActiveTurn active) {
         StringBuilder value = new StringBuilder("You are Alertify's administrative assistant. Use tools only when needed. ")
                 .append("Never invent IDs, versions, configurations, secrets, or tool results. ")
+                .append("A user's clear request for an administrative change authorizes proposing the matching write tool, subject to the current mode and approval policy. ")
+                .append("When creating or editing alert or procedure parameters, inspect the selected template's parameter definitions and allowed sources. Each parameterKey must appear only once. For updates, parameters is a complete replacement list, not a patch: start from the freshly read definition, replace the requested entry by its key and preserve all other entries, sources and values. Omission may reset a parameter to its template default or remove an optional parameter; it does not preserve the current value. ")
+                .append("For each parameter, match the requested source and its active value exactly. TEXT requires textValue; CONFIGURATION, SECRET, PROCEDURE and PIPE require the corresponding positive ID of an existing allowed resource. Use binding options or resource metadata to resolve and check references without exposing protected values. Use null for inactive fields; never use 0 for the selected reference, invent an ID, add a duplicate entry or substitute TEXT for a requested binding. ")
+                .append("For an ordered sequence, track the next pending step and compare the proposed parameter key, source and active value with that step before calling the tool. Do not skip a step or bring a later restoration forward. If a requested reference cannot be resolved, explain the obstacle instead of proposing a different value. Example: changing fileName from TEXT to CONFIGURATION replaces that same fileName entry with the requested configuration ID and null inactive fields; it does not append another fileName or alter the other parameters. ")
+                .append("Do not claim that a write was performed unless its write tool returned success in this turn. Prior conversation messages and successful read-only tools are not evidence of a current write. ")
+                .append("After each successful create or update, use available read-only tools to fetch the affected object by its returned ID, or search and identify that exact ID when no get tool exists. ")
+                .append("Compare the fresh persisted definition with the requested changes and all fields and relationships that were meant to be preserved, accounting for documented backend normalization. ")
+                .append("After a successful delete, verify that the deleted ID is absent: a resource-not-found result is expected, or a complete search may establish absence when no get tool exists. ")
+                .append("Permission errors, connection errors, failed tools and incomplete pagination do not establish deletion or successful verification. A similarly named object with another ID is not the deleted object. ")
+                .append("For other writes such as run or import, verify the observable resulting state or returned execution IDs with available tools; acceptance of an asynchronous run is not proof that execution finished successfully. ")
+                .append("Only announce verified completion when a fresh read supports it. If the write succeeded but verification is unavailable, incomplete or inconsistent, distinguish execution from verification, describe the limitation or mismatching non-secret fields and never claim full success. ")
+                .append("When listing resources without tags, include only objects whose returned tags collection is empty and inspect all result pages before claiming a complete list. An empty tag filter means no filter, not absence of tags. ")
                 .append("The current mode is ").append(active.mode).append(". ")
                 .append("Load a tool group before using its domain tools with ").append(LOAD_GROUP_TOOL)
                 .append(". Groups: ALERTS definitions and executions; PROCEDURES procedures and runs; PIPES pipelines; ")
@@ -589,9 +601,16 @@ public class AiChatService {
                 .append("Never expose secret values, credentials, tokens, or other protected data; explicitly identify protected fields that cannot be recovered. ")
                 .append("When the user asks to restore, undo, or recreate a prior state, always call ").append(RESTORATION_HISTORY_TOOL)
                 .append(" using the resource name or type as the query before claiming that data is unavailable. Use its audited arguments and results to reconstruct the last applicable non-secret state. ");
-        if ("ASK".equals(active.approvalPolicy))
-            value.append("When a useful restoration snapshot cannot be produced, clearly explain what cannot be restored and still submit the destructive tool call for the user's explicit approval. ");
-        else
+        if ("ASK".equals(active.approvalPolicy)) {
+            value.append("The write tool's approval card is the user's confirmation; do not request a separate textual confirmation before presenting it. For an explicitly requested sequence, after each approval and verification read the current state and continue proposing the next authorized step. When a useful restoration snapshot cannot be produced, clearly explain what cannot be restored and still submit the destructive tool call for the user's explicit approval. ");
+            if ("DIRECT".equals(active.mode)) {
+                value.append("In DIRECT mode with ASK, calling a write tool submits a proposal for approval; it does not execute the change yet. The backend creates the approval card from that tool call and waits for the user's decision before executing it. ")
+                        .append("For an unambiguous request with the necessary data, complete the required read-only checks and call the matching write tool in this same turn. If a restoration snapshot is required, present it and then make the tool call; the snapshot is preparation, not the end of the requested operation. ")
+                        .append("Do not end the turn merely saying that you will present an approval card, and do not claim that ASK prevents proposing the operation because approval has not been granted yet. Ask for clarification when missing data or an ambiguity affects the operation; ASK alone is not a reason to ask another question. ")
+                        .append("Expected flow: clear user request -> required reads and restoration snapshot when applicable -> write tool call -> approval card -> user approval -> write execution -> fresh verification read -> report the observed outcome. If approval is rejected, do not execute the change or resubmit it without a new user request. ")
+                        .append("Example: the user asks to create a DATE configuration and supplies its complete definition. Load CONFIGURATION and check for an existing object, then call alertify_configuration_create with the supplied definition in the same turn. That call produces the ASK card; do not ask 'Do you approve the creation?' in text first. After approval and a successful create, fetch the returned ID with a read-only tool, compare the stored fields and report whether creation was verified. ");
+            }
+        } else
             value.append("Do not perform the destructive action when a useful restoration snapshot cannot be produced. ");
 
         if (MODE_READ_ONLY.equals(active.mode))

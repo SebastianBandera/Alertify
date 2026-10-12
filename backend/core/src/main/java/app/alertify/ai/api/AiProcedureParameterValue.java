@@ -1,20 +1,20 @@
 package app.alertify.ai.api;
 
 import app.alertify.procedures.api.ProcedureParameterValueRequest;
-import io.swagger.v3.oas.annotations.media.Schema;
+import org.springframework.ai.tool.annotation.ToolParam;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 /** Strict-schema representation of a procedure parameter binding. */
 public record AiProcedureParameterValue(
-    @NotBlank @Size(max = 255) String parameterKey,
-    @NotNull AiProcedureParameterSource source,
-    @Size(max = 1048576) @Schema(description = "Value used only when source is TEXT; otherwise use null or an empty string") String textValue,
-    @Schema(description = "Positive configuration ID used only when source is CONFIGURATION; otherwise use null or 0") Long configurationId,
-    @Schema(description = "Positive secret ID used only when source is SECRET; otherwise use null or 0") Long secretId,
-    @Schema(description = "Positive procedure ID used only when source is PROCEDURE; otherwise use null or 0") Long procedureId,
-    @Schema(description = "Positive pipe ID used only when source is PIPE; otherwise use null or 0") Long pipeId
+    @ToolParam(description = "Exact parameter key from the selected template; each key must appear only once in the parameters list. Replace its existing entry when changing source; do not append a duplicate.") @NotBlank @Size(max = 255) String parameterKey,
+    @ToolParam(description = "Source requested for this parameter and allowed by the selected template. Supply its matching text value or positive resource ID; never substitute another source to complete the request.") @NotNull AiProcedureParameterSource source,
+    @ToolParam(required = false, description = "Required when source is TEXT, including an empty string when that is the requested value. Otherwise use null; do not copy a reference's protected value.") @Size(max = 1048576) String textValue,
+    @ToolParam(required = false, description = "Required positive ID of an existing compatible configuration when source is CONFIGURATION; 0 is invalid for that source. Otherwise use null; legacy null or 0 placeholders are ignored.") Long configurationId,
+    @ToolParam(required = false, description = "Required positive ID of an existing compatible secret when source is SECRET; 0 is invalid for that source. Otherwise use null; legacy null or 0 placeholders are ignored. Reference metadata only, never a secret value.") Long secretId,
+    @ToolParam(required = false, description = "Required positive ID of an existing procedure when source is PROCEDURE; 0 is invalid for that source. Otherwise use null; legacy null or 0 placeholders are ignored.") Long procedureId,
+    @ToolParam(required = false, description = "Required positive ID of an existing pipe when source is PIPE; 0 is invalid for that source. Otherwise use null; legacy null or 0 placeholders are ignored.") Long pipeId
 ) {
 
     public ProcedureParameterValueRequest toRequest() {
