@@ -97,4 +97,16 @@ class AiChatPersistenceTest {
 
         verify(invocations).findRestorationHistory(7L, 12L, "configuración de prueba", PageRequest.of(0, 6));
     }
+
+    @Test
+    void operationHistoryUsesTheTrustedConversationTurnAndOneExtraRowForPagination() {
+        AiToolInvocationRepository invocations = mock(AiToolInvocationRepository.class);
+        AiChatPersistence persistence = new AiChatPersistence(mock(AiConversationRepository.class), mock(AiTurnRepository.class),
+                mock(AiMessageRepository.class), invocations);
+        when(invocations.findOperationHistory(7L, 12L, 34L, PageRequest.of(0, 41))).thenReturn(List.of());
+
+        assertThat(persistence.operationHistory(7L, 12L, 34L, 40)).isEmpty();
+
+        verify(invocations).findOperationHistory(7L, 12L, 34L, PageRequest.of(0, 41));
+    }
 }

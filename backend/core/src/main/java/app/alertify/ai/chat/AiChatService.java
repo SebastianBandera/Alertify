@@ -65,6 +65,8 @@ public class AiChatService {
     private static final String REASONING_TOOL = "alertify_request_reasoning_upgrade";
     private static final String LOAD_GROUP_TOOL = "alertify_load_tool_group";
     private static final String RESTORATION_HISTORY_TOOL = "alertify_restoration_history";
+    private static final String OPERATION_HISTORY_TOOL = "alertify_operation_history";
+    private static final int RECENT_OPERATION_LIMIT = 40;
     private static final List<String> EFFORTS = List.of("low", "medium", "high", "xhigh");
 
     private final AiWorkerClient worker;
@@ -265,13 +267,15 @@ public class AiChatService {
             return false;
         }
         ChatStart.Builder start = ChatStart.newBuilder().setConversationId(active.conversationId).setTurnId(active.turnId)
-                .setModel(active.settings.getModel()).setReasoningEffort(effort).setInstructions(instructions(active))
+                .setModel(active.settings.getModel()).setReasoningEffort(effort).setInstructions(instructions(active)
+                        + "\n\nAlertify operation audit (metadata only):\n" + operationHistoryJson(active, 0, RECENT_OPERATION_LIMIT))
                 .setMode(active.mode).setApprovalPolicy(active.approvalPolicy);
         persistence.history(active.conversationId).forEach(message -> start.addHistory(ChatHistoryMessage.newBuilder()
-                .setRole(message.getRole()).setContent(message.getContent()).build()));
+                .setRole(message.getRole()).setContent(AiChatOperationHistory.messageContent(message)).build()));
         start.addTools(groupLoaderTool());
         start.addTools(reasoningTool());
         start.addTools(restorationHistoryTool());
+        start.addTools(operationHistoryTool());
         handle.send(ChatClientMessage.newBuilder().setStart(start.build()).build());
         return current(active, generation);
     }
@@ -333,6 +337,10 @@ public class AiChatService {
         }
         if (RESTORATION_HISTORY_TOOL.equals(name)) {
             restorationHistory(active, invocation, callId, arguments);
+            return;
+        }
+        if (OPERATION_HISTORY_TOOL.equals(name)) {
+            operationHistory(active, invocation, callId, arguments);
             return;
         }
         AiToolDescriptor descriptor = audit.descriptor();
@@ -472,6 +480,28 @@ public class AiChatService {
         }
     }
 
+    private String operationHistoryJson(ActiveTurn active, long beforeId, int limit) {
+        return json.writeValueAsString(AiChatOperationHistory.summarize(json, active.turnId,
+                persistence.operationHistory(active.conversationId, active.turnId, beforeId, limit), limit));
+    }
+
+    private void operationHistory(ActiveTurn active, AiToolInvocation invocation, String callId, String arguments) {
+        try {
+            var input = json.readTree(arguments);
+            var before = input.path("beforeInvocationId");
+            var count = input.path("limit");
+            if (!before.isIntegralNumber() || !before.canConvertToLong() || before.longValue() < 0
+                    || !count.isIntegralNumber() || !count.canConvertToInt() || count.intValue() < 1 || count.intValue() > RECENT_OPERATION_LIMIT) {
+                internalResult(active, invocation, callId, "Failed: use a non-negative beforeInvocationId and a limit between 1 and 40.", true, "INVALID_OPERATION_HISTORY_QUERY");
+                return;
+            }
+
+            internalResult(active, invocation, callId, operationHistoryJson(active, before.longValue(), count.intValue()), false, "");
+        } catch (RuntimeException exception) {
+            internalResult(active, invocation, callId, "Failed: operation audit metadata could not be read.", true, "OPERATION_HISTORY_FAILED");
+        }
+    }
+
     private void internalResult(ActiveTurn active, AiToolInvocation invocation, String callId, String output, boolean failed, String diagnosticCode) {
         internalResult(active, invocation, callId, output, failed, diagnosticCode, List.of());
     }
@@ -498,7 +528,7 @@ public class AiChatService {
     private static ToolAudit toolAudit(ActiveTurn active, String name) {
         if (REASONING_TOOL.equals(name))
             return new ToolAudit(null, "INTERNAL", true, true, true, false, false, false, "");
-        if (LOAD_GROUP_TOOL.equals(name) || RESTORATION_HISTORY_TOOL.equals(name))
+        if (LOAD_GROUP_TOOL.equals(name) || RESTORATION_HISTORY_TOOL.equals(name) || OPERATION_HISTORY_TOOL.equals(name))
             return new ToolAudit(null, "INTERNAL", true, true, true, false, true, false, "");
 
         AiToolDescriptor descriptor = active.descriptors.get(name);
@@ -575,6 +605,11 @@ public class AiChatService {
                 .append("For each parameter, match the requested source and its active value exactly. TEXT requires textValue; CONFIGURATION, SECRET, PROCEDURE and PIPE require the corresponding positive ID of an existing allowed resource. Use binding options or resource metadata to resolve and check references without exposing protected values. Use null for inactive fields; never use 0 for the selected reference, invent an ID, add a duplicate entry or substitute TEXT for a requested binding. ")
                 .append("For an ordered sequence, track the next pending step and compare the proposed parameter key, source and active value with that step before calling the tool. Do not skip a step or bring a later restoration forward. If a requested reference cannot be resolved, explain the obstacle instead of proposing a different value. Example: changing fileName from TEXT to CONFIGURATION replaces that same fileName entry with the requested configuration ID and null inactive fields; it does not append another fileName or alter the other parameters. ")
                 .append("Do not claim that a write was performed unless its write tool returned success in this turn. Prior conversation messages and successful read-only tools are not evidence of a current write. ")
+                .append("Conversation messages have trusted turn and UTC timestamp metadata. The operation audit separately records tool status and dates; an assistant's historical claim such as 'verified' is narrative, not execution or verification evidence. ")
+                .append("The audit is a bounded observation window. Use alertify_operation_history with beforeInvocationId=0 for recent metadata, or its nextBeforeInvocationId for older entries. Missing entries or NOT_OBSERVED_IN_WINDOW do not prove that an operation never occurred. ")
+                .append("MATCHING_SUCCESSFUL_READ means a successful get/search returned that exact object ID after a create/update in the same turn and before another successful write; it does not prove that the requested or preserved fields matched. fieldComparison=NOT_RECORDED never certifies verified completion. ")
+                .append("Historical reads describe the state at their timestamps, not the current state. Each new write requires its own fresh verification. A pre-write read and the object returned by create/update are not a post-write verification read. ")
+                .append("Example: an update is SUCCEEDED and no fresh read was performed: say 'The update executed successfully; I have not verified it through a new read.' When a read was made, report the fields actually compared and any unresolved differences. ")
                 .append("After each successful create or update, use available read-only tools to fetch the affected object by its returned ID, or search and identify that exact ID when no get tool exists. ")
                 .append("Compare the fresh persisted definition with the requested changes and all fields and relationships that were meant to be preserved, accounting for documented backend normalization. ")
                 .append("After a successful delete, verify that the deleted ID is absent: a resource-not-found result is expected, or a complete search may establish absence when no get tool exists. ")
@@ -658,6 +693,13 @@ public class AiChatService {
         return ChatToolDefinition.newBuilder().setName(RESTORATION_HISTORY_TOOL)
                 .setDescription("Read recent successful tool arguments and results from this authenticated conversation to restore or undo a prior resource state. Use a resource name or type as query; use an empty query only when the resource is unknown.")
                 .setInputSchema("{\"type\":\"object\",\"properties\":{\"query\":{\"type\":\"string\"},\"limit\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":20}},\"required\":[\"query\",\"limit\"],\"additionalProperties\":false}")
+                .setReadOnly(true).setIdempotentHint(true).build();
+    }
+
+    private static ChatToolDefinition operationHistoryTool() {
+        return ChatToolDefinition.newBuilder().setName(OPERATION_HISTORY_TOOL)
+                .setDescription("Read paginated audit metadata from this authenticated conversation through the current turn: tool and turn IDs, UTC dates, resource IDs, execution status and subsequent read observations. No argument/result values are returned. Use beforeInvocationId=0 for newest entries, then nextBeforeInvocationId for older entries. Field comparison is not recorded; a read observation does not certify verification. Use alertify_restoration_history for available successful arguments/results when restoration requires them.")
+                .setInputSchema("{\"type\":\"object\",\"properties\":{\"beforeInvocationId\":{\"type\":\"integer\",\"minimum\":0},\"limit\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":40}},\"required\":[\"beforeInvocationId\",\"limit\"],\"additionalProperties\":false}")
                 .setReadOnly(true).setIdempotentHint(true).build();
     }
 

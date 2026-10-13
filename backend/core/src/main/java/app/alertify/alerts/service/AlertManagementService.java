@@ -63,6 +63,9 @@ import app.alertify.jpa.repository.TagRepository;
 import app.alertify.jpa.specification.AlertSpecifications;
 import app.alertify.logging.ApplicationEventLogger;
 import app.alertify.worker.contract.DatabaseCredentials;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
+import jakarta.persistence.OptimisticLockException;
 
 /**
  * CRUD, manual runs and stored state for user-configured alerts. Updates and
@@ -98,8 +101,9 @@ public class AlertManagementService {
     private final AlertExecutionOrchestrator executionOrchestrator;
     private final DashboardEventPublisher dashboardEventPublisher;
     private final ResourceResultObserverService resourceObserver;
+    private final EntityManager entityManager;
 
-    public AlertManagementService(AlertRepository alertRepository, AlertTemplateDefinitionRepository templateRepository, AlertTemplateParameterDefinitionRepository templateParameterRepository, AlertParameterValueRepository parameterValueRepository, AlertExecutionRepository executionRepository, AlertStateRepository stateRepository, ApplicationConfigurationRepository configurationRepository, ApplicationSecretRepository secretRepository, ProcedureRepository procedureRepository, TagRepository tagRepository, ApplicationEventLogger eventLogger, AlertScheduleService scheduleService, AlertExecutionOrchestrator executionOrchestrator, DashboardEventPublisher dashboardEventPublisher, ResourceResultObserverService resourceObserver) {
+    public AlertManagementService(AlertRepository alertRepository, AlertTemplateDefinitionRepository templateRepository, AlertTemplateParameterDefinitionRepository templateParameterRepository, AlertParameterValueRepository parameterValueRepository, AlertExecutionRepository executionRepository, AlertStateRepository stateRepository, ApplicationConfigurationRepository configurationRepository, ApplicationSecretRepository secretRepository, ProcedureRepository procedureRepository, TagRepository tagRepository, ApplicationEventLogger eventLogger, AlertScheduleService scheduleService, AlertExecutionOrchestrator executionOrchestrator, DashboardEventPublisher dashboardEventPublisher, ResourceResultObserverService resourceObserver, EntityManager entityManager) {
         this.alertRepository = alertRepository;
         this.templateRepository = templateRepository;
         this.templateParameterRepository = templateParameterRepository;
@@ -115,6 +119,7 @@ public class AlertManagementService {
         this.executionOrchestrator = executionOrchestrator;
         this.dashboardEventPublisher = dashboardEventPublisher;
         this.resourceObserver = resourceObserver;
+        this.entityManager = entityManager;
     }
 
     @Transactional(readOnly = true)
@@ -205,6 +210,15 @@ public class AlertManagementService {
         List<AlertParameterValue> existing = parameterValueRepository.findAllByAlertIdOrdered(id);
         List<AlertParameterValue> values = synchronizeParameters(alert, request.parameters(), existing);
         alertRepository.flush();
+        // Parameter-only edits do not dirty the owner. Advance its version now so
+        // both the response and pending full-definition updates see the new version.
+        if (alert.getVersion() == request.version()) {
+            try {
+                entityManager.lock(alert, LockModeType.PESSIMISTIC_FORCE_INCREMENT);
+            } catch (OptimisticLockException exception) {
+                throw new ConflictException("Alert was modified by another request; reload it and try again");
+            }
+        }
         eventLogger.successAfterCommit("ALERT_UPDATED", Map.of(ALERT_ID, alert.getId(), "name", alert.getName(), "version", alert.getVersion(), ALLOW_CONCURRENT_EXECUTIONS, alert.isConcurrentExecutionAllowed(), PERSISTENT_ISSUES, alert.getPersistentIssuesSince() != null));
         scheduleService.rescheduleAfterCommit(alert.getId());
         dashboardEventPublisher.alertChangedAfterCommit(alert.getId());

@@ -3,6 +3,8 @@ package app.alertify.ai.chat;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -13,6 +15,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Consumer;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -26,6 +29,8 @@ import app.alertify.ai.localization.AiLocalizationSourceService;
 import app.alertify.codex.AiWorkerClient;
 import app.alertify.logging.ApplicationEventLogger;
 import app.alertify.realtime.AdminEventPublisher;
+import app.alertify.worker.ai.grpc.ChatWorkerMessage;
+import app.alertify.worker.ai.grpc.ChatToolCall;
 import tools.jackson.databind.json.JsonMapper;
 
 class AiChatServiceManagementTest {
@@ -60,7 +65,11 @@ class AiChatServiceManagementTest {
                 "inspect all result pages", "approval card is the user's confirmation",
                 "Each parameterKey must appear only once", "complete replacement list, not a patch",
                 "never use 0 for the selected reference", "track the next pending step",
-                "Do not skip a step or bring a later restoration forward", "changing fileName from TEXT to CONFIGURATION");
+                "Do not skip a step or bring a later restoration forward", "changing fileName from TEXT to CONFIGURATION",
+                "historical claim such as 'verified' is narrative", "pre-write read and the object returned by create/update",
+                "fieldComparison=NOT_RECORDED never certifies verified completion", "Alertify operation audit (metadata only)");
+        assertThat(message.getValue().getStart().getToolsList()).filteredOn(tool -> "alertify_operation_history".equals(tool.getName()))
+                .singleElement().satisfies(tool -> assertThat(tool.getReadOnly()).isTrue());
         if ("DIRECT".equals(mode)) {
             assertThat(message.getValue().getStart().getInstructions()).contains(
                     "calling a write tool submits a proposal for approval; it does not execute the change yet",
@@ -76,6 +85,85 @@ class AiChatServiceManagementTest {
         if ("READ_ONLY".equals(mode))
             assertThat(message.getValue().getStart().getInstructions()).contains("cannot mutate it");
 
+        service.cancel(authentication, 8L);
+    }
+
+    @Test
+    void sendsHistoricalTurnDatesAndAuditStatesWithoutCopyingToolValues() {
+        AiWorkerClient worker = (AiWorkerClient) ReflectionTestUtils.getField(service, "worker");
+        AiChatPersistence persistence = (AiChatPersistence) ReflectionTestUtils.getField(service, "persistence");
+        AiLocalizationSourceService localization = (AiLocalizationSourceService) ReflectionTestUtils.getField(service, "localization");
+        Authentication authentication = mock(Authentication.class);
+        when(authentication.getName()).thenReturn("subject-1");
+        when(localization.resolveLocale(any())).thenReturn("en");
+        when(worker.state()).thenReturn(app.alertify.worker.ai.grpc.ModuleStateResponse.newBuilder().setEnabled(true).setSessionStatus("ACTIVE").build());
+        when(worker.settings()).thenReturn(app.alertify.worker.ai.grpc.AiSettings.newBuilder().setModel("model").setReasoningEffort("low").build());
+        when(persistence.start(any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(new AiChatPersistence.StartedTurn(7L, 8L));
+        AiTurn previous = mock(AiTurn.class);
+        when(previous.getId()).thenReturn(6L);
+        when(previous.getCreatedAt()).thenReturn(Instant.parse("2026-10-11T12:00:00Z"));
+        when(previous.getStatus()).thenReturn("COMPLETED");
+        AiMessage historical = new AiMessage(mock(AiConversation.class), previous, "ASSISTANT", "Previously verified");
+        when(persistence.history(7L)).thenReturn(List.of(historical));
+        AiToolInvocation operation = new AiToolInvocation(previous, 1, "call", "alertify_alert_update", "{\"id\":25,\"value\":\"PRIVATE-ARG\"}",
+                "DOMAIN", true, true, false, false, true, false, "ALERTS", false);
+        ReflectionTestUtils.setField(operation, "id", 3L);
+        operation.succeed("{\"id\":25,\"value\":\"PRIVATE-RESULT\"}");
+        when(persistence.operationHistory(7L, 8L, 0, 40)).thenReturn(List.of(operation));
+        AiWorkerClient.ChatHandle handle = mock(AiWorkerClient.ChatHandle.class);
+        when(worker.chat(any(), any(), any())).thenReturn(handle);
+
+        service.submit(authentication, new AiChatService.SubmitRequest(7L, "Next change", "DIRECT", "ASK", "en"));
+
+        var message = org.mockito.ArgumentCaptor.forClass(app.alertify.worker.ai.grpc.ChatClientMessage.class);
+        verify(handle).send(message.capture());
+        var start = message.getValue().getStart();
+        assertThat(start.getHistory(0).getRole()).isEqualTo("ASSISTANT");
+        assertThat(start.getHistory(0).getContent()).contains("turnId=6", "turnStartedAt=2026-10-11T12:00:00Z", "Previously verified");
+        assertThat(start.getInstructions()).contains("\"currentTurnId\":8", "\"turnId\":6", "\"resourceId\":25", "NOT_OBSERVED_IN_WINDOW")
+                .doesNotContain("PRIVATE-ARG", "PRIVATE-RESULT");
+        service.cancel(authentication, 8L);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = { "{\"beforeInvocationId\":3,\"limit\":2}", "{\"beforeInvocationId\":-1,\"limit\":2}",
+            "{\"beforeInvocationId\":0,\"limit\":2147483649}" })
+    void operationHistoryIsReadOnlyScopedAndRejectsInvalidPagination(String arguments) {
+        AiWorkerClient worker = (AiWorkerClient) ReflectionTestUtils.getField(service, "worker");
+        AiChatPersistence persistence = (AiChatPersistence) ReflectionTestUtils.getField(service, "persistence");
+        AiLocalizationSourceService localization = (AiLocalizationSourceService) ReflectionTestUtils.getField(service, "localization");
+        Authentication authentication = mock(Authentication.class);
+        when(authentication.getName()).thenReturn("subject-1");
+        when(localization.resolveLocale(any())).thenReturn("en");
+        when(worker.state()).thenReturn(app.alertify.worker.ai.grpc.ModuleStateResponse.newBuilder().setEnabled(true).setSessionStatus("ACTIVE").build());
+        when(worker.settings()).thenReturn(app.alertify.worker.ai.grpc.AiSettings.newBuilder().setModel("model").setReasoningEffort("low").build());
+        when(persistence.start(any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(new AiChatPersistence.StartedTurn(7L, 8L));
+        AiWorkerClient.ChatHandle handle = mock(AiWorkerClient.ChatHandle.class);
+        org.mockito.ArgumentCaptor<Consumer<ChatWorkerMessage>> callback = org.mockito.ArgumentCaptor.forClass(Consumer.class);
+        when(worker.chat(callback.capture(), any(), any())).thenReturn(handle);
+        AiToolInvocation invocation = mock(AiToolInvocation.class);
+        when(invocation.getId()).thenReturn(99L);
+        when(persistence.tool(any(), anyLong(), any(), any(), any(), any(), anyBoolean(), anyBoolean(), anyBoolean(),
+                anyBoolean(), anyBoolean(), anyBoolean(), any(), anyBoolean())).thenReturn(invocation);
+        service.submit(authentication, new AiChatService.SubmitRequest(7L, "Check history", "READ_ONLY", "ASK", "en"));
+
+        callback.getValue().accept(ChatWorkerMessage.newBuilder().setToolCall(ChatToolCall.newBuilder()
+                .setCallId("history-call").setName("alertify_operation_history").setArguments(arguments)).build());
+
+        var sent = org.mockito.ArgumentCaptor.forClass(app.alertify.worker.ai.grpc.ChatClientMessage.class);
+        verify(handle, times(2)).send(sent.capture());
+        var result = sent.getAllValues().getLast().getToolResult();
+        if (arguments.equals("{\"beforeInvocationId\":3,\"limit\":2}")) {
+            verify(persistence).operationHistory(7L, 8L, 3, 2);
+            assertThat(result.getFailed()).isFalse();
+            assertThat(result.getOutput()).contains("\"currentTurnId\":8");
+        } else {
+            verify(persistence, times(1)).operationHistory(any(), any(), anyLong(), org.mockito.ArgumentMatchers.anyInt());
+            assertThat(result.getFailed()).isTrue();
+            assertThat(result.getDiagnosticCode()).isEqualTo("INVALID_OPERATION_HISTORY_QUERY");
+        }
+        verify(persistence).tool(8L, 1, "history-call", "alertify_operation_history", arguments, "INTERNAL",
+                true, true, true, false, true, false, "", false);
         service.cancel(authentication, 8L);
     }
 
@@ -124,7 +212,7 @@ class AiChatServiceManagementTest {
         eventLogger = mock(ApplicationEventLogger.class);
         service = new AiChatService(mock(AiWorkerClient.class), mock(AiToolCatalog.class), mock(AiChatPersistence.class),
                 conversations, turns, messages, invocations, mock(AiLocalizationSourceService.class), events, eventLogger,
-                mock(JsonMapper.class));
+                JsonMapper.builder().findAndAddModules().build());
     }
 
     @Test

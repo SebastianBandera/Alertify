@@ -53,6 +53,11 @@ class AiChatPersistence {
     }
 
     @Transactional(readOnly = true)
+    List<AiToolInvocation> operationHistory(Long conversationId, Long throughTurnId, long beforeId, int limit) {
+        return invocations.findOperationHistory(conversationId, throughTurnId, beforeId, PageRequest.of(0, limit + 1));
+    }
+
+    @Transactional(readOnly = true)
     List<AiToolInvocation> restorationHistory(Long conversationId, Long throughTurnId, String query, int limit) {
         return invocations.findRestorationHistory(conversationId, throughTurnId, query.toLowerCase(Locale.ROOT), PageRequest.of(0, limit));
     }

@@ -64,6 +64,7 @@ import app.alertify.jpa.entity.ApplicationConfiguration;
 import app.alertify.jpa.entity.ConfigurationValueType;
 import app.alertify.logging.ApplicationEventLogger;
 import app.alertify.worker.contract.WorkerCapability;
+import jakarta.persistence.EntityManager;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -83,6 +84,7 @@ class AlertManagementServiceTest {
     @Mock private AlertScheduleService scheduleService;
     @Mock private AlertExecutionOrchestrator executionOrchestrator;
     @Mock private DashboardEventPublisher dashboardEventPublisher;
+    @Mock private EntityManager entityManager;
 
     @Test
     void acceptsAnEmptyTextValueForARequiredStringParameter() {
@@ -397,7 +399,7 @@ class AlertManagementServiceTest {
         return new AlertManagementService(
                 alertRepository, templateRepository, templateParameterRepository, parameterValueRepository,
                 executionRepository, stateRepository, configurationRepository, secretRepository,
-                procedureRepository, tagRepository, eventLogger, scheduleService, executionOrchestrator, dashboardEventPublisher, mock(ResourceResultObserverService.class)
+                procedureRepository, tagRepository, eventLogger, scheduleService, executionOrchestrator, dashboardEventPublisher, mock(ResourceResultObserverService.class), entityManager
         );
     }
 
