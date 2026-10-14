@@ -2,6 +2,8 @@ package app.alertify.ai.api;
 
 import java.util.Set;
 
+import org.springframework.ai.tool.annotation.ToolParam;
+
 import tools.jackson.databind.json.JsonMapper;
 
 import app.alertify.configuration.api.ConfigurationCreateRequest;
@@ -18,7 +20,7 @@ public record AiConfigurationCreateRequest(
     @NotNull ConfigurationValueType valueType,
     @NotNull @Valid AiConfigurationValue value,
     Set<@Positive Long> tagIds,
-    boolean writable
+    @ToolParam(description = "Allows resource executions to persist changed values into this configuration. This flag does not control administrative creation or editing; writable=false still allows authorized administrative edits. Set it according to the user's request.") boolean writable
 ) {
 
     public ConfigurationCreateRequest toRequest(JsonMapper json) {

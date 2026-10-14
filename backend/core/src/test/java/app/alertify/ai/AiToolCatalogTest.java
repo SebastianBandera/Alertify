@@ -101,6 +101,16 @@ class AiToolCatalogTest {
         }
         assertTrue(descriptors.get("alertify_configuration_search").description().contains("~*Google*"));
         assertTrue(descriptors.get("alertify_configuration_search").description().contains("capped at 50"));
+        for (String toolName : List.of("alertify_configuration_get", "alertify_configuration_create", "alertify_configuration_update"))
+            assertTrue(descriptors.get(toolName).description().contains("writable=false still allows authorized"), toolName);
+
+        for (String toolName : List.of("alertify_configuration_create", "alertify_configuration_update")) {
+            JsonNode writable = schemaProperty(JSON.readTree(descriptors.get(toolName).inputSchema()), "writable");
+            assertEquals("boolean", writable.path("type").stringValue(), toolName);
+            assertTrue(writable.path("description").stringValue().contains("does not control administrative"), toolName);
+        }
+        assertTrue(schemaProperty(JSON.readTree(descriptors.get("alertify_configuration_update").inputSchema()), "writable")
+                .path("description").stringValue().contains("Preserve the current flag"));
         assertTrue(descriptors.get("alertify_pipe_tag_get").readOnly());
         assertTrue(descriptors.get("alertify_pipe_tag_get").description().contains("tag ID"));
         assertTrue(descriptors.get("alertify_pipe_tag_delete").description().contains("backend checks associations"));

@@ -76,7 +76,11 @@ class AiChatServiceManagementTest {
                 "Tag IDs and resource IDs are independent", "filter.field=tagId, never tagIds",
                 "backend enforces the in-use guard", "not a reason to withhold this guarded ASK proposal",
                 "A failed search is unknown, not an empty result", "null with its failed/unverified status",
-                "turn failure does not undo successful writes", "only the remaining authorized steps");
+                "turn failure does not undo successful writes", "only the remaining authorized steps",
+                "writable=false still allows authorized administrative changes", "Preserve writable unless",
+                "keep enforcing the current mode, approval policy and version checks",
+                "configuration_update with the requested stringValue and writable=false",
+                "Do not refuse the administrative edit or enable writable just to perform it");
         assertThat(message.getValue().getStart().getToolsList()).filteredOn(tool -> "alertify_operation_history".equals(tool.getName()))
                 .singleElement().satisfies(tool -> assertThat(tool.getReadOnly()).isTrue());
         if ("DIRECT".equals(mode)) {

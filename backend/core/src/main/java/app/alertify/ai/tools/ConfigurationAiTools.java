@@ -81,7 +81,7 @@ public class ConfigurationAiTools {
         });
     }
 
-    @AlertifyTool(name = "alertify_configuration_get", description = "Get one application configuration; binary content is never returned", readOnly = true)
+    @AlertifyTool(name = "alertify_configuration_get", description = "Get one application configuration; binary content is never returned. writable controls whether resource executions may persist changed values, not permission for administrative editing. writable=false still allows authorized administrative edits.", readOnly = true)
     public ConfigurationResponse get(long id) {
         return tools.execute("alertify_configuration_get", () -> withUsageCount(configurations.get(id)));
     }
@@ -101,7 +101,7 @@ public class ConfigurationAiTools {
         return tools.execute("alertify_configuration_expression_evaluate", () -> expressions.evaluate(request.toRequest()));
     }
 
-    @AlertifyTool(name = "alertify_configuration_create", description = "Create a non-binary application configuration. valueType selects the only interpreted value field: STRING stringValue, EXPRESSION expressionValue, INTEGER integerValue, DECIMAL decimalValue, BOOLEAN booleanValue, DATE dateValue (yyyy-MM-dd), TIME timeValue (HH:mm), DATE_TIME dateTimeValue (ISO-8601 with offset), or JSON jsonValue (serialized JSON). The strict schema includes every value field; use neutral placeholders for fields not selected by valueType because Alertify ignores them.", readOnly = false, refreshTargets = AiRefreshTarget.CONFIGURATIONS)
+    @AlertifyTool(name = "alertify_configuration_create", description = "Create a non-binary application configuration. writable controls whether resource executions may persist changed values, not permission for administrative creation or editing. writable=false still allows authorized administrative edits. valueType selects the only interpreted value field: STRING stringValue, EXPRESSION expressionValue, INTEGER integerValue, DECIMAL decimalValue, BOOLEAN booleanValue, DATE dateValue (yyyy-MM-dd), TIME timeValue (HH:mm), DATE_TIME dateTimeValue (ISO-8601 with offset), or JSON jsonValue (serialized JSON). The strict schema includes every value field; use neutral placeholders for fields not selected by valueType because Alertify ignores them.", readOnly = false, refreshTargets = AiRefreshTarget.CONFIGURATIONS)
     public ConfigurationResponse create(@Valid AiConfigurationCreateRequest request) {
         return tools.execute("alertify_configuration_create", () -> {
             requireNonBinary(request.valueType());
@@ -109,7 +109,7 @@ public class ConfigurationAiTools {
         });
     }
 
-    @AlertifyTool(name = "alertify_configuration_update", description = "Update a non-binary application configuration using its current version. valueType selects the only interpreted value field: STRING stringValue, EXPRESSION expressionValue, INTEGER integerValue, DECIMAL decimalValue, BOOLEAN booleanValue, DATE dateValue (yyyy-MM-dd), TIME timeValue (HH:mm), DATE_TIME dateTimeValue (ISO-8601 with offset), or JSON jsonValue (serialized JSON). The strict schema includes every value field; use neutral placeholders for fields not selected by valueType because Alertify ignores them.", readOnly = false, refreshTargets = AiRefreshTarget.CONFIGURATIONS)
+    @AlertifyTool(name = "alertify_configuration_update", description = "Update a non-binary application configuration using its current version. writable controls whether resource executions may persist changed values, not permission for administrative editing. writable=false still allows authorized edits to value, description, name and tags. Preserve writable unless the user asks to change it; do not enable it to perform an administrative edit. valueType selects the only interpreted value field: STRING stringValue, EXPRESSION expressionValue, INTEGER integerValue, DECIMAL decimalValue, BOOLEAN booleanValue, DATE dateValue (yyyy-MM-dd), TIME timeValue (HH:mm), DATE_TIME dateTimeValue (ISO-8601 with offset), or JSON jsonValue (serialized JSON). The strict schema includes every value field; use neutral placeholders for fields not selected by valueType because Alertify ignores them.", readOnly = false, refreshTargets = AiRefreshTarget.CONFIGURATIONS)
     public ConfigurationResponse update(long id, @Valid AiConfigurationUpdateRequest request) {
         return tools.execute("alertify_configuration_update", () -> {
             requireNonBinary(configurations.get(id).valueType());

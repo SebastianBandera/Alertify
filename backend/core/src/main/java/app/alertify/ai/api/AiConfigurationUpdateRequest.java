@@ -2,6 +2,8 @@ package app.alertify.ai.api;
 
 import java.util.Set;
 
+import org.springframework.ai.tool.annotation.ToolParam;
+
 import tools.jackson.databind.json.JsonMapper;
 
 import app.alertify.configuration.api.ConfigurationUpdateRequest;
@@ -20,7 +22,7 @@ public record AiConfigurationUpdateRequest(
     @NotNull ConfigurationValueType valueType,
     @NotNull @Valid AiConfigurationValue value,
     Set<@Positive Long> tagIds,
-    boolean writable
+    @ToolParam(description = "Allows resource executions to persist changed values into this configuration. This flag does not control administrative editing; writable=false still allows authorized edits to value, description, name and tags. Preserve the current flag unless the user asks to change it; do not enable it to perform an administrative edit.") boolean writable
 ) {
 
     public ConfigurationUpdateRequest toRequest(JsonMapper json) {
