@@ -150,6 +150,57 @@ class CodexSessionServiceTest {
     }
 
     @Test
+    void classifiesStreamFailuresWithoutRemoteBodiesOrCauses() {
+        Map<String, String> events = Map.of(
+                "response.failed", "AI_PROVIDER_STREAM_FAILED",
+                "response.incomplete", "AI_PROVIDER_STREAM_INCOMPLETE",
+                "error", "AI_PROVIDER_STREAM_ERROR");
+        events.forEach((type, code) -> {
+            try {
+                CodexSessionService.parseCodexStream(JsonMapper.builder().build(),
+                        "data: {\"type\":\"" + type + "\",\"message\":\"PRIVATE-REMOTE\"}\n\n");
+                org.junit.jupiter.api.Assertions.fail("Expected a stream failure");
+            } catch (ProviderFailureException failure) {
+                assertThat(CodexChatService.failureCode(failure)).isEqualTo(code);
+                assertThat(CodexChatService.safeMessage(failure)).doesNotContain("PRIVATE");
+                assertThat(failure.getCause()).isNull();
+            }
+        });
+        for (String stream : List.of("data: PRIVATE-INVALID\n\n", "data: null\n\n"))
+            assertThatThrownBy(() -> CodexSessionService.parseCodexStream(JsonMapper.builder().build(), stream))
+                    .isInstanceOfSatisfying(ProviderFailureException.class,
+                            failure -> assertThat(failure.code()).isEqualTo("AI_PROVIDER_INVALID_STREAM"))
+                    .hasMessageNotContaining("PRIVATE");
+
+        assertThatThrownBy(() -> CodexSessionService.parseCodexStream(JsonMapper.builder().build(), "data: [DONE]\n\n"))
+                .isInstanceOfSatisfying(ProviderFailureException.class,
+                        failure -> assertThat(failure.code()).isEqualTo("AI_PROVIDER_STREAM_TRUNCATED"));
+        assertThatThrownBy(() -> CodexSessionService.parseCodexStream(JsonMapper.builder().build(),
+                "data: {\"type\":\"response.completed\"}\n\n"))
+                .isInstanceOfSatisfying(ProviderFailureException.class,
+                        failure -> assertThat(failure.code()).isEqualTo("AI_PROVIDER_INVALID_RESPONSE"));
+    }
+
+    @Test
+    void classifiesActualHttpStatusAndTransportFailures() {
+        CodexSessionService httpFailure = authenticatedService(request -> CompletableFuture.completedFuture(
+                new StubResponse(request, 503, "PRIVATE-REMOTE-BODY")));
+        assertThatThrownBy(() -> httpFailure.codexRequest(Map.of(), metadata(1), 1L, 1L).execute())
+                .isInstanceOfSatisfying(ProviderFailureException.class, failure -> {
+                    assertThat(failure.code()).isEqualTo("AI_PROVIDER_HTTP");
+                    assertThat(failure.getMessage()).contains("503").doesNotContain("PRIVATE");
+                });
+        CodexSessionService transportFailure = authenticatedService(request -> CompletableFuture.failedFuture(
+                new java.io.IOException("PRIVATE-HEADER")));
+        assertThatThrownBy(() -> transportFailure.codexRequest(Map.of(), metadata(2), 1L, 2L).execute())
+                .isInstanceOfSatisfying(ProviderFailureException.class, failure -> {
+                    assertThat(failure.code()).isEqualTo("AI_PROVIDER_TRANSPORT");
+                    assertThat(failure.getMessage()).doesNotContain("PRIVATE");
+                    assertThat(failure.getCause()).isNull();
+                });
+    }
+
+    @Test
     void migratesTheSubjectAndNamespacedAccountClaimsFromAnExistingSession() {
         CodexWorkerProperties properties = properties(directory.resolve("state.enc"));
         EncryptedStateStore store = new EncryptedStateStore(properties);
@@ -381,6 +432,54 @@ class CodexSessionServiceTest {
 
         call.cancel(CodexSessionService.CancellationReason.USER);
         assertThatThrownBy(result::join).hasCauseInstanceOf(CodexSessionService.ProviderRequestCancelledException.class);
+    }
+
+    @Test
+    @Timeout(10)
+    void reportsTypedFailureAfterNineSuccessfulToolReceiptsWithoutReplayingThem() throws Exception {
+        AtomicInteger requests = new AtomicInteger();
+        CodexSessionService sessions = authenticatedService(request -> {
+            if (request.uri().getPath().endsWith("/models"))
+                return CompletableFuture.completedFuture(new StubResponse(request, 200, "{\"data\":[{\"id\":\"configured-model\"}]}"));
+
+            int step = requests.incrementAndGet();
+            String event = step <= 9
+                    ? "{\"type\":\"response.completed\",\"response\":{\"output\":[{\"type\":\"function_call\",\"call_id\":\"call-" + step
+                            + "\",\"name\":\"fixture_update\",\"arguments\":\"{}\"}]}}"
+                    : "{\"type\":\"response.incomplete\",\"message\":\"PRIVATE-REMOTE\"}";
+            return CompletableFuture.completedFuture(new StubResponse(request, 200, "data: " + event + "\n\n"));
+        });
+        var client = new java.util.concurrent.atomic.AtomicReference<io.grpc.stub.StreamObserver<app.alertify.worker.ai.grpc.ChatClientMessage>>();
+        var failure = new java.util.concurrent.atomic.AtomicReference<app.alertify.worker.ai.grpc.ChatFailure>();
+        var receipts = new java.util.concurrent.CopyOnWriteArrayList<String>();
+        var completed = new java.util.concurrent.CountDownLatch(1);
+        client.set(new CodexChatService(sessions).chat(new io.grpc.stub.StreamObserver<>() {
+            @Override
+            public void onNext(app.alertify.worker.ai.grpc.ChatWorkerMessage message) {
+                if (message.hasToolCall()) {
+                    String id = message.getToolCall().getCallId();
+                    receipts.add(id);
+                    client.get().onNext(app.alertify.worker.ai.grpc.ChatClientMessage.newBuilder().setToolResult(
+                            app.alertify.worker.ai.grpc.ChatToolResult.newBuilder().setCallId(id).setOutput("SUCCEEDED")).build());
+                }
+                if (message.hasFailure())
+                    failure.set(message.getFailure());
+            }
+
+            @Override
+            public void onError(Throwable error) { completed.countDown(); }
+
+            @Override
+            public void onCompleted() { completed.countDown(); }
+        }));
+        client.get().onNext(app.alertify.worker.ai.grpc.ChatClientMessage.newBuilder().setStart(
+                app.alertify.worker.ai.grpc.ChatStart.newBuilder().setConversationId(1).setTurnId(1)
+                        .setModel("configured-model").setReasoningEffort("low").setMode("DIRECT").setApprovalPolicy("ASK")).build());
+        assertThat(completed.await(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(receipts).containsExactly("call-1", "call-2", "call-3", "call-4", "call-5", "call-6", "call-7", "call-8", "call-9");
+        assertThat(requests.get()).isEqualTo(10);
+        assertThat(failure.get().getCode()).isEqualTo("AI_PROVIDER_STREAM_INCOMPLETE");
+        assertThat(failure.get().getMessage()).doesNotContain("PRIVATE");
     }
 
     private CodexSessionService service() {

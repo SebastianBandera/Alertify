@@ -17,6 +17,15 @@ class CodexChatServiceTest {
     private final JsonMapper json = JsonMapper.builder().build();
 
     @Test
+    void preservesUnknownFailuresWithoutGuessingTheirCauseOrExposingDetails() {
+        var failure = new IllegalStateException("PRIVATE-REMOTE");
+        assertThat(CodexChatService.failureCode(failure)).isEqualTo("AI_PROVIDER_FAILED");
+        assertThat(CodexChatService.safeMessage(failure)).doesNotContain("PRIVATE");
+        var mismatch = new ProviderFailureException(ProviderFailureException.Reason.TOOL_RESULT_MISMATCH);
+        assertThat(CodexChatService.failureCode(mismatch)).isEqualTo("AI_PROVIDER_TOOL_RESULT_MISMATCH");
+    }
+
+    @Test
     @EnabledIfEnvironmentVariable(named = "ALERTIFY_AI_SCHEMA_EVIDENCE_DIR", matches = ".+")
     @SuppressWarnings("unchecked")
     void actualAdministrativeSchemasRetainNullPreservationInStrictMode() throws Exception {

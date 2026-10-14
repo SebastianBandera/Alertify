@@ -2,6 +2,7 @@ package app.alertify.ai.tools;
 
 import java.util.List;
 
+import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Component;
 import org.springframework.validation.annotation.Validated;
@@ -72,7 +73,7 @@ public class ConfigurationAiTools {
     }
 
     @AlertifyTool(name = "alertify_configuration_search", description = "Search application configurations; binary entries expose metadata only. String filters are exact by default. For a case-insensitive, accent-insensitive partial name match like the frontend search, use a name filter with value ~*Google*, where ~ enables flexible text matching and * is the wildcard. Page size is capped at 50; use subsequent page numbers when totalPages indicates more results. For resources without tags, inspect each returned tags array and include only empty arrays across every page; omitting a tag filter does not mean without tags.", readOnly = true)
-    public AiPage<ConfigurationResponse> search(List<AiFilter> filters, @Valid AiPageRequest page) {
+    public AiPage<ConfigurationResponse> search(@ToolParam(description = "Configuration filter fields: id, version, name, description, valueType (alias type), createdAt (alias created), updatedAt (alias modified), valueContains, tagId and tagOperator. For a tag use [{field: tagId, value: 77}], never tagIds. Repeat tagId once per positive tag ID; do not combine IDs in a comma-separated value. tagOperator is OR (default) or AND. Filter fields are tool-specific; do not infer them from response properties.") List<AiFilter> filters, @Valid AiPageRequest page) {
         return tools.execute("alertify_configuration_search", () -> {
             var result = configurations.search(support.filters(filters), page.pageable());
             var counts = usages.getForIds(result.getContent().stream().map(ConfigurationResponse::id).toList());

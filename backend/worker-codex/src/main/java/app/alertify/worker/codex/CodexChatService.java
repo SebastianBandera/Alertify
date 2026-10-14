@@ -175,7 +175,7 @@ class CodexChatService {
                     JsonNode output = response.path(OUTPUT_FIELD);
 
                     if (!output.isArray())
-                        throw new IllegalStateException("The Codex response did not contain an output array");
+                        throw new ProviderFailureException(ProviderFailureException.Reason.INVALID_RESPONSE);
 
                     phase = "PROCESSING_RESPONSE";
                     LOGGER.info("event=AI_MODEL_REQUEST outcome=COMPLETED conversationId={} turnId={} step={} durationMs={} totalTokens={} outputShape={}", start.getConversationId(), start.getTurnId(), step + 1, elapsedMillis(requestStartedAt), codexResponse.usage().getRequest().getTotalTokens(), outputShape(output));
@@ -187,7 +187,7 @@ class CodexChatService {
                         if (text.isBlank() && emptyResponses++ == 0)
                             continue;
                         if (text.isBlank())
-                            throw new ProviderProtocolException("The Codex response did not contain a message or function call (output types=" + outputShape(output) + ")");
+                            throw new ProviderFailureException(ProviderFailureException.Reason.INVALID_RESPONSE);
 
                         observer.onNext(ChatWorkerMessage.newBuilder().setOutputText(text).build());
                         observer.onNext(ChatWorkerMessage.newBuilder().setCompleted(ChatCompleted.newBuilder()
@@ -205,7 +205,7 @@ class CodexChatService {
                     String name = text(call.path("name"), "");
                     String arguments = text(call.path("arguments"), "{}");
                     if (callId.isBlank() || name.isBlank())
-                        throw new ProviderProtocolException("The Codex tool call was incomplete (callIdPresent=" + !callId.isBlank() + ", namePresent=" + !name.isBlank() + ")");
+                        throw new ProviderFailureException(ProviderFailureException.Reason.INVALID_RESPONSE);
 
                     emptyResponses = 0;
                     toolCalls++;
@@ -214,7 +214,7 @@ class CodexChatService {
                     phase = "WAITING_TOOL_RESULT";
                     ChatToolResult result = results.take();
                     if (!callId.equals(result.getCallId()))
-                        throw new IllegalStateException("The tool result did not match the pending call");
+                        throw new ProviderFailureException(ProviderFailureException.Reason.TOOL_RESULT_MISMATCH);
 
                     phase = "PROCESSING_TOOL_RESULT";
                     LOGGER.info("event=AI_TOOL_CALL outcome={} conversationId={} turnId={} step={} tool={} callId={} diagnosticCode={} resultBytes={} additionalTools={}", result.getFailed() ? "FAILED" : "COMPLETED", start.getConversationId(), start.getTurnId(), step + 1, name, callId, result.getDiagnosticCode(), byteLength(result.getOutput()), result.getAdditionalToolsCount());
@@ -237,7 +237,7 @@ class CodexChatService {
                 if (!cancelled)
                     fail("AI_PROVIDER_CANCELLED", exception.getMessage());
             } catch (RuntimeException exception) {
-                fail("AI_PROVIDER_FAILED", safeMessage(exception));
+                fail(failureCode(exception), safeMessage(exception));
             } finally {
                 runner = null;
                 activeCall = null;
@@ -401,9 +401,22 @@ class CodexChatService {
         return node.isString() ? node.stringValue() : fallback;
     }
 
-    private static String safeMessage(RuntimeException exception) {
-        if (exception instanceof CodexSessionService.RemoteServiceException || exception instanceof ProviderProtocolException)
+    static String failureCode(RuntimeException exception) {
+        if (exception instanceof ProviderFailureException failure)
+            return failure.code();
+
+        if (exception instanceof CodexSessionService.RemoteServiceException)
+            return "AI_PROVIDER_HTTP";
+
+        return "AI_PROVIDER_FAILED";
+    }
+
+    static String safeMessage(RuntimeException exception) {
+        if (exception instanceof ProviderFailureException)
             return exception.getMessage();
+
+        if (exception instanceof CodexSessionService.RemoteServiceException failure)
+            return ProviderFailureException.http(failure.status()).getMessage();
 
         return "The Codex request failed (" + exception.getClass().getSimpleName() + ")";
     }
@@ -416,11 +429,4 @@ class CodexChatService {
         return Math.max(0, (System.nanoTime() - startedAt) / 1_000_000);
     }
 
-    private static final class ProviderProtocolException extends IllegalStateException {
-        private static final long serialVersionUID = 1L;
-
-        private ProviderProtocolException(String message) {
-            super(message);
-        }
-    }
 }

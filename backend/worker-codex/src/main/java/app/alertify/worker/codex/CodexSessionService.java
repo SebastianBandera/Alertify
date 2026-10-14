@@ -735,7 +735,7 @@ class CodexSessionService {
             message.append(" (code=").append(code).append(')');
         if (!parameter.isBlank())
             message.append(" (param=").append(parameter).append(')');
-        return new RemoteServiceException(message.toString());
+        return new RemoteServiceException(response.statusCode(), message.toString());
     }
 
     private static String safeDiagnostic(String value) {
@@ -1203,7 +1203,19 @@ class CodexSessionService {
                 responseFuture = currentFuture;
             }
             try {
-                return successful(await(currentFuture));
+                HttpResponse<String> response = await(currentFuture);
+                if (response.statusCode() < 200 || response.statusCode() >= 300)
+                    throw ProviderFailureException.http(response.statusCode());
+
+                return response;
+            } catch (RuntimeException exception) {
+                throwIfCancelled();
+                Throwable cause = exception;
+                for (int depth = 0; cause != null && depth < 16; depth++, cause = cause.getCause())
+                    if (cause instanceof java.io.IOException)
+                        throw new ProviderFailureException(ProviderFailureException.Reason.TRANSPORT);
+
+                throw exception;
             } finally {
                 synchronized (this) {
                     if (responseFuture == currentFuture)
@@ -1283,7 +1295,7 @@ class CodexSessionService {
         }
         acceptCodexEvent(json, data, accumulator);
         if (accumulator.completed == null)
-            throw new IllegalStateException("The Codex response stream ended without a completed response");
+            throw new ProviderFailureException(ProviderFailureException.Reason.STREAM_TRUNCATED);
 
         ObjectNode completed = (ObjectNode) accumulator.completed.deepCopy();
         if (!completed.path(OUTPUT_FIELD).isArray() || completed.path(OUTPUT_FIELD).isEmpty()) {
@@ -1308,12 +1320,20 @@ class CodexSessionService {
         if (data.isEmpty() || "[DONE]".contentEquals(data))
             return;
 
-        JsonNode event = json.readTree(data.toString());
+        JsonNode event;
+        try {
+            event = json.readTree(data.toString());
+        } catch (tools.jackson.core.JacksonException exception) {
+            throw new ProviderFailureException(ProviderFailureException.Reason.INVALID_STREAM);
+        }
+        if (event == null || !event.isObject())
+            throw new ProviderFailureException(ProviderFailureException.Reason.INVALID_STREAM);
+
         String type = event.path("type").asText("");
         if ("response.completed".equals(type)) {
             JsonNode response = event.path("response");
             if (!response.isObject())
-                throw new IllegalStateException("The Codex completion event did not contain a response");
+                throw new ProviderFailureException(ProviderFailureException.Reason.INVALID_RESPONSE);
 
             accumulator.completed = response;
         } else if ("response.output_item.done".equals(type) && event.path("item").isObject()) {
@@ -1323,8 +1343,12 @@ class CodexSessionService {
         } else if ("response.function_call_arguments.done".equals(type) && event.path("item").isObject()) {
             accumulator.fallbackCalls.add(event.path("item"));
         }
-        if ("response.failed".equals(type) || "response.incomplete".equals(type) || "error".equals(type))
-            throw new IllegalStateException("The Codex response stream reported a failure");
+        switch (type) {
+            case "response.failed" -> throw new ProviderFailureException(ProviderFailureException.Reason.STREAM_FAILED);
+            case "response.incomplete" -> throw new ProviderFailureException(ProviderFailureException.Reason.STREAM_INCOMPLETE);
+            case "error" -> throw new ProviderFailureException(ProviderFailureException.Reason.STREAM_ERROR);
+            default -> { }
+        }
     }
 
     private static final class CodexStreamAccumulator {
@@ -1336,10 +1360,14 @@ class CodexSessionService {
 
     static final class RemoteServiceException extends IllegalStateException {
         private static final long serialVersionUID = 1L;
+        private final int status;
 
-        private RemoteServiceException(String message) {
+        private RemoteServiceException(int status, String message) {
             super(message);
+            this.status = status;
         }
+
+        int status() { return status; }
     }
 
     private void requireNoSessionOrAttempt() {

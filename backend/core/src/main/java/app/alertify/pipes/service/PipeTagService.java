@@ -50,6 +50,9 @@ public class PipeTagService {
         return tags.findAll(scope.and(DynamicSpecification.from(params, FILTER_ALIASES, FIELDS)), pageable).map(PipeTagService::response);
     }
 
+    @Transactional(readOnly = true)
+    public TagResponse get(Long id) { return response(find(id)); }
+
     @Transactional
     public TagResponse create(TagCreateRequest request) {
         String name = request.name().trim();

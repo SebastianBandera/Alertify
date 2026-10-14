@@ -389,6 +389,7 @@ public class AiChatService {
     private void execute(ActiveTurn active, AiToolInvocation invocation, AiToolDescriptor descriptor, String callId, String arguments) {
         String output;
         boolean failed = false;
+        String diagnosticCode = "";
         SecurityContext previous = SecurityContextHolder.getContext();
         SecurityContext context = SecurityContextHolder.createEmptyContext();
         context.setAuthentication(active.authentication);
@@ -405,12 +406,14 @@ public class AiChatService {
             }
         } catch (RuntimeException exception) {
             failed = true;
-            output = "Failed: " + safeFailure(exception);
-            persistence.toolFailed(invocation.getId(), output, "TOOL_EXECUTION_FAILED");
+            AiToolFailure failure = AiToolFailure.classify(descriptor.name(), exception);
+            diagnosticCode = failure.code();
+            output = "Failed: " + failure.message();
+            persistence.toolFailed(invocation.getId(), output, diagnosticCode);
         } finally {
             SecurityContextHolder.setContext(previous);
         }
-        sendResult(active, callId, output, failed, failed ? "TOOL_EXECUTION_FAILED" : "");
+        sendResult(active, callId, output, failed, diagnosticCode);
         publish(active, STATUS_TOOL_RESULT, invocation.getId());
     }
 
@@ -603,6 +606,7 @@ public class AiChatService {
                 .append("A user's clear request for an administrative change authorizes proposing the matching write tool, subject to the current mode and approval policy. ")
                 .append("When creating or editing alert or procedure parameters, inspect the selected template's parameter definitions and allowed sources. Each parameterKey must appear only once. For updates, parameters is a complete replacement list, not a patch: start from the freshly read definition, replace the requested entry by its key and preserve all other entries, sources and values. Omission may reset a parameter to its template default or remove an optional parameter; it does not preserve the current value. ")
                 .append("For each parameter, match the requested source and its active value exactly. TEXT requires textValue; CONFIGURATION, SECRET, PROCEDURE and PIPE require the corresponding positive ID of an existing allowed resource. Use binding options or resource metadata to resolve and check references without exposing protected values. Use null for inactive fields; never use 0 for the selected reference, invent an ID, add a duplicate entry or substitute TEXT for a requested binding. ")
+                .append("An empty allowedSecretValueTypes or allowedConfigurationValueTypes list means no additional declared value-type restriction; it does not prohibit the corresponding source. A non-empty list restricts the compatible types further. Still check bindingAllowed, allowedSources, Java-type compatibility, resource existence and required writability. Binary and structured value types remain restricted to Java types that require them; an empty list does not override that requirement. Binding options are global resource metadata, not a compatibility-filtered list for a particular parameter. Example: java.lang.String with SECRET allowed and allowedSecretValueTypes=[] can reference an existing STRING secret when the other binding requirements are satisfied; do not refuse this binding merely because the list is empty. Do not read protected values or execute a resource to decide metadata compatibility; an accepted binding does not prove that its protected value will convert or execute successfully. ")
                 .append("For an ordered sequence, track the next pending step and compare the proposed parameter key, source and active value with that step before calling the tool. Do not skip a step or bring a later restoration forward. If a requested reference cannot be resolved, explain the obstacle instead of proposing a different value. Example: changing fileName from TEXT to CONFIGURATION replaces that same fileName entry with the requested configuration ID and null inactive fields; it does not append another fileName or alter the other parameters. ")
                 .append("Do not claim that a write was performed unless its write tool returned success in this turn. Prior conversation messages and successful read-only tools are not evidence of a current write. ")
                 .append("Conversation messages have trusted turn and UTC timestamp metadata. The operation audit separately records tool status and dates; an assistant's historical claim such as 'verified' is narrative, not execution or verification evidence. ")
@@ -612,11 +616,15 @@ public class AiChatService {
                 .append("Example: an update is SUCCEEDED and no fresh read was performed: say 'The update executed successfully; I have not verified it through a new read.' When a read was made, report the fields actually compared and any unresolved differences. ")
                 .append("After each successful create or update, use available read-only tools to fetch the affected object by its returned ID, or search and identify that exact ID when no get tool exists. ")
                 .append("Compare the fresh persisted definition with the requested changes and all fields and relationships that were meant to be preserved, accounting for documented backend normalization. ")
-                .append("After a successful delete, verify that the deleted ID is absent: a resource-not-found result is expected, or a complete search may establish absence when no get tool exists. ")
-                .append("Permission errors, connection errors, failed tools and incomplete pagination do not establish deletion or successful verification. A similarly named object with another ID is not the deleted object. ")
+                .append("After a successful delete, verify that the deleted ID is absent: a resource-not-found result is expected (TOOL_RESOURCE_NOT_FOUND from the matching scoped get), or a complete search may establish absence when no get tool exists. ")
+                .append("Permission errors, connection errors, other failed tools and incomplete pagination do not establish deletion or successful verification. A similarly named object with another ID is not the deleted object. ")
                 .append("For other writes such as run or import, verify the observable resulting state or returned execution IDs with available tools; acceptance of an asynchronous run is not proof that execution finished successfully. ")
                 .append("Only announce verified completion when a fresh read supports it. If the write succeeded but verification is unavailable, incomplete or inconsistent, distinguish execution from verification, describe the limitation or mismatching non-secret fields and never claim full success. ")
                 .append("When listing resources without tags, include only objects whose returned tags collection is empty and inspect all result pages before claiming a complete list. An empty tag filter means no filter, not absence of tags. ")
+                .append("Identify the entity and scope before selecting a tool: a tag scoped to PIPE is a tag, not a pipe definition. Tag IDs and resource IDs are independent. Use alertify_pipe_tag_get/search/update/delete for PIPE tags, and the tag's current version for a tag write; never substitute pipe_get or delete a pipe for a tag request. PIPE_TAG_IN_USE does not authorize detaching associations or deleting resources. ")
+                .append("For an explicitly requested PIPE tag deletion under ASK, read the tag by its ID, present its restoration snapshot and call alertify_pipe_tag_delete. The backend enforces the in-use guard without detaching tags. A tag response does not list associations; inability to read those associations is not a reason to withhold this guarded ASK proposal or invent a pipeId filter. Example: 'Delete only PIPE tag 94; do not delete pipes' -> pipe_tag_get(94) -> snapshot -> pipe_tag_delete(94, current tag version) -> ASK approval -> backend guarded deletion -> pipe_tag_get(94), expecting TOOL_RESOURCE_NOT_FOUND after success. An in-use rejection means no deletion; report it and preserve associations. ")
+                .append("Search filter fields are tool-specific and may differ from response property names. Configuration membership uses filter.field=tagId, never tagIds; repeat tagId once per positive tag ID and use tagOperator=AND or OR when needed. A failed search is unknown, not an empty result. Correct the filter using its tool contract before retrying; do not repeat an invalid filter unchanged. Only a successful complete search can establish absence. In structured output, represent an unresolved family as null with its failed/unverified status, never [] even when prose mentions the failure. ")
+                .append("A turn failure does not undo successful writes already committed by tools. When resuming a partially completed sequence, consult operation history and reread the affected objects, reconcile the requested steps with the persisted state, and propose only the remaining authorized steps. Do not blindly replay completed writes or roll them back. If the last operation's result is uncertain, resolve it through fresh reads before retrying a write. ")
                 .append("The current mode is ").append(active.mode).append(". ")
                 .append("Load a tool group before using its domain tools with ").append(LOAD_GROUP_TOOL)
                 .append(". Groups: ALERTS definitions and executions; PROCEDURES procedures and runs; PIPES pipelines; ")
@@ -817,10 +825,6 @@ public class AiChatService {
         if (value.getBytes(StandardCharsets.UTF_8).length <= maxBytes)
             return value;
         return value.substring(0, Math.min(value.length(), maxBytes / 2)) + "\n[Result truncated by Alertify]";
-    }
-
-    private static String safeFailure(RuntimeException exception) {
-        return "Tool execution failed (" + exception.getClass().getSimpleName() + ")";
     }
 
     private static void runAfterCommit(Runnable action) {

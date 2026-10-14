@@ -94,7 +94,7 @@ public class AlertAiTools {
     @AlertifyTool(name = "alertify_alert_get", description = "Get one Alertify alert definition by numeric ID", readOnly = true)
     public AlertResponse get(long id) { return tools.execute("alertify_alert_get", () -> alerts.get(id)); }
 
-    @AlertifyTool(name = "alertify_alert_templates", description = "List available alert templates and their parameter schemas. Each result includes the fully qualified templateKey accepted by alertify_alert_template_source.", readOnly = true)
+    @AlertifyTool(name = "alertify_alert_templates", description = "List available alert templates and their parameter schemas. Each result includes the fully qualified templateKey accepted by alertify_alert_template_source. Empty allowedSecretValueTypes or allowedConfigurationValueTypes means no additional declared value-type restriction, not a prohibited source. Non-empty lists further restrict compatible types. Always check bindingAllowed, allowedSources, Java-type compatibility and required writability; binary and structured type requirements still apply.", readOnly = true)
     public List<AlertTemplateResponse> templates() { return tools.execute("alertify_alert_templates", catalog::templates); }
 
     @AlertifyTool(name = "alertify_alert_template_source", description = "Return the exact Java source of one registered alert template. First use alertify_alert_templates to discover its fully qualified templateKey.", readOnly = true, idempotentHint = true)
@@ -102,7 +102,7 @@ public class AlertAiTools {
         return tools.execute("alertify_alert_template_source", () -> templateSources.alert(templateKey));
     }
 
-    @AlertifyTool(name = "alertify_alert_binding_options", description = "List resources that may be referenced by alert parameters", readOnly = true)
+    @AlertifyTool(name = "alertify_alert_binding_options", description = "List global resource metadata that alert parameters may reference, without protected values. These candidates are not compatibility-filtered for a particular parameter. Empty allowedSecretValueTypes or allowedConfigurationValueTypes in its template means no additional declared value-type restriction, not a prohibited source. Non-empty lists further restrict compatible types. Always check bindingAllowed, allowedSources, Java-type compatibility and required writability; binary and structured type requirements still apply. Do not read protected values or execute resources to check metadata compatibility.", readOnly = true)
     public AlertBindingOptionsResponse bindingOptions() { return tools.execute("alertify_alert_binding_options", catalog::bindingOptions); }
 
     @AlertifyTool(name = "alertify_alert_observer_resources", description = "List resources available to an alert result observer", readOnly = true)

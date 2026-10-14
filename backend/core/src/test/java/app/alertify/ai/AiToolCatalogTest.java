@@ -88,9 +88,26 @@ class AiToolCatalogTest {
         assertTrue(descriptors.get("alertify_procedure_templates").description().contains("alertify_procedure_template_source"));
         assertTrue(descriptors.get("alertify_procedure_template_source").readOnly());
         assertTrue(descriptors.get("alertify_procedure_template_source").idempotentHint());
+        for (String toolName : List.of("alertify_alert_templates", "alertify_alert_binding_options", "alertify_procedure_templates", "alertify_procedure_binding_options")) {
+            AiToolDescriptor descriptor = descriptors.get(toolName);
+            assertTrue(descriptor.readOnly(), toolName);
+            assertTrue(descriptor.description().contains("no additional declared value-type restriction, not a prohibited source"), toolName);
+            assertTrue(descriptor.description().contains("allowedSecretValueTypes or allowedConfigurationValueTypes"), toolName);
+            assertTrue(descriptor.description().contains("bindingAllowed, allowedSources, Java-type compatibility and required writability"), toolName);
+            assertTrue(descriptor.description().contains("binary and structured type requirements still apply"), toolName);
+            if (toolName.endsWith("binding_options"))
+                assertTrue(descriptor.description().contains("not compatibility-filtered for a particular parameter"), toolName);
+
+        }
         assertTrue(descriptors.get("alertify_configuration_search").description().contains("~*Google*"));
         assertTrue(descriptors.get("alertify_configuration_search").description().contains("capped at 50"));
+        assertTrue(descriptors.get("alertify_pipe_tag_get").readOnly());
+        assertTrue(descriptors.get("alertify_pipe_tag_get").description().contains("tag ID"));
+        assertTrue(descriptors.get("alertify_pipe_tag_delete").description().contains("backend checks associations"));
+        assertTrue(schemaProperty(JSON.readTree(descriptors.get("alertify_pipe_tag_search").inputSchema()), "filters")
+                .path("description").stringValue().contains("no pipeId filter"));
         JsonNode configurationSearchSchema = JSON.readTree(descriptors.get("alertify_configuration_search").inputSchema());
+        assertTrue(schemaProperty(configurationSearchSchema, "filters").path("description").stringValue().contains("never tagIds"));
         assertEquals(1, schemaProperty(configurationSearchSchema, "size").path("minimum").intValue());
         assertEquals(AiPageRequest.MAX_SIZE, schemaProperty(configurationSearchSchema, "size").path("maximum").intValue());
         assertFalse(descriptors.get("alertify_alert_create").readOnly());

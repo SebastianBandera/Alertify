@@ -3,6 +3,7 @@ package app.alertify.ai.tools;
 import java.util.List;
 import java.util.UUID;
 
+import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Component;
 import org.springframework.validation.annotation.Validated;
@@ -59,7 +60,7 @@ public class PipeAiTools {
         return tools.execute("alertify_pipe_search", () -> AiPage.from(pipes.search(name, page.pageable())));
     }
 
-    @AlertifyTool(name = "alertify_pipe_get", description = "Get one pipe definition by numeric ID", readOnly = true)
+    @AlertifyTool(name = "alertify_pipe_get", description = "Get one pipe definition by its pipe ID. This reads a pipe, not a tag; tag IDs belong to a separate namespace. For a tag scoped to PIPE use alertify_pipe_tag_get with the tag ID.", readOnly = true)
     public PipeResponse get(long id) { return tools.execute("alertify_pipe_get", () -> pipes.get(id)); }
 
     @AlertifyTool(name = "alertify_pipe_options", description = "List resources and bindings available when defining a pipe", readOnly = true)
@@ -106,8 +107,11 @@ public class PipeAiTools {
         return tools.execute("alertify_pipe_execution_get", () -> executions.get(executionId));
     }
 
-    @AlertifyTool(name = "alertify_pipe_tag_search", description = "Search tags scoped to pipes", readOnly = true)
-    public AiPage<TagResponse> tagSearch(List<AiFilter> filters, @Valid AiPageRequest page) {
+    @AlertifyTool(name = "alertify_pipe_tag_get", description = "Get one tag scoped to PIPE by its tag ID, including its current version. This does not read a pipe. Use this before updating or deleting a PIPE tag and to verify the tag after a write.", readOnly = true)
+    public TagResponse tagGet(long id) { return tools.execute("alertify_pipe_tag_get", () -> tags.get(id)); }
+
+    @AlertifyTool(name = "alertify_pipe_tag_search", description = "Search tags scoped to PIPE, not pipe definitions. Filter field id identifies a tag ID; it is independent of pipe IDs.", readOnly = true)
+    public AiPage<TagResponse> tagSearch(@ToolParam(description = "PIPE tag filter fields: id, version, name, color, createdAt (alias created), updatedAt (alias modified). The field id is the tag ID. There is no pipeId filter or association lookup in this tool. To read tag 94 directly use alertify_pipe_tag_get(id=94).") List<AiFilter> filters, @Valid AiPageRequest page) {
         return tools.execute("alertify_pipe_tag_search", () -> AiPage.from(tags.search(support.filters(filters), page.pageable())));
     }
 
@@ -121,6 +125,6 @@ public class PipeAiTools {
         return tools.execute("alertify_pipe_tag_update", () -> tags.update(id, request));
     }
 
-    @AlertifyTool(name = "alertify_pipe_tag_delete", description = "Delete a pipe tag using its current version", readOnly = false, destructiveHint = true, refreshTargets = AiRefreshTarget.PIPES)
+    @AlertifyTool(name = "alertify_pipe_tag_delete", description = "Delete a tag scoped to PIPE using its tag ID and current tag version from alertify_pipe_tag_get. This does not delete a pipe. The backend checks associations and rejects an assigned tag with PIPE_TAG_IN_USE without detaching it. After reading the tag and preparing its snapshot, submit this tool for an explicitly requested ASK deletion even when a read tool does not expose associations; do not require a nonexistent association filter. Do not detach the tag or delete associated pipes without a separate user request.", readOnly = false, destructiveHint = true, refreshTargets = AiRefreshTarget.PIPES)
     public void tagDelete(long id, long version) { tools.execute("alertify_pipe_tag_delete", () -> tags.delete(id, version)); }
 }

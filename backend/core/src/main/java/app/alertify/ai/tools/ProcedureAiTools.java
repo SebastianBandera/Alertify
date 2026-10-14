@@ -78,7 +78,7 @@ public class ProcedureAiTools {
                 tagIds == null ? java.util.Set.of() : new LinkedHashSet<>(tagIds), Boolean.TRUE.equals(requireAllTags), pagination.pageable())));
     }
 
-    @AlertifyTool(name = "alertify_procedure_templates", description = "List procedure templates, parameters, outputs and sensitive-result flags. Each result includes the fully qualified templateKey accepted by alertify_procedure_template_source.", readOnly = true)
+    @AlertifyTool(name = "alertify_procedure_templates", description = "List procedure templates, parameters, outputs and sensitive-result flags. Each result includes the fully qualified templateKey accepted by alertify_procedure_template_source. Empty allowedSecretValueTypes or allowedConfigurationValueTypes means no additional declared value-type restriction, not a prohibited source. Non-empty lists further restrict compatible types. Always check bindingAllowed, allowedSources, Java-type compatibility and required writability; binary and structured type requirements still apply.", readOnly = true)
     public List<ProcedureTemplateResponse> templates() {
         return tools.execute("alertify_procedure_templates", catalog::templates);
     }
@@ -88,7 +88,7 @@ public class ProcedureAiTools {
         return tools.execute("alertify_procedure_template_source", () -> templateSources.procedure(templateKey));
     }
 
-    @AlertifyTool(name = "alertify_procedure_binding_options", description = "List resources that procedure parameters may reference", readOnly = true)
+    @AlertifyTool(name = "alertify_procedure_binding_options", description = "List global resource metadata that procedure parameters may reference, without protected values. These candidates are not compatibility-filtered for a particular parameter. Empty allowedSecretValueTypes or allowedConfigurationValueTypes in its template means no additional declared value-type restriction, not a prohibited source. Non-empty lists further restrict compatible types. Always check bindingAllowed, allowedSources, Java-type compatibility and required writability; binary and structured type requirements still apply. Do not read protected values or execute resources to check metadata compatibility.", readOnly = true)
     public ProcedureBindingOptionsResponse bindingOptions() {
         return tools.execute("alertify_procedure_binding_options", catalog::bindingOptions);
     }

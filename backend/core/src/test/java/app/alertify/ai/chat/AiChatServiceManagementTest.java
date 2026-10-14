@@ -64,10 +64,19 @@ class AiChatServiceManagementTest {
                 "Permission errors, connection errors", "distinguish execution from verification",
                 "inspect all result pages", "approval card is the user's confirmation",
                 "Each parameterKey must appear only once", "complete replacement list, not a patch",
+                "no additional declared value-type restriction", "does not prohibit the corresponding source",
+                "A non-empty list restricts the compatible types further", "Still check bindingAllowed, allowedSources",
+                "Binary and structured value types remain restricted", "Binding options are global resource metadata",
+                "allowedSecretValueTypes=[] can reference an existing STRING secret",
+                "Do not read protected values or execute a resource to decide metadata compatibility",
                 "never use 0 for the selected reference", "track the next pending step",
                 "Do not skip a step or bring a later restoration forward", "changing fileName from TEXT to CONFIGURATION",
                 "historical claim such as 'verified' is narrative", "pre-write read and the object returned by create/update",
-                "fieldComparison=NOT_RECORDED never certifies verified completion", "Alertify operation audit (metadata only)");
+                "fieldComparison=NOT_RECORDED never certifies verified completion", "Alertify operation audit (metadata only)",
+                "Tag IDs and resource IDs are independent", "filter.field=tagId, never tagIds",
+                "backend enforces the in-use guard", "not a reason to withhold this guarded ASK proposal",
+                "A failed search is unknown, not an empty result", "null with its failed/unverified status",
+                "turn failure does not undo successful writes", "only the remaining authorized steps");
         assertThat(message.getValue().getStart().getToolsList()).filteredOn(tool -> "alertify_operation_history".equals(tool.getName()))
                 .singleElement().satisfies(tool -> assertThat(tool.getReadOnly()).isTrue());
         if ("DIRECT".equals(mode)) {
