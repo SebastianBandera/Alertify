@@ -19,7 +19,7 @@ public record AiConfigurationCreateRequest(
     @Size(max = 2000) String description,
     @NotNull ConfigurationValueType valueType,
     @NotNull @Valid AiConfigurationValue value,
-    Set<@Positive Long> tagIds,
+    @ToolParam(description = "IDs of tags scoped to CONFIGURATION. Use the id returned by configuration_tag_get/search; that tag's own id is exactly the value accepted here, even though the tag is a separate resource. Do not use configuration IDs or tags from another scope.") Set<@Positive Long> tagIds,
     @ToolParam(description = "Allows resource executions to persist changed values into this configuration. This flag does not control administrative creation or editing; writable=false still allows authorized administrative edits. Set it according to the user's request.") boolean writable
 ) {
 

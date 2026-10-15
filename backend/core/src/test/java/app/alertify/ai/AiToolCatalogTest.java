@@ -114,10 +114,16 @@ class AiToolCatalogTest {
         for (String toolName : List.of("alertify_configuration_get", "alertify_configuration_create", "alertify_configuration_update"))
             assertTrue(descriptors.get(toolName).description().contains("writable=false still allows authorized"), toolName);
 
+        for (String toolName : List.of("alertify_alert_templates", "alertify_alert_template_get", "alertify_alert_binding_options",
+                "alertify_procedure_templates", "alertify_procedure_template_get", "alertify_procedure_binding_options"))
+            assertTrue(descriptors.get(toolName).description().contains("not literal TEXT values"), toolName);
+
         for (String toolName : List.of("alertify_configuration_create", "alertify_configuration_update")) {
             JsonNode writable = schemaProperty(JSON.readTree(descriptors.get(toolName).inputSchema()), "writable");
             assertEquals("boolean", writable.path("type").stringValue(), toolName);
             assertTrue(writable.path("description").stringValue().contains("does not control administrative"), toolName);
+            assertTrue(schemaProperty(JSON.readTree(descriptors.get(toolName).inputSchema()), "tagIds")
+                    .path("description").stringValue().contains("that tag's own id"), toolName);
         }
         assertTrue(schemaProperty(JSON.readTree(descriptors.get("alertify_configuration_update").inputSchema()), "writable")
                 .path("description").stringValue().contains("Preserve the current flag"));
@@ -160,6 +166,7 @@ class AiToolCatalogTest {
             List<String> required = StreamSupport.stream(items.path("required").spliterator(), false).map(JsonNode::stringValue).toList();
             assertEquals(Set.of("parameterKey", "source"), Set.copyOf(required), toolName);
             assertTrue(items.path("properties").path("parameterKey").path("description").stringValue().contains("only once"), toolName);
+            assertTrue(items.path("properties").path("source").path("description").stringValue().contains("not literal TEXT values"), toolName);
             assertTrue(items.path("properties").path("configurationId").path("description").stringValue().contains("0 is invalid"), toolName);
             assertTrue(descriptors.get(toolName).description().contains("parameterKey"), toolName);
             if (toolName.endsWith("update"))

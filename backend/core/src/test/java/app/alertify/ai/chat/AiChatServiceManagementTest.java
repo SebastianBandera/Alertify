@@ -84,7 +84,11 @@ class AiChatServiceManagementTest {
                 "USER_APPROVED plus phase=EXECUTION", "TOOL_VERSION_CONFLICT",
                 "Outcome metadata refreshes a bounded audit", "prefix uses ~QA-PREFIX*",
                 "status NOT_QUERIED", "the associations were not edited",
-                "prefer alertify_alert_template_get", "Catalog parameters use key");
+                "prefer alertify_alert_template_get", "Catalog parameters use key",
+                "bindingAllowed=false prohibits resource-reference bindings, not literal TEXT values",
+                "select one of the declared options", "SqlWatch.showDetailsInJson",
+                "being a separate tag entity does not make that ID invalid",
+                "Do not invent a second association ID");
         assertThat(message.getValue().getStart().getToolsList()).filteredOn(tool -> "alertify_operation_history".equals(tool.getName()))
                 .singleElement().satisfies(tool -> assertThat(tool.getReadOnly()).isTrue());
         if ("DIRECT".equals(mode)) {
