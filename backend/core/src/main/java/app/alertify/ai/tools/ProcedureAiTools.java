@@ -83,6 +83,11 @@ public class ProcedureAiTools {
         return tools.execute("alertify_procedure_templates", catalog::templates);
     }
 
+    @AlertifyTool(name = "alertify_procedure_template_get", description = "Get exactly one procedure template definition by positive templateId or exact fully qualified templateKey. Provide at least one selector; if both are given they must identify the same template. Prefer this focused metadata after selecting a template. Parameter definitions use key; copy that exact key to parameterKey in create/update payloads, once per parameter. Empty allowedSecretValueTypes or allowedConfigurationValueTypes means no additional declared value-type restriction, not a prohibited source. Still check bindingAllowed, allowedSources, Java-type compatibility and required writability. Executable behavior claims require alertify_procedure_template_source for the same templateKey.", readOnly = true, idempotentHint = true)
+    public ProcedureTemplateResponse template(@ToolParam(description = "Positive ID of the selected template; omit when selecting by templateKey", required = false) Long templateId, @ToolParam(description = "Exact fully qualified templateKey; omit when selecting by ID, or supply to check identity", required = false) String templateKey) {
+        return tools.execute("alertify_procedure_template_get", () -> catalog.template(templateId, templateKey));
+    }
+
     @AlertifyTool(name = "alertify_procedure_template_source", description = "Return the exact Java source of one registered procedure template. First use alertify_procedure_templates to discover its fully qualified templateKey.", readOnly = true, idempotentHint = true)
     public AiTemplateSource templateSource(@ToolParam(description = "Exact fully qualified templateKey returned by alertify_procedure_templates") String templateKey) {
         return tools.execute("alertify_procedure_template_source", () -> templateSources.procedure(templateKey));

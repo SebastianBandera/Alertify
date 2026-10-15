@@ -101,6 +101,16 @@ class AiToolCatalogTest {
         }
         assertTrue(descriptors.get("alertify_configuration_search").description().contains("~*Google*"));
         assertTrue(descriptors.get("alertify_configuration_search").description().contains("capped at 50"));
+        assertTrue(schemaProperty(JSON.readTree(descriptors.get("alertify_configuration_search").inputSchema()), "filters")
+                .path("description").stringValue().contains("prefix uses ~QA-PREFIX*"));
+        for (String name : List.of("alertify_alert_template_get", "alertify_procedure_template_get")) {
+            assertTrue(descriptors.get(name).readOnly());
+            assertTrue(descriptors.get(name).idempotentHint());
+            assertTrue(descriptors.get(name).description().contains("key to parameterKey"));
+            JsonNode schema = JSON.readTree(descriptors.get(name).inputSchema());
+            assertEquals("integer", schemaProperty(schema, "templateId").path("type").stringValue());
+            assertEquals("string", schemaProperty(schema, "templateKey").path("type").stringValue());
+        }
         for (String toolName : List.of("alertify_configuration_get", "alertify_configuration_create", "alertify_configuration_update"))
             assertTrue(descriptors.get(toolName).description().contains("writable=false still allows authorized"), toolName);
 
@@ -111,6 +121,8 @@ class AiToolCatalogTest {
         }
         assertTrue(schemaProperty(JSON.readTree(descriptors.get("alertify_configuration_update").inputSchema()), "writable")
                 .path("description").stringValue().contains("Preserve the current flag"));
+        assertTrue(schemaProperty(JSON.readTree(descriptors.get("alertify_configuration_update").inputSchema()), "value")
+                .path("description").stringValue().contains("Complete replacement value"));
         assertTrue(descriptors.get("alertify_pipe_tag_get").readOnly());
         assertTrue(descriptors.get("alertify_pipe_tag_get").description().contains("tag ID"));
         assertTrue(descriptors.get("alertify_pipe_tag_delete").description().contains("backend checks associations"));

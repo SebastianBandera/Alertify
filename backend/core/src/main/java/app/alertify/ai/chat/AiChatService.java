@@ -323,7 +323,7 @@ public class AiChatService {
             String code = audit.declared() ? "TOOL_NOT_ALLOWED" : "TOOL_UNKNOWN";
             String output = audit.declared() ? "Failed: this tool is not allowed in the current mode." : "Failed: unknown tool.";
             persistence.toolDenied(invocation.getId(), output, code);
-            sendResult(active, callId, output, true, code);
+            sendResult(active, invocation, callId, output, true, code, "PRE_EXECUTION", "NOT_REQUESTED", "REJECTED", List.of());
             publish(active, STATUS_TOOL_RESULT, invocation.getId());
             return;
         }
@@ -364,7 +364,7 @@ public class AiChatService {
             } catch (RuntimeException exception) {
                 String output = "Failed: the automatic reviewer could not evaluate this action.";
                 persistence.toolFailed(invocation.getId(), output, "REVIEW_FAILED");
-                sendResult(active, callId, output, true, "REVIEW_FAILED");
+                sendResult(active, invocation, callId, output, true, "REVIEW_FAILED", "REVIEW", "REVIEW_FAILED", "FAILED", List.of());
                 publish(active, STATUS_TOOL_RESULT, invocation.getId());
                 return;
             }
@@ -378,7 +378,7 @@ public class AiChatService {
                     fail(active, "AI_REVIEW_LIMIT", "The automatic reviewer rejected three proposed actions");
                     return;
                 }
-                sendResult(active, callId, "Failed: the automatic reviewer rejected this action. Choose a safer alternative. Reason: " + review.getReason(), true, "REVIEW_REJECTED");
+                sendResult(active, invocation, callId, "Failed: the automatic reviewer rejected this action. Choose a safer alternative. Reason: " + review.getReason(), true, "REVIEW_REJECTED", "REVIEW", "AUTO_REJECTED", "REJECTED", List.of());
                 return;
             }
             persistence.toolRunning(invocation.getId(), review.getReason());
@@ -413,7 +413,8 @@ public class AiChatService {
         } finally {
             SecurityContextHolder.setContext(previous);
         }
-        sendResult(active, callId, output, failed, diagnosticCode);
+        String approvalDecision = descriptor.readOnly() ? "NOT_REQUIRED" : "ASK".equals(active.approvalPolicy) ? "USER_APPROVED" : "AUTO_APPROVED";
+        sendResult(active, invocation, callId, output, failed, diagnosticCode, "EXECUTION", approvalDecision, failed ? "FAILED" : "SUCCEEDED", List.of());
         publish(active, STATUS_TOOL_RESULT, invocation.getId());
     }
 
@@ -446,7 +447,7 @@ public class AiChatService {
 
     private void loadGroup(ActiveTurn active, AiToolInvocation invocation, String callId, String arguments) {
         try {
-            String value = json.readTree(arguments).path("group").asText("").toUpperCase(Locale.ROOT);
+            String value = json.readTree(arguments).path("group").asString("").toUpperCase(Locale.ROOT);
             AiToolGroup group = AiToolGroup.valueOf(value);
             if (!active.loadedGroups.add(group)) {
                 internalResult(active, invocation, callId, "Tool group " + group + " was already loaded.", false, "");
@@ -515,7 +516,7 @@ public class AiChatService {
         else
             persistence.toolSucceeded(invocation.getId(), output);
 
-        sendResult(active, callId, output, failed, diagnosticCode, additionalTools);
+        sendResult(active, invocation, callId, output, failed, diagnosticCode, "EXECUTION", "NOT_REQUIRED", failed ? "FAILED" : "SUCCEEDED", additionalTools);
         publish(active, STATUS_TOOL_RESULT, invocation.getId());
     }
 
@@ -544,23 +545,24 @@ public class AiChatService {
                 descriptor.idempotentHint(), descriptor.openWorldHint(), refreshTargets);
     }
 
-    private void sendResult(ActiveTurn active, String callId, String output, boolean failed) {
-        sendResult(active, callId, output, failed, "", List.of());
-    }
-
-    private void sendResult(ActiveTurn active, String callId, String output, boolean failed, List<ChatToolDefinition> additionalTools) {
-        sendResult(active, callId, output, failed, "", additionalTools);
-    }
-
-    private void sendResult(ActiveTurn active, String callId, String output, boolean failed, String diagnosticCode) {
-        sendResult(active, callId, output, failed, diagnosticCode, List.of());
-    }
-
-    private void sendResult(ActiveTurn active, String callId, String output, boolean failed, String diagnosticCode, List<ChatToolDefinition> additionalTools) {
+    private void sendResult(ActiveTurn active, AiToolInvocation invocation, String callId, String output, boolean failed, String diagnosticCode, String phase, String approvalDecision, String status, List<ChatToolDefinition> additionalTools) {
+        AiChatOperationHistory.Snapshot audit = null;
+        try {
+            // Refresh a bounded metadata window after persistence, including the current outcome and subsequent reads.
+            audit = AiChatOperationHistory.summarize(json, active.turnId,
+                    persistence.operationHistory(active.conversationId, active.turnId, 0, 8), 8);
+        } catch (RuntimeException exception) {
+            // Metadata failure must not change a committed tool outcome or expose database errors.
+        }
+        var resource = AiChatOperationHistory.resource(json, invocation, output, "SUCCEEDED".equals(status));
+        String receipt = json.writeValueAsString(new AiChatToolReceipt(invocation.getId(), active.turnId, invocation.getToolName(),
+                invocation.isReadOnly(), phase, approvalDecision, status, failed, diagnosticCode, Instant.now(), "UTC",
+                resource == null ? null : resource.family(), resource == null ? null : resource.id(), "NOT_RECORDED", audit != null, audit));
         AiWorkerClient.ChatHandle handle = active.handle();
         if (handle != null)
             handle.send(ChatClientMessage.newBuilder().setToolResult(ChatToolResult.newBuilder()
                     .setCallId(callId).setOutput(output).setFailed(failed).setDiagnosticCode(diagnosticCode)
+                    .setOperationMetadataJson(receipt)
                     .addAllAdditionalTools(additionalTools).build()).build());
     }
 
@@ -610,6 +612,9 @@ public class AiChatService {
                 .append("An empty allowedSecretValueTypes or allowedConfigurationValueTypes list means no additional declared value-type restriction; it does not prohibit the corresponding source. A non-empty list restricts the compatible types further. Still check bindingAllowed, allowedSources, Java-type compatibility, resource existence and required writability. Binary and structured value types remain restricted to Java types that require them; an empty list does not override that requirement. Binding options are global resource metadata, not a compatibility-filtered list for a particular parameter. Example: java.lang.String with SECRET allowed and allowedSecretValueTypes=[] can reference an existing STRING secret when the other binding requirements are satisfied; do not refuse this binding merely because the list is empty. Do not read protected values or execute a resource to decide metadata compatibility; an accepted binding does not prove that its protected value will convert or execute successfully. ")
                 .append("For an ordered sequence, track the next pending step and compare the proposed parameter key, source and active value with that step before calling the tool. Do not skip a step or bring a later restoration forward. If a requested reference cannot be resolved, explain the obstacle instead of proposing a different value. Example: changing fileName from TEXT to CONFIGURATION replaces that same fileName entry with the requested configuration ID and null inactive fields; it does not append another fileName or alter the other parameters. ")
                 .append("Do not claim that a write was performed unless its write tool returned success in this turn. Prior conversation messages and successful read-only tools are not evidence of a current write. ")
+                .append("Each tool result is followed by trusted Alertify outcome metadata, separate from the tool's data. Treat failed, diagnosticCode and receipt as the execution evidence. USER_APPROVED plus phase=EXECUTION means the ASK card already existed and was approved before execution; never describe it as still awaiting approval or failing before presentation. A failed execution is different from a rejected proposal. TOOL_VERSION_CONFLICT means the execution was rejected for a changed version: preserve the other session's change and do not replay the stale request. After SUCCEEDED, continue an authorized sequence from its next step by making its own tool call to propose the next ASK card; do not wait for a card you have not proposed. ")
+                .append("Receipts and audit metadata contain no current field values. Read those values from the separate original get/search result. A configuration update is a full replacement: when editing another field, copy the currently read value into the member selected by valueType. Example: STRING value QA-INITIAL and a description-only edit require stringValue=QA-INITIAL, not an empty string; neutral placeholders apply only to unselected value members. ")
+                .append("Outcome metadata refreshes a bounded audit after each result. fieldComparison=NOT_RECORDED is never a certification that fields were compared. Use the fresh get/search data to compare requested and preserved fields yourself and describe only the checks actually made. If no matching post-write read is observed, announce execution separately from verification. If the audit window is incomplete or unavailable, consult operation_history; do not claim an operation never happened from missing metadata. ")
                 .append("Conversation messages have trusted turn and UTC timestamp metadata. The operation audit separately records tool status and dates; an assistant's historical claim such as 'verified' is narrative, not execution or verification evidence. ")
                 .append("The audit is a bounded observation window. Use alertify_operation_history with beforeInvocationId=0 for recent metadata, or its nextBeforeInvocationId for older entries. Missing entries or NOT_OBSERVED_IN_WINDOW do not prove that an operation never occurred. ")
                 .append("MATCHING_SUCCESSFUL_READ means a successful get/search returned that exact object ID after a create/update in the same turn and before another successful write; it does not prove that the requested or preserved fields matched. fieldComparison=NOT_RECORDED never certifies verified completion. ")
@@ -626,6 +631,8 @@ public class AiChatService {
                 .append("For an explicitly requested PIPE tag deletion under ASK, read the tag by its ID, present its restoration snapshot and call alertify_pipe_tag_delete. The backend enforces the in-use guard without detaching tags. A tag response does not list associations; inability to read those associations is not a reason to withhold this guarded ASK proposal or invent a pipeId filter. Example: 'Delete only PIPE tag 94; do not delete pipes' -> pipe_tag_get(94) -> snapshot -> pipe_tag_delete(94, current tag version) -> ASK approval -> backend guarded deletion -> pipe_tag_get(94), expecting TOOL_RESOURCE_NOT_FOUND after success. An in-use rejection means no deletion; report it and preserve associations. ")
                 .append("Search filter fields are tool-specific and may differ from response property names. Configuration membership uses filter.field=tagId, never tagIds; repeat tagId once per positive tag ID and use tagOperator=AND or OR when needed. A failed search is unknown, not an empty result. Correct the filter using its tool contract before retrying; do not repeat an invalid filter unchanged. Only a successful complete search can establish absence. In structured output, represent an unresolved family as null with its failed/unverified status, never [] even when prose mentions the failure. ")
                 .append("A turn failure does not undo successful writes already committed by tools. When resuming a partially completed sequence, consult operation history and reread the affected objects, reconcile the requested steps with the persisted state, and propose only the remaining authorized steps. Do not blindly replay completed writes or roll them back. If the last operation's result is uncertain, resolve it through fresh reads before retrying a write. ")
+                .append("For configuration name filters distinguish exact, prefix and contains: exact QA-PREFIX does not match QA-PREFIX-A; a requested prefix uses ~QA-PREFIX*, and a requested contained fragment uses ~*QA-PREFIX*. Before concluding absence, check that the predicate matches the user's request and all pages were inspected. A family not queried is unknown, not empty: represent it as null with status NOT_QUERIED; a failed search is null with SEARCH_FAILED; incomplete pagination is PARTIAL, with only observed IDs. Use [] only for a successful complete search with no matching resources. ")
+                .append("A tag definition does not list inverse associations. Renaming or recoloring it does not edit resource memberships: say 'the associations were not edited'. Before claiming there are no associated objects or giving a count, search the matching resource family by that scoped tag ID and inspect all pages; preserve associations unless explicitly asked to change them. Do not refuse a guarded tag-delete proposal merely because inverse associations are absent from tag_get; the backend still enforces its in-use guard. ")
                 .append("The current mode is ").append(active.mode).append(". ")
                 .append("Load a tool group before using its domain tools with ").append(LOAD_GROUP_TOOL)
                 .append(". Groups: ALERTS definitions and executions; PROCEDURES procedures and runs; PIPES pipelines; ")
@@ -638,6 +645,7 @@ public class AiChatService {
                 .append("When an answer depends on an Alertify UI label, template name, or template description, load LOCALIZATION ")
                 .append("and use its exact selected-language sources. ")
                 .append("Before answering about an alert or procedure template, identify its type and exact technical templateKey from the matching catalog. ")
+                .append("Once a template ID is known, prefer alertify_alert_template_get or alertify_procedure_template_get for that one definition, checking its exact templateKey; do not mix keys from other templates. Catalog parameters use key, while create/update payloads use parameterKey: copy the same exact key, once per parameter, and preserve all other entries in a full replacement update. SqlWatch and SqlStatus are distinct templates; statusColumnName belongs to SqlStatus, not SqlWatch. A source read is needed for claims about executable behavior, not merely to read already declared parameter metadata. ")
                 .append("For claims about executable behavior or implementation, inspect the source for that same templateKey with alertify_alert_template_source or alertify_procedure_template_source, as appropriate. ")
                 .append("Do not substitute a similarly named template from another catalog. Localization sources establish interface labels and descriptions only; never present them as verification of executable behavior. ")
                 .append("Before any destructive action, including deleting a resource or overwriting existing data, first inspect its complete current state with read-only tools. ")

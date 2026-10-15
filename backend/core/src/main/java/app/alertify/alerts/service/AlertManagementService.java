@@ -216,7 +216,7 @@ public class AlertManagementService {
             try {
                 entityManager.lock(alert, LockModeType.PESSIMISTIC_FORCE_INCREMENT);
             } catch (OptimisticLockException exception) {
-                throw new ConflictException("Alert was modified by another request; reload it and try again");
+                throw ConflictException.versionConflict("Alert was modified by another request; reload it and try again");
             }
         }
         eventLogger.successAfterCommit("ALERT_UPDATED", Map.of(ALERT_ID, alert.getId(), "name", alert.getName(), "version", alert.getVersion(), ALLOW_CONCURRENT_EXECUTIONS, alert.isConcurrentExecutionAllowed(), PERSISTENT_ISSUES, alert.getPersistentIssuesSince() != null));
@@ -552,7 +552,7 @@ public class AlertManagementService {
 
     private static void ensureVersion(Alert alert, long requestedVersion) {
         if (alert.getVersion() != requestedVersion)
-            throw new ConflictException("Alert was modified by another request; reload it and try again");
+            throw ConflictException.versionConflict("Alert was modified by another request; reload it and try again");
     }
 
     private static ResourceNotFoundException notFound(String resource, Long id) {

@@ -165,7 +165,7 @@ public class ProcedureManagementService {
     public ProcedureResponse update(Long id, ProcedureUpdateRequest request) {
         Procedure procedure = procedureRepository.findById(id).orElseThrow(() -> notFound(PROCEDURE, id));
         if (procedure.getVersion() != request.version())
-            throw new ConflictException("Procedure was modified by another request; reload it and try again");
+            throw ConflictException.versionConflict("Procedure was modified by another request; reload it and try again");
 
         String name = required(request.name(), "name");
         ensureNameAvailable(name, id);
@@ -188,7 +188,7 @@ public class ProcedureManagementService {
             try {
                 entityManager.lock(procedure, LockModeType.PESSIMISTIC_FORCE_INCREMENT);
             } catch (OptimisticLockException exception) {
-                throw new ConflictException("Procedure was modified by another request; reload it and try again");
+                throw ConflictException.versionConflict("Procedure was modified by another request; reload it and try again");
             }
         }
         eventLogger.successAfterCommit("PROCEDURE_UPDATED", Map.of(PROCEDURE_ID, id, "name", procedure.getName(), "version", procedure.getVersion(), ALLOW_CONCURRENT_EXECUTIONS, procedure.isConcurrentExecutionAllowed()));
@@ -217,7 +217,7 @@ public class ProcedureManagementService {
     public void delete(Long id, long version) {
         Procedure procedure = procedureRepository.findById(id).orElseThrow(() -> notFound(PROCEDURE, id));
         if (procedure.getVersion() != version)
-            throw new ConflictException("Procedure was modified by another request; reload it and try again");
+            throw ConflictException.versionConflict("Procedure was modified by another request; reload it and try again");
 
         if (orchestrator.isRunning(id) || executionRepository.existsByProcedure_IdAndStatus(id, ProcedureExecutionStatus.RUNNING))
             throw new ConflictException("Procedure is currently running and cannot be deleted");

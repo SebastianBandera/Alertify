@@ -182,7 +182,7 @@ public class DatabaseSecretProbeService {
 
     private static String text(JsonNode node, String field) {
         JsonNode value = node.path(field);
-        return value.isMissingNode() || value.isNull() ? null : value.asText();
+        return value.isMissingNode() || value.isNull() ? null : value.asString();
     }
 
     private static Long number(JsonNode node, String field) {

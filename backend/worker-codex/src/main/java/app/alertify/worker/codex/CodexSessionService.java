@@ -236,7 +236,7 @@ class CodexSessionService {
         values.put(CODE_VERIFIER_PARAMETER, pending.verifier());
         values.put(RESOURCE_PARAMETER, API_RESOURCE);
         JsonNode token = postForm(AUTH_ISSUER + "/api/accounts/oauth/token", values);
-        requireScopes(token.path("scope").asText(scope));
+        requireScopes(token.path("scope").asString(scope));
         String authMode = LOGIN_MODE_EXTENSION.equals(pending.loginMode()) ? "BROWSER_EXTENSION" : "BROWSER";
         OAuthSession session = tokenSession(authMode, token, issuedClientId, pending.nonce(), true);
         if (!pending.expectedSubject().isBlank() && !pending.expectedSubject().equals(session.subject()))
@@ -625,8 +625,8 @@ class CodexSessionService {
     private OAuthSession tokenSession(String mode, JsonNode token, String clientId, String expectedNonce, boolean requireIdentity) {
         Instant receivedAt = Instant.now();
         String accessToken = text(token, "access_token");
-        String refreshToken = token.path(REFRESH_TOKEN).asText("");
-        String idToken = token.path("id_token").asText("");
+        String refreshToken = token.path(REFRESH_TOKEN).asString("");
+        String idToken = token.path("id_token").asString("");
         long expiresIn = Math.max(1, token.path("expires_in").asLong(3600));
         String subject = "";
         String accountId = "";
@@ -648,7 +648,7 @@ class CodexSessionService {
             accountId = identity.accountId();
 
             accountLabel = firstNonBlank(jwt.getClaimAsString(EMAIL_CLAIM),
-                    claims.path("https://api.openai.com/profile").path(EMAIL_CLAIM).asText(""),
+                    claims.path("https://api.openai.com/profile").path(EMAIL_CLAIM).asString(""),
                     jwt.getClaimAsString("name"), subject, accountId);
         }
         return new OAuthSession(mode, accessToken, refreshToken, idToken, clientId,
@@ -657,7 +657,7 @@ class CodexSessionService {
     }
 
     static TokenIdentity tokenIdentity(String mode, JsonNode claims, boolean required) {
-        String subject = claims.path("sub").asText("");
+        String subject = claims.path("sub").asString("");
         if (required && subject.isBlank())
             throw new IllegalArgumentException("The ID token did not contain a subject");
 
@@ -665,7 +665,7 @@ class CodexSessionService {
     }
 
     static String chatGptAccountId(JsonNode claims, boolean required) {
-        String accountId = claims.path("https://api.openai.com/auth").path("chatgpt_account_id").asText("");
+        String accountId = claims.path("https://api.openai.com/auth").path("chatgpt_account_id").asString("");
         if (required && accountId.isBlank())
             throw new IllegalArgumentException("The ID token did not contain a ChatGPT account ID");
 
@@ -725,8 +725,8 @@ class CodexSessionService {
         String parameter = "";
         try {
             JsonNode error = parse(response.body()).path("error");
-            code = safeDiagnostic(error.path("code").asText(""));
-            parameter = safeDiagnostic(error.path("param").asText(""));
+            code = safeDiagnostic(error.path("code").asString(""));
+            parameter = safeDiagnostic(error.path("param").asString(""));
         } catch (RuntimeException ignored) {
             // Remote response bodies are intentionally excluded from diagnostics.
         }
@@ -869,10 +869,10 @@ class CodexSessionService {
 
         Map<String, CodexModelProfile> profiles = new HashMap<>();
         models.forEach(model -> {
-            String slug = firstNonBlank(model.path("slug").asText(""), model.path("id").asText(""));
+            String slug = firstNonBlank(model.path("slug").asString(""), model.path("id").asString(""));
             if (!slug.isBlank())
                 profiles.put(slug, new CodexModelProfile(privateCodex && model.path("use_responses_lite").asBoolean(false),
-                        !privateCodex, privateCodex ? clientVersion(model.path("minimal_client_version").asText("")) : DEFAULT_CLIENT_VERSION,
+                        !privateCodex, privateCodex ? clientVersion(model.path("minimal_client_version").asString("")) : DEFAULT_CLIENT_VERSION,
                         privateCodex, effectiveContextWindow(model)));
         });
         return Map.copyOf(profiles);
@@ -1006,7 +1006,7 @@ class CodexSessionService {
     }
 
     private static String optionalText(JsonNode root, String name) {
-        return root == null ? "" : root.path(name).asText("");
+        return root == null ? "" : root.path(name).asString("");
     }
 
     private static Double number(JsonNode root, String... names) {
@@ -1014,7 +1014,7 @@ class CodexSessionService {
             return null;
 
         for (String name : names) {
-            String value = root.path(name).asText("").trim();
+            String value = root.path(name).asString("").trim();
             if (value.isEmpty())
                 continue;
             try {
@@ -1329,7 +1329,7 @@ class CodexSessionService {
         if (event == null || !event.isObject())
             throw new ProviderFailureException(ProviderFailureException.Reason.INVALID_STREAM);
 
-        String type = event.path("type").asText("");
+        String type = event.path("type").asString("");
         if ("response.completed".equals(type)) {
             JsonNode response = event.path("response");
             if (!response.isObject())
@@ -1339,7 +1339,7 @@ class CodexSessionService {
         } else if ("response.output_item.done".equals(type) && event.path("item").isObject()) {
             accumulator.outputItems.add(event.path("item"));
         } else if ("response.output_text.delta".equals(type)) {
-            accumulator.outputText.append(event.path("delta").asText(""));
+            accumulator.outputText.append(event.path("delta").asString(""));
         } else if ("response.function_call_arguments.done".equals(type) && event.path("item").isObject()) {
             accumulator.fallbackCalls.add(event.path("item"));
         }
@@ -1456,9 +1456,9 @@ class CodexSessionService {
             if (subject.isBlank() && accountId.isBlank())
                 return session;
 
-            String accountLabel = firstNonBlank(claims.path(EMAIL_CLAIM).asText(""),
-                    claims.path("https://api.openai.com/profile").path(EMAIL_CLAIM).asText(""),
-                    claims.path("name").asText(""), subject, accountId);
+            String accountLabel = firstNonBlank(claims.path(EMAIL_CLAIM).asString(""),
+                    claims.path("https://api.openai.com/profile").path(EMAIL_CLAIM).asString(""),
+                    claims.path("name").asString(""), subject, accountId);
             return new OAuthSession(session.authMode(), session.accessToken(), session.refreshToken(), session.idToken(),
                     session.clientId(), subject, accountId, accountLabel, session.expiresAt(), session.refreshExpiresAt(), session.lastRefreshedAt());
         } catch (RuntimeException ignored) {
@@ -1514,7 +1514,7 @@ class CodexSessionService {
     }
 
     private static String text(JsonNode node, String name) {
-        return required(node.path(name).asText(""), name);
+        return required(node.path(name).asString(""), name);
     }
 
     private static String firstNonBlank(String... values) {

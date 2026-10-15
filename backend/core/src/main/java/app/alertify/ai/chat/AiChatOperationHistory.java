@@ -27,7 +27,7 @@ final class AiChatOperationHistory {
                     ? "NOT_ASSESSED" : reads.isEmpty() ? "NOT_OBSERVED_IN_WINDOW" : "MATCHING_SUCCESSFUL_READ";
             AiTurn turn = invocation.getTurn();
             operations.add(new Operation(invocation.getId(), turn.getId(), turn.getCreatedAt(), turn.getFinishedAt(), turn.getStatus(),
-                    invocation.getToolName(), invocation.getStatus(), invocation.isReadOnly(), invocation.getCreatedAt(), invocation.getFinishedAt(),
+                    invocation.getToolName(), invocation.getStatus(), invocation.getDiagnosticCode(), invocation.isReadOnly(), invocation.getCreatedAt(), invocation.getFinishedAt(),
                     resource == null ? null : resource.family(), resource == null ? null : resource.id(), readObservation, reads, "NOT_RECORDED"));
         }
         Long beforeId = truncated && !selected.isEmpty() ? selected.getFirst().getId() : null;
@@ -78,6 +78,10 @@ final class AiChatOperationHistory {
     }
 
     private static Resource resource(JsonMapper json, AiToolInvocation invocation) {
+        return resource(json, invocation, invocation.getResult(), "SUCCEEDED".equals(invocation.getStatus()));
+    }
+
+    static Resource resource(JsonMapper json, AiToolInvocation invocation, String output, boolean succeeded) {
         var matcher = RESOURCE_TOOL.matcher(invocation.getToolName());
         if (!matcher.matches())
             return null;
@@ -86,8 +90,8 @@ final class AiChatOperationHistory {
         String action = matcher.group(3);
         JsonNode arguments = parse(json, invocation.getArguments());
         Long id = arguments == null ? null : positiveId(arguments.path("id"));
-        if ("create".equals(action) && "SUCCEEDED".equals(invocation.getStatus())) {
-            JsonNode result = parse(json, invocation.getResult());
+        if ("create".equals(action) && succeeded) {
+            JsonNode result = parse(json, output);
             id = result == null ? null : positiveId(result.path("id"));
         }
         return new Resource(family, action, id);
@@ -109,14 +113,14 @@ final class AiChatOperationHistory {
         return value.isIntegralNumber() && value.canConvertToLong() && value.longValue() > 0 ? value.longValue() : null;
     }
 
-    private record Resource(String family, String action, Long id) {
+    record Resource(String family, String action, Long id) {
     }
 
     record Snapshot(Long currentTurnId, String timeZone, boolean truncated, Long nextBeforeInvocationId, List<Operation> operations) {
     }
 
     record Operation(Long invocationId, Long turnId, Instant turnStartedAt, Instant turnFinishedAt, String turnStatus,
-            String toolName, String status, boolean readOnly, Instant proposedAt, Instant finishedAt,
+            String toolName, String status, String diagnosticCode, boolean readOnly, Instant proposedAt, Instant finishedAt,
             String resourceFamily, Long resourceId, String postWriteReadObservation, List<ReadEvidence> subsequentReads, String fieldComparison) {
     }
 

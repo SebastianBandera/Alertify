@@ -11,6 +11,21 @@ import app.alertify.jpa.specification.InvalidFilterException;
 class AiToolFailureTest {
 
     @Test
+    void classifiesOnlyVersionConflictsAndNeverCopiesPrivateMessages() {
+        assertThat(AiToolFailure.classify("alertify_alert_template_get", new IllegalStateException("PRIVATE",
+                new app.alertify.api.error.TemplateSelectionException())).code()).isEqualTo("TOOL_TEMPLATE_SELECTION_INVALID");
+        var version = AiToolFailure.classify("alertify_configuration_update",
+                new IllegalStateException("PRIVATE", ConflictException.versionConflict("PRIVATE version")));
+        assertThat(version.code()).isEqualTo("TOOL_VERSION_CONFLICT");
+        assertThat(version.message()).contains("execution was rejected", "do not replay").doesNotContain("PRIVATE");
+        var other = AiToolFailure.classify("alertify_configuration_update", new ConflictException("PRIVATE duplicate"));
+        assertThat(other.code()).isEqualTo("TOOL_EXECUTION_FAILED");
+        assertThat(other.message()).doesNotContain("PRIVATE");
+        assertThat(AiToolFailure.classify("alertify_alert_update", new jakarta.persistence.OptimisticLockException("PRIVATE")).code())
+                .isEqualTo("TOOL_VERSION_CONFLICT");
+    }
+
+    @Test
     void identifiesWrappedFilterErrorsWithoutExposingFieldOrValue() {
         var failure = AiToolFailure.classify("alertify_configuration_search",
                 new IllegalStateException("PRIVATE-OUTER", new InvalidFilterException("PRIVATE-FIELD")));

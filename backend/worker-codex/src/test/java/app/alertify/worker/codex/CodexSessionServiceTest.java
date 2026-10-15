@@ -117,9 +117,9 @@ class CodexSessionServiceTest {
 
                 """);
 
-        assertThat(response.path("id").asText()).isEqualTo("complete");
+        assertThat(response.path("id").asString()).isEqualTo("complete");
         assertThat(response.path("output").isArray()).isTrue();
-        assertThat(response.path("output").get(0).path("content").get(0).path("text").asText()).isEqualTo("CHAT_OK");
+        assertThat(response.path("output").get(0).path("content").get(0).path("text").asString()).isEqualTo("CHAT_OK");
     }
 
     @Test
@@ -133,7 +133,7 @@ class CodexSessionServiceTest {
 
                 """);
 
-        assertThat(response.path("output").get(0).path("content").get(0).path("text").asText()).isEqualTo("CHAT_OK");
+        assertThat(response.path("output").get(0).path("content").get(0).path("text").asString()).isEqualTo("CHAT_OK");
     }
 
     @Test

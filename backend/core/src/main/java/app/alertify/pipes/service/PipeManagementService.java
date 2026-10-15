@@ -143,7 +143,7 @@ public class PipeManagementService {
     public PipeResponse update(long id, PipeUpdateRequest request) {
         Pipe pipe = find(id);
         if (pipe.getVersion() != request.version())
-            throw new ConflictException("Pipe was modified by another request; reload it and try again");
+            throw ConflictException.versionConflict("Pipe was modified by another request; reload it and try again");
 
         String name = required(request.name());
         ensureNameAvailable(name, id);
@@ -182,7 +182,7 @@ public class PipeManagementService {
     public void delete(long id, long version) {
         Pipe pipe = find(id);
         if (pipe.getVersion() != version)
-            throw new ConflictException("Pipe was modified by another request; reload it and try again");
+            throw ConflictException.versionConflict("Pipe was modified by another request; reload it and try again");
         if (pipe.isEnabled())
             throw new ConflictException("PIPE_ACTIVE", "An enabled Pipe cannot be deleted", Map.of());
         if (orchestrator.isRunning(id))

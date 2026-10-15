@@ -26,6 +26,10 @@ public class ConflictException extends RuntimeException {
         return code;
     }
 
+    public static ConflictException versionConflict(String message) {
+        return new ConflictException("VERSION_CONFLICT", message, Map.of());
+    }
+
     public Map<String, String> getParameters() {
         return parameters;
     }

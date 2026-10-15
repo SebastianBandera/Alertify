@@ -80,7 +80,11 @@ class AiChatServiceManagementTest {
                 "writable=false still allows authorized administrative changes", "Preserve writable unless",
                 "keep enforcing the current mode, approval policy and version checks",
                 "configuration_update with the requested stringValue and writable=false",
-                "Do not refuse the administrative edit or enable writable just to perform it");
+                "Do not refuse the administrative edit or enable writable just to perform it",
+                "USER_APPROVED plus phase=EXECUTION", "TOOL_VERSION_CONFLICT",
+                "Outcome metadata refreshes a bounded audit", "prefix uses ~QA-PREFIX*",
+                "status NOT_QUERIED", "the associations were not edited",
+                "prefer alertify_alert_template_get", "Catalog parameters use key");
         assertThat(message.getValue().getStart().getToolsList()).filteredOn(tool -> "alertify_operation_history".equals(tool.getName()))
                 .singleElement().satisfies(tool -> assertThat(tool.getReadOnly()).isTrue());
         if ("DIRECT".equals(mode)) {
@@ -156,6 +160,8 @@ class AiChatServiceManagementTest {
         when(worker.chat(callback.capture(), any(), any())).thenReturn(handle);
         AiToolInvocation invocation = mock(AiToolInvocation.class);
         when(invocation.getId()).thenReturn(99L);
+        when(invocation.getToolName()).thenReturn("alertify_operation_history");
+        when(invocation.isReadOnly()).thenReturn(true);
         when(persistence.tool(any(), anyLong(), any(), any(), any(), any(), anyBoolean(), anyBoolean(), anyBoolean(),
                 anyBoolean(), anyBoolean(), anyBoolean(), any(), anyBoolean())).thenReturn(invocation);
         service.submit(authentication, new AiChatService.SubmitRequest(7L, "Check history", "READ_ONLY", "ASK", "en"));
@@ -171,7 +177,7 @@ class AiChatServiceManagementTest {
             assertThat(result.getFailed()).isFalse();
             assertThat(result.getOutput()).contains("\"currentTurnId\":8");
         } else {
-            verify(persistence, times(1)).operationHistory(any(), any(), anyLong(), org.mockito.ArgumentMatchers.anyInt());
+            verify(persistence, times(2)).operationHistory(any(), any(), anyLong(), org.mockito.ArgumentMatchers.anyInt());
             assertThat(result.getFailed()).isTrue();
             assertThat(result.getDiagnosticCode()).isEqualTo("INVALID_OPERATION_HISTORY_QUERY");
         }

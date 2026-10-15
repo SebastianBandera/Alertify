@@ -220,6 +220,27 @@ class CodexChatService {
                     LOGGER.info("event=AI_TOOL_CALL outcome={} conversationId={} turnId={} step={} tool={} callId={} diagnosticCode={} resultBytes={} additionalTools={}", result.getFailed() ? "FAILED" : "COMPLETED", start.getConversationId(), start.getTurnId(), step + 1, name, callId, result.getDiagnosticCode(), byteLength(result.getOutput()), result.getAdditionalToolsCount());
                     result.getAdditionalToolsList().forEach(definition -> tools.add(tool(definition)));
                     input.add(Map.of("type", "function_call_output", "call_id", callId, OUTPUT_FIELD, result.getOutput()));
+                    Map<String, Object> outcome = new LinkedHashMap<>();
+                    outcome.put("callId", callId);
+                    outcome.put("failed", result.getFailed());
+                    outcome.put("diagnosticCode", result.getDiagnosticCode());
+                    if (!result.getOperationMetadataJson().isBlank()) {
+                        try {
+                            JsonNode receipt = json.readTree(result.getOperationMetadataJson());
+                            if (receipt == null || !receipt.isObject())
+                                throw new IllegalArgumentException("Invalid receipt structure");
+
+                            outcome.put("receipt", receipt);
+                        } catch (RuntimeException exception) {
+                            // A malformed metadata extension must not change an already executed tool's outcome.
+                            outcome.put("receiptAvailable", false);
+                            outcome.put("receiptDiagnosticCode", "TOOL_RECEIPT_INVALID");
+                        }
+                    }
+
+                    input.add(Map.of("type", MESSAGE_TYPE, "role", "developer", CONTENT_FIELD,
+                            List.of(Map.of("type", "input_text", "text", outcomeInstruction(outcome)
+                                    + "\nAlertify tool outcome (trusted backend metadata; original tool result is separate):\n" + json.writeValueAsString(outcome)))));
                 }
                 if (cancelled) {
                     observer.onCompleted();
@@ -285,6 +306,22 @@ class CodexChatService {
                     .setCode(code).setMessage(message).build()).build());
             observer.onCompleted();
         }
+    }
+
+    private static String outcomeInstruction(Map<String, Object> outcome) {
+        if (Boolean.TRUE.equals(outcome.get("failed")))
+            return "Use the recorded phase and diagnostic code to explain this failure; do not invent a missing approval card or replay a stale proposal. Only a not-found from the matching scoped get after a successful delete may establish the expected absence; other failed reads do not verify a write.";
+
+        if (outcome.get("receipt") instanceof JsonNode receipt && "SUCCEEDED".equals(receipt.path("status").asString(""))
+                && receipt.path("readOnly").isBoolean()) {
+            String completed = receipt.path("readOnly").booleanValue()
+                    ? "The read has completed. Use its separate original result to compare requested and preserved fields; metadata never certifies that comparison."
+                    : "USER_APPROVED".equals(receipt.path("approvalDecision").asString(""))
+                            ? "This ASK card was already approved and its write executed successfully. Fetch the object to verify it."
+                            : "The tool execution succeeded. Verify its observable result with available reads.";
+            return completed + " If the current user request authorizes several steps and the current mode permits writes, continue the remaining steps in this same turn. A required fresh version means call the get tool now and then propose the next write; it is not a reason to end the turn. Each next write needs its own ASK card when ASK applies. Do not combine steps or invent additional changes. Finish when the request is fulfilled or report a real unresolved obstacle.";
+        }
+        return "The original tool result is separate from this outcome metadata. Do not infer approval or field verification when it is not recorded; respect the current mode and approval policy.";
     }
 
     private Map<String, Object> tool(ChatToolDefinition definition) {

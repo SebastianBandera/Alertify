@@ -20,7 +20,7 @@ public record AiConfigurationUpdateRequest(
     @NotBlank @Size(max = 200) String name,
     @Size(max = 2000) String description,
     @NotNull ConfigurationValueType valueType,
-    @NotNull @Valid AiConfigurationValue value,
+    @ToolParam(description = "Complete replacement value for the selected valueType, not a patch. If editing only description, name, tags or writable, copy the active value from the fresh configuration_get/search result. For STRING, a read value QA-INITIAL must remain stringValue=QA-INITIAL; an empty string would overwrite it. Only members for other value types use neutral placeholders.") @NotNull @Valid AiConfigurationValue value,
     Set<@Positive Long> tagIds,
     @ToolParam(description = "Allows resource executions to persist changed values into this configuration. This flag does not control administrative editing; writable=false still allows authorized edits to value, description, name and tags. Preserve the current flag unless the user asks to change it; do not enable it to perform an administrative edit.") boolean writable
 ) {

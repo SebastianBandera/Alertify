@@ -79,8 +79,8 @@ class AlertExecutionPersistenceServiceTest {
         assertThat(saved.getValue().getStartedAt()).isEqualTo(startedAt);
         assertThat(saved.getValue().getWorkStartedAt()).isEqualTo(startedAt);
         assertThat(saved.getValue().getFinishedAt()).isEqualTo(startedAt.plusMillis(5));
-        assertThat(saved.getValue().getStatusMessage().get("message").asText()).isEqualTo("warn [REDACTED] with [REDACTED]");
-        assertThat(saved.getValue().getStatusMessage().get("nested").get("host").asText()).isEqualTo("[REDACTED]");
+        assertThat(saved.getValue().getStatusMessage().get("message").asString()).isEqualTo("warn [REDACTED] with [REDACTED]");
+        assertThat(saved.getValue().getStatusMessage().get("nested").get("host").asString()).isEqualTo("[REDACTED]");
         verify(state).replaceState("updated by [REDACTED] at [REDACTED]");
         verify(configurations).apply(2L, "Demo WARN", executionId, result.getWritableConfigurationValuesList());
         verify(secrets).apply(2L, "Demo WARN", executionId, result.getWritableSecretValuesList());

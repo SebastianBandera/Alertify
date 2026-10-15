@@ -130,6 +130,8 @@ message ChatToolResult {
   bool failed = 3;
   repeated ChatToolDefinition additional_tools = 4;
   string diagnostic_code = 5;
+  // Trusted backend metadata only; never raw arguments, result values or review reasons.
+  string operation_metadata_json = 6;
 }
 
 message ChatClientMessage {
