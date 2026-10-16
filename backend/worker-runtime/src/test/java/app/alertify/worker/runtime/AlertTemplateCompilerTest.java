@@ -110,6 +110,18 @@ class AlertTemplateCompilerTest {
         assertThat(compiler.isAvailable(className, sha256(source))).isTrue();
     }
 
+    @Test
+    void compilesTheKubeProxyCertificateTemplateAsTheSingleWorkerSourceUnit() throws Exception {
+        Path sourcePath = Path.of("../alert-templates/src/main/java/app/alertify/alerts/templates/KubernetesKubeProxyCertificateExpiryAlertTemplate.java");
+        String source = Files.readString(sourcePath, StandardCharsets.UTF_8);
+        String className = "app.alertify.alerts.templates.KubernetesKubeProxyCertificateExpiryAlertTemplate";
+        AlertTemplateCompiler compiler = new AlertTemplateCompiler(properties());
+
+        compiler.synchronize(className, sha256(source), source);
+
+        assertThat(compiler.isAvailable(className, sha256(source))).isTrue();
+    }
+
     private WorkerRuntimeProperties properties() {
         return new WorkerRuntimeProperties(
                 "test-worker", 0, 134217728, Duration.ofSeconds(1), Set.of(WorkerCapability.STANDARD), 1,

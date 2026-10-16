@@ -93,6 +93,20 @@ or Procedures, then configure it for your own services and credentials.
 - **Watch a Kubernetes deployment.** Use **Kubernetes workload health** to check
   the rollout health and container restart counts of your API's Deployment.
   StatefulSets and DaemonSets are supported too.
+- **Check RKE2 node certificates.** Use **Kube-proxy certificate expiry (RKE2)**
+  to inspect `/var/lib/rancher/rke2/agent/client-kube-proxy.crt` on every node
+  through its existing pod. The default pod label selector is
+  `component=kube-proxy`, and the container name is `kube-proxy`; both are
+  configurable. The namespace remains `kube-system`, and the certificate path
+  and expected identity (`CN=system:kube-proxy`) remain fixed. **Warning days**
+  defaults to 30, with the same options and binding support as **HTTPS certificate
+  expiry**. Any node with an expiring, expired, not-yet-valid or unreadable
+  certificate makes the entire check WARN. Missing or ambiguous pods also warn;
+  the check succeeds only when every node was inspected successfully.
+  It checks validity dates, not certificate-chain trust, revocation or the
+  certificate currently loaded in kube-proxy memory. Only the public certificate
+  is read; no keys are read and no certificates are renewed. See
+  [the required Kubernetes permissions](#rke2-certificate-check-permissions).
 - **Follow builds and release branches.** Use **GitLab pipelines** to check the
   latest pipeline that actually ran on `main`, including same-project child
   pipelines. Use **Git branch flow** separately to detect when a production branch
