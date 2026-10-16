@@ -21,13 +21,14 @@ import app.alertify.ai.tools.LocalizationAiTools;
 import app.alertify.ai.tools.PipeAiTools;
 import app.alertify.ai.tools.ProcedureAiTools;
 import app.alertify.ai.tools.SystemAiTools;
+import app.alertify.ai.tools.TemplateAiTools;
 import app.alertify.config.AuthorizationPolicies;
 
 class AiToolSurfaceTest {
 
     private static final List<Class<?>> TOOL_CLASSES = List.of(AlertAiTools.class, ProcedureAiTools.class,
             PipeAiTools.class, HookAiTools.class, ConfigurationAiTools.class, DashboardAiTools.class,
-            LocalizationAiTools.class, SystemAiTools.class);
+            LocalizationAiTools.class, SystemAiTools.class, TemplateAiTools.class);
 
     @Test
     void toolNamesAreUniqueAndExcludeCredentialRotationAndBinaryContent() {

@@ -39,6 +39,7 @@ import app.alertify.ai.tools.LocalizationAiTools;
 import app.alertify.ai.tools.PipeAiTools;
 import app.alertify.ai.tools.ProcedureAiTools;
 import app.alertify.ai.tools.SystemAiTools;
+import app.alertify.ai.tools.TemplateAiTools;
 
 class AiToolCatalogTest {
 
@@ -65,7 +66,7 @@ class AiToolCatalogTest {
     void buildsSpringAiSchemasForTheCompleteFacadeSurface() throws Exception {
         AiToolCatalog catalog = new AiToolCatalog(instantiate(AlertAiTools.class), instantiate(ProcedureAiTools.class),
                 instantiate(PipeAiTools.class), instantiate(HookAiTools.class), instantiate(ConfigurationAiTools.class),
-                instantiate(DashboardAiTools.class), instantiate(LocalizationAiTools.class), instantiate(SystemAiTools.class));
+                instantiate(DashboardAiTools.class), instantiate(LocalizationAiTools.class), instantiate(SystemAiTools.class), instantiate(TemplateAiTools.class));
 
         List<ToolCallback> callbacks = catalog.toolsFor(authentication("ROLE_ADMIN", "ROLE_DASHBOARD", "ROLE_DASHBOARD_RUN"),
                 Set.of(AiToolGroup.values()));
@@ -74,9 +75,37 @@ class AiToolCatalogTest {
         assertEquals(callbacks.size(), callbacks.stream().map(callback -> callback.getToolDefinition().name()).distinct().count());
         assertTrue(callbacks.stream().allMatch(callback -> !callback.getToolDefinition().inputSchema().isBlank()));
 
+        for (AiToolGroup group : List.of(AiToolGroup.ALERTS, AiToolGroup.PROCEDURES)) {
+            List<AiToolDescriptor> tools = catalog.descriptorsFor(authentication("ROLE_ADMIN"), Set.of(group));
+            for (String name : List.of(TemplateAiTools.TOOL_NAME, TemplateAiTools.VALIDATE_TOOL, TemplateAiTools.CANDIDATES_TOOL))
+                assertEquals(1, tools.stream().filter(tool -> name.equals(tool.name())).count());
+
+            assertTrue(catalog.descriptorsFor(authentication("ROLE_DASHBOARD"), Set.of(group)).isEmpty());
+        }
+
         Map<String, AiToolDescriptor> descriptors = catalog.descriptorsFor(
                 authentication("ROLE_ADMIN", "ROLE_DASHBOARD", "ROLE_DASHBOARD_RUN"), Set.of(AiToolGroup.values())).stream()
                 .collect(java.util.stream.Collectors.toMap(AiToolDescriptor::name, descriptor -> descriptor));
+        AiToolDescriptor templateDetails = descriptors.get(TemplateAiTools.TOOL_NAME);
+        assertTrue(templateDetails.readOnly());
+        assertTrue(templateDetails.idempotentHint());
+        assertFalse(templateDetails.openWorldHint());
+        assertEquals(Set.of(), templateDetails.refreshTargets());
+        JsonNode detailsSchema = JSON.readTree(templateDetails.inputSchema());
+        assertEquals(List.of("templateKey"), StreamSupport.stream(detailsSchema.path("required").spliterator(), false).map(JsonNode::stringValue).toList());
+        assertEquals(1, detailsSchema.path("properties").size());
+        assertEquals("string", schemaProperty(detailsSchema, "templateKey").path("type").stringValue());
+        assertTrue(schemaProperty(detailsSchema, "templateKey").path("description").stringValue().contains("get/search result"));
+        for (String name : List.of(TemplateAiTools.VALIDATE_TOOL, TemplateAiTools.CANDIDATES_TOOL)) {
+            assertTrue(descriptors.get(name).readOnly());
+            assertTrue(descriptors.get(name).idempotentHint());
+            assertEquals(Set.of(), descriptors.get(name).refreshTargets());
+        }
+        JsonNode validationSchema = JSON.readTree(descriptors.get(TemplateAiTools.VALIDATE_TOOL).inputSchema());
+        assertEquals("array", schemaProperty(validationSchema, "parameters").path("type").stringValue());
+        assertEquals("string", schemaProperty(validationSchema, "templateKey").path("type").stringValue());
+        JsonNode candidateSchema = JSON.readTree(descriptors.get(TemplateAiTools.CANDIDATES_TOOL).inputSchema());
+        assertEquals(List.of("templateKey", "parameterKey"), StreamSupport.stream(candidateSchema.path("required").spliterator(), false).map(JsonNode::stringValue).toList());
         assertTrue(descriptors.get("alertify_alert_search").readOnly());
         assertTrue(descriptors.get("alertify_alert_search").description().contains("updatedAt DESC"));
         assertTrue(descriptors.get("alertify_alert_search").inputSchema().contains("Optional bounded pagination"));

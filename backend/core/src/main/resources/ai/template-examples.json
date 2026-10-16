@@ -1,0 +1,1002 @@
+[
+  {
+    "templateKey": "app.alertify.alerts.templates.DatabaseConnectionAlertTemplate",
+    "name": "Database connectivity",
+    "description": "Open and close a connection using the configured database secret.",
+    "text": {},
+    "bindings": {
+      "credentials": {
+        "source": "SECRET",
+        "requirement": "Existing DB_SECRET for a reachable PostgreSQL database with read-only SELECT access."
+      }
+    },
+    "notes": []
+  },
+  {
+    "templateKey": "app.alertify.alerts.templates.DatabaseConnectionAlertTemplate",
+    "name": "Slow connection budget",
+    "description": "Allow a longer connection timeout for a remote database.",
+    "text": {
+      "timeoutSeconds": "30"
+    },
+    "bindings": {
+      "credentials": {
+        "source": "SECRET",
+        "requirement": "Existing DB_SECRET for a reachable PostgreSQL database with read-only SELECT access."
+      }
+    },
+    "notes": []
+  },
+  {
+    "templateKey": "app.alertify.alerts.templates.GitBranchFlowAlertTemplate",
+    "name": "Three-stage promotion",
+    "description": "Check develop -> preprod -> main, including delay, conflict and outside-flow checks.",
+    "text": {
+      "repository": "team/application"
+    },
+    "bindings": {
+      "credentials": {
+        "source": "SECRET",
+        "requirement": "Existing GIT_SECRET with provider endpoint and read access to the specified repository or project."
+      }
+    },
+    "notes": [
+      "The branches must exist. The GIT_SECRET must match the Git provider and endpoint."
+    ]
+  },
+  {
+    "templateKey": "app.alertify.alerts.templates.GitBranchFlowAlertTemplate",
+    "name": "Two-stage promotion",
+    "description": "Compare release -> main without the deployment-delay check.",
+    "text": {
+      "repository": "team/application",
+      "branchFlowJson": "[\"release\",\"main\"]",
+      "checkDeploymentDelay": "false",
+      "checkMergeConflict": "true"
+    },
+    "bindings": {
+      "credentials": {
+        "source": "SECRET",
+        "requirement": "Existing GIT_SECRET with provider endpoint and read access to the specified repository or project."
+      }
+    },
+    "notes": []
+  },
+  {
+    "templateKey": "app.alertify.alerts.templates.GitLabPipelineAlertTemplate",
+    "name": "Latest main pipeline",
+    "description": "Inspect the latest pipeline that actually ran for main.",
+    "text": {
+      "project": "team/application"
+    },
+    "bindings": {
+      "credentials": {
+        "source": "SECRET",
+        "requirement": "Existing GIT_SECRET with provider endpoint and read access to the specified repository or project."
+      }
+    },
+    "notes": [
+      "Use a GitLab GIT_SECRET with read_api access. Child pipelines from the same project are included by the implementation."
+    ]
+  },
+  {
+    "templateKey": "app.alertify.alerts.templates.GitLabPipelineAlertTemplate",
+    "name": "Multiple branches with time limits",
+    "description": "Check main and release, warn for long active runs and stale pipeline execution.",
+    "text": {
+      "project": "team/application",
+      "branchesJson": "[\"main\",\"release\"]",
+      "checkActiveDuration": "true",
+      "maxActiveMinutes": "45",
+      "checkFreshness": "true",
+      "maxPipelineAgeHours": "12"
+    },
+    "bindings": {
+      "credentials": {
+        "source": "SECRET",
+        "requirement": "Existing GIT_SECRET with provider endpoint and read access to the specified repository or project."
+      }
+    },
+    "notes": []
+  },
+  {
+    "templateKey": "app.alertify.alerts.templates.HttpsCertificateExpiryAlertTemplate",
+    "name": "Public HTTPS certificate",
+    "description": "Warn 30 days before the certificate expires.",
+    "text": {
+      "endpoint": "https://example.com"
+    },
+    "bindings": {},
+    "notes": []
+  },
+  {
+    "templateKey": "app.alertify.alerts.templates.HttpsCertificateExpiryAlertTemplate",
+    "name": "Custom TLS port",
+    "description": "Inspect a custom port with a 60-day warning threshold and hostname verification.",
+    "text": {
+      "endpoint": "https://service.example.test:8443",
+      "warningDays": "60",
+      "verifyHostname": "true"
+    },
+    "bindings": {},
+    "notes": [
+      "Replace the example host with your reachable service."
+    ]
+  },
+  {
+    "templateKey": "app.alertify.alerts.templates.InternetConnectionAlertTemplate",
+    "name": "google connectivity",
+    "description": "Check the built-in Internet endpoint.",
+    "text": {
+      "endpoint": "google"
+    },
+    "bindings": {},
+    "notes": []
+  },
+  {
+    "templateKey": "app.alertify.alerts.templates.InternetConnectionAlertTemplate",
+    "name": "cloudflare connectivity",
+    "description": "Check the built-in Internet endpoint.",
+    "text": {
+      "endpoint": "cloudflare"
+    },
+    "bindings": {},
+    "notes": []
+  },
+  {
+    "templateKey": "app.alertify.alerts.templates.KubernetesKubeProxyCertificateExpiryAlertTemplate",
+    "name": "RKE2 kube-proxy certificates",
+    "description": "Read every node's RKE2 client-kube-proxy.crt through its existing pod; one failing node warns globally.",
+    "text": {},
+    "bindings": {
+      "credentials": {
+        "source": "SECRET",
+        "requirement": "Existing self-contained KUBECONFIG secret. Its API server must be reachable by the STANDARD worker."
+      }
+    },
+    "notes": [
+      "The KUBECONFIG needs node/pod read and pods/exec permissions in kube-system. The path and CN remain fixed."
+    ]
+  },
+  {
+    "templateKey": "app.alertify.alerts.templates.KubernetesKubeProxyCertificateExpiryAlertTemplate",
+    "name": "Custom pod layout",
+    "description": "Use a different label selector and container with a 60-day warning threshold.",
+    "text": {
+      "podSelector": "component=network-proxy",
+      "container": "proxy",
+      "warningDays": "60"
+    },
+    "bindings": {
+      "credentials": {
+        "source": "SECRET",
+        "requirement": "Existing self-contained KUBECONFIG secret. Its API server must be reachable by the STANDARD worker."
+      }
+    },
+    "notes": [
+      "Matching pods must still mount /var/lib/rancher/rke2/agent/client-kube-proxy.crt with CN=system:kube-proxy."
+    ]
+  },
+  {
+    "templateKey": "app.alertify.alerts.templates.KubernetesWorkloadAlertTemplate",
+    "name": "Deployment health and restarts",
+    "description": "Check rollout health and accumulated container restarts for one workload.",
+    "text": {
+      "namespace": "production",
+      "kind": "Deployment",
+      "name": "api"
+    },
+    "bindings": {
+      "credentials": {
+        "source": "SECRET",
+        "requirement": "Existing self-contained KUBECONFIG secret. Its API server must be reachable by the STANDARD worker."
+      }
+    },
+    "notes": [
+      "The identity needs read access to the workload and related pods; Deployment restart tracking also reads ReplicaSets."
+    ]
+  },
+  {
+    "templateKey": "app.alertify.alerts.templates.KubernetesWorkloadAlertTemplate",
+    "name": "StatefulSet health and restarts",
+    "description": "Check rollout health and accumulated container restarts for one workload.",
+    "text": {
+      "namespace": "production",
+      "kind": "StatefulSet",
+      "name": "database"
+    },
+    "bindings": {
+      "credentials": {
+        "source": "SECRET",
+        "requirement": "Existing self-contained KUBECONFIG secret. Its API server must be reachable by the STANDARD worker."
+      }
+    },
+    "notes": [
+      "The identity needs read access to the workload and related pods; Deployment restart tracking also reads ReplicaSets."
+    ]
+  },
+  {
+    "templateKey": "app.alertify.alerts.templates.KubernetesWorkloadAlertTemplate",
+    "name": "DaemonSet health and restarts",
+    "description": "Check rollout health and accumulated container restarts for one workload.",
+    "text": {
+      "namespace": "production",
+      "kind": "DaemonSet",
+      "name": "node-agent"
+    },
+    "bindings": {
+      "credentials": {
+        "source": "SECRET",
+        "requirement": "Existing self-contained KUBECONFIG secret. Its API server must be reachable by the STANDARD worker."
+      }
+    },
+    "notes": [
+      "The identity needs read access to the workload and related pods; Deployment restart tracking also reads ReplicaSets."
+    ]
+  },
+  {
+    "templateKey": "app.alertify.alerts.templates.KubernetesWorkloadAlertTemplate",
+    "name": "Deployment health only",
+    "description": "Check rollout state without pod or ReplicaSet restart queries.",
+    "text": {
+      "namespace": "production",
+      "kind": "Deployment",
+      "name": "api",
+      "warnOnRestarts": "false"
+    },
+    "bindings": {
+      "credentials": {
+        "source": "SECRET",
+        "requirement": "Existing self-contained KUBECONFIG secret. Its API server must be reachable by the STANDARD worker."
+      }
+    },
+    "notes": []
+  },
+  {
+    "templateKey": "app.alertify.alerts.templates.PlaywrightPageAlertTemplate",
+    "name": "Chromium page checks",
+    "description": "Check page text and final URL in Chromium.",
+    "text": {
+      "url": "http://app.example.test/",
+      "steps": "QUERY h1\nCHECK TEXT Example Domain\nCHECK URL http://app.example.test/"
+    },
+    "bindings": {},
+    "notes": [
+      "Requires a PLAYWRIGHT worker. Replace the illustrative URL with a reachable application page containing a visible h1 whose text is Example Domain."
+    ]
+  },
+  {
+    "templateKey": "app.alertify.alerts.templates.PlaywrightPageAlertTemplate",
+    "name": "Three-browser page checks",
+    "description": "Run the same assertions in Chromium, Firefox and WebKit.",
+    "text": {
+      "url": "http://app.example.test/",
+      "steps": "QUERY h1\nCHECK TEXT Example Domain",
+      "chromiumEnabled": "true",
+      "firefoxEnabled": "true",
+      "webkitEnabled": "true",
+      "loadTimeoutSeconds": "30"
+    },
+    "bindings": {},
+    "notes": [
+      "Requires a PLAYWRIGHT worker with all three browsers installed. Replace the illustrative URL with a reachable application page containing a visible h1 whose text is Example Domain."
+    ]
+  },
+  {
+    "templateKey": "app.alertify.alerts.templates.ResourceResultObserverAlertTemplate",
+    "name": "PIPE execution observer",
+    "description": "Observe terminal history of an existing resource without executing it.",
+    "text": {
+      "resourceKind": "PIPE"
+    },
+    "bindings": {
+      "resourceId": {
+        "source": "TEXT",
+        "requirement": "Search an existing PIPE resource, then set textValue to its positive ID as decimal text."
+      }
+    },
+    "notes": [
+      "This backend-evaluated observer cannot be run as an ordinary worker template."
+    ]
+  },
+  {
+    "templateKey": "app.alertify.alerts.templates.ResourceResultObserverAlertTemplate",
+    "name": "PROCEDURE execution observer",
+    "description": "Observe terminal history of an existing resource without executing it.",
+    "text": {
+      "resourceKind": "PROCEDURE"
+    },
+    "bindings": {
+      "resourceId": {
+        "source": "TEXT",
+        "requirement": "Search an existing PROCEDURE resource, then set textValue to its positive ID as decimal text."
+      }
+    },
+    "notes": [
+      "This backend-evaluated observer cannot be run as an ordinary worker template."
+    ]
+  },
+  {
+    "templateKey": "app.alertify.alerts.templates.ResourceResultObserverAlertTemplate",
+    "name": "HOOK execution observer",
+    "description": "Observe terminal history of an existing resource without executing it.",
+    "text": {
+      "resourceKind": "HOOK"
+    },
+    "bindings": {
+      "resourceId": {
+        "source": "TEXT",
+        "requirement": "Search an existing HOOK resource, then set textValue to its positive ID as decimal text."
+      }
+    },
+    "notes": [
+      "This backend-evaluated observer cannot be run as an ordinary worker template."
+    ]
+  },
+  {
+    "templateKey": "app.alertify.alerts.templates.ScheduledReminderAlertTemplate",
+    "name": "Daily reminder",
+    "description": "Produce a reminder on the daily schedule.",
+    "text": {
+      "warningCron": "0 0 9 * * *",
+      "warningMessage": "Review the daily backup report."
+    },
+    "bindings": {},
+    "notes": [
+      "The outer alert cron must still be configured. Internal cron uses the server time zone."
+    ]
+  },
+  {
+    "templateKey": "app.alertify.alerts.templates.ScheduledReminderAlertTemplate",
+    "name": "Monthly reminder",
+    "description": "Produce a reminder at 09:00 on the first day of each month.",
+    "text": {
+      "warningCron": "0 0 9 1 * *",
+      "warningMessage": "Review monthly access permissions."
+    },
+    "bindings": {},
+    "notes": []
+  },
+  {
+    "templateKey": "app.alertify.alerts.templates.SqlStatusAlertTemplate",
+    "name": "Status and explanation",
+    "description": "Read one PostgreSQL row containing a status and detail.",
+    "text": {
+      "sql": "SELECT 'WARN' AS status, 'Maintenance window' AS detail",
+      "statusColumnName": "status",
+      "detailColumnName": "detail"
+    },
+    "bindings": {
+      "credentials": {
+        "source": "SECRET",
+        "requirement": "Existing DB_SECRET for a reachable PostgreSQL database with read-only SELECT access."
+      }
+    },
+    "notes": []
+  },
+  {
+    "templateKey": "app.alertify.alerts.templates.SqlStatusAlertTemplate",
+    "name": "Parameterized status",
+    "description": "Bind a positional SQL argument and map its derived status.",
+    "text": {
+      "sql": "SELECT CASE WHEN ? > 10 THEN 'WARN' ELSE 'SUCCESS' END AS status",
+      "sqlParametersJson": "[11]",
+      "statusColumnName": "status"
+    },
+    "bindings": {
+      "credentials": {
+        "source": "SECRET",
+        "requirement": "Existing DB_SECRET for a reachable PostgreSQL database with read-only SELECT access."
+      }
+    },
+    "notes": []
+  },
+  {
+    "templateKey": "app.alertify.alerts.templates.SqlThresholdAlertTemplate",
+    "name": "Low stock",
+    "description": "Warn when the selected numeric value falls below ten.",
+    "text": {
+      "sql": "SELECT 3 AS amount",
+      "numericColumnName": "amount",
+      "threshold": "10",
+      "thresholdType": "warn_if_lower"
+    },
+    "bindings": {
+      "credentials": {
+        "source": "SECRET",
+        "requirement": "Existing DB_SECRET for a reachable PostgreSQL database with read-only SELECT access."
+      }
+    },
+    "notes": []
+  },
+  {
+    "templateKey": "app.alertify.alerts.templates.SqlThresholdAlertTemplate",
+    "name": "High queue count",
+    "description": "Warn when the selected numeric value exceeds ten.",
+    "text": {
+      "sql": "SELECT 15 AS amount",
+      "numericColumnName": "amount",
+      "threshold": "10",
+      "thresholdType": "warn_if_bigger"
+    },
+    "bindings": {
+      "credentials": {
+        "source": "SECRET",
+        "requirement": "Existing DB_SECRET for a reachable PostgreSQL database with read-only SELECT access."
+      }
+    },
+    "notes": []
+  },
+  {
+    "templateKey": "app.alertify.alerts.templates.SqlWatchAlertTemplate",
+    "name": "Watch rows with binary snapshot",
+    "description": "Track additions, removals and changes using a writable binary configuration.",
+    "text": {
+      "sql": "SELECT 1 AS id, 'enabled' AS value",
+      "keyColumnsJson": "[\"id\"]"
+    },
+    "bindings": {
+      "credentials": {
+        "source": "SECRET",
+        "requirement": "Existing DB_SECRET for a reachable PostgreSQL database with read-only SELECT access."
+      },
+      "snapshot": {
+        "source": "CONFIGURATION",
+        "requirement": "Existing writable BINARY configuration dedicated to this alert; an empty binary payload initializes the first snapshot."
+      }
+    },
+    "notes": [
+      "Use a separate snapshot binding per alert. Execution may write the updated snapshot."
+    ]
+  },
+  {
+    "templateKey": "app.alertify.alerts.templates.SqlWatchAlertTemplate",
+    "name": "Detailed diff with binary secret",
+    "description": "Keep the snapshot in a writable binary secret and include row details in the result.",
+    "text": {
+      "sql": "SELECT 1 AS id, 'enabled' AS value",
+      "keyColumnsJson": "[\"id\"]",
+      "showDetailsInJson": "true",
+      "maxReportedRows": "5"
+    },
+    "bindings": {
+      "credentials": {
+        "source": "SECRET",
+        "requirement": "Existing DB_SECRET for a reachable PostgreSQL database with read-only SELECT access."
+      },
+      "snapshot": {
+        "source": "SECRET",
+        "requirement": "Existing writable BINARY secret dedicated to this alert."
+      }
+    },
+    "notes": [
+      "Detailed results may expose selected query columns; select only data appropriate for alert results."
+    ]
+  },
+  {
+    "templateKey": "app.alertify.alerts.templates.TcpConnectionAlertTemplate",
+    "name": "HTTPS TCP port",
+    "description": "Check that the TCP port accepts a connection, without an application-level request.",
+    "text": {
+      "host": "example.com",
+      "port": "443"
+    },
+    "bindings": {},
+    "notes": []
+  },
+  {
+    "templateKey": "app.alertify.alerts.templates.TcpConnectionAlertTemplate",
+    "name": "Database TCP port",
+    "description": "Check a database listener with a longer timeout.",
+    "text": {
+      "host": "database.example.test",
+      "port": "5432",
+      "timeoutSeconds": "10"
+    },
+    "bindings": {},
+    "notes": [
+      "Replace the host with your reachable database listener."
+    ]
+  },
+  {
+    "templateKey": "app.alertify.alerts.templates.WebRequestAlertTemplate",
+    "name": "Read health JSON",
+    "description": "Request a health endpoint and verify the JSON status field.",
+    "text": {
+      "url": "https://api.example.test/health",
+      "jsonAssertions": "/status equals ok"
+    },
+    "bindings": {},
+    "notes": []
+  },
+  {
+    "templateKey": "app.alertify.alerts.templates.WebRequestAlertTemplate",
+    "name": "JSON POST with protected headers",
+    "description": "Send JSON and obtain authorization headers from a secret binding.",
+    "text": {
+      "url": "https://api.example.test/check",
+      "method": "POST",
+      "expectedStatusCodes": "200,201",
+      "body": "{\"probe\":true}",
+      "headersJson": "[\"Content-Type: application/json\"]"
+    },
+    "bindings": {
+      "headersOverrideJson": {
+        "source": "SECRET",
+        "requirement": "Existing STRING or EXPRESSION secret resolving to a JSON array of header strings. Do not expose its authorization value."
+      }
+    },
+    "notes": [
+      "POST can change remote state. Use an endpoint intended for this operation."
+    ]
+  },
+  {
+    "templateKey": "app.alertify.alerts.templates.devtools.SimulatedResultAlertTemplate",
+    "name": "Simulated SUCCESS",
+    "description": "Exercise the chosen alert outcome without an external dependency.",
+    "text": {
+      "status": "SUCCESS",
+      "message": "Example SUCCESS outcome"
+    },
+    "bindings": {},
+    "notes": []
+  },
+  {
+    "templateKey": "app.alertify.alerts.templates.devtools.SimulatedResultAlertTemplate",
+    "name": "Simulated WARN",
+    "description": "Exercise the chosen alert outcome without an external dependency.",
+    "text": {
+      "status": "WARN",
+      "message": "Example WARN outcome"
+    },
+    "bindings": {},
+    "notes": []
+  },
+  {
+    "templateKey": "app.alertify.alerts.templates.devtools.SimulatedResultAlertTemplate",
+    "name": "Simulated ERROR",
+    "description": "Exercise the chosen alert outcome without an external dependency.",
+    "text": {
+      "status": "ERROR",
+      "message": "Example ERROR outcome"
+    },
+    "bindings": {},
+    "notes": []
+  },
+  {
+    "templateKey": "app.alertify.alerts.templates.devtools.SimulatedLongRunningAlertTemplate",
+    "name": "Short controlled run",
+    "description": "Use a brief simulated run to inspect execution state.",
+    "text": {
+      "sleepMilliseconds": "100"
+    },
+    "bindings": {},
+    "notes": []
+  },
+  {
+    "templateKey": "app.alertify.alerts.templates.devtools.SimulatedLongRunningAlertTemplate",
+    "name": "Random initial delay",
+    "description": "Exercise queued/running state with a small bounded random delay.",
+    "text": {
+      "sleepMilliseconds": "100",
+      "randomInitialDelayEnabled": "true",
+      "randomInitialDelayMinSeconds": "1",
+      "randomInitialDelayMaxSeconds": "2"
+    },
+    "bindings": {},
+    "notes": []
+  },
+  {
+    "templateKey": "app.alertify.alerts.templates.devtools.SimulatedLongRunningPlaywrightAlertTemplate",
+    "name": "Short controlled run",
+    "description": "Use a brief simulated run to inspect execution state.",
+    "text": {
+      "sleepMilliseconds": "100"
+    },
+    "bindings": {},
+    "notes": []
+  },
+  {
+    "templateKey": "app.alertify.alerts.templates.devtools.SimulatedLongRunningPlaywrightAlertTemplate",
+    "name": "Random initial delay",
+    "description": "Exercise queued/running state with a small bounded random delay.",
+    "text": {
+      "sleepMilliseconds": "100",
+      "randomInitialDelayEnabled": "true",
+      "randomInitialDelayMinSeconds": "1",
+      "randomInitialDelayMaxSeconds": "2"
+    },
+    "bindings": {},
+    "notes": []
+  },
+  {
+    "templateKey": "app.alertify.procedures.templates.devtools.SimulatedLongRunningProcedureTemplate",
+    "name": "Short controlled run",
+    "description": "Use a brief simulated run to inspect execution state.",
+    "text": {
+      "sleepMilliseconds": "100"
+    },
+    "bindings": {},
+    "notes": []
+  },
+  {
+    "templateKey": "app.alertify.procedures.templates.devtools.SimulatedLongRunningProcedureTemplate",
+    "name": "Random initial delay",
+    "description": "Exercise queued/running state with a small bounded random delay.",
+    "text": {
+      "sleepMilliseconds": "100",
+      "randomInitialDelayEnabled": "true",
+      "randomInitialDelayMinSeconds": "1",
+      "randomInitialDelayMaxSeconds": "2"
+    },
+    "bindings": {},
+    "notes": []
+  },
+  {
+    "templateKey": "app.alertify.procedures.templates.devtools.SimulatedLongRunningPlaywrightProcedureTemplate",
+    "name": "Short controlled run",
+    "description": "Use a brief simulated run to inspect execution state.",
+    "text": {
+      "sleepMilliseconds": "100"
+    },
+    "bindings": {},
+    "notes": []
+  },
+  {
+    "templateKey": "app.alertify.procedures.templates.devtools.SimulatedLongRunningPlaywrightProcedureTemplate",
+    "name": "Random initial delay",
+    "description": "Exercise queued/running state with a small bounded random delay.",
+    "text": {
+      "sleepMilliseconds": "100",
+      "randomInitialDelayEnabled": "true",
+      "randomInitialDelayMinSeconds": "1",
+      "randomInitialDelayMaxSeconds": "2"
+    },
+    "bindings": {},
+    "notes": []
+  },
+  {
+    "templateKey": "app.alertify.procedures.templates.PostgresBackupProcedureTemplate",
+    "name": "Plain SQL backup",
+    "description": "Return a SQL backup artifact.",
+    "text": {
+      "fileName": "application-backup"
+    },
+    "bindings": {
+      "credentials": {
+        "source": "SECRET",
+        "requirement": "Existing DB_SECRET for PostgreSQL with backup privileges and the correct engine."
+      }
+    },
+    "notes": [
+      "Requires the corresponding database client in the STANDARD worker and a reachable PostgreSQL instance."
+    ]
+  },
+  {
+    "templateKey": "app.alertify.procedures.templates.PostgresBackupProcedureTemplate",
+    "name": "Gzip backup with configured file name",
+    "description": "Return a compressed SQL artifact, with its logical name read from configuration.",
+    "text": {
+      "gzipCompressionLevel": "6"
+    },
+    "bindings": {
+      "credentials": {
+        "source": "SECRET",
+        "requirement": "Existing DB_SECRET for PostgreSQL with backup privileges and the correct engine."
+      },
+      "fileName": {
+        "source": "CONFIGURATION",
+        "requirement": "Existing STRING or EXPRESSION configuration resolving to a logical file name without directories."
+      }
+    },
+    "notes": []
+  },
+  {
+    "templateKey": "app.alertify.procedures.templates.MariaDbBackupProcedureTemplate",
+    "name": "Plain SQL backup",
+    "description": "Return a SQL backup artifact.",
+    "text": {
+      "fileName": "application-backup"
+    },
+    "bindings": {
+      "credentials": {
+        "source": "SECRET",
+        "requirement": "Existing DB_SECRET for MariaDB with backup privileges and the correct engine."
+      }
+    },
+    "notes": [
+      "Requires the corresponding database client in the STANDARD worker and a reachable MariaDB instance."
+    ]
+  },
+  {
+    "templateKey": "app.alertify.procedures.templates.MariaDbBackupProcedureTemplate",
+    "name": "Gzip backup with configured file name",
+    "description": "Return a compressed SQL artifact, with its logical name read from configuration.",
+    "text": {
+      "gzipCompressionLevel": "6"
+    },
+    "bindings": {
+      "credentials": {
+        "source": "SECRET",
+        "requirement": "Existing DB_SECRET for MariaDB with backup privileges and the correct engine."
+      },
+      "fileName": {
+        "source": "CONFIGURATION",
+        "requirement": "Existing STRING or EXPRESSION configuration resolving to a logical file name without directories."
+      }
+    },
+    "notes": []
+  },
+  {
+    "templateKey": "app.alertify.procedures.templates.OracleDataPumpExportProcedureTemplate",
+    "name": "Schema export",
+    "description": "Export the APP schema to a Data Pump artifact.",
+    "text": {
+      "fileName": "app-export",
+      "schemas": "APP"
+    },
+    "bindings": {
+      "credentials": {
+        "source": "SECRET",
+        "requirement": "Existing Oracle DB_SECRET. The login needs Data Pump privileges and the directory must be accessible to the Oracle server."
+      }
+    },
+    "notes": [
+      "DATA_PUMP_DIR must exist on the database server. Default cleanup deletes only the files created by this export."
+    ]
+  },
+  {
+    "templateKey": "app.alertify.procedures.templates.OracleDataPumpExportProcedureTemplate",
+    "name": "Full export retained on server",
+    "description": "Produce a compressed full export and retain generated server files.",
+    "text": {
+      "fileName": "full-export",
+      "exportMode": "FULL",
+      "dataPumpCompression": "METADATA_ONLY",
+      "zipCompressionLevel": "6",
+      "deleteFromServer": "false"
+    },
+    "bindings": {
+      "credentials": {
+        "source": "SECRET",
+        "requirement": "Existing Oracle DB_SECRET. The login needs Data Pump privileges and the directory must be accessible to the Oracle server."
+      }
+    },
+    "notes": [
+      "Full exports require the corresponding Oracle privileges. METADATA_ONLY works without data compression; use ALL or DATA_ONLY only when supported and licensed by the Oracle installation."
+    ]
+  },
+  {
+    "templateKey": "app.alertify.procedures.templates.SqlServerNativeBackupProcedureTemplate",
+    "name": "Single-file native backup",
+    "description": "Return one native .bak artifact.",
+    "text": {
+      "fileName": "application-backup"
+    },
+    "bindings": {
+      "credentials": {
+        "source": "SECRET",
+        "requirement": "Existing DB_SECRET with engine SQL_SERVER. The server must permit BACKUP DATABASE and OPENROWSET(BULK) for the backup files."
+      }
+    },
+    "notes": [
+      "The server backup directory must be allowed by SQL_SERVER_BACKUP_ALLOWED_DIRECTORIES on the worker. Native backup files are created on the database server before download."
+    ]
+  },
+  {
+    "templateKey": "app.alertify.procedures.templates.SqlServerNativeBackupProcedureTemplate",
+    "name": "Striped native backup",
+    "description": "Return a zip containing four backup stripes.",
+    "text": {
+      "fileName": "application-backup",
+      "stripes": "4",
+      "zipCompressionLevel": "6",
+      "deleteFromServer": "false"
+    },
+    "bindings": {
+      "credentials": {
+        "source": "SECRET",
+        "requirement": "Existing DB_SECRET with engine SQL_SERVER. The server must permit BACKUP DATABASE and OPENROWSET(BULK) for the backup files."
+      }
+    },
+    "notes": [
+      "Stripes permit each OPENROWSET download to stay below the per-file limit. Set an allowed serverBackupDirectory if the server default is not appropriate."
+    ]
+  },
+  {
+    "templateKey": "app.alertify.procedures.templates.HttpAccessTokenExchangeProcedureTemplate",
+    "name": "Basic token exchange",
+    "description": "POST with HTTP Basic authentication and extract /access_token.",
+    "text": {
+      "tokenUrl": "https://identity.example.test/token",
+      "authenticationType": "BASIC"
+    },
+    "bindings": {
+      "credentials": {
+        "source": "SECRET",
+        "requirement": "Existing USERNAME_PASSWORD secret for the token endpoint account."
+      }
+    },
+    "notes": [
+      "The endpoint must implement this Basic-auth token exchange. The result contains a protected token and must remain redacted."
+    ]
+  },
+  {
+    "templateKey": "app.alertify.procedures.templates.HttpAccessTokenExchangeProcedureTemplate",
+    "name": "OAuth password grant and client ID",
+    "description": "Request a token using the password grant and client_id in the body.",
+    "text": {
+      "tokenUrl": "https://identity.example.test/token",
+      "authenticationType": "OAUTH2_PASSWORD",
+      "scope": "openid",
+      "clientAuthenticationType": "CLIENT_ID_BODY",
+      "clientId": "service-client"
+    },
+    "bindings": {
+      "credentials": {
+        "source": "SECRET",
+        "requirement": "Existing USERNAME_PASSWORD secret for the token endpoint account."
+      }
+    },
+    "notes": [
+      "Only use a provider/client explicitly configured for this grant; this is not an Alertify login shortcut."
+    ]
+  },
+  {
+    "templateKey": "app.alertify.procedures.templates.HttpAccessTokenExchangeProcedureTemplate",
+    "name": "OAuth confidential client",
+    "description": "Use a separate client credential secret for HTTP Basic client authentication.",
+    "text": {
+      "tokenUrl": "https://identity.example.test/token",
+      "authenticationType": "OAUTH2_PASSWORD",
+      "clientAuthenticationType": "BASIC"
+    },
+    "bindings": {
+      "credentials": {
+        "source": "SECRET",
+        "requirement": "Existing USERNAME_PASSWORD secret for the token endpoint account."
+      },
+      "clientCredentials": {
+        "source": "SECRET",
+        "requirement": "Existing USERNAME_PASSWORD secret with the OAuth client ID as username and client secret as password."
+      }
+    },
+    "notes": []
+  },
+  {
+    "templateKey": "app.alertify.procedures.templates.TotpProcedureTemplate",
+    "name": "Standard TOTP",
+    "description": "Generate a six-digit SHA1 code with a 30-second period.",
+    "text": {},
+    "bindings": {
+      "secret": {
+        "source": "SECRET",
+        "requirement": "Existing STRING secret containing the account's Base32 TOTP seed."
+      }
+    },
+    "notes": [
+      "The algorithm, digit count and period must match the enrolled account. The generated code is sensitive."
+    ]
+  },
+  {
+    "templateKey": "app.alertify.procedures.templates.TotpProcedureTemplate",
+    "name": "Eight-digit SHA256 TOTP",
+    "description": "Use the alternative TOTP parameters required by an enrolled account.",
+    "text": {
+      "algorithm": "SHA256",
+      "digits": "8",
+      "periodSeconds": "60"
+    },
+    "bindings": {
+      "secret": {
+        "source": "SECRET",
+        "requirement": "Existing STRING secret with a Base32 seed enrolled using SHA256, 8 digits and a 60-second period."
+      }
+    },
+    "notes": []
+  },
+  {
+    "templateKey": "app.alertify.procedures.templates.ExecutePipeProcedureTemplate",
+    "name": "Invoke a pipe",
+    "description": "Execute an existing pipe through a procedure binding.",
+    "text": {},
+    "bindings": {
+      "pipe": {
+        "source": "PIPE",
+        "requirement": "Existing pipe ID returned by alertify_template_binding_candidates. Inspect its steps before authorizing execution."
+      }
+    },
+    "notes": [
+      "Execution can trigger every side effect defined by the referenced pipe."
+    ]
+  },
+  {
+    "templateKey": "app.alertify.procedures.templates.CopyFileToNfsProcedureTemplate",
+    "name": "Copy binary configuration to NFSv4",
+    "description": "Copy a bound binary resource to a file on an NFS export.",
+    "text": {
+      "server": "nfs.example.test",
+      "export": "/exports/backups",
+      "directory": "application",
+      "fileName": "backup.bin"
+    },
+    "bindings": {
+      "input": {
+        "source": "CONFIGURATION",
+        "requirement": "Existing BINARY configuration containing the file to copy."
+      }
+    },
+    "notes": [
+      "The export must be reachable and authorized for the worker; the worker needs its NFS helper. Existing files are not overwritten by default."
+    ]
+  },
+  {
+    "templateKey": "app.alertify.procedures.templates.CopyFileToNfsProcedureTemplate",
+    "name": "Copy binary secret with NFSv3",
+    "description": "Copy a binary secret and explicitly allow replacing the target file.",
+    "text": {
+      "server": "nfs.example.test",
+      "export": "/exports/backups",
+      "version": "3",
+      "fileName": "backup.bin",
+      "overwriteExisting": "true"
+    },
+    "bindings": {
+      "input": {
+        "source": "SECRET",
+        "requirement": "Existing BINARY secret containing the file to copy."
+      }
+    },
+    "notes": [
+      "Execution writes the destination and can overwrite an existing file. Pipe artifact inputs are a separate execution-context path."
+    ]
+  },
+  {
+    "templateKey": "app.alertify.procedures.templates.devtools.ConsoleParameterProcedureTemplate",
+    "name": "Public console value",
+    "description": "Write a non-sensitive test value to the worker console.",
+    "text": {
+      "value": "Example diagnostic message"
+    },
+    "bindings": {},
+    "notes": [
+      "Use only non-sensitive values with this development template."
+    ]
+  },
+  {
+    "templateKey": "app.alertify.procedures.templates.devtools.WritableParameterCopyProcedureTemplate",
+    "name": "Copy to writable configuration",
+    "description": "Copy a literal to an explicitly writable configuration binding.",
+    "text": {
+      "sourceValue": "Updated example value"
+    },
+    "bindings": {
+      "writableValue": {
+        "source": "CONFIGURATION",
+        "requirement": "Existing writable STRING configuration dedicated to this development test."
+      }
+    },
+    "notes": [
+      "Execution writes the referenced configuration."
+    ]
+  },
+  {
+    "templateKey": "app.alertify.procedures.templates.devtools.WritableParameterCopyProcedureTemplate",
+    "name": "Copy protected value",
+    "description": "Copy from one secret into a separate writable secret without exposing its result.",
+    "text": {},
+    "bindings": {
+      "sourceValue": {
+        "source": "SECRET",
+        "requirement": "Existing STRING secret used as the input."
+      },
+      "writableValue": {
+        "source": "SECRET",
+        "requirement": "Separate existing writable STRING secret used as the destination."
+      }
+    },
+    "notes": [
+      "Execution writes the destination secret. Its writable flag must already be authorized."
+    ]
+  }
+]

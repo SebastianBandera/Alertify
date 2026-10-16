@@ -10,6 +10,8 @@ import org.springframework.data.jpa.repository.Query;
 import app.alertify.procedures.model.Procedure;
 
 public interface ProcedureRepository extends JpaRepository<Procedure, Long>, JpaSpecificationExecutor<Procedure> {
+    List<app.alertify.alerts.template.ParameterBindingMetadata.Executable> findAllProjectedBy();
+    Optional<app.alertify.alerts.template.ParameterBindingMetadata.Executable> findProjectedById(Long id);
     Optional<Procedure> findByNameIgnoreCase(String name);
     boolean existsByNameIgnoreCaseAndIdNot(String name, Long id);
     List<Procedure> findAllByEnabledTrue();

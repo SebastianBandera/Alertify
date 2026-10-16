@@ -27,6 +27,7 @@ import app.alertify.ai.tools.LocalizationAiTools;
 import app.alertify.ai.tools.PipeAiTools;
 import app.alertify.ai.tools.ProcedureAiTools;
 import app.alertify.ai.tools.SystemAiTools;
+import app.alertify.ai.tools.TemplateAiTools;
 
 /** Selects a bounded set of callbacks by trusted domain and current roles. */
 @Service
@@ -38,10 +39,11 @@ public class AiToolCatalog {
     private final Map<AiToolGroup, List<AiToolDescriptor>> descriptors;
 
     @Autowired
-    public AiToolCatalog(AlertAiTools alerts, ProcedureAiTools procedures, PipeAiTools pipes, HookAiTools hooks, ConfigurationAiTools configuration, DashboardAiTools dashboard, LocalizationAiTools localization, SystemAiTools system) {
+    public AiToolCatalog(AlertAiTools alerts, ProcedureAiTools procedures, PipeAiTools pipes, HookAiTools hooks, ConfigurationAiTools configuration, DashboardAiTools dashboard, LocalizationAiTools localization, SystemAiTools system, TemplateAiTools templates) {
         EnumMap<AiToolGroup, List<AiToolDescriptor>> values = new EnumMap<>(AiToolGroup.class);
-        values.put(AiToolGroup.ALERTS, descriptors(alerts));
-        values.put(AiToolGroup.PROCEDURES, descriptors(procedures));
+        List<AiToolDescriptor> templateTools = descriptors(templates);
+        values.put(AiToolGroup.ALERTS, withTemplateTools(descriptors(alerts), templateTools));
+        values.put(AiToolGroup.PROCEDURES, withTemplateTools(descriptors(procedures), templateTools));
         values.put(AiToolGroup.PIPES, descriptors(pipes));
         values.put(AiToolGroup.HOOKS, descriptors(hooks));
         values.put(AiToolGroup.CONFIGURATION, descriptors(configuration));
@@ -78,6 +80,12 @@ public class AiToolCatalog {
                 result.addAll(descriptors.get(group));
             }
         }
+        return result.stream().distinct().toList();
+    }
+
+    private static List<AiToolDescriptor> withTemplateTools(List<AiToolDescriptor> domain, List<AiToolDescriptor> templates) {
+        List<AiToolDescriptor> result = new ArrayList<>(domain);
+        result.addAll(templates);
         return List.copyOf(result);
     }
 

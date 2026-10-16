@@ -19,6 +19,10 @@ import app.alertify.jpa.entity.ApplicationSecret;
  */
 public interface ApplicationSecretRepository extends JpaRepository<ApplicationSecret, Long>, JpaSpecificationExecutor<ApplicationSecret> {
 
+    List<app.alertify.alerts.template.ParameterBindingMetadata.Secret> findAllProjectedBy();
+
+    Optional<app.alertify.alerts.template.ParameterBindingMetadata.Secret> findProjectedById(Long id);
+
     boolean existsByNameIgnoreCase(String name);
 
     boolean existsByNameIgnoreCaseAndIdNot(String name, Long id);

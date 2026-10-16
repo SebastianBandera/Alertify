@@ -10,6 +10,8 @@ import java.util.Optional;
 import app.alertify.pipes.model.Pipe;
 
 public interface PipeRepository extends JpaRepository<Pipe, Long> {
+    java.util.List<app.alertify.alerts.template.ParameterBindingMetadata.Executable> findAllProjectedBy();
+    Optional<app.alertify.alerts.template.ParameterBindingMetadata.Executable> findProjectedById(Long id);
     boolean existsByNameIgnoreCase(String name);
     boolean existsByNameIgnoreCaseAndIdNot(String name, Long id);
     boolean existsByTagsId(Long tagId);
