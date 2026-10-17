@@ -47,6 +47,7 @@ message AiSettings {
   string refresh_policy = 6;
   string reviewer_model = 7;
   string reviewer_reasoning_effort = 8;
+  bool conversation_history_search_enabled = 9;
 }
 
 message UpdateSettingsRequest {

@@ -65,7 +65,8 @@ class AiWorkerGrpcService extends AiWorkerServiceGrpc.AiWorkerServiceImplBase {
                 request.getSettings().getEnabled(), request.getSettings().getProvider(), request.getSettings().getModel(),
                 request.getSettings().getReasoningEffort(), request.getSettings().getAgentInstructions(),
                 request.getSettings().getRefreshPolicy(), request.getSettings().getReviewerModel(),
-                request.getSettings().getReviewerReasoningEffort()))));
+                request.getSettings().getReviewerReasoningEffort(),
+                request.getSettings().getConversationHistorySearchEnabled()))));
     }
 
     @Override
@@ -155,7 +156,8 @@ class AiWorkerGrpcService extends AiWorkerServiceGrpc.AiWorkerServiceImplBase {
                 .setModel(settings.model()).setReasoningEffort(settings.reasoningEffort())
                 .setAgentInstructions(nullSafe(settings.agentInstructions())).setRefreshPolicy(settings.refreshPolicy())
                 .setReviewerModel(nullSafe(settings.reviewerModel()))
-                .setReviewerReasoningEffort(settings.reviewerReasoningEffort()).build();
+                .setReviewerReasoningEffort(settings.reviewerReasoningEffort())
+                .setConversationHistorySearchEnabled(settings.conversationHistorySearchEnabled()).build();
     }
 
     private static DeviceLoginResponse device(PendingDeviceLogin login) {

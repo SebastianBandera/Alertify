@@ -130,7 +130,7 @@ class CodexSessionService {
             throw new IllegalStateException("The maximum number of concurrent model requests must be positive");
 
         AiSettingsState initialSettings = new AiSettingsState(true, "CODEX", properties.defaultModel(), properties.defaultReasoningEffort(), "",
-                properties.defaultRefreshPolicy(), properties.defaultReviewerModel(), properties.defaultReviewerReasoningEffort());
+                properties.defaultRefreshPolicy(), properties.defaultReviewerModel(), properties.defaultReviewerReasoningEffort(), true);
         validateSettings(initialSettings);
         PersistentAiState loaded = store.load();
         state = normalize(loaded, initialSettings);
@@ -1429,7 +1429,8 @@ class CodexSessionService {
         settings = new AiSettingsState(settings.enabled(), settings.provider(), settings.model(), settings.reasoningEffort(),
                 settings.agentInstructions(), settings.refreshPolicy(),
                 settings.reviewerModel() == null ? initialSettings.reviewerModel() : settings.reviewerModel(),
-                settings.reviewerReasoningEffort() == null ? initialSettings.reviewerReasoningEffort() : settings.reviewerReasoningEffort());
+                settings.reviewerReasoningEffort() == null ? initialSettings.reviewerReasoningEffort() : settings.reviewerReasoningEffort(),
+                settings.conversationHistorySearchEnabled());
         validateSettings(settings);
         Map<String, DynamicClient> clients = loaded == null || loaded.dynamicClients() == null
                 ? Map.of() : new HashMap<>(loaded.dynamicClients());

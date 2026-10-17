@@ -44,6 +44,7 @@ public class AiMessage {
     }
 
     public Long getId() { return id; }
+    public AiConversation getConversation() { return conversation; }
     public Long getTurnId() { return turn == null ? null : turn.getId(); }
     public Instant getTurnCreatedAt() { return turn == null ? null : turn.getCreatedAt(); }
     public String getRole() { return role; }

@@ -1,6 +1,7 @@
 package app.alertify.ai.chat;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
 import java.util.Map;
@@ -21,6 +22,8 @@ import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import jakarta.persistence.EntityManager;
+import tools.jackson.databind.json.JsonMapper;
+import app.alertify.api.error.ResourceNotFoundException;
 
 /** Uses only an empty disposable PostgreSQL database; refuses an existing core schema. */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
@@ -31,6 +34,8 @@ class AiChatOperationHistoryJpaIntegrationTest {
     private TransactionTemplate transactions;
     private AiToolInvocationRepository invocations;
     private AiMessageRepository messages;
+    private AiConversationHistory history;
+    private final JsonMapper json = JsonMapper.builder().findAndAddModules().build();
 
     @BeforeAll
     void initializeEmptyDisposableDatabase() {
@@ -49,6 +54,7 @@ class AiChatOperationHistoryJpaIntegrationTest {
         var repositories = new JpaRepositoryFactory(entityManager);
         invocations = repositories.getRepository(AiToolInvocationRepository.class);
         messages = repositories.getRepository(AiMessageRepository.class);
+        history = new AiConversationHistory(repositories.getRepository(AiConversationRepository.class), messages, json);
     }
 
     @AfterAll
@@ -111,6 +117,98 @@ class AiChatOperationHistoryJpaIntegrationTest {
         var conversation = new AiConversation(subject, subject, "test", "DIRECT", "ASK");
         entityManager.persist(conversation);
         return conversation;
+    }
+
+    @Test
+    void searchesAndPagesOnlyOtherChatsOwnedByTheTrustedSubject() {
+        long[] ids = transactions.execute(status -> {
+            var current = conversation("search-owner");
+            var own = conversation("search-owner");
+            var other = conversation("search-other");
+            var titleOnly = new AiConversation("search-owner", "owner", "UniqueTitleWord", "DIRECT", "ASK");
+            entityManager.persist(titleOnly);
+            message(current, "USER", "certificate current");
+            var first = message(own, "USER", "Certificate older");
+            var second = message(own, "ASSISTANT", "certificate newer");
+            message(own, "SYSTEM", "certificate INTERNAL");
+            message(own, "TOOL", "certificate PRIVATE-TOOL");
+            var foreign = message(other, "USER", "certificate FOREIGN");
+            message(titleOnly, "USER", "unrelated body");
+            message(titleOnly, "ASSISTANT", "latest unrelated body");
+            entityManager.flush();
+            return new long[] { current.getId(), own.getId(), first.getId(), second.getId(), other.getId(), foreign.getId(), titleOnly.getId() };
+        });
+        var first = transactions.execute(status -> history.search("search-owner", ids[0], "{\"query\":\"CERTIFICATE\",\"limit\":1}"));
+        assertThat(first.matches()).singleElement().satisfies(entry -> {
+            assertThat(entry.messageId()).isEqualTo(ids[3]);
+            assertThat(entry.conversationId()).isEqualTo(ids[1]);
+        });
+        assertThat(first.nextCursor()).isNotBlank();
+        var older = transactions.execute(status -> history.search("search-owner", ids[0], json.writeValueAsString(Map.of(
+                "query", "CERTIFICATE", "limit", 1, "cursor", first.nextCursor()))));
+        assertThat(older.matches()).extracting(AiConversationHistory.SearchEntry::messageId).containsExactly(ids[2]);
+        assertThat(older.nextCursor()).isNull();
+        var title = transactions.execute(status -> history.search("search-owner", ids[0], "{\"query\":\"UniqueTitleWord\"}"));
+        assertThat(title.matches()).extracting(AiConversationHistory.SearchEntry::conversationId).containsExactly(ids[6]);
+        assertThat(transactions.execute(status -> history.search("search-owner", ids[0], "{\"query\":\"%\"}")).matches()).isEmpty();
+        assertThat(transactions.execute(status -> history.search("search-owner", ids[0], "{\"query\":\"certificate\",\"until\":\"2000-01-01T00:00:00Z\"}")).matches()).isEmpty();
+        assertThatThrownBy(() -> transactions.execute(status -> history.search("search-other", ids[4], json.writeValueAsString(Map.of(
+                "query", "CERTIFICATE", "cursor", first.nextCursor()))))).isInstanceOf(IllegalArgumentException.class);
+        for (long inaccessible : new long[] { ids[0], ids[4], Long.MAX_VALUE })
+            assertThatThrownBy(() -> transactions.execute(status -> history.messages("search-owner", ids[0],
+                    "{\"conversationId\":" + inaccessible + "}"))).isInstanceOf(ResourceNotFoundException.class);
+
+        assertThatThrownBy(() -> transactions.execute(status -> history.messages("search-owner", ids[0],
+                "{\"conversationId\":" + ids[1] + ",\"aroundMessageId\":" + ids[5] + "}")))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void readsChronologicalWindowsAndAdjacentPagesWithBoundedValidJson() {
+        long[] ids = transactions.execute(status -> {
+            var current = conversation("window-owner");
+            var own = conversation("window-owner");
+            var first = message(own, "USER", "first");
+            var middle = message(own, "ASSISTANT", "middle");
+            var last = message(own, "USER", "last");
+            message(own, "SYSTEM", "private system");
+            entityManager.flush();
+            return new long[] { current.getId(), own.getId(), first.getId(), middle.getId(), last.getId() };
+        });
+        var latest = transactions.execute(status -> history.messages("window-owner", ids[0], "{\"conversationId\":" + ids[1] + ",\"limit\":2}"));
+        assertThat(latest.messages()).extracting(AiConversationHistory.MessageEntry::messageId).containsExactly(ids[3], ids[4]);
+        assertThat(latest.nextCursor()).isNull();
+        var previous = transactions.execute(status -> history.messages("window-owner", ids[0], json.writeValueAsString(Map.of(
+                "conversationId", ids[1], "limit", 2, "cursor", latest.previousCursor()))));
+        assertThat(previous.messages()).extracting(AiConversationHistory.MessageEntry::messageId).containsExactly(ids[2]);
+        var forward = transactions.execute(status -> history.messages("window-owner", ids[0], json.writeValueAsString(Map.of(
+                "conversationId", ids[1], "limit", 2, "cursor", previous.nextCursor()))));
+        assertThat(forward.messages()).extracting(AiConversationHistory.MessageEntry::messageId).containsExactly(ids[3], ids[4]);
+        var around = transactions.execute(status -> history.messages("window-owner", ids[0], "{\"conversationId\":" + ids[1] + ",\"aroundMessageId\":" + ids[3] + ",\"limit\":3}"));
+        assertThat(around.messages()).extracting(AiConversationHistory.MessageEntry::messageId).containsExactly(ids[2], ids[3], ids[4]);
+        assertThatThrownBy(() -> transactions.execute(status -> history.messages("window-owner", ids[0], json.writeValueAsString(Map.of(
+                "conversationId", ids[1], "aroundMessageId", ids[3], "cursor", latest.previousCursor())))))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> transactions.execute(status -> history.messages("window-owner", ids[0], "{\"conversationId\":" + ids[1] + ",\"limit\":51}")))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        Long big = transactions.execute(status -> {
+            var own = conversation("window-owner");
+            for (int i = 0; i < 51; i++)
+                message(own, "USER", "\u0001😀".repeat(4000));
+
+            entityManager.flush();
+            return own.getId();
+        });
+        var bounded = transactions.execute(status -> history.messages("window-owner", ids[0], "{\"conversationId\":" + big + ",\"limit\":50}"));
+        assertThat(bounded.messages()).hasSize(50).allSatisfy(entry -> assertThat(entry.contentTruncated()).isTrue());
+        assertThat(json.writeValueAsBytes(bounded).length).isLessThan(128 * 1024);
+    }
+
+    private AiMessage message(AiConversation conversation, String role, String content) {
+        var message = new AiMessage(conversation, null, role, content);
+        entityManager.persist(message);
+        return message;
     }
 
     private AiTurn turn(AiConversation conversation) {

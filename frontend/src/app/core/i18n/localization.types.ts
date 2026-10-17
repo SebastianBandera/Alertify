@@ -85,6 +85,8 @@ export type TranslationKey =
   | 'ai.conversations.yes'
   | 'ai.conversations.no'
   | 'ai.general.enabled'
+  | 'ai.general.conversationHistorySearchEnabled'
+  | 'ai.general.conversationHistorySearchHelp'
   | 'ai.general.provider'
   | 'ai.general.defaultModel'
   | 'ai.general.reasoningEffort'

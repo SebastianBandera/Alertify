@@ -87,6 +87,8 @@ export const ES_UY_TRANSLATIONS = {
   'ai.conversations.yes': 'Sí',
   'ai.conversations.no': 'No',
   'ai.general.enabled': 'Módulo habilitado',
+  'ai.general.conversationHistorySearchEnabled': 'Permitir buscar en otros chats del mismo usuario',
+  'ai.general.conversationHistorySearchHelp': 'Habilita las herramientas para buscar y leer mensajes de otros chats del usuario autenticado. Al desactivarla, ambas herramientas se ocultan y sus llamadas se rechazan, incluso en turnos en curso.',
   'ai.general.provider': 'Proveedor',
   'ai.general.defaultModel': 'Modelo por defecto',
   'ai.general.reasoningEffort': 'Esfuerzo de razonamiento',

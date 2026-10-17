@@ -87,6 +87,8 @@ export const EN_TRANSLATIONS = {
   'ai.conversations.yes': 'Yes',
   'ai.conversations.no': 'No',
   'ai.general.enabled': 'Module enabled',
+  'ai.general.conversationHistorySearchEnabled': 'Allow searching other chats belonging to the same user',
+  'ai.general.conversationHistorySearchHelp': 'Enables tools to search and read messages from the authenticated user’s other chats. Disabling this hides both tools and rejects their calls, including during ongoing turns.',
   'ai.general.provider': 'Provider',
   'ai.general.defaultModel': 'Default model',
   'ai.general.reasoningEffort': 'Reasoning effort',

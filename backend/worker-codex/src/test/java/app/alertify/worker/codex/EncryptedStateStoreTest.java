@@ -12,6 +12,8 @@ import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import tools.jackson.databind.json.JsonMapper;
 
@@ -30,7 +32,7 @@ class EncryptedStateStoreTest {
                 "private-id-token", "client", "subject", "", "user@example.test",
                 Instant.parse("2026-10-10T15:00:00Z"), Instant.parse("2026-11-09T15:00:00Z"),
                 Instant.parse("2026-10-10T14:00:00Z"));
-        PersistentAiState expected = new PersistentAiState(new AiSettingsState(true, "CODEX", "configured-model", "low", "", "ON_USE", "", "low"), session,
+        PersistentAiState expected = new PersistentAiState(new AiSettingsState(true, "CODEX", "configured-model", "low", "", "ON_USE", "", "low", false), session,
                 Map.of("http://127.0.0.1/callback", new DynamicClient("client", "subject", "", "User")), "urn:uuid:test-host");
 
         store.save(expected);
@@ -55,5 +57,13 @@ class EncryptedStateStoreTest {
 
         assertThat(state.session().subject()).isNull();
         assertThat(state.dynamicClients().get("http://127.0.0.1/callback").subject()).isNull();
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = { false, true })
+    void configuredHistorySettingSurvivesSerialization(boolean enabled) {
+        var json = JsonMapper.builder().findAndAddModules().build();
+        var settings = new AiSettingsState(true, "CODEX", "model", "low", "", "ON_USE", "", "low", enabled);
+        assertThat(json.readValue(json.writeValueAsString(settings), AiSettingsState.class).conversationHistorySearchEnabled()).isEqualTo(enabled);
     }
 }

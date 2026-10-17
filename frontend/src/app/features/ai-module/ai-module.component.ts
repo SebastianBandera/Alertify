@@ -47,6 +47,7 @@ export class AiModuleComponent implements OnInit {
   protected readonly conversationDetailLoading = signal(false);
   protected readonly form = signal<AiSettings>({
     enabled: false,
+    conversationHistorySearchEnabled: true,
     provider: 'CODEX',
     model: '',
     reasoningEffort: '',

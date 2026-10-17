@@ -24,6 +24,8 @@
       <form class="card form" (submit)="$event.preventDefault(); save()">
         <fieldset [disabled]="busy() || unavailable()">
           <label class="check"><input type="checkbox" [ngModel]="form().enabled" (ngModelChange)="patch('enabled', $event)" name="enabled"> {{ localization.translate('ai.general.enabled') }}</label>
+          <label class="check"><input type="checkbox" [ngModel]="form().conversationHistorySearchEnabled" (ngModelChange)="patch('conversationHistorySearchEnabled', $event)" name="conversationHistorySearchEnabled" aria-describedby="conversation-history-search-help"> {{ localization.translate('ai.general.conversationHistorySearchEnabled') }}</label>
+          <p id="conversation-history-search-help">{{ localization.translate('ai.general.conversationHistorySearchHelp') }}</p>
           <label>{{ localization.translate('ai.general.provider') }}<input value="CODEX" readonly></label>
           <label>{{ localization.translate('ai.general.defaultModel') }}<input type="text" [ngModel]="form().model" (ngModelChange)="patch('model', $event)" name="model" maxlength="128" required></label>
           <label>{{ localization.translate('ai.general.reasoningEffort') }}

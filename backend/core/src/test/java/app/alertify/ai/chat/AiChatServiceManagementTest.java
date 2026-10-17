@@ -239,7 +239,7 @@ class AiChatServiceManagementTest {
         eventLogger = mock(ApplicationEventLogger.class);
         service = new AiChatService(mock(AiWorkerClient.class), mock(AiToolCatalog.class), mock(AiChatPersistence.class),
                 conversations, turns, messages, invocations, mock(AiLocalizationSourceService.class), events, eventLogger,
-                JsonMapper.builder().findAndAddModules().build());
+                JsonMapper.builder().findAndAddModules().build(), mock(AiConversationHistory.class));
     }
 
     @Test

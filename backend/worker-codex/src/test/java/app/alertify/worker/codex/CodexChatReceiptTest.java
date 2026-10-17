@@ -129,7 +129,7 @@ class CodexChatReceiptTest {
                 "synthetic-model", "low", "", "low", "ON_USE", directory.resolve("state.enc"),
                 Base64.getUrlEncoder().withoutPadding().encodeToString(new byte[32]), null);
         EncryptedStateStore store = new EncryptedStateStore(properties);
-        var settings = new AiSettingsState(true, "CODEX", "synthetic-model", "low", "", "ON_USE", "", "low");
+        var settings = new AiSettingsState(true, "CODEX", "synthetic-model", "low", "", "ON_USE", "", "low", true);
         var session = new OAuthSession("BROWSER", "synthetic-access", "synthetic-refresh", "synthetic-id", "synthetic-client", "synthetic-subject",
                 "", "Synthetic", Instant.now().plusSeconds(3600), Instant.now().plusSeconds(7200), null);
         store.save(new PersistentAiState(settings, session, Map.of(), "synthetic-host"));

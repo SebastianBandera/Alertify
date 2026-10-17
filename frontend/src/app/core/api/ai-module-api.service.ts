@@ -24,6 +24,7 @@ export interface AiManagedConversationDetail extends AiManagedConversationSummar
 
 export interface AiSettings {
   readonly enabled: boolean;
+  readonly conversationHistorySearchEnabled: boolean;
   readonly provider: string;
   readonly model: string;
   readonly reasoningEffort: string;
