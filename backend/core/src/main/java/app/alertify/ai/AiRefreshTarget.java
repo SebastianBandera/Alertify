@@ -9,5 +9,6 @@ public enum AiRefreshTarget {
     CONFIGURATIONS,
     DASHBOARD,
     SYSTEM,
+    MEMORIES,
     ALL
 }

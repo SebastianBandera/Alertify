@@ -9,5 +9,6 @@ public enum AiToolGroup {
     CONFIGURATION,
     DASHBOARD,
     LOCALIZATION,
-    SYSTEM
+    SYSTEM,
+    MEMORY
 }

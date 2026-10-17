@@ -40,6 +40,7 @@ import app.alertify.ai.tools.PipeAiTools;
 import app.alertify.ai.tools.ProcedureAiTools;
 import app.alertify.ai.tools.SystemAiTools;
 import app.alertify.ai.tools.TemplateAiTools;
+import app.alertify.ai.tools.MemoryAiTools;
 
 class AiToolCatalogTest {
 
@@ -66,7 +67,7 @@ class AiToolCatalogTest {
     void buildsSpringAiSchemasForTheCompleteFacadeSurface() throws Exception {
         AiToolCatalog catalog = new AiToolCatalog(instantiate(AlertAiTools.class), instantiate(ProcedureAiTools.class),
                 instantiate(PipeAiTools.class), instantiate(HookAiTools.class), instantiate(ConfigurationAiTools.class),
-                instantiate(DashboardAiTools.class), instantiate(LocalizationAiTools.class), instantiate(SystemAiTools.class), instantiate(TemplateAiTools.class));
+                instantiate(DashboardAiTools.class), instantiate(LocalizationAiTools.class), instantiate(SystemAiTools.class), instantiate(TemplateAiTools.class), instantiate(MemoryAiTools.class));
 
         List<ToolCallback> callbacks = catalog.toolsFor(authentication("ROLE_ADMIN", "ROLE_DASHBOARD", "ROLE_DASHBOARD_RUN"),
                 Set.of(AiToolGroup.values()));
@@ -87,6 +88,19 @@ class AiToolCatalogTest {
                 authentication("ROLE_ADMIN", "ROLE_DASHBOARD", "ROLE_DASHBOARD_RUN"), Set.of(AiToolGroup.values())).stream()
                 .collect(java.util.stream.Collectors.toMap(AiToolDescriptor::name, descriptor -> descriptor));
         AiToolDescriptor templateDetails = descriptors.get(TemplateAiTools.TOOL_NAME);
+        assertTrue(descriptors.get(MemoryAiTools.SEARCH_TOOL).readOnly());
+        assertFalse(descriptors.get(MemoryAiTools.SAVE_TOOL).readOnly());
+        assertFalse(descriptors.get(MemoryAiTools.DELETE_TOOL).readOnly());
+        assertTrue(descriptors.get(MemoryAiTools.DELETE_TOOL).destructiveHint());
+        for (String name : List.of(MemoryAiTools.SAVE_TOOL, MemoryAiTools.DELETE_TOOL))
+            assertEquals(Set.of(AiRefreshTarget.MEMORIES), descriptors.get(name).refreshTargets());
+
+        for (String name : List.of(MemoryAiTools.SAVE_TOOL, MemoryAiTools.SEARCH_TOOL, MemoryAiTools.DELETE_TOOL)) {
+            JsonNode properties = JSON.readTree(descriptors.get(name).inputSchema()).path("properties");
+            assertFalse(properties.has("userSubject"));
+            assertFalse(properties.has("conversationId"));
+        }
+        assertTrue(catalog.descriptorsFor(authentication("ROLE_DASHBOARD"), Set.of(AiToolGroup.MEMORY)).isEmpty());
         assertTrue(templateDetails.readOnly());
         assertTrue(templateDetails.idempotentHint());
         assertFalse(templateDetails.openWorldHint());

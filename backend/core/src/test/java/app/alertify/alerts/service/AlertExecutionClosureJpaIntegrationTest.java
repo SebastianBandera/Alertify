@@ -97,7 +97,7 @@ class AlertExecutionClosureJpaIntegrationTest {
                     (id, execution_id, alert_id, closed, actor_subject, actor_name, note, changed_at)
                 VALUES (-1, ?, 3, true, 'historical-subject', 'historical-admin', 'retained', ?)
                 """, HISTORICAL_EXECUTION, java.time.OffsetDateTime.ofInstant(AT, java.time.ZoneOffset.UTC));
-        jdbc.execute(Files.readString(migrations.resolve("6.ai-chat-and-tool-audit.sql")));
+        jdbc.execute(Files.readString(migrations.resolve("6.ai-chat-memories-and-tool-audit.sql")));
         for (Path file : laterMigrations.stream().filter(path -> migrationOrdinal(path) > 6).toList())
             jdbc.execute(Files.readString(file));
 

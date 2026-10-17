@@ -43,7 +43,7 @@ public class AiModuleService {
                 .setRefreshPolicy(request.refreshPolicy())
                 .setReviewerModel(request.reviewerModel() == null ? "" : request.reviewerModel())
                 .setReviewerReasoningEffort(request.reviewerReasoningEffort())
-                .setConversationHistorySearchEnabled(request.conversationHistorySearchEnabled()).build();
+                .setConversationHistorySearchEnabled(request.conversationHistorySearchEnabled()).setMemoryEnabled(request.memoryEnabled()).build();
         return settingsResponse(client.update(settings));
     }
 
@@ -98,11 +98,11 @@ public class AiModuleService {
         return new SettingsResponse(settings.getEnabled(), settings.getProvider(), settings.getModel(),
                 settings.getReasoningEffort(), settings.getAgentInstructions(), settings.getRefreshPolicy(),
                 settings.getReviewerModel(), settings.getReviewerReasoningEffort(),
-                settings.getConversationHistorySearchEnabled());
+                settings.getConversationHistorySearchEnabled(), settings.getMemoryEnabled());
     }
 
     private static SettingsResponse defaultSettings() {
-        return new SettingsResponse(false, "CODEX", "", "", "", "", "", "", true);
+        return new SettingsResponse(false, "CODEX", "", "", "", "", "", "", true, true);
     }
 
     private static DeviceLoginResponse deviceResponse(app.alertify.worker.ai.grpc.DeviceLoginResponse response) {
@@ -121,11 +121,11 @@ public class AiModuleService {
     }
 
     public record SettingsRequest(boolean enabled, String provider, String model, String reasoningEffort,
-            String agentInstructions, String refreshPolicy, String reviewerModel, String reviewerReasoningEffort, boolean conversationHistorySearchEnabled) {
+            String agentInstructions, String refreshPolicy, String reviewerModel, String reviewerReasoningEffort, boolean conversationHistorySearchEnabled, boolean memoryEnabled) {
     }
 
     public record SettingsResponse(boolean enabled, String provider, String model, String reasoningEffort,
-            String agentInstructions, String refreshPolicy, String reviewerModel, String reviewerReasoningEffort, boolean conversationHistorySearchEnabled) {
+            String agentInstructions, String refreshPolicy, String reviewerModel, String reviewerReasoningEffort, boolean conversationHistorySearchEnabled, boolean memoryEnabled) {
     }
 
     public record BrowserLoginResponse(String mode, String authorizationUrl, String expiresAt, String callbackTicket,

@@ -3,7 +3,7 @@ package app.alertify.worker.codex;
 import java.time.Instant;
 import java.util.Map;
 
-record AiSettingsState(boolean enabled, String provider, String model, String reasoningEffort, String agentInstructions, String refreshPolicy, String reviewerModel, String reviewerReasoningEffort, boolean conversationHistorySearchEnabled) {
+record AiSettingsState(boolean enabled, String provider, String model, String reasoningEffort, String agentInstructions, String refreshPolicy, String reviewerModel, String reviewerReasoningEffort, boolean conversationHistorySearchEnabled, boolean memoryEnabled) {
 }
 
 record OAuthSession(String authMode, String accessToken, String refreshToken, String idToken, String clientId, String subject, String accountId, String accountLabel, Instant expiresAt, Instant refreshExpiresAt, Instant lastRefreshedAt) {

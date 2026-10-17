@@ -253,7 +253,7 @@ function activeModuleState(): AiModuleState {
       refreshPolicy: 'ON_USE',
       reviewerModel: 'gpt-test',
       reviewerReasoningEffort: 'low',
-      conversationHistorySearchEnabled: true,
+      conversationHistorySearchEnabled: true, memoryEnabled: true,
     },
   };
 }

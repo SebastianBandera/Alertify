@@ -32,7 +32,7 @@ class EncryptedStateStoreTest {
                 "private-id-token", "client", "subject", "", "user@example.test",
                 Instant.parse("2026-10-10T15:00:00Z"), Instant.parse("2026-11-09T15:00:00Z"),
                 Instant.parse("2026-10-10T14:00:00Z"));
-        PersistentAiState expected = new PersistentAiState(new AiSettingsState(true, "CODEX", "configured-model", "low", "", "ON_USE", "", "low", false), session,
+        PersistentAiState expected = new PersistentAiState(new AiSettingsState(true, "CODEX", "configured-model", "low", "", "ON_USE", "", "low", false, false), session,
                 Map.of("http://127.0.0.1/callback", new DynamicClient("client", "subject", "", "User")), "urn:uuid:test-host");
 
         store.save(expected);
@@ -63,7 +63,8 @@ class EncryptedStateStoreTest {
     @ValueSource(booleans = { false, true })
     void configuredHistorySettingSurvivesSerialization(boolean enabled) {
         var json = JsonMapper.builder().findAndAddModules().build();
-        var settings = new AiSettingsState(true, "CODEX", "model", "low", "", "ON_USE", "", "low", enabled);
+        var settings = new AiSettingsState(true, "CODEX", "model", "low", "", "ON_USE", "", "low", enabled, enabled);
         assertThat(json.readValue(json.writeValueAsString(settings), AiSettingsState.class).conversationHistorySearchEnabled()).isEqualTo(enabled);
+        assertThat(json.readValue(json.writeValueAsString(settings), AiSettingsState.class).memoryEnabled()).isEqualTo(enabled);
     }
 }

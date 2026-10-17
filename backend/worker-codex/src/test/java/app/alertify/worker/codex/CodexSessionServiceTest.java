@@ -427,7 +427,7 @@ class CodexSessionServiceTest {
         CompletableFuture<CodexSessionService.CodexResponse> result = execute(call);
         assertThat(transport.awaitStarted(1)).isTrue();
 
-        AiSettingsState updated = new AiSettingsState(true, "CODEX", "other-model", "low", "instructions", "ON_USE", "", "low", false);
+        AiSettingsState updated = new AiSettingsState(true, "CODEX", "other-model", "low", "instructions", "ON_USE", "", "low", false, false);
         assertThat(service.updateSettings(updated)).isEqualTo(updated);
 
         call.cancel(CodexSessionService.CancellationReason.USER);
@@ -491,8 +491,10 @@ class CodexSessionServiceTest {
     void historySearchSettingSurvivesWorkerRestart() {
         var service = service();
         assertThat(service.state().settings().conversationHistorySearchEnabled()).isTrue();
-        service.updateSettings(new AiSettingsState(true, "CODEX", "configured-model", "low", "", "ON_USE", "", "low", false));
+        assertThat(service.state().settings().memoryEnabled()).isTrue();
+        service.updateSettings(new AiSettingsState(true, "CODEX", "configured-model", "low", "", "ON_USE", "", "low", false, false));
         assertThat(service().state().settings().conversationHistorySearchEnabled()).isFalse();
+        assertThat(service().state().settings().memoryEnabled()).isFalse();
     }
 
     private CodexSessionService authenticatedService(CodexHttpTransport transport) {
@@ -537,7 +539,7 @@ class CodexSessionServiceTest {
     }
 
     private static AiSettingsState settings() {
-        return new AiSettingsState(true, "CODEX", "configured-model", "low", "", "ON_USE", "", "low", true);
+        return new AiSettingsState(true, "CODEX", "configured-model", "low", "", "ON_USE", "", "low", true, true);
     }
 
     private static OAuthSession session(String authMode) {

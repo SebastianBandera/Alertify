@@ -160,7 +160,7 @@ class AiChatReceiptTest {
         when(worker.chat(consumer.capture(),any(),any())).thenReturn(handle);
         var service = new AiChatService(worker,catalog,persistence,mock(AiConversationRepository.class),mock(AiTurnRepository.class),
                 mock(AiMessageRepository.class),mock(AiToolInvocationRepository.class),localization,mock(AdminEventPublisher.class),
-                mock(ApplicationEventLogger.class),JSON,mock(AiConversationHistory.class));
+                mock(ApplicationEventLogger.class),JSON,mock(AiConversationHistory.class),mock(app.alertify.ai.memory.AiMemoryService.class));
         service.submit(authentication,new AiChatService.SubmitRequest(null,"synthetic change",mode,approval,"en"));
         return new Fixture(service,persistence,authentication,callback,consumer.getValue(),handle,worker);
     }

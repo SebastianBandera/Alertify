@@ -9,6 +9,9 @@ record AiToolFailure(String code, String message) {
     static AiToolFailure classify(String toolName, RuntimeException exception) {
         Throwable cause = exception;
         for (int depth = 0; cause != null && depth < 16; depth++, cause = cause.getCause()) {
+            if (cause instanceof app.alertify.ai.memory.AiMemoryAccess.Unavailable unavailable)
+                return new AiToolFailure(unavailable.code(), unavailable.getMessage());
+
             if (cause instanceof app.alertify.api.error.TemplateSelectionException)
                 return new AiToolFailure("TOOL_TEMPLATE_SELECTION_INVALID", "Provide a positive template ID or exact fully qualified template key; if both are provided they must identify the same template. Reload its metadata before proposing parameters.");
 

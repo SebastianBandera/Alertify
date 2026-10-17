@@ -50,6 +50,10 @@ summary { cursor: pointer; font-weight: 700; }
 .conversation-table__actions { display: flex; gap: .45rem; }
 .conversation-table__actions button { padding: .45rem .65rem; white-space: nowrap; }
 .conversation-table__empty { color: #64748b; text-align: center !important; }
+.memory-pagination { display: flex; align-items: center; flex-wrap: wrap; gap: .75rem; }
+.memory-pagination button { min-height: 2.5rem; white-space: nowrap; }
+.memory-pagination button:disabled { cursor: default; }
+.memory-pagination__status { color: var(--text-muted, #64748b); font-size: .9rem; font-variant-numeric: tabular-nums; line-height: 1.4; white-space: nowrap; }
 .conversation-detail { display: grid; gap: 1.25rem; padding-top: 1.25rem; border-top: 1px solid var(--border-color, #dbe2ea); }
 .conversation-detail h3, .conversation-detail h4 { margin: 0 0 .65rem; }
 .conversation-detail__metadata { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }

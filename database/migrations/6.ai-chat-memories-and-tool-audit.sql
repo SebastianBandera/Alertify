@@ -1,4 +1,4 @@
--- Persistent, user-private AI conversations and tool diagnostics.
+-- Persistent, user-private AI conversations, reusable memories and tool diagnostics.
 
 CREATE TABLE core.ai_conversations (
     id bigserial PRIMARY KEY,
@@ -158,4 +158,24 @@ INSERT INTO audit.log_events (code) VALUES
     ('AI_TOOL_COMPLETED'),
     ('AI_TOOL_FAILED'),
     ('AI_TOOL_STARTED')
+ON CONFLICT (code) DO NOTHING;
+
+-- User-private reusable knowledge, independent of conversation retention.
+CREATE TABLE core.ai_memories (
+    id bigserial PRIMARY KEY,
+    user_subject text NOT NULL,
+    memory_key varchar(96) NOT NULL,
+    content text NOT NULL,
+    version bigint NOT NULL DEFAULT 0,
+    source_conversation_id bigint REFERENCES core.ai_conversations(id) ON DELETE SET NULL,
+    created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    CONSTRAINT uq_ai_memories_user_key UNIQUE (user_subject, memory_key),
+    CONSTRAINT ck_ai_memories_subject CHECK (btrim(user_subject) <> ''),
+    CONSTRAINT ck_ai_memories_key CHECK (memory_key ~ '^[a-z0-9]+([._-][a-z0-9]+)*$'),
+    CONSTRAINT ck_ai_memories_content CHECK (btrim(content) <> '' AND char_length(content) <= 4000),
+    CONSTRAINT ck_ai_memories_version CHECK (version >= 0)
+);
+
+INSERT INTO audit.log_events (code) VALUES ('AI_MEMORY_SAVED'), ('AI_MEMORY_DELETED')
 ON CONFLICT (code) DO NOTHING;

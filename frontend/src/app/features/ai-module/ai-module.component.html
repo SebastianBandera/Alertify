@@ -14,6 +14,7 @@
     <nav class="tabs" [attr.aria-label]="localization.translate('ai.tabs.label')">
       <button type="button" [class.active]="tab() === 'general'" (click)="selectTab('general')">{{ localization.translate('ai.tabs.general') }}</button>
       <button type="button" [class.active]="tab() === 'conversations'" (click)="selectTab('conversations')">{{ localization.translate('ai.tabs.conversations') }}</button>
+      <button type="button" [class.active]="tab() === 'memories'" (click)="selectTab('memories')">{{ localization.translate('ai.memories.title') }}</button>
       <button type="button" [class.active]="tab() === 'codex'" (click)="selectTab('codex')">{{ localization.translate('ai.tabs.codex') }}</button>
     </nav>
 
@@ -26,6 +27,8 @@
           <label class="check"><input type="checkbox" [ngModel]="form().enabled" (ngModelChange)="patch('enabled', $event)" name="enabled"> {{ localization.translate('ai.general.enabled') }}</label>
           <label class="check"><input type="checkbox" [ngModel]="form().conversationHistorySearchEnabled" (ngModelChange)="patch('conversationHistorySearchEnabled', $event)" name="conversationHistorySearchEnabled" aria-describedby="conversation-history-search-help"> {{ localization.translate('ai.general.conversationHistorySearchEnabled') }}</label>
           <p id="conversation-history-search-help">{{ localization.translate('ai.general.conversationHistorySearchHelp') }}</p>
+          <label class="check"><input type="checkbox" [ngModel]="form().memoryEnabled" (ngModelChange)="patch('memoryEnabled', $event)" name="memoryEnabled" aria-describedby="memory-help"> {{ localization.translate('ai.general.memoryEnabled') }}</label>
+          <p id="memory-help">{{ localization.translate('ai.general.memoryHelp') }}</p>
           <label>{{ localization.translate('ai.general.provider') }}<input value="CODEX" readonly></label>
           <label>{{ localization.translate('ai.general.defaultModel') }}<input type="text" [ngModel]="form().model" (ngModelChange)="patch('model', $event)" name="model" maxlength="128" required></label>
           <label>{{ localization.translate('ai.general.reasoningEffort') }}
@@ -202,6 +205,65 @@
                 }
               </div>
             </section>
+          </section>
+        }
+      </section>
+    } @else if (tab() === 'memories') {
+      <section class="card conversation-management">
+        <header class="conversation-management__header">
+          <div><h2>{{ localization.translate('ai.memories.title') }}</h2><p class="help">{{ localization.translate('ai.memories.description') }}</p></div>
+          <div class="actions">
+            <button type="button" [disabled]="memoriesLoading() || memoryDetailLoading() || busy()" (click)="loadManagedMemories()">{{ localization.translate('ai.conversations.refresh') }}</button>
+            <button class="danger" type="button" [disabled]="memoriesLoading() || memoryDetailLoading() || busy() || managedMemories().totalElements === 0" (click)="deleteAllManagedMemories()">{{ localization.translate('ai.conversations.deleteAll') }}</button>
+          </div>
+        </header>
+        @if (memoriesLoading()) {
+          <div class="notice">{{ localization.translate('ai.memories.loading') }}</div>
+        } @else {
+          <div class="conversation-table-scroll">
+            <table class="conversation-table">
+              <thead><tr>
+                <th>{{ localization.translate('ai.conversations.id') }}</th><th>{{ localization.translate('ai.memories.key') }}</th>
+                <th>{{ localization.translate('ai.conversations.subject') }}</th><th>{{ localization.translate('ai.memories.version') }}</th>
+                <th>{{ localization.translate('ai.conversations.createdAt') }}</th><th>{{ localization.translate('ai.conversations.updatedAt') }}</th>
+                <th>{{ localization.translate('ai.conversations.actions') }}</th>
+              </tr></thead>
+              <tbody>
+                @for (memory of managedMemories().content; track memory.id) {
+                  <tr [class.conversation-table__selected]="selectedMemory()?.id === memory.id">
+                    <td>{{ memory.id }}</td><td class="conversation-table__title">{{ memory.key }}</td><td>{{ memory.userSubject }}</td><td>{{ memory.version }}</td>
+                    <td>{{ formatDate(memory.createdAt) }}</td><td>{{ formatDate(memory.updatedAt) }}</td>
+                    <td><div class="conversation-table__actions">
+                      <button type="button" [disabled]="memoryDetailLoading() || busy()" (click)="selectManagedMemory(memory.id)">{{ localization.translate('ai.conversations.view') }}</button>
+                      <button class="danger danger--subtle" type="button" [disabled]="memoryDetailLoading() || busy()" (click)="deleteManagedMemory(memory)">{{ localization.translate('ai.conversations.delete') }}</button>
+                    </div></td>
+                  </tr>
+                } @empty {
+                  <tr><td colspan="7" class="conversation-table__empty">{{ localization.translate('ai.memories.empty') }}</td></tr>
+                }
+              </tbody>
+            </table>
+          </div>
+          <nav class="memory-pagination" [attr.aria-label]="localization.translate('ai.memories.pagination')">
+            <button type="button" [disabled]="busy() || memoryDetailLoading() || managedMemories().page === 0" (click)="loadManagedMemories(managedMemories().page - 1)">{{ localization.translate('ai.memories.previous') }}</button>
+            <span class="memory-pagination__status">{{ managedMemories().totalElements }} {{ localization.translate('ai.memories.records') }} · {{ managedMemories().page + 1 }} / {{ managedMemories().totalPages || 1 }}</span>
+            <button type="button" [disabled]="busy() || memoryDetailLoading() || managedMemories().page + 1 >= managedMemories().totalPages" (click)="loadManagedMemories(managedMemories().page + 1)">{{ localization.translate('ai.memories.next') }}</button>
+          </nav>
+        }
+        @if (memoryDetailLoading()) {
+          <div class="notice">{{ localization.translate('ai.memories.loading') }}</div>
+        } @else if (selectedMemory(); as memory) {
+          <section class="conversation-detail">
+            <h2>{{ memory.key }} #{{ memory.id }}</h2>
+            <dl class="state conversation-detail__metadata">
+              <div><dt>{{ localization.translate('ai.conversations.subject') }}</dt><dd>{{ memory.userSubject }}</dd></div>
+              <div><dt>{{ localization.translate('ai.memories.version') }}</dt><dd>{{ memory.version }}</dd></div>
+              <div><dt>{{ localization.translate('ai.memories.sourceConversation') }}</dt><dd>{{ memory.sourceConversationId ?? '—' }}</dd></div>
+              <div><dt>{{ localization.translate('ai.conversations.createdAt') }}</dt><dd>{{ formatDate(memory.createdAt) }}</dd></div>
+              <div><dt>{{ localization.translate('ai.conversations.updatedAt') }}</dt><dd>{{ formatDate(memory.updatedAt) }}</dd></div>
+            </dl>
+            <h3>{{ localization.translate('ai.memories.content') }}</h3>
+            <pre class="stored-value">{{ memory.content }}</pre>
           </section>
         }
       </section>

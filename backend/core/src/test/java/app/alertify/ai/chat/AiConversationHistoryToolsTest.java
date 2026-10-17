@@ -120,7 +120,7 @@ class AiConversationHistoryToolsTest {
         when(worker.chat(consumer.capture(), any(), any())).thenReturn(handle);
         var service = new AiChatService(worker, catalog, persistence, mock(AiConversationRepository.class), mock(AiTurnRepository.class),
                 mock(AiMessageRepository.class), mock(AiToolInvocationRepository.class), localization, mock(AdminEventPublisher.class),
-                mock(ApplicationEventLogger.class), JSON, history);
+                mock(ApplicationEventLogger.class), JSON, history, mock(app.alertify.ai.memory.AiMemoryService.class));
         service.submit(authentication, new AiChatService.SubmitRequest(null, "find earlier context", mode, "ASK", "en"));
         return new Fixture(worker, persistence, history, settings, consumer.getValue(), handle);
     }

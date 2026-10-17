@@ -21,6 +21,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import app.alertify.ai.chat.AiChatService;
+import app.alertify.ai.memory.AiMemoryManagementService;
+import app.alertify.ai.api.AiPage;
 import app.alertify.codex.AiModuleService;
 
 @RestController
@@ -30,10 +32,12 @@ public class AiModuleController {
 
     private final AiModuleService service;
     private final AiChatService chats;
+    private final AiMemoryManagementService memories;
 
-    public AiModuleController(AiModuleService service, AiChatService chats) {
+    public AiModuleController(AiModuleService service, AiChatService chats, AiMemoryManagementService memories) {
         this.service = service;
         this.chats = chats;
+        this.memories = memories;
     }
 
     @GetMapping("/module")
@@ -133,6 +137,28 @@ public class AiModuleController {
     @DeleteMapping("/chat/management/conversations/{id}")
     public ResponseEntity<Void> deleteManagedConversation(@PathVariable Long id) {
         chats.deleteManagedConversation(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/chat/management/memories")
+    public AiPage<AiMemoryManagementService.Summary> managedMemories(@RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
+        return memories.list(page, size);
+    }
+
+    @GetMapping("/chat/management/memories/{id}")
+    public AiMemoryManagementService.Detail managedMemory(@PathVariable Long id) {
+        return memories.get(id);
+    }
+
+    @DeleteMapping("/chat/management/memories/{id}")
+    public ResponseEntity<Void> deleteManagedMemory(@PathVariable Long id, @RequestParam long version) {
+        memories.delete(id, version);
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/chat/management/memories")
+    public ResponseEntity<Void> deleteAllManagedMemories() {
+        memories.deleteAll();
         return ResponseEntity.noContent().build();
     }
 

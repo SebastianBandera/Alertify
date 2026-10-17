@@ -28,6 +28,7 @@ import app.alertify.ai.tools.PipeAiTools;
 import app.alertify.ai.tools.ProcedureAiTools;
 import app.alertify.ai.tools.SystemAiTools;
 import app.alertify.ai.tools.TemplateAiTools;
+import app.alertify.ai.tools.MemoryAiTools;
 
 /** Selects a bounded set of callbacks by trusted domain and current roles. */
 @Service
@@ -39,7 +40,7 @@ public class AiToolCatalog {
     private final Map<AiToolGroup, List<AiToolDescriptor>> descriptors;
 
     @Autowired
-    public AiToolCatalog(AlertAiTools alerts, ProcedureAiTools procedures, PipeAiTools pipes, HookAiTools hooks, ConfigurationAiTools configuration, DashboardAiTools dashboard, LocalizationAiTools localization, SystemAiTools system, TemplateAiTools templates) {
+    public AiToolCatalog(AlertAiTools alerts, ProcedureAiTools procedures, PipeAiTools pipes, HookAiTools hooks, ConfigurationAiTools configuration, DashboardAiTools dashboard, LocalizationAiTools localization, SystemAiTools system, TemplateAiTools templates, MemoryAiTools memories) {
         EnumMap<AiToolGroup, List<AiToolDescriptor>> values = new EnumMap<>(AiToolGroup.class);
         List<AiToolDescriptor> templateTools = descriptors(templates);
         values.put(AiToolGroup.ALERTS, withTemplateTools(descriptors(alerts), templateTools));
@@ -50,6 +51,7 @@ public class AiToolCatalog {
         values.put(AiToolGroup.DASHBOARD, descriptors(dashboard));
         values.put(AiToolGroup.LOCALIZATION, descriptors(localization));
         values.put(AiToolGroup.SYSTEM, descriptors(system));
+        values.put(AiToolGroup.MEMORY, descriptors(memories));
         descriptors = immutableDescriptors(values);
     }
 

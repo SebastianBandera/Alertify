@@ -22,9 +22,32 @@ export interface AiManagedConversationDetail extends AiManagedConversationSummar
   readonly usage: AiUsageTotals;
 }
 
+export interface AiManagedMemorySummary {
+  readonly id: number;
+  readonly userSubject: string;
+  readonly key: string;
+  readonly version: number;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+export interface AiManagedMemoryDetail extends AiManagedMemorySummary {
+  readonly content: string;
+  readonly sourceConversationId: number | null;
+}
+
+export interface AiManagedMemoryPage {
+  readonly content: readonly AiManagedMemorySummary[];
+  readonly page: number;
+  readonly size: number;
+  readonly totalElements: number;
+  readonly totalPages: number;
+}
+
 export interface AiSettings {
   readonly enabled: boolean;
   readonly conversationHistorySearchEnabled: boolean;
+  readonly memoryEnabled: boolean;
   readonly provider: string;
   readonly model: string;
   readonly reasoningEffort: string;
@@ -145,6 +168,22 @@ export class AiModuleApiService {
 
   deleteAllManagedConversations(): Promise<void> {
     return this.request('/api/ai/chat/management/conversations', 'DELETE');
+  }
+
+  managedMemories(page = 0): Promise<AiManagedMemoryPage> {
+    return this.request(`/api/ai/chat/management/memories?page=${page}&size=20`);
+  }
+
+  managedMemory(id: number): Promise<AiManagedMemoryDetail> {
+    return this.request(`/api/ai/chat/management/memories/${id}`);
+  }
+
+  deleteManagedMemory(id: number, version: number): Promise<void> {
+    return this.request(`/api/ai/chat/management/memories/${id}?version=${version}`, 'DELETE');
+  }
+
+  deleteAllManagedMemories(): Promise<void> {
+    return this.request('/api/ai/chat/management/memories', 'DELETE');
   }
 
   async downloadExtension(browser: 'chrome' | 'firefox'): Promise<void> {

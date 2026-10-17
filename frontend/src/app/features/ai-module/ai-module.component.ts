@@ -1,11 +1,16 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { ActivatedRoute, Router } from '@angular/router';
 
 import {
   AiModuleApiService,
   AiModuleState,
   AiManagedConversationDetail,
   AiManagedConversationSummary,
+  AiManagedMemorySummary,
+  AiManagedMemoryDetail,
+  AiManagedMemoryPage,
   AiSettings,
   BrowserLogin,
   DeviceLogin,
@@ -15,6 +20,11 @@ import { TranslationKey } from '../../core/i18n/localization.types';
 
 type BrowserKind = 'chrome' | 'firefox';
 type BrowserLoginChoice = 'AUTO' | 'EXTENSION' | 'DIRECT';
+type AiModuleTab = 'general' | 'conversations' | 'memories' | 'codex';
+
+function aiModuleTab(value: string | null): AiModuleTab {
+  return value === 'conversations' || value === 'memories' || value === 'codex' ? value : 'general';
+}
 
 @Component({
   selector: 'app-ai-module',
@@ -26,8 +36,10 @@ type BrowserLoginChoice = 'AUTO' | 'EXTENSION' | 'DIRECT';
 export class AiModuleComponent implements OnInit {
   private readonly api = inject(AiModuleApiService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
   protected readonly localization = inject(LocalizationService);
-  protected readonly tab = signal<'general' | 'conversations' | 'codex'>('general');
+  protected readonly tab = signal<AiModuleTab>('general');
   protected readonly module = signal<AiModuleState | null>(null);
   protected readonly device = signal<DeviceLogin | null>(null);
   protected readonly loading = signal(true);
@@ -45,9 +57,14 @@ export class AiModuleComponent implements OnInit {
   protected readonly selectedConversation = signal<AiManagedConversationDetail | null>(null);
   protected readonly conversationsLoading = signal(false);
   protected readonly conversationDetailLoading = signal(false);
+  protected readonly managedMemories = signal<AiManagedMemoryPage>({ content: [], page: 0, size: 20, totalElements: 0, totalPages: 0 });
+  protected readonly selectedMemory = signal<AiManagedMemoryDetail | null>(null);
+  protected readonly memoriesLoading = signal(false);
+  protected readonly memoryDetailLoading = signal(false);
   protected readonly form = signal<AiSettings>({
     enabled: false,
     conversationHistorySearchEnabled: true,
+    memoryEnabled: true,
     provider: 'CODEX',
     model: '',
     reasoningEffort: '',
@@ -59,6 +76,24 @@ export class AiModuleComponent implements OnInit {
   private intervalId: number | null = null;
 
   ngOnInit(): void {
+    const requestedTab = this.route.snapshot.queryParamMap.get('tab');
+    this.tab.set(aiModuleTab(requestedTab));
+    this.loadTab(this.tab());
+    this.route.queryParamMap.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((parameters) => {
+      const tab = aiModuleTab(parameters.get('tab'));
+      if (tab === this.tab()) return;
+
+      this.tab.set(tab);
+      this.loadTab(tab);
+    });
+    if (requestedTab !== this.tab()) {
+      void this.router.navigate([], {
+        relativeTo: this.route,
+        queryParams: { tab: this.tab() },
+        queryParamsHandling: 'merge',
+        replaceUrl: true,
+      });
+    }
     const extensionListener = (event: MessageEvent<unknown>) => this.onExtensionMessage(event);
     window.addEventListener('message', extensionListener);
     void this.load();
@@ -69,9 +104,73 @@ export class AiModuleComponent implements OnInit {
     });
   }
 
-  protected selectTab(tab: 'general' | 'conversations' | 'codex'): void {
+  protected selectTab(tab: AiModuleTab): void {
     this.tab.set(tab);
+    this.loadTab(tab);
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { tab },
+      queryParamsHandling: 'merge',
+    });
+  }
+
+  private loadTab(tab: AiModuleTab): void {
     if (tab === 'conversations') void this.loadManagedConversations();
+    if (tab === 'memories') void this.loadManagedMemories();
+  }
+
+  protected async loadManagedMemories(page = this.managedMemories().page): Promise<void> {
+    if (this.memoriesLoading()) return;
+    this.memoriesLoading.set(true);
+    this.error.set('');
+    try {
+      await this.reloadMemories(page);
+    } catch (error) {
+      this.error.set(error instanceof Error ? error.message : String(error));
+    } finally {
+      this.memoriesLoading.set(false);
+    }
+  }
+
+  private async reloadMemories(page: number): Promise<void> {
+    let result = await this.api.managedMemories(page);
+    if (page > 0 && page >= result.totalPages) result = await this.api.managedMemories(Math.max(0, result.totalPages - 1));
+    this.managedMemories.set(result);
+    this.selectedMemory.set(null);
+  }
+
+  protected async selectManagedMemory(id: number): Promise<void> {
+    if (this.memoryDetailLoading()) return;
+    this.memoryDetailLoading.set(true);
+    this.error.set('');
+    try {
+      this.selectedMemory.set(await this.api.managedMemory(id));
+    } catch (error) {
+      this.error.set(error instanceof Error ? error.message : String(error));
+    } finally {
+      this.memoryDetailLoading.set(false);
+    }
+  }
+
+  protected async deleteManagedMemory(memory: AiManagedMemorySummary): Promise<void> {
+    if (!window.confirm(this.localization.translate('ai.memories.deleteConfirm').replace('{key}', memory.key))) return;
+
+    await this.action(async () => {
+      await this.api.deleteManagedMemory(memory.id, memory.version);
+      await this.reloadMemories(this.managedMemories().page);
+      this.message.set('ai.message.memoryDeleted');
+    });
+  }
+
+  protected async deleteAllManagedMemories(): Promise<void> {
+    if (this.managedMemories().totalElements === 0) return;
+    if (!window.confirm(this.localization.translate('ai.memories.deleteAllConfirm'))) return;
+
+    await this.action(async () => {
+      await this.api.deleteAllManagedMemories();
+      await this.reloadMemories(0);
+      this.message.set('ai.message.memoriesDeleted');
+    });
   }
 
   protected async loadManagedConversations(): Promise<void> {

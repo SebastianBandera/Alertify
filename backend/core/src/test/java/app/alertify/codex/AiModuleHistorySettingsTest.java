@@ -17,10 +17,12 @@ class AiModuleHistorySettingsTest {
         var client = mock(AiWorkerClient.class);
         when(client.update(any())).thenAnswer(call -> call.getArgument(0));
         var service = new AiModuleService(client, mock(BrowserExtensionPackageService.class), "", "");
-        var result = service.update(new AiModuleService.SettingsRequest(true, "CODEX", "model", "low", "", "ON_USE", "", "low", enabled));
+        var result = service.update(new AiModuleService.SettingsRequest(true, "CODEX", "model", "low", "", "ON_USE", "", "low", enabled, !enabled));
         var sent = ArgumentCaptor.forClass(AiSettings.class);
         verify(client).update(sent.capture());
         assertThat(sent.getValue().getConversationHistorySearchEnabled()).isEqualTo(enabled);
+        assertThat(sent.getValue().getMemoryEnabled()).isEqualTo(!enabled);
+        assertThat(result.memoryEnabled()).isEqualTo(!enabled);
         assertThat(result.conversationHistorySearchEnabled()).isEqualTo(enabled);
     }
 }
