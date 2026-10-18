@@ -12,7 +12,7 @@ function ingressOptions(environment) {
   if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(ingressClass)) throw new Error('KUBERNETES_INGRESS_CLASS must be a DNS label.');
   const serviceType = value('KUBERNETES_TRAEFIK_SERVICE_TYPE') || 'LoadBalancer';
   if (!['LoadBalancer', 'NodePort', 'ClusterIP'].includes(serviceType)) throw new Error('KUBERNETES_TRAEFIK_SERVICE_TYPE must be LoadBalancer, NodePort or ClusterIP.');
-  const image = value('KUBERNETES_TRAEFIK_IMAGE') || 'traefik:v3.7.13';
+  const image = value('KUBERNETES_TRAEFIK_IMAGE') || 'traefik:v3.7.15';
   if (!/^[a-zA-Z0-9][a-zA-Z0-9./:@_-]+$/.test(image) || image.endsWith(':latest') || (!image.includes('@sha256:') && !image.split('/').at(-1).includes(':'))) {
     throw new Error('KUBERNETES_TRAEFIK_IMAGE must specify a pinned image tag or digest.');
   }
