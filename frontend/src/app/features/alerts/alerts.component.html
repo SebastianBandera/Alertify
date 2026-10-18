@@ -110,6 +110,9 @@
       {{ localization.translate('alerts.tabs.templates') }}
       <span>@if (countsLoaded()) { {{ templates().length }} } @else { <i class="tab-count-spinner" aria-hidden="true"></i> }</span>
     </button>
+    <button type="button" [class.active]="activeTab() === 'wizards'" (click)="selectTab('wizards')">
+      {{ localization.translate('alerts.tabs.wizards') }}
+    </button>
     <button type="button" [class.active]="activeTab() === 'history'" (click)="selectTab('history')">
       {{ localization.translate('alerts.tabs.history') }}
       <span>@if (countsLoaded()) { {{ historyTotalElements() }} } @else { <i class="tab-count-spinner" aria-hidden="true"></i> }</span>
@@ -406,6 +409,17 @@
         </div>
       </footer>
     }
+  }
+
+  @if (activeTab() === 'wizards') {
+    <div class="wizard-grid">
+      <button type="button" class="wizard-card" disabled>
+        <strong>{{ localization.translate('alerts.wizards.playwrightPage.title') }}</strong>
+        <code>PlaywrightPageAlertTemplate</code>
+        <p>{{ localization.translate('alerts.wizards.playwrightPage.description') }}</p>
+        <span class="badge badge--disabled">{{ localization.translate('alerts.wizards.comingSoon') }}</span>
+      </button>
+    </div>
   }
 
   @if (activeTab() === 'history') {

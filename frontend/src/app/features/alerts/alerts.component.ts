@@ -28,7 +28,7 @@ import { EditorDraftService } from '../../shared/editor-drafts/editor-draft.serv
 import { EditorViewportService } from '../../shared/editor-viewport/editor-viewport.service';
 import { SearchableSelectComponent, SearchableSelectOption } from '../../shared/searchable-select/searchable-select.component';
 
-type AlertTab = 'alerts' | 'templates' | 'history';
+type AlertTab = 'alerts' | 'templates' | 'wizards' | 'history';
 type AlertFormField = 'template' | 'name' | 'cron' | 'smartInterval';
 type ParameterFormSource = AlertParameterSource | 'OPTION' | '';
 type AlertFormErrors = Partial<Record<AlertFormField, string>>;
@@ -96,7 +96,7 @@ function persistUpdatedAtSort(sort: SortDirection | null): void {
 }
 
 function alertTab(value: string | null): AlertTab {
-  if (value === 'templates' || value === 'history') return value;
+  if (value === 'templates' || value === 'wizards' || value === 'history') return value;
   return 'alerts';
 }
 
