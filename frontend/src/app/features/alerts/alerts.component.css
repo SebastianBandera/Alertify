@@ -60,9 +60,9 @@ label .field-error { margin-top: 0; color: #b42318; font-weight: 500; }
 
 .table-shell { min-height: 280px; overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-size: 12px; }
-.instances-table { min-width: 1160px; table-layout: fixed; }
-.instances-table th:nth-child(1) { width: 20%; }
-.instances-table th:nth-child(2) { width: 21%; }
+.instances-table { --template-column-width: 224px; min-width: 1160px; table-layout: fixed; }
+.instances-table th:nth-child(1) { width: calc(41% - var(--template-column-width)); }
+.instances-table th:nth-child(2) { width: var(--template-column-width); }
 .instances-table th:nth-child(3) { width: 10%; }
 .instances-table th:nth-child(4) { width: 10%; }
 .instances-table th:nth-child(5) { width: 9%; }
@@ -81,9 +81,9 @@ th.sortable-column { padding: 0; }
 .sort-indicator--asc::before { content: "\2191"; }
 tbody tr:hover { background: #fcfcfd; }
 td small { display: block; max-width: 330px; margin-top: 4px; overflow: hidden; color: var(--text-muted); text-overflow: ellipsis; white-space: nowrap; }
-/* Template name and class key are the widest cell; kept narrower so the table fits a 1080p screen with the menu open. */
-.template-cell strong { display: block; max-width: 258px; }
-.template-cell small { max-width: 258px; }
+/* Keep the HTTPS expiry template readable and give the remaining space to alert names. */
+.template-cell strong { display: block; }
+.template-cell small { max-width: 100%; }
 .updated-at span, .updated-at small { white-space: nowrap; }
 code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .schedule-value { display: inline-flex; align-items: center; gap: 7px; }

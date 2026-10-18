@@ -126,7 +126,7 @@ class AiConversationHistoryToolsTest {
     }
 
     private static AiSettings settings(boolean enabled) {
-        return AiSettings.newBuilder().setModel("model").setReasoningEffort("low").setConversationHistorySearchEnabled(enabled).build();
+        return AiSettings.newBuilder().setModel("model").setReasoningEffort("medium").setConversationHistorySearchEnabled(enabled).build();
     }
 
     private record Fixture(AiWorkerClient worker, AiChatPersistence persistence, AiConversationHistory history, AtomicReference<AiSettings> settings,

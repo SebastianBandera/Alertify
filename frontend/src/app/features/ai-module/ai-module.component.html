@@ -24,30 +24,49 @@
     @if (tab() === 'general') {
       <form class="card form" (submit)="$event.preventDefault(); save()">
         <fieldset [disabled]="busy() || unavailable()">
-          <label class="check"><input type="checkbox" [ngModel]="form().enabled" (ngModelChange)="patch('enabled', $event)" name="enabled"> {{ localization.translate('ai.general.enabled') }}</label>
-          <label class="check"><input type="checkbox" [ngModel]="form().conversationHistorySearchEnabled" (ngModelChange)="patch('conversationHistorySearchEnabled', $event)" name="conversationHistorySearchEnabled" aria-describedby="conversation-history-search-help"> {{ localization.translate('ai.general.conversationHistorySearchEnabled') }}</label>
-          <p id="conversation-history-search-help">{{ localization.translate('ai.general.conversationHistorySearchHelp') }}</p>
-          <label class="check"><input type="checkbox" [ngModel]="form().memoryEnabled" (ngModelChange)="patch('memoryEnabled', $event)" name="memoryEnabled" aria-describedby="memory-help"> {{ localization.translate('ai.general.memoryEnabled') }}</label>
-          <p id="memory-help">{{ localization.translate('ai.general.memoryHelp') }}</p>
+          <div class="setting-checks">
+            <div class="setting-check">
+              <input id="ai-module-enabled" type="checkbox" [ngModel]="form().enabled" (ngModelChange)="patch('enabled', $event)" name="enabled">
+              <label class="check" for="ai-module-enabled">{{ localization.translate('ai.general.enabled') }}</label>
+            </div>
+            <div class="setting-check">
+              <input id="ai-conversation-history" type="checkbox" [ngModel]="form().conversationHistorySearchEnabled" (ngModelChange)="patch('conversationHistorySearchEnabled', $event)" name="conversationHistorySearchEnabled" aria-describedby="conversation-history-search-help">
+              <div>
+                <label class="check" for="ai-conversation-history">{{ localization.translate('ai.general.conversationHistorySearchEnabled') }}</label>
+                <p id="conversation-history-search-help" class="setting-check__help">{{ localization.translate('ai.general.conversationHistorySearchHelp') }}</p>
+              </div>
+            </div>
+            <div class="setting-check">
+              <input id="ai-memory-enabled" type="checkbox" [ngModel]="form().memoryEnabled" (ngModelChange)="patch('memoryEnabled', $event)" name="memoryEnabled" aria-describedby="memory-help">
+              <div>
+                <label class="check" for="ai-memory-enabled">{{ localization.translate('ai.general.memoryEnabled') }}</label>
+                <p id="memory-help" class="setting-check__help">{{ localization.translate('ai.general.memoryHelp') }}</p>
+              </div>
+            </div>
+          </div>
           <label>{{ localization.translate('ai.general.provider') }}<input value="CODEX" readonly></label>
-          <label>{{ localization.translate('ai.general.defaultModel') }}<input type="text" [ngModel]="form().model" (ngModelChange)="patch('model', $event)" name="model" maxlength="128" required></label>
-          <label>{{ localization.translate('ai.general.reasoningEffort') }}
-            <select [ngModel]="form().reasoningEffort" (ngModelChange)="patch('reasoningEffort', $event)" name="reasoningEffort">
-              <option value="low">{{ localization.translate('ai.reasoning.low') }}</option>
-              <option value="medium">{{ localization.translate('ai.reasoning.medium') }}</option>
-              <option value="high">{{ localization.translate('ai.reasoning.high') }}</option>
-              <option value="xhigh">{{ localization.translate('ai.reasoning.xhigh') }}</option>
-            </select>
-          </label>
-          <label>{{ localization.translate('ai.general.reviewerModel') }}<input type="text" [ngModel]="form().reviewerModel" (ngModelChange)="patch('reviewerModel', $event)" name="reviewerModel" maxlength="128" [placeholder]="localization.translate('ai.general.reviewerModelPlaceholder')"></label>
-          <label>{{ localization.translate('ai.general.reviewerReasoningEffort') }}
-            <select [ngModel]="form().reviewerReasoningEffort" (ngModelChange)="patch('reviewerReasoningEffort', $event)" name="reviewerReasoningEffort">
-              <option value="low">{{ localization.translate('ai.reasoning.low') }}</option>
-              <option value="medium">{{ localization.translate('ai.reasoning.medium') }}</option>
-              <option value="high">{{ localization.translate('ai.reasoning.high') }}</option>
-              <option value="xhigh">{{ localization.translate('ai.reasoning.xhigh') }}</option>
-            </select>
-          </label>
+          <div class="model-settings">
+            <label>{{ localization.translate('ai.general.defaultModel') }}<input type="text" [ngModel]="form().model" (ngModelChange)="patch('model', $event)" name="model" maxlength="128" required></label>
+            <label>{{ localization.translate('ai.general.reasoningEffort') }}
+              <select [ngModel]="form().reasoningEffort" (ngModelChange)="patch('reasoningEffort', $event)" name="reasoningEffort">
+                <option value="low">{{ localization.translate('ai.reasoning.low') }}</option>
+                <option value="medium">{{ localization.translate('ai.reasoning.medium') }}</option>
+                <option value="high">{{ localization.translate('ai.reasoning.high') }}</option>
+                <option value="xhigh">{{ localization.translate('ai.reasoning.xhigh') }}</option>
+              </select>
+            </label>
+          </div>
+          <div class="model-settings">
+            <label>{{ localization.translate('ai.general.reviewerModel') }}<input type="text" [ngModel]="form().reviewerModel" (ngModelChange)="patch('reviewerModel', $event)" name="reviewerModel" maxlength="128" [placeholder]="localization.translate('ai.general.reviewerModelPlaceholder')"></label>
+            <label>{{ localization.translate('ai.general.reviewerReasoningEffort') }}
+              <select [ngModel]="form().reviewerReasoningEffort" (ngModelChange)="patch('reviewerReasoningEffort', $event)" name="reviewerReasoningEffort">
+                <option value="low">{{ localization.translate('ai.reasoning.low') }}</option>
+                <option value="medium">{{ localization.translate('ai.reasoning.medium') }}</option>
+                <option value="high">{{ localization.translate('ai.reasoning.high') }}</option>
+                <option value="xhigh">{{ localization.translate('ai.reasoning.xhigh') }}</option>
+              </select>
+            </label>
+          </div>
           <label>{{ localization.translate('ai.general.agents') }}<textarea rows="12" [ngModel]="form().agentInstructions" (ngModelChange)="patch('agentInstructions', $event)" name="agentInstructions" maxlength="65536" [placeholder]="localization.translate('ai.general.agentsPlaceholder')"></textarea></label>
           <label>{{ localization.translate('ai.general.refreshPolicy') }}
             <select [ngModel]="form().refreshPolicy" (ngModelChange)="patch('refreshPolicy', $event)" name="refreshPolicy">
@@ -83,7 +102,6 @@
                   <th>{{ localization.translate('ai.conversations.name') }}</th>
                   <th>{{ localization.translate('ai.conversations.user') }}</th>
                   <th>{{ localization.translate('ai.conversations.mode') }}</th>
-                  <th>{{ localization.translate('ai.conversations.status') }}</th>
                   <th>{{ localization.translate('ai.conversations.updatedAt') }}</th>
                   <th>{{ localization.translate('ai.conversations.actions') }}</th>
                 </tr>
@@ -95,7 +113,6 @@
                     <td class="conversation-table__title" [attr.title]="conversation.title">{{ conversation.title }}</td>
                     <td>{{ conversation.username }}</td>
                     <td>{{ modeLabel(conversation.mode) }}</td>
-                    <td>{{ localization.translateDynamic('ai.conversations.status.' + conversation.status) }}</td>
                     <td>{{ formatDate(conversation.updatedAt) }}</td>
                     <td>
                       <div class="conversation-table__actions">
@@ -105,7 +122,7 @@
                     </td>
                   </tr>
                 } @empty {
-                  <tr><td colspan="7" class="conversation-table__empty">{{ localization.translate('ai.conversations.empty') }}</td></tr>
+                  <tr><td colspan="6" class="conversation-table__empty">{{ localization.translate('ai.conversations.empty') }}</td></tr>
                 }
               </tbody>
             </table>
@@ -115,10 +132,10 @@
         @if (conversationDetailLoading()) {
           <div class="notice">{{ localization.translate('ai.conversations.detailLoading') }}</div>
         } @else if (selectedConversation(); as conversation) {
-          <section class="conversation-detail">
+          <section #conversationDetail class="conversation-detail" tabindex="-1" aria-labelledby="ai-conversation-detail-title">
             <header class="conversation-detail__header">
               <div>
-                <h2>{{ conversation.title }}</h2>
+                <h2 id="ai-conversation-detail-title">{{ conversation.title }}</h2>
                 <p class="help">{{ localization.translate('ai.conversations.detail') }} #{{ conversation.id }}</p>
               </div>
               <button class="danger" type="button" [disabled]="busy()" (click)="deleteManagedConversation(conversation)">{{ localization.translate('ai.conversations.delete') }}</button>

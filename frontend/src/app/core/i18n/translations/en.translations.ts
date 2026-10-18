@@ -1827,6 +1827,7 @@ export const EN_TRANSLATIONS = {
   'ai.chat.conversation': 'Conversation',
   'ai.chat.message': 'Message',
   'ai.chat.mode': 'Mode',
+  'ai.chat.error.reasoningEffort': 'The selected reasoning effort is no longer allowed. Check the available levels and send the message again.',
   'ai.chat.mode.readOnly': 'Read only',
   'ai.chat.mode.plan': 'Plan',
   'ai.chat.mode.direct': 'Direct action',

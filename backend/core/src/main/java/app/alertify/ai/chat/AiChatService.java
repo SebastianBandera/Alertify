@@ -37,6 +37,7 @@ import app.alertify.ai.tools.MemoryAiTools;
 import app.alertify.ai.memory.AiMemoryService;
 import app.alertify.ai.memory.AiMemoryAccess;
 import app.alertify.api.error.ConflictException;
+import app.alertify.api.error.InvalidAiChatReasoningEffortException;
 import app.alertify.api.error.ResourceNotFoundException;
 import app.alertify.codex.AiWorkerClient;
 import app.alertify.logging.ApplicationEventLogger;
@@ -120,16 +121,21 @@ public class AiChatService {
         if (!state.getEnabled() || !"ACTIVE".equals(state.getSessionStatus()))
             throw new IllegalStateException("The Codex session is not active");
         AiSettings settings = worker.settings();
+        String effort = request.reasoningEffort() == null ? "low" : request.reasoningEffort();
+        int effortIndex = EFFORTS.indexOf(effort);
+        if (effortIndex < 0 || effortIndex > EFFORTS.indexOf(settings.getReasoningEffort()))
+            throw new InvalidAiChatReasoningEffortException();
+
         String subject = authentication.getName();
         String username = username(authentication);
         AiChatPersistence.StartedTurn started = persistence.start(subject, username, request.conversationId(),
-                request.message().strip(), mode, approval, settings.getModel(), settings.getReasoningEffort());
+                request.message().strip(), mode, approval, settings.getModel(), effort);
         List<AiToolDescriptor> permitted = catalog.descriptorsFor(authentication, EnumSet.allOf(AiToolGroup.class));
         ActiveTurn active = new ActiveTurn(started.conversationId(), started.turnId(), subject, authentication, locale, mode, approval,
-                settings, permitted.stream().collect(Collectors.toUnmodifiableMap(AiToolDescriptor::name, value -> value)));
+                settings, effort, permitted.stream().collect(Collectors.toUnmodifiableMap(AiToolDescriptor::name, value -> value)));
         activeTurns.put(active.turnId, active);
         try {
-            if (!open(active, settings.getReasoningEffort()))
+            if (!open(active, effort))
                 return new SubmitResponse(active.conversationId, active.turnId);
 
         } catch (RuntimeException exception) {
@@ -261,6 +267,7 @@ public class AiChatService {
         AiSettings currentSettings = worker.settings();
         boolean historyEnabled = currentSettings.getConversationHistorySearchEnabled();
         boolean memoryEnabled = currentSettings.getMemoryEnabled();
+        boolean reasoningUpgradeAvailable = canUpgrade(active, currentSettings);
         long generation = active.generation.incrementAndGet();
         AiWorkerClient.ChatHandle handle = worker.chat(
                 message -> onMessage(active, generation, message),
@@ -277,14 +284,16 @@ public class AiChatService {
             return false;
         }
         ChatStart.Builder start = ChatStart.newBuilder().setConversationId(active.conversationId).setTurnId(active.turnId)
-                .setModel(active.settings.getModel()).setReasoningEffort(effort).setInstructions(instructions(active, memoryEnabled)
+                .setModel(active.settings.getModel()).setReasoningEffort(effort).setInstructions(instructions(active, memoryEnabled, reasoningUpgradeAvailable)
                         + "\n\nAlertify operation audit (metadata only):\n" + operationHistoryJson(active, 0, RECENT_OPERATION_LIMIT)
                         + (memoryEnabled ? memoryIndex(active) : ""))
                 .setMode(active.mode).setApprovalPolicy(active.approvalPolicy);
         persistence.history(active.conversationId).forEach(message -> start.addHistory(ChatHistoryMessage.newBuilder()
                 .setRole(message.getRole()).setContent(AiChatOperationHistory.messageContent(message)).build()));
         start.addTools(groupLoaderTool(memoryEnabled));
-        start.addTools(reasoningTool());
+        if (reasoningUpgradeAvailable)
+            start.addTools(reasoningTool());
+
         start.addTools(restorationHistoryTool());
         start.addTools(operationHistoryTool());
         if (historyEnabled) {
@@ -467,7 +476,14 @@ public class AiChatService {
 
     private void upgrade(ActiveTurn active, AiToolInvocation invocation, String callId) {
         int index = EFFORTS.indexOf(active.effort);
-        if (active.upgraded || active.successfulWrite || index < 0 || index == EFFORTS.size() - 1) {
+        boolean available;
+        try {
+            available = canUpgrade(active, worker.settings());
+        } catch (RuntimeException exception) {
+            internalResult(active, invocation, callId, "Failed: reasoning settings are unavailable.", true, "REASONING_UPGRADE_UNAVAILABLE");
+            return;
+        }
+        if (!available) {
             internalResult(active, invocation, callId, "Failed: reasoning cannot be upgraded for this turn.", true, "REASONING_UPGRADE_UNAVAILABLE");
             return;
         }
@@ -490,6 +506,12 @@ public class AiChatService {
             persistence.toolFailed(invocation.getId(), "Failed: the upgraded model request could not be started.", "REASONING_UPGRADE_FAILED");
             fail(active, "AI_WORKER_FAILED", "The AI worker could not restart the turn with upgraded reasoning");
         }
+    }
+
+    private static boolean canUpgrade(ActiveTurn active, AiSettings currentSettings) {
+        int index = EFFORTS.indexOf(active.effort);
+        int maximum = Math.min(EFFORTS.indexOf(active.settings.getReasoningEffort()), EFFORTS.indexOf(currentSettings.getReasoningEffort()));
+        return !active.upgraded && !active.successfulWrite && index >= 0 && index < maximum;
     }
 
     private void loadGroup(ActiveTurn active, AiToolInvocation invocation, String callId, String arguments) {
@@ -693,7 +715,7 @@ public class AiChatService {
         publish(active, STATUS_TOOL_RESULT, invocation.getId());
     }
 
-    private String instructions(ActiveTurn active, boolean memoryEnabled) {
+    private String instructions(ActiveTurn active, boolean memoryEnabled, boolean reasoningUpgradeAvailable) {
         StringBuilder value = new StringBuilder("You are Alertify's administrative assistant. Use tools only when needed. ")
                 .append("Never invent IDs, versions, configurations, secrets, or tool results. ")
                 .append("A user's clear request for an administrative change authorizes proposing the matching write tool, subject to the current mode and approval policy. ")
@@ -771,8 +793,10 @@ public class AiChatService {
             active.descriptors.values().stream().filter(descriptor -> !descriptor.readOnly())
                     .forEach(descriptor -> value.append(descriptor.name()).append("; "));
         }
-        value.append("You may call ").append(REASONING_TOOL)
-                .append(", before any successful write, when the request truly needs a higher reasoning effort. ");
+        if (reasoningUpgradeAvailable)
+            value.append("You may call ").append(REASONING_TOOL)
+                    .append(", before any successful write, when the request truly needs a higher reasoning effort within the system limit. ");
+
         if (active.settings.getAgentInstructions() != null && !active.settings.getAgentInstructions().isBlank())
             value.append("\n\nAlertify agent instructions:\n").append(active.settings.getAgentInstructions());
         return value.toString();
@@ -1004,7 +1028,7 @@ public class AiChatService {
         }
 
         private ActiveTurn(Long conversationId, Long turnId, String subject, Authentication authentication, String locale, String mode,
-                String approvalPolicy, AiSettings settings, Map<String, AiToolDescriptor> descriptors) {
+                String approvalPolicy, AiSettings settings, String effort, Map<String, AiToolDescriptor> descriptors) {
             this.conversationId = conversationId;
             this.turnId = turnId;
             this.subject = subject;
@@ -1014,7 +1038,7 @@ public class AiChatService {
             this.approvalPolicy = approvalPolicy;
             this.settings = settings;
             this.descriptors = descriptors;
-            effort = settings.getReasoningEffort();
+            this.effort = effort;
         }
     }
 
@@ -1026,7 +1050,10 @@ public class AiChatService {
             boolean readOnly, boolean destructiveHint, boolean idempotentHint, boolean openWorldHint, String refreshTargets) {
     }
 
-    public record SubmitRequest(Long conversationId, String message, String mode, String approvalPolicy, String locale) {
+    public record SubmitRequest(Long conversationId, String message, String mode, String approvalPolicy, String locale, String reasoningEffort) {
+        public SubmitRequest(Long conversationId, String message, String mode, String approvalPolicy, String locale) {
+            this(conversationId, message, mode, approvalPolicy, locale, null);
+        }
     }
 
     public record SubmitResponse(Long conversationId, Long turnId) {

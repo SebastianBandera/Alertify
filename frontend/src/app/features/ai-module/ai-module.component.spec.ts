@@ -1,11 +1,101 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AiModuleApiService, AiSettings } from '../../core/api/ai-module-api.service';
 import { LocalizationService } from '../../core/i18n/localization.service';
 import { AiModuleComponent } from './ai-module.component';
+
+describe('AiModuleComponent conversation detail navigation', () => {
+  let originalScrollIntoView: PropertyDescriptor | undefined;
+  let scrollIntoView: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    originalScrollIntoView = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollIntoView');
+    scrollIntoView = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: scrollIntoView });
+  });
+
+  afterEach(() => {
+    if (originalScrollIntoView) Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', originalScrollIntoView);
+    else Reflect.deleteProperty(HTMLElement.prototype, 'scrollIntoView');
+  });
+
+  async function setup() {
+    const summary = (id: number) => ({ id, title: `Conversation ${id}`, userSubject: 'test-subject', username: 'Test user',
+      mode: 'READ_ONLY', approvalPolicy: 'ASK', status: 'COMPLETED', createdAt: '2026-10-18T10:00:00Z', updatedAt: '2026-10-18T10:00:00Z' });
+    const api = {
+      module: vi.fn().mockResolvedValue({ workerAvailable: true, sessionStatus: 'ACTIVE', settings: {} }),
+      managedConversations: vi.fn().mockResolvedValue([summary(1), summary(2)]),
+      managedConversation: vi.fn().mockImplementation(async (id: number) => ({ ...summary(id), messages: [], turns: [], usage: {} })),
+    };
+    await TestBed.configureTestingModule({
+      imports: [AiModuleComponent], providers: [
+        provideRouter([]),
+        { provide: AiModuleApiService, useValue: api },
+        { provide: LocalizationService, useValue: { locale: signal('en'), translate: (key: string) => key, translateDynamic: (key: string) => key } },
+      ],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(AiModuleComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const tab = (key: string) => [...fixture.nativeElement.querySelectorAll('.tabs button')]
+      .find((element: unknown) => (element as HTMLButtonElement).textContent?.trim() === key) as HTMLButtonElement;
+    tab('ai.tabs.conversations').click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const viewButtons = () => fixture.nativeElement.querySelectorAll('.conversation-table__actions button:first-child') as NodeListOf<HTMLButtonElement>;
+    return { fixture, api, tab, viewButtons };
+  }
+
+  it('opens the requested detail and brings it into view with keyboard focus after loading', async () => {
+    const { fixture, api, viewButtons } = await setup();
+    viewButtons()[1].click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const detail = fixture.nativeElement.querySelector('.conversation-detail') as HTMLElement;
+    expect(api.managedConversation).toHaveBeenCalledWith(2);
+    expect(detail.querySelector('h2')?.textContent).toBe('Conversation 2');
+    expect(document.activeElement).toBe(detail);
+    expect(detail.getAttribute('aria-labelledby')).toBe(detail.querySelector('h2')?.id);
+    expect(scrollIntoView).toHaveBeenCalledOnce();
+    expect(scrollIntoView.mock.contexts[0]).toBe(detail);
+    expect(scrollIntoView).toHaveBeenCalledWith(expect.objectContaining({ block: 'start' }));
+    fixture.destroy();
+  });
+
+  it('does not move focus or scroll when loading the detail fails', async () => {
+    const { fixture, api, viewButtons } = await setup();
+    api.managedConversation.mockRejectedValueOnce(new Error('Detail unavailable'));
+    viewButtons()[0].click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.notice--error')?.textContent).toContain('Detail unavailable');
+    expect(fixture.nativeElement.querySelector('.conversation-detail')).toBeNull();
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    expect(viewButtons()[0].disabled).toBe(false);
+    fixture.destroy();
+  });
+
+  it('does not scroll back to the conversation after the user switches tabs during loading', async () => {
+    const { fixture, api, tab, viewButtons } = await setup();
+    let resolve!: (value: unknown) => void;
+    const response = new Promise(currentResolve => { resolve = currentResolve; });
+    api.managedConversation.mockReturnValueOnce(response);
+    viewButtons()[0].click();
+    fixture.detectChanges();
+    expect(viewButtons()[0].disabled).toBe(true);
+    tab('ai.tabs.general').click();
+    fixture.detectChanges();
+    resolve({ id: 1, messages: [], turns: [], usage: {} });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.conversation-detail')).toBeNull();
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    fixture.destroy();
+  });
+});
 
 describe('AiModuleComponent conversation history setting', () => {
   it('loads and saves an explicit false without losing the rest of General settings', async () => {

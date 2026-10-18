@@ -27,8 +27,8 @@
 .ai-chat .ai-chat__send-button { border-color: #4f46e5; color: #fff; background: #4f46e5; box-shadow: 0 2px 5px rgb(79 70 229 / .24); }
 .ai-chat .ai-chat__send-button:hover:not(:disabled) { border-color: #4338ca; color: #fff; background: #4338ca; }
 .ai-chat .ai-chat__send-button:disabled { border-color: #cbd5e1; color: #94a3b8; background: #e2e8f0; box-shadow: none; }
-.ai-chat__options { align-items: end; }
-.ai-chat__options label { display: grid; gap: .2rem; flex: 1; font-size: .75rem; }
+.ai-chat__options { align-items: end; flex-wrap: wrap; }
+.ai-chat__options label { display: grid; gap: .2rem; flex: 1 1 8rem; min-width: 0; font-size: .75rem; }
 .ai-chat__messages { overflow: auto; overflow-x: hidden; padding: 1rem; background: #f6f8fc; }
 .ai-chat__message { box-sizing: border-box; min-width: 0; max-width: 88%; margin: 0 0 .75rem; padding: .65rem .8rem; border-radius: .75rem; background: #fff; box-shadow: 0 1px 3px rgb(15 23 42 / .1); overflow-wrap: anywhere; word-break: break-word; }
 .ai-chat__message--user { margin-left: auto; background: #e9e8ff; }

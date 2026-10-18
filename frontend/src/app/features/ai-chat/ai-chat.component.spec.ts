@@ -18,33 +18,175 @@ import { AiChatComponent, buildAiChatTimeline } from './ai-chat.component';
 interface ComponentHarness {
   readonly selected: WritableSignal<AiConversationDetail | null>;
   readonly desiredConversationId: WritableSignal<number | null>;
+  readonly reasoningEffort: () => string;
+  readonly message: WritableSignal<string>;
+  setReasoningEffort(value: string): void;
+  send(): Promise<void>;
   select(id: number, scrollMode?: 'force' | 'follow' | 'none'): Promise<void>;
   newConversation(): Promise<void>;
 }
 
 describe('AiChatComponent', () => {
-  let api: { conversation: ReturnType<typeof vi.fn>; conversations: ReturnType<typeof vi.fn> };
+  let api: { conversation: ReturnType<typeof vi.fn>; conversations: ReturnType<typeof vi.fn>; submit: ReturnType<typeof vi.fn> };
   let eventChannel: { on: ReturnType<typeof vi.fn>; start: ReturnType<typeof vi.fn> };
   let component: ComponentHarness;
+  let moduleState: WritableSignal<AiModuleState>;
+  let auth: { displayName: string; userIdentifier: string };
+  const storageKey = 'alertify.aiChat.reasoningEffort.test-realm:subject-1';
 
   beforeEach(async () => {
+    vi.restoreAllMocks();
+    localStorage.clear();
     api = {
       conversation: vi.fn(),
       conversations: vi.fn().mockResolvedValue([]),
+      submit: vi.fn().mockResolvedValue({ conversationId: 1, turnId: 7 }),
     };
     eventChannel = { on: vi.fn().mockReturnValue(EMPTY), start: vi.fn() };
-    const moduleState = signal(activeModuleState());
+    moduleState = signal(activeModuleState());
+    auth = { displayName: 'Administrator', userIdentifier: 'test-realm:subject-1' };
     await TestBed.configureTestingModule({
       imports: [AiChatComponent],
       providers: [
         { provide: AiChatApiService, useValue: api },
-        { provide: AiModuleApiService, useValue: { moduleState, module: vi.fn().mockResolvedValue(moduleState()) } },
-        { provide: AuthService, useValue: { displayName: 'Administrator' } },
+        { provide: AiModuleApiService, useValue: { moduleState, module: vi.fn().mockImplementation(async () => moduleState()) } },
+        { provide: AuthService, useValue: auth },
         { provide: LocalizationService, useValue: { locale: signal('en'), translateDynamic: (key: string) => key } },
         { provide: AdminEventChannelService, useValue: eventChannel },
       ],
     }).compileComponents();
     component = TestBed.createComponent(AiChatComponent).componentInstance as unknown as ComponentHarness;
+  });
+
+  function setMaximum(maximum: string): void {
+    moduleState.update((state) => ({ ...state, settings: { ...state.settings, reasoningEffort: maximum } }));
+  }
+
+  it.each([
+    ['low', []],
+    ['medium', ['low', 'medium']],
+    ['high', ['low', 'medium', 'high']],
+    ['xhigh', ['low', 'medium', 'high', 'xhigh']],
+  ])('offers only levels up to %s and defaults to low', (maximum, expected) => {
+    setMaximum(maximum);
+    const fixture = TestBed.createComponent(AiChatComponent);
+    fixture.componentRef.setInput('popout', true);
+    fixture.detectChanges();
+    const select = fixture.nativeElement.querySelector('#ai-chat-reasoning') as HTMLSelectElement | null;
+    expect(select ? Array.from(select.options, (option) => option.value) : []).toEqual(expected);
+    expect((fixture.componentInstance as unknown as ComponentHarness).reasoningEffort()).toBe('low');
+    fixture.destroy();
+  });
+
+  it('stores a selection made through the selector and restores it for the same user', async () => {
+    setMaximum('medium');
+    const fixture = TestBed.createComponent(AiChatComponent);
+    fixture.componentRef.setInput('popout', true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const select = fixture.nativeElement.querySelector('#ai-chat-reasoning') as HTMLSelectElement;
+    select.value = 'medium';
+    select.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+    expect(localStorage.getItem(storageKey)).toBe('medium');
+    fixture.destroy();
+
+    const restored = TestBed.createComponent(AiChatComponent);
+    expect((restored.componentInstance as unknown as ComponentHarness).reasoningEffort()).toBe('medium');
+    auth.userIdentifier = 'test-realm:subject-2';
+    const otherUser = TestBed.createComponent(AiChatComponent);
+    expect((otherUser.componentInstance as unknown as ComponentHarness).reasoningEffort()).toBe('low');
+    restored.destroy();
+    otherUser.destroy();
+  });
+
+  it.each(['high', 'invalid', ''])('resets an invalid stored preference %s to low', (stored) => {
+    setMaximum('medium');
+    localStorage.setItem(storageKey, stored);
+    const fixture = TestBed.createComponent(AiChatComponent);
+    fixture.detectChanges();
+    expect((fixture.componentInstance as unknown as ComponentHarness).reasoningEffort()).toBe('low');
+    expect(localStorage.getItem(storageKey)).toBe('low');
+    fixture.destroy();
+  });
+
+  it('waits for settings before validating a saved preference', () => {
+    setMaximum('medium');
+    const active = moduleState();
+    (moduleState as WritableSignal<AiModuleState | null>).set(null);
+    localStorage.setItem(storageKey, 'medium');
+    const fixture = TestBed.createComponent(AiChatComponent);
+    fixture.detectChanges();
+    expect(localStorage.getItem(storageKey)).toBe('medium');
+    moduleState.set(active);
+    fixture.detectChanges();
+    expect((fixture.componentInstance as unknown as ComponentHarness).reasoningEffort()).toBe('medium');
+    fixture.destroy();
+  });
+
+  it('resets the preference and hides the selector when the system maximum is lowered', () => {
+    setMaximum('medium');
+    const fixture = TestBed.createComponent(AiChatComponent);
+    fixture.componentRef.setInput('popout', true);
+    fixture.detectChanges();
+    const harness = fixture.componentInstance as unknown as ComponentHarness;
+    harness.setReasoningEffort('medium');
+    setMaximum('low');
+    fixture.detectChanges();
+    expect(harness.reasoningEffort()).toBe('low');
+    expect(localStorage.getItem(storageKey)).toBe('low');
+    expect(fixture.nativeElement.querySelector('#ai-chat-reasoning')).toBeNull();
+    fixture.destroy();
+  });
+
+  it('synchronizes localStorage changes from another window and ignores other users', () => {
+    setMaximum('medium');
+    const fixture = TestBed.createComponent(AiChatComponent);
+    fixture.detectChanges();
+    const harness = fixture.componentInstance as unknown as ComponentHarness;
+    window.dispatchEvent(new StorageEvent('storage', { key: storageKey, newValue: 'medium', storageArea: localStorage }));
+    fixture.detectChanges();
+    expect(harness.reasoningEffort()).toBe('medium');
+    window.dispatchEvent(new StorageEvent('storage', { key: `${storageKey}-other`, newValue: 'low', storageArea: localStorage }));
+    expect(harness.reasoningEffort()).toBe('medium');
+    window.dispatchEvent(new StorageEvent('storage', { key: storageKey, newValue: 'high', storageArea: localStorage }));
+    fixture.detectChanges();
+    expect(harness.reasoningEffort()).toBe('low');
+    expect(localStorage.getItem(storageKey)).toBe('low');
+    fixture.destroy();
+  });
+
+  it('keeps the selection in memory when localStorage is unavailable', () => {
+    setMaximum('medium');
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('Unavailable'); });
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('Unavailable'); });
+    const fixture = TestBed.createComponent(AiChatComponent);
+    const harness = fixture.componentInstance as unknown as ComponentHarness;
+    harness.setReasoningEffort('medium');
+    fixture.detectChanges();
+    expect(harness.reasoningEffort()).toBe('medium');
+    fixture.destroy();
+  });
+
+  it('sends the selected effort and preserves the preference across conversations and model upgrades', async () => {
+    setMaximum('medium');
+    const fixture = TestBed.createComponent(AiChatComponent);
+    const harness = fixture.componentInstance as unknown as ComponentHarness;
+    fixture.detectChanges();
+    await fixture.whenStable();
+    harness.setReasoningEffort('medium');
+    harness.message.set('hello');
+    api.conversation.mockResolvedValue(conversation(1, 'COMPLETED'));
+    await harness.send();
+    expect(api.submit).toHaveBeenCalledWith(null, 'hello', 'READ_ONLY', 'ASK', 'en', 'medium');
+    await harness.newConversation();
+    expect(harness.reasoningEffort()).toBe('medium');
+    harness.setReasoningEffort('low');
+    harness.selected.set({ ...conversation(1, 'COMPLETED'), turns: [{ ...turn(7, 'COMPLETED'), reasoningEffort: 'medium', reasoningUpgraded: true }] });
+    fixture.detectChanges();
+    expect(harness.reasoningEffort()).toBe('low');
+    expect(localStorage.getItem(storageKey)).toBe('low');
+    fixture.destroy();
   });
 
   it('starts the administrative event channel when rendered outside the application shell', () => {

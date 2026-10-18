@@ -128,6 +128,23 @@ class AiChatReceiptTest {
     }
 
     private Fixture fixture(String mode, String approval) {
+        return fixture(mode, approval, "low");
+    }
+
+    @Test
+    void successfulWritePreventsAReasoningUpgrade() {
+        var fixture = fixture("DIRECT", "ASK", "medium");
+        when(fixture.callback.call(any())).thenReturn("{\"id\":10}");
+        fixture.call();
+        fixture.service.approve(fixture.authentication, 99L);
+        fixture.consumer.accept(ChatWorkerMessage.newBuilder().setToolCall(ChatToolCall.newBuilder().setCallId("upgrade")
+                .setName("alertify_request_reasoning_upgrade").setArguments("{\"reason\":\"complex request\"}")).build());
+        assertThat(fixture.result().getDiagnosticCode()).isEqualTo("REASONING_UPGRADE_UNAVAILABLE");
+        verify(fixture.persistence, never()).upgraded(any(), any());
+        verify(fixture.worker).chat(any(), any(), any());
+    }
+
+    private Fixture fixture(String mode, String approval, String maximum) {
         var worker = mock(AiWorkerClient.class);
         var catalog = mock(AiToolCatalog.class);
         var persistence = mock(AiChatPersistence.class);
@@ -136,7 +153,7 @@ class AiChatReceiptTest {
         when(authentication.getName()).thenReturn("subject-1");
         when(localization.resolveLocale(any())).thenReturn("en");
         when(worker.state()).thenReturn(app.alertify.worker.ai.grpc.ModuleStateResponse.newBuilder().setEnabled(true).setSessionStatus("ACTIVE").build());
-        when(worker.settings()).thenReturn(app.alertify.worker.ai.grpc.AiSettings.newBuilder().setModel("model").setReasoningEffort("low").build());
+        when(worker.settings()).thenReturn(app.alertify.worker.ai.grpc.AiSettings.newBuilder().setModel("model").setReasoningEffort(maximum).build());
         when(persistence.start(any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(new AiChatPersistence.StartedTurn(7L,8L));
         var callback = mock(ToolCallback.class);
         var definition = mock(ToolDefinition.class);

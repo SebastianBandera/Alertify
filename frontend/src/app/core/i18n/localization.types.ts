@@ -1820,6 +1820,7 @@ export type TranslationKey =
   | 'ai.chat.conversation'
   | 'ai.chat.message'
   | 'ai.chat.mode'
+  | 'ai.chat.error.reasoningEffort'
   | 'ai.chat.mode.readOnly'
   | 'ai.chat.mode.plan'
   | 'ai.chat.mode.direct'

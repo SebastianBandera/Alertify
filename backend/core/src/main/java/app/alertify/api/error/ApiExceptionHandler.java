@@ -53,6 +53,11 @@ public class ApiExceptionHandler {
         return response(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND", exception.getMessage(), Map.of(), exception, request);
     }
 
+    @ExceptionHandler(InvalidAiChatReasoningEffortException.class)
+    ResponseEntity<ApiError> handleInvalidAiChatReasoningEffort(InvalidAiChatReasoningEffortException exception, HttpServletRequest request) {
+        return response(HttpStatus.BAD_REQUEST, "AI_CHAT_REASONING_EFFORT_INVALID", exception.getMessage(), Map.of(), exception, request);
+    }
+
     @ExceptionHandler(ConflictException.class)
     ResponseEntity<ApiError> handleConflict(ConflictException exception, HttpServletRequest request) {
         return response(HttpStatus.CONFLICT, exception.getCode(), exception.getMessage(), Map.of(), exception.getParameters(), exception, request);

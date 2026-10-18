@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, Injector, OnInit, afterNextRender, inject, signal, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -36,6 +36,8 @@ function aiModuleTab(value: string | null): AiModuleTab {
 export class AiModuleComponent implements OnInit {
   private readonly api = inject(AiModuleApiService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly injector = inject(Injector);
+  private readonly conversationDetail = viewChild<ElementRef<HTMLElement>>('conversationDetail');
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   protected readonly localization = inject(LocalizationService);
@@ -192,6 +194,13 @@ export class AiModuleComponent implements OnInit {
     this.error.set('');
     try {
       this.selectedConversation.set(await this.api.managedConversation(id));
+      afterNextRender(() => {
+        if (this.tab() !== 'conversations' || this.selectedConversation()?.id !== id) return;
+
+        const detail = this.conversationDetail()?.nativeElement;
+        detail?.focus({ preventScroll: true });
+        detail?.scrollIntoView({ block: 'start', behavior: 'instant' });
+      }, { injector: this.injector });
     } catch (error) {
       this.error.set(error instanceof Error ? error.message : String(error));
     } finally {

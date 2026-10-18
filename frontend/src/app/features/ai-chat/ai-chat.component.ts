@@ -1,8 +1,10 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, OnInit, computed, inject, input, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, OnInit, computed, effect, inject, input, signal, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
 import {
+  AI_REASONING_EFFORTS,
+  AiReasoningEffort,
   AiApprovalPolicy,
   AiChatApiError,
   AiChatApiService,
@@ -150,6 +152,14 @@ export class AiChatComponent implements OnInit {
     return { available: true, remaining, label: this.percent(remaining), tooltip: details.join('\n') };
   });
   protected readonly moduleState = this.moduleApi.moduleState;
+  private readonly reasoningStorageKey = `alertify.aiChat.reasoningEffort.${this.auth.userIdentifier}`;
+  private readonly preferredReasoningEffort = signal(this.restoreReasoningEffort());
+  protected readonly reasoningOptions = computed(() => {
+    const maximum = this.moduleState()?.settings.reasoningEffort;
+    const index = AI_REASONING_EFFORTS.findIndex((effort) => effort === maximum);
+    return AI_REASONING_EFFORTS.slice(0, Math.max(0, index) + 1);
+  });
+  protected readonly reasoningEffort = computed(() => this.reasoningOptions().find((effort) => effort === this.preferredReasoningEffort()) ?? 'low');
   private readonly availabilityChecked = signal(false);
   private readonly availabilityFailed = signal(false);
   private availabilityLoading = false;
@@ -164,6 +174,13 @@ export class AiChatComponent implements OnInit {
   private detailRequestGeneration = 0;
   private conversationListRequestGeneration = 0;
 
+  constructor() {
+    effect(() => {
+      if (this.moduleState() && this.preferredReasoningEffort() !== this.reasoningEffort())
+        this.setReasoningEffort('low');
+    });
+  }
+
   ngOnInit(): void {
     /* The popout route does not render AppShellComponent, so it must start its own administrative event channel. */
     this.events.start();
@@ -174,8 +191,14 @@ export class AiChatComponent implements OnInit {
     );
     const focusListener = () => void this.refreshAvailability();
     const resizeListener = () => this.panelWidth.set(this.clampPanelWidth(this.panelWidth()));
+    const storageListener = (event: StorageEvent) => {
+      if ((event.key === this.reasoningStorageKey || event.key === null)
+          && (!event.storageArea || event.storageArea === localStorage))
+        this.preferredReasoningEffort.set(event.key === null ? 'low' : event.newValue ?? 'low');
+    };
     window.addEventListener('focus', focusListener);
     window.addEventListener('resize', resizeListener);
+    window.addEventListener('storage', storageListener);
     if (this.popout()) {
       this.open.set(true);
       void this.load();
@@ -202,6 +225,7 @@ export class AiChatComponent implements OnInit {
       window.removeEventListener('message', listener);
       window.removeEventListener('focus', focusListener);
       window.removeEventListener('resize', resizeListener);
+      window.removeEventListener('storage', storageListener);
       if (this.availabilityIntervalId !== null) window.clearInterval(this.availabilityIntervalId);
       if (this.scrollAnimationTimeout !== null) window.clearTimeout(this.scrollAnimationTimeout);
       if (this.scrollFrame !== null) window.cancelAnimationFrame(this.scrollFrame);
@@ -263,7 +287,7 @@ export class AiChatComponent implements OnInit {
     const submittedConversationId = this.desiredConversationId();
     const submittedSelectionGeneration = this.selectionIntentGeneration;
     try {
-      const response = await this.api.submit(submittedConversationId, text, this.mode(), this.approvalPolicy(), this.localization.locale());
+      const response = await this.api.submit(submittedConversationId, text, this.mode(), this.approvalPolicy(), this.localization.locale(), this.reasoningEffort());
       if (this.message().trim() === text) this.message.set('');
       if (this.selectionIntentGeneration === submittedSelectionGeneration
           && this.desiredConversationId() === submittedConversationId)
@@ -475,6 +499,12 @@ export class AiChatComponent implements OnInit {
   }
 
   private showError(error: unknown): void {
+    if (error instanceof AiChatApiError && error.code === 'AI_CHAT_REASONING_EFFORT_INVALID') {
+      this.error.set(this.localization.translateDynamic('ai.chat.error.reasoningEffort'));
+      void this.refreshAvailability();
+      return;
+    }
+
     if (error instanceof AiChatApiError && error.code === 'AI_CHAT_TURN_ACTIVE') {
       this.error.set(this.localization.translateDynamic('ai.chat.error.turnActive'));
       return;
@@ -518,6 +548,24 @@ export class AiChatComponent implements OnInit {
       return this.clampPanelWidth(Number.isFinite(stored) && stored > 0 ? stored : AiChatComponent.DEFAULT_PANEL_WIDTH);
     } catch {
       return this.clampPanelWidth(AiChatComponent.DEFAULT_PANEL_WIDTH);
+    }
+  }
+
+  protected setReasoningEffort(value: string): void {
+    const effort: AiReasoningEffort = this.reasoningOptions().find((option) => option === value) ?? 'low';
+    this.preferredReasoningEffort.set(effort);
+    try {
+      localStorage.setItem(this.reasoningStorageKey, effort);
+    } catch {
+      // The selection remains active for this page when browser storage is unavailable.
+    }
+  }
+
+  private restoreReasoningEffort(): string {
+    try {
+      return localStorage.getItem(this.reasoningStorageKey) ?? 'low';
+    } catch {
+      return 'low';
     }
   }
 

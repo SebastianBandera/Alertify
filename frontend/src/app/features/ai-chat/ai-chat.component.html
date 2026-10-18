@@ -69,6 +69,15 @@
     </div>
 
     <div class="ai-chat__options">
+      @if (reasoningOptions().length > 1) {
+        <label for="ai-chat-reasoning">{{ localization.translateDynamic('ai.general.reasoningEffort') }}
+          <select id="ai-chat-reasoning" [ngModel]="reasoningEffort()" (ngModelChange)="setReasoningEffort($event)">
+            @for (effort of reasoningOptions(); track effort) {
+              <option [value]="effort">{{ localization.translateDynamic('ai.reasoning.' + effort) }}</option>
+            }
+          </select>
+        </label>
+      }
       <label>{{ localization.translateDynamic('ai.chat.mode') }}
         <select [ngModel]="mode()" (ngModelChange)="mode.set($event)">
           <option value="READ_ONLY">{{ localization.translateDynamic('ai.chat.mode.readOnly') }}</option>

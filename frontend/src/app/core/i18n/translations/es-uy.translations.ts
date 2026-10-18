@@ -1828,6 +1828,7 @@ export const ES_UY_TRANSLATIONS = {
   'ai.chat.conversation': 'Conversación',
   'ai.chat.message': 'Mensaje',
   'ai.chat.mode': 'Modo',
+  'ai.chat.error.reasoningEffort': 'El esfuerzo de razonamiento seleccionado ya no está permitido. Revisá los niveles disponibles y volvé a enviar el mensaje.',
   'ai.chat.mode.readOnly': 'Solo lectura',
   'ai.chat.mode.plan': 'Plan',
   'ai.chat.mode.direct': 'Acción directa',

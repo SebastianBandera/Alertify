@@ -6,6 +6,8 @@ import { AppLocale } from '../i18n/localization.types';
 
 export type AiChatMode = 'READ_ONLY' | 'PLAN' | 'DIRECT';
 export type AiApprovalPolicy = 'ASK' | 'AUTO';
+export const AI_REASONING_EFFORTS = ['low', 'medium', 'high', 'xhigh'] as const;
+export type AiReasoningEffort = typeof AI_REASONING_EFFORTS[number];
 
 export class AiChatApiError extends Error {
   constructor(
@@ -137,8 +139,8 @@ export class AiChatApiService {
     return this.request(`/api/ai/chat/conversations/${id}`);
   }
 
-  submit(conversationId: number | null, message: string, mode: AiChatMode, approvalPolicy: AiApprovalPolicy, locale: AppLocale): Promise<{ readonly conversationId: number; readonly turnId: number }> {
-    return this.request('/api/ai/chat/turns', 'POST', { conversationId, message, mode, approvalPolicy, locale });
+  submit(conversationId: number | null, message: string, mode: AiChatMode, approvalPolicy: AiApprovalPolicy, locale: AppLocale, reasoningEffort: AiReasoningEffort = 'low'): Promise<{ readonly conversationId: number; readonly turnId: number }> {
+    return this.request('/api/ai/chat/turns', 'POST', { conversationId, message, mode, approvalPolicy, locale, reasoningEffort });
   }
 
   approve(id: number): Promise<void> {
