@@ -67,7 +67,7 @@ final class ProcedureMapper {
                 execution.getId(), execution.getExecutionId(), procedure.getId(), procedure.getName(),
                 template.getId(), template.getNameKey(), execution.getProcedureVersion(), execution.getStatus(),
                 execution.getTrigger(), execution.getRootExecutionId(), execution.getParentAlertExecutionId(),
-                execution.getParentProcedureExecutionId(), execution.getDepth(), execution.getStartedAt(),
+                execution.getParentProcedureExecutionId(), execution.getWizardDraftId(), execution.getDepth(), execution.getStartedAt(),
                 execution.getWorkStartedAt(), execution.getFinishedAt(), duration, idle, work,
                 execution.getResultJson(), execution.isResultRedacted(), execution.getErrorType(),
                 execution.getErrorMessage(), execution.getWorkerName(), execution.getWorkerIpAddress(),

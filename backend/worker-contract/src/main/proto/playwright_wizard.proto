@@ -1,0 +1,21 @@
+syntax = "proto3";
+package alertify.worker.wizard.v1;
+option java_multiple_files = true;
+option java_package = "app.alertify.worker.wizard.grpc";
+
+// Only exposed by Playwright workers. The backend pins a session to one stream.
+service PlaywrightWizardService {
+  rpc Session(stream WizardRequest) returns (stream WizardEvent);
+}
+message WizardRequest {
+  string request_id = 1;
+  string operation = 2;
+  string json = 3;
+}
+message WizardEvent {
+  string request_id = 1;
+  string type = 2;
+  string json = 3;
+  bytes image = 4;
+  int64 frame_id = 5;
+}

@@ -5,6 +5,12 @@ import { adminGuard } from './core/auth/admin.guard';
 
 export const routes: Routes = [
   {
+    path: 'playwright-view',
+    title: 'Playwright | Alertify',
+    canActivate: [adminGuard],
+    loadComponent: () => import('./features/alerts/playwright-view-popout.component').then(component => component.PlaywrightViewPopoutComponent),
+  },
+  {
     path: 'ai-chat',
     title: 'AI Chat | Alertify',
     canActivate: [adminGuard],

@@ -92,6 +92,8 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
     private final SystemStatusEventPublisher statusEventPublisher;
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
     private final ConcurrentMap<Long, ProcedureGate> procedureGates = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, ValueCapability> valueCapabilities = new ConcurrentHashMap<>();
+    private final ConcurrentMap<UUID, ValueScope> valueScopes = new ConcurrentHashMap<>();
 
     public ProcedureExecutionOrchestrator(ProcedureExecutionPreparationService preparationService, ProcedureExecutionPersistenceService persistenceService, ProcedureInvocationTokenService tokenService, PipeInvocationTokenService pipeTokenService, ObjectProvider<PipeExecutionOrchestrator> pipeOrchestrator, ProcedureInvocationRegistry invocationRegistry, WorkerStatusService workerStatusService, AlertWorkerClient workerClient, WorkerGrpcProperties properties, ApplicationEventLogger eventLogger, JsonMapper jsonMapper, MaintenanceModeService maintenanceModeService, SystemStatusEventPublisher statusEventPublisher) {
         this.preparationService = preparationService;
@@ -107,6 +109,25 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
         this.jsonMapper = jsonMapper;
         this.maintenanceModeService = maintenanceModeService;
         this.statusEventPublisher = statusEventPublisher;
+    }
+
+    /** A capability contains no result and is only valid while its parent operation is registered. */
+    public String prepareAlertValue(String declaration, UUID alertExecution, Instant deadline) {
+        return prepareValue(declaration, alertExecution, null, null, deadline);
+    }
+
+    public String prepareWizardValue(String declaration, UUID operation, UUID draft, String actor, Instant deadline) {
+        return prepareValue(declaration, operation, java.util.Objects.requireNonNull(draft), java.util.Objects.requireNonNull(actor), deadline);
+    }
+
+    public void releaseValues(UUID root) {
+        ValueScope scope = valueScopes.get(root);
+        valueCapabilities.entrySet().removeIf(entry -> entry.getValue().root().equals(root));
+        if (scope != null) {
+            scope.closed().set(true);
+            scope.calls().forEach(context -> context.cancel(new java.util.concurrent.CancellationException("Browser operation ended")));
+            if (scope.calls().isEmpty()) valueScopes.remove(root, scope);
+        }
     }
 
     public boolean triggerManual(long procedureId, String procedureName, boolean allowConcurrentExecutions, String triggeredBy) {
@@ -224,8 +245,23 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
     }
 
     public InvokeProcedureResponse invokeToken(String token) {
+        if (token != null && token.startsWith("pv.")) {
+            try { return invokeValue(token); }
+            catch (Exception failure) {
+                String reason = failure instanceof ProcedureBusyException ? "PROCEDURE_BUSY"
+                        : failure instanceof ProcedureDisabledException ? "PROCEDURE_DISABLED"
+                        : failure instanceof IllegalArgumentException ? "PROCEDURE_VALUE_POINTER_MISSING_OR_INVALID"
+                        : "PROCEDURE_VALUE_EXECUTION_FAILED";
+                return failure(ProcedureInvocationFailureKind.PROCEDURE_INVOCATION_FAILURE_KIND_ERROR, null, new ProcedureExecutionException(reason), null);
+            }
+        }
         try {
-            return invoke(tokenService.validate(token));
+            var claims = tokenService.validate(token);
+            ValueScope scope = valueScopes.get(claims.rootExecutionId());
+            if (scope != null && scope.closed().get())
+                throw new ProcedureExecutionException("Parent browser operation is closed");
+
+            return invoke(claims);
         } catch (app.alertify.procedures.ProcedureDepthExceededException exception) {
             return failure(ProcedureInvocationFailureKind.PROCEDURE_INVOCATION_FAILURE_KIND_DEPTH_EXCEEDED, null, exception, null);
         } catch (ProcedureExecutionException exception) {
@@ -234,12 +270,20 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
     }
 
     public ProcedurePipeExecution executePipeStep(long procedureId, UUID rootExecutionId, UUID parentPipeExecutionId, int depth, Instant deadline, UUID preferredWorkerInstanceId, Map<String, ArtifactLocation> artifactInputs, Map<String, PipeParameterValue> parameterInputs) {
+        ValueScope scope = valueScopes.get(rootExecutionId);
+        io.grpc.Context.CancellableContext cancellation = scope == null ? null : io.grpc.Context.current().withCancellation();
+        io.grpc.Context previous = cancellation == null ? null : cancellation.attach();
+        if (scope != null) scope.calls().add(cancellation);
+
         UUID executionId = UUID.randomUUID();
         Instant startedAt = Instant.now();
         boolean entered = false;
         boolean started = false;
         List<ArtifactLocation> createdArtifacts = new ArrayList<>();
         try {
+            if (scope != null && scope.closed().get())
+                throw new ProcedureExecutionException("Parent browser operation is closed");
+
             PreparedProcedureExecution prepared = withPipeInputs(preparationService.prepare(procedureId, false, true), parameterInputs);
             if (!enter(procedureId, prepared.allowConcurrentExecutions()))
                 throw busy(prepared.procedureName());
@@ -289,20 +333,20 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
                 ProcedureExecutionResult result = workerClient.executeProcedure(endpoint, request, source,
                         remaining(deadline), this::invokeToken, this::invokePipeToken);
                 if (!result.getSuccessful())
-                    result = result.toBuilder().setError(sanitize(result.getError(), prepared)).build();
+                    result = result.toBuilder().setError(scope == null ? sanitize(result.getError(), prepared) : protectedError()).build();
 
-                JsonNode value = persistenceService.complete(executionId, endpoint, result, prepared.sensitiveResult());
+                JsonNode value = persistenceService.complete(executionId, endpoint, result, prepared.sensitiveResult() || scope != null);
                 if (!result.getSuccessful())
                     throw new ProcedureExecutionException(executionId, message(result.getError()));
 
                 List<ArtifactLocation> outputs = result.getArtifactsList().stream()
                         .map(descriptor -> new ArtifactLocation(descriptor, endpoint, workerInstanceId)).toList();
                 return new ProcedurePipeExecution(executionId, value, workerInstanceId, endpoint, outputs,
-                        List.copyOf(createdArtifacts), prepared.sensitiveResult());
+                        List.copyOf(createdArtifacts), prepared.sensitiveResult() || scope != null);
             }
         } catch (RuntimeException exception) {
             if (started)
-                persistenceService.failLocal(executionId, exception);
+                persistenceService.failLocal(executionId, scope == null ? exception : new ProcedureExecutionException("Protected procedure execution failed"));
             cleanupArtifacts(createdArtifacts);
             if (exception instanceof ProcedureExecutionException procedureException)
                 throw procedureException;
@@ -310,6 +354,12 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
             throw new ProcedureExecutionException(started ? executionId : null,
                     exception.getMessage() == null ? exception.getClass().getSimpleName() : exception.getMessage(), exception);
         } finally {
+            if (cancellation != null) {
+                cancellation.detach(previous);
+                cancellation.close();
+                scope.calls().remove(cancellation);
+                if (scope.closed().get() && scope.calls().isEmpty()) valueScopes.remove(rootExecutionId, scope);
+            }
             invocationRegistry.unregister(executionId);
             if (entered)
                 leave(procedureId);
@@ -375,12 +425,50 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
                 prepared.sourceChecksum(), prepared.source(), parameters);
     }
 
+    private String prepareValue(String declaration, UUID root, UUID draft, String actor, Instant deadline) {
+        JsonNode value = jsonMapper.readTree(declaration);
+        String pointer = app.alertify.playwright.PlaywrightDslValues.pointer(value.path("pointer").asString());
+        valueScopes.computeIfAbsent(root, _ -> new ValueScope(draft, actor, ConcurrentHashMap.newKeySet(), new java.util.concurrent.atomic.AtomicBoolean()));
+        String token = "pv." + UUID.randomUUID();
+        valueCapabilities.put(token, new ValueCapability(value.path("procedureId").asLong(), pointer, root, deadline));
+        return token;
+    }
+
+    private InvokeProcedureResponse invokeValue(String token) {
+        ValueCapability capability = valueCapabilities.get(token);
+        if (capability == null || !capability.deadline().isAfter(Instant.now()) || !invocationRegistry.isActive(capability.root(), Instant.now()))
+            throw new ProcedureExecutionException("Procedure value capability expired or its parent is closed");
+
+        ValueScope scope = valueScopes.get(capability.root());
+        if (scope == null || scope.closed().get() || maintenanceModeService.isActive())
+            throw new ProcedureExecutionException("Procedure value invocation is unavailable");
+
+        var prepared = preparationService.prepare(capability.procedureId(), false, true);
+        if (!enter(capability.procedureId(), prepared.allowConcurrentExecutions()))
+            throw new ProcedureBusyException("Procedure is already running");
+
+        UUID executionId = UUID.randomUUID();
+        JsonNode result = execute(capability.procedureId(), executionId, capability.root(), scope.draft() == null ? capability.root() : null,
+                null, 1, scope.draft() == null ? ProcedureExecutionTrigger.ALERT : ProcedureExecutionTrigger.WIZARD, scope.actor(), capability.deadline(), false, prepared);
+        String selected = app.alertify.playwright.PlaywrightDslValues.select(result, capability.pointer());
+        return InvokeProcedureResponse.newBuilder().setResult(ProcedureInvocationResult.newBuilder().setExecutionId(executionId.toString())
+                .setResultJson(jsonMapper.writeValueAsString(selected))).build();
+    }
+
     private JsonNode execute(long procedureId, UUID executionId, UUID rootExecutionId, UUID parentAlertExecutionId, UUID parentProcedureExecutionId, int depth, ProcedureExecutionTrigger trigger, String triggeredBy, Instant deadline, boolean includeDisabled, PreparedProcedureExecution preparedExecution) {
+        ValueScope scope = valueScopes.get(rootExecutionId);
+        io.grpc.Context.CancellableContext cancellation = scope == null ? null : io.grpc.Context.current().withCancellation();
+        io.grpc.Context previous = cancellation == null ? null : cancellation.attach();
+        if (scope != null) scope.calls().add(cancellation);
+
         Instant startedAt = Instant.now();
         boolean started = false;
         WorkerEndpoint endpoint = null;
         List<ArtifactLocation> directArtifacts = new ArrayList<>();
         try {
+            if (scope != null && scope.closed().get())
+                throw new ProcedureExecutionException("Parent browser operation is closed");
+
             PreparedProcedureExecution prepared;
             try {
                 prepared = preparedExecution == null ? preparationService.prepare(procedureId, includeDisabled, true) : preparedExecution;
@@ -388,8 +476,10 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
                 eventLogger.failure(PROCEDURE_EXECUTION_REJECTED, Map.of("procedureId", procedureId, "reason", "DISABLED", "parentExecutionId", parentAlertExecutionId != null ? parentAlertExecutionId : parentProcedureExecutionId));
                 throw exception;
             }
-            persistenceService.start(executionId, prepared, trigger, rootExecutionId,
-                    parentAlertExecutionId, parentProcedureExecutionId, depth, startedAt, triggeredBy);
+            if (trigger == ProcedureExecutionTrigger.WIZARD)
+                persistenceService.startWizard(executionId, prepared, rootExecutionId, valueScopes.get(rootExecutionId).draft(), startedAt, triggeredBy);
+            else
+                persistenceService.start(executionId, prepared, trigger, rootExecutionId, parentAlertExecutionId, parentProcedureExecutionId, depth, startedAt, triggeredBy);
             started = true;
             invocationRegistry.register(executionId, deadline);
             for (ResolvedProcedureParameter parameter : prepared.parameters()) {
@@ -426,18 +516,18 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
                 try {
                     result = workerClient.executeProcedure(endpoint, request, source, remaining(deadline), this::invokeToken, this::invokePipeToken);
                 } catch (WorkerTemplateSynchronizationException exception) {
-                    ExecutionError sanitized = sanitize(exception.error(), prepared);
+                    ExecutionError sanitized = scope == null ? sanitize(exception.error(), prepared) : protectedError();
                     Instant finishedAt = Instant.now();
                     persistenceService.failRemote(executionId, endpoint, worker.status().getWorkerName(), worker.status().getWorkerInstanceId(), finishedAt, finishedAt, sanitized);
                     throw new ProcedureExecutionException(executionId, message(sanitized));
                 }
                 if (!result.getSuccessful()) {
-                    result = result.toBuilder().setError(sanitize(result.getError(), prepared)).build();
+                    result = result.toBuilder().setError(scope == null ? sanitize(result.getError(), prepared) : protectedError()).build();
                 }
                 for (ArtifactDescriptor descriptor : result.getArtifactsList())
                     directArtifacts.add(new ArtifactLocation(descriptor, endpoint, workerInstanceId));
 
-                JsonNode value = persistenceService.complete(executionId, endpoint, result, prepared.sensitiveResult());
+                JsonNode value = persistenceService.complete(executionId, endpoint, result, prepared.sensitiveResult() || scope != null);
                 if (!result.getSuccessful())
                     throw new ProcedureExecutionException(executionId, message(result.getError()));
 
@@ -450,7 +540,7 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
             // deadline) happen before a worker result has finalized the RUNNING row.
             // failLocal is idempotent and leaves already-completed/error rows untouched.
             if (started)
-                persistenceService.failLocal(executionId, exception);
+                persistenceService.failLocal(executionId, scope == null ? exception : new ProcedureExecutionException("Protected procedure execution failed"));
 
             throw exception;
         } catch (Throwable exception) {
@@ -458,16 +548,26 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
                 Thread.currentThread().interrupt();
 
             if (started)
-                persistenceService.failLocal(executionId, exception);
+                persistenceService.failLocal(executionId, scope == null ? exception : new ProcedureExecutionException("Protected procedure execution failed"));
 
             throw new ProcedureExecutionException(started ? executionId : null,
                     exception.getMessage() == null ? exception.getClass().getSimpleName() : exception.getMessage(), exception);
         } finally {
+            if (cancellation != null) {
+                cancellation.detach(previous);
+                cancellation.close();
+                scope.calls().remove(cancellation);
+                if (scope.closed().get() && scope.calls().isEmpty()) valueScopes.remove(rootExecutionId, scope);
+            }
             invocationRegistry.unregister(executionId);
             cleanupArtifacts(directArtifacts);
             leave(procedureId);
             statusEventPublisher.publish();
         }
+    }
+
+    private static ExecutionError protectedError() {
+        return ExecutionError.newBuilder().setType("PROTECTED_PROCEDURE_FAILURE").setMessage("Protected procedure execution failed").build();
     }
 
     private ExecuteProcedureRequest request(UUID executionId, UUID rootExecutionId, UUID parentAlertExecutionId, UUID parentProcedureExecutionId, int depth, Instant deadline, PreparedProcedureExecution prepared) {
@@ -648,4 +748,7 @@ public class ProcedureExecutionOrchestrator implements AutoCloseable {
 
     @Override
     public void close() { executor.close(); }
+
+    private record ValueCapability(long procedureId, String pointer, UUID root, Instant deadline) { }
+    private record ValueScope(UUID draft, String actor, java.util.Set<io.grpc.Context.CancellableContext> calls, java.util.concurrent.atomic.AtomicBoolean closed) { }
 }

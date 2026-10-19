@@ -22,7 +22,7 @@ import app.alertify.worker.grpc.ExecuteProcedureRequest;
  * run outside the semaphore because they are usually nested inside a task that
  * already holds a permit.
  */
-class WorkerExecutionTracker {
+public class WorkerExecutionTracker {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(WorkerExecutionTracker.class);
 
@@ -69,6 +69,23 @@ class WorkerExecutionTracker {
 
     long totalExecuted() {
         return totalExecuted.sum();
+    }
+
+    /** Interactive browsers share the alert semaphore, but never increment alert totals. */
+    public AutoCloseable tryBrowserSession(String sessionId) {
+        if (!semaphore.tryAcquire())
+            throw new IllegalStateException("PLAYWRIGHT_CAPACITY_FULL");
+
+        String id = "browser:" + sessionId;
+        Instant now = Instant.now();
+        running.put(id, new TaskState(id, 0, "Interactive Playwright session", now, now));
+        java.util.concurrent.atomic.AtomicBoolean released = new java.util.concurrent.atomic.AtomicBoolean();
+        return () -> {
+            if (released.compareAndSet(false, true)) {
+                running.remove(id);
+                semaphore.release();
+            }
+        };
     }
 
     ProcedurePermit startProcedure(ExecuteProcedureRequest request, Instant startedAt) {

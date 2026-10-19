@@ -77,6 +77,8 @@ public class SecurityConfig {
                                 .permitAll()
                                 .requestMatchers(HttpMethod.GET, "/api/admin/events")
                                 .permitAll()
+                                .requestMatchers(HttpMethod.GET, "/api/admin/playwright-frames")
+                                .permitAll()
                                 .requestMatchers(HttpMethod.GET, "/api/viewer/events")
                                 .permitAll()
                                 .requestMatchers(HttpMethod.GET, "/api/ai/codex/oauth/callback")

@@ -313,6 +313,7 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
                 preReservedWorker.close();
 
             procedureInvocationRegistry.unregister(executionId);
+            procedureExecutionOrchestrator.releaseValues(executionId);
             persistenceService.clearTrigger(executionId);
             leave(alertId);
             statusEventPublisher.publish();
@@ -367,10 +368,14 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
             request.addParameters(value);
         }
         for (var preparedValue : execution.preparedValues()) {
+            String value = preparedValue.value();
+            if (preparedValue.source() == app.alertify.alerts.AlertExecutionValueSource.PROCEDURE)
+                value = procedureExecutionOrchestrator.prepareAlertValue(value, UUID.fromString(executionId), deadline);
+
             request.addPreparedValues(PreparedAlertValue.newBuilder()
                     .setSource(toGrpcValueSource(preparedValue.source()))
                     .setName(preparedValue.name())
-                    .setValue(preparedValue.value()));
+                    .setValue(value));
         }
         return request.build();
     }
@@ -393,6 +398,7 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
         return switch (source) {
             case CONFIGURATION -> app.alertify.worker.grpc.AlertExecutionValueSource.ALERT_EXECUTION_VALUE_SOURCE_CONFIGURATION;
             case SECRET -> app.alertify.worker.grpc.AlertExecutionValueSource.ALERT_EXECUTION_VALUE_SOURCE_SECRET;
+            case PROCEDURE -> app.alertify.worker.grpc.AlertExecutionValueSource.ALERT_EXECUTION_VALUE_SOURCE_PROCEDURE;
         };
     }
 

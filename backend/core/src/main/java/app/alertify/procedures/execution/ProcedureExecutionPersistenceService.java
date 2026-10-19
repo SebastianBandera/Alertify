@@ -116,6 +116,15 @@ public class ProcedureExecutionPersistenceService {
     }
 
     @Transactional
+    public void startWizard(UUID executionId, PreparedProcedureExecution prepared, UUID root, UUID draft, Instant startedAt, String actor) {
+        Procedure procedure = procedureRepository.findById(prepared.procedureId()).orElseThrow();
+        ProcedureExecution execution = ProcedureExecution.running(executionId, procedure, prepared.procedureVersion(), ProcedureExecutionTrigger.WIZARD, root, null, null, 1, startedAt, actor);
+        execution.recordWizardDraft(draft);
+        execution.recordAiProvenance(AiInvocationContextHolder.currentProvenance());
+        executionRepository.saveAndFlush(execution);
+    }
+
+    @Transactional
     public void failRemote(UUID executionId, WorkerEndpoint endpoint, String workerName, String workerInstanceId, Instant workStartedAt, Instant finishedAt, ExecutionError error) {
         ProcedureExecution execution = execution(executionId);
         ExecutionTimestamps timestamps = ExecutionTimestamps.ordered(EXECUTION_TYPE_PROCEDURE, executionId, workerName, execution.getStartedAt(), workStartedAt, finishedAt);

@@ -20,12 +20,13 @@ interface AdminEventPayloads {
   readonly DASHBOARD_ALERT_REMOVED: { readonly alertId: number };
   readonly AI_CHAT_UPDATED: { readonly conversationId: number; readonly turnId: number | null; readonly status: string; readonly detail: unknown };
   readonly AI_RESOURCES_INVALIDATED: { readonly targets: readonly string[] };
+  readonly PLAYWRIGHT_WIZARD_UPDATED: unknown;
 }
 
 export type AdminEventName = keyof AdminEventPayloads;
 
 const EVENT_NAMES: ReadonlySet<string> = new Set<AdminEventName>([
-  'SYSTEM_STATUS', 'DASHBOARD_ALERT', 'DASHBOARD_ALERT_REMOVED', 'AI_CHAT_UPDATED', 'AI_RESOURCES_INVALIDATED',
+  'SYSTEM_STATUS', 'DASHBOARD_ALERT', 'DASHBOARD_ALERT_REMOVED', 'AI_CHAT_UPDATED', 'AI_RESOURCES_INVALIDATED', 'PLAYWRIGHT_WIZARD_UPDATED',
 ]);
 
 function isEventName(value: unknown): value is AdminEventName {

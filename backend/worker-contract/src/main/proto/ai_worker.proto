@@ -112,6 +112,12 @@ message ChatToolDefinition {
 message ChatHistoryMessage {
   string role = 1;
   string content = 2;
+  repeated ChatImage images = 3;
+}
+
+message ChatImage {
+  bytes data = 1;
+  string media_type = 2;
 }
 
 message ChatStart {
@@ -124,6 +130,7 @@ message ChatStart {
   repeated ChatToolDefinition tools = 7;
   string mode = 8;
   string approval_policy = 9;
+  bool ephemeral_browser_session = 10;
 }
 
 message ChatToolResult {
@@ -134,6 +141,7 @@ message ChatToolResult {
   string diagnostic_code = 5;
   // Trusted backend metadata only; never raw arguments, result values or review reasons.
   string operation_metadata_json = 6;
+  repeated ChatImage images = 7;
 }
 
 message ChatClientMessage {

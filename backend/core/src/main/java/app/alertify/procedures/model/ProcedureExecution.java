@@ -73,6 +73,9 @@ public class ProcedureExecution {
     @Column(name = "parent_pipe_execution_id", updatable = false)
     private UUID parentPipeExecutionId;
 
+    @Column(name = "wizard_draft_id", updatable = false)
+    private UUID wizardDraftId;
+
     @Column(nullable = false, updatable = false)
     private int depth;
 
@@ -198,6 +201,8 @@ public class ProcedureExecution {
     public UUID getParentAlertExecutionId() { return parentAlertExecutionId; }
     public UUID getParentProcedureExecutionId() { return parentProcedureExecutionId; }
     public UUID getParentPipeExecutionId() { return parentPipeExecutionId; }
+    public UUID getWizardDraftId() { return wizardDraftId; }
+    public void recordWizardDraft(UUID id) { requireRunning(); wizardDraftId = Objects.requireNonNull(id); }
     public int getDepth() { return depth; }
     public Instant getStartedAt() { return startedAt; }
     public Instant getWorkStartedAt() { return workStartedAt; }

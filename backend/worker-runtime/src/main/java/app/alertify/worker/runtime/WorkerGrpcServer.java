@@ -24,15 +24,17 @@ class WorkerGrpcServer implements SmartLifecycle {
     private final WorkerRuntimeProperties properties;
     private final AlertWorkerGrpcService workerService;
     private final WorkerInstanceIdentity instanceIdentity;
+    private final java.util.List<WorkerGrpcExtension> extensions;
     private final HealthStatusManager healthStatusManager = new HealthStatusManager();
 
     private volatile boolean running;
     private Server server;
 
-    WorkerGrpcServer(WorkerRuntimeProperties properties, AlertWorkerGrpcService workerService, WorkerInstanceIdentity instanceIdentity) {
+    WorkerGrpcServer(WorkerRuntimeProperties properties, AlertWorkerGrpcService workerService, WorkerInstanceIdentity instanceIdentity, java.util.List<WorkerGrpcExtension> extensions) {
         this.properties = properties;
         this.workerService = workerService;
         this.instanceIdentity = instanceIdentity;
+        this.extensions = extensions;
     }
 
     @Override
@@ -46,11 +48,12 @@ class WorkerGrpcServer implements SmartLifecycle {
             for (WorkerCapability capability : properties.capabilities())
                 healthStatusManager.setStatus(capability.healthServiceName(), SERVING);
 
-            server = NettyServerBuilder.forPort(properties.grpcPort(), serverCredentials())
+            NettyServerBuilder builder = NettyServerBuilder.forPort(properties.grpcPort(), serverCredentials())
                     .maxInboundMessageSize(properties.maxInboundMessageBytes())
                     .addService(healthStatusManager.getHealthService())
-                    .addService(workerService)
-                    .build()
+                    .addService(workerService);
+            extensions.forEach(extension -> builder.addService(extension.grpcService()));
+            server = builder.build()
                     .start();
             running = true;
             LOGGER.info("Worker gRPC server started: name={}, instanceId={}, port={}, capabilities={}, maxConcurrentAlerts={}", properties.name(), instanceIdentity.id(), server.getPort(), properties.capabilities(), properties.maxConcurrentAlerts());

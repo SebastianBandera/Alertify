@@ -20,6 +20,7 @@ public record ProcedureExecutionResponse(
     UUID rootExecutionId,
     UUID parentAlertExecutionId,
     UUID parentProcedureExecutionId,
+    UUID wizardDraftId,
     int depth,
     Instant startedAt,
     Instant workStartedAt,

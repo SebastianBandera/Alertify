@@ -33,6 +33,7 @@
     </properties>
 
     <modules>
+        <module>playwright-support</module>
         <module>worker-contract</module>
         <module>worker-runtime</module>
         <module>alert-templates</module>

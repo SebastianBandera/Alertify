@@ -91,6 +91,7 @@ class AlertWorkerGrpcService extends AlertWorkerServiceGrpc.AlertWorkerServiceIm
                 .setWorkerInstanceId(instanceIdentity.id())
                 .setWorkerStartedAt(WorkerExecutionEngine.timestamp(instanceIdentity.startedAt()))
                 .setMaxConcurrentAlerts(properties.maxConcurrentAlerts())
+                .setPlaywrightWizardSupported(properties.capabilities().contains(app.alertify.worker.contract.WorkerCapability.PLAYWRIGHT))
                 .addAllCapabilities(properties.capabilities().stream().map(Enum::name).sorted().toList())
                 .setTotalExecuted(tracker.totalExecuted())
                 .setRunningCount(running.size())
@@ -454,7 +455,8 @@ class AlertWorkerGrpcService extends AlertWorkerServiceGrpc.AlertWorkerServiceIm
     }
 
     private static WorkerTask task(WorkerExecutionTracker.TaskState task) {
-        WorkerTask.Builder result = WorkerTask.newBuilder().setExecutionId(task.executionId()).setAlertId(task.alertId()).setAlertName(task.alertName()).setKind(WorkerTaskKind.WORKER_TASK_KIND_ALERT).setQueuedAt(WorkerExecutionEngine.timestamp(task.queuedAt()));
+        WorkerTaskKind kind = task.executionId().startsWith("browser:") ? WorkerTaskKind.WORKER_TASK_KIND_BROWSER_SESSION : WorkerTaskKind.WORKER_TASK_KIND_ALERT;
+        WorkerTask.Builder result = WorkerTask.newBuilder().setExecutionId(task.executionId()).setAlertId(task.alertId()).setAlertName(task.alertName()).setKind(kind).setQueuedAt(WorkerExecutionEngine.timestamp(task.queuedAt()));
         if (task.workStartedAt() != null)
             result.setWorkStartedAt(WorkerExecutionEngine.timestamp(task.workStartedAt()));
 

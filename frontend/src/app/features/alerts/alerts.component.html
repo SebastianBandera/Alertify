@@ -412,14 +412,17 @@
   }
 
   @if (activeTab() === 'wizards') {
-    <div class="wizard-grid">
-      <button type="button" class="wizard-card" disabled>
+    @if (playwrightWizardOpen()) {
+      <app-playwright-wizard (prepared)="preparePlaywrightAlert($event)" (dismissed)="playwrightWizardOpen.set(false)" />
+    } @else {
+      <div class="wizard-grid">
+      <button type="button" class="wizard-card" (click)="playwrightWizardOpen.set(true)">
         <strong>{{ localization.translate('alerts.wizards.playwrightPage.title') }}</strong>
         <code>PlaywrightPageAlertTemplate</code>
         <p>{{ localization.translate('alerts.wizards.playwrightPage.description') }}</p>
-        <span class="badge badge--disabled">{{ localization.translate('alerts.wizards.comingSoon') }}</span>
       </button>
     </div>
+    }
   }
 
   @if (activeTab() === 'history') {

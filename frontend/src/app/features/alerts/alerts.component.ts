@@ -27,6 +27,8 @@ import { templateClassName } from '../../core/utils/template-key';
 import { EditorDraftService } from '../../shared/editor-drafts/editor-draft.service';
 import { EditorViewportService } from '../../shared/editor-viewport/editor-viewport.service';
 import { SearchableSelectComponent, SearchableSelectOption } from '../../shared/searchable-select/searchable-select.component';
+import { PlaywrightWizardComponent } from './playwright-wizard.component';
+import { PlaywrightWizardApiService, WizardSettings } from './playwright-wizard-api.service';
 
 type AlertTab = 'alerts' | 'templates' | 'wizards' | 'history';
 type AlertFormField = 'template' | 'name' | 'cron' | 'smartInterval';
@@ -102,7 +104,7 @@ function alertTab(value: string | null): AlertTab {
 
 @Component({
   selector: 'app-alerts',
-  imports: [DatePipe, FormsModule, SearchableSelectComponent],
+  imports: [DatePipe, FormsModule, SearchableSelectComponent, PlaywrightWizardComponent],
   templateUrl: './alerts.component.html',
   styleUrl: './alerts.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -121,6 +123,9 @@ export class AlertsComponent implements OnInit {
   private readonly editorViewport = inject(EditorViewportService);
 
   protected readonly activeTab = signal<AlertTab>('alerts');
+  protected readonly playwrightWizardOpen = signal(false);
+  private readonly wizardApi = inject(PlaywrightWizardApiService);
+  private wizardDraftId: string | null = null;
   protected readonly alerts = signal<readonly Alert[]>([]);
   protected readonly templates = signal<readonly AlertTemplate[]>([]);
   protected readonly tags = signal<readonly AlertTag[]>([]);
@@ -633,6 +638,7 @@ export class AlertsComponent implements OnInit {
   }
 
   protected openCreate(templateId?: number): void {
+    this.wizardDraftId = null;
     this.editingAlert.set(null);
     const template = templateId === undefined
       ? null
@@ -641,6 +647,27 @@ export class AlertsComponent implements OnInit {
     this.formError.set(null);
     this.formFieldErrors.set({});
     this.editorOpen.set(true);
+  }
+
+  protected preparePlaywrightAlert(prepared: { id: string; settings: WizardSettings }): void {
+    const template = this.templates().find(value => value.templateKey.endsWith('.PlaywrightPageAlertTemplate'));
+    if (!template) return;
+    this.openCreate(template.id);
+    this.wizardDraftId = prepared.id;
+    this.patchForm({ enabled: false });
+    const values: Record<string, string> = {
+      url: prepared.settings.url, steps: prepared.settings.steps,
+      chromiumEnabled: String(prepared.settings.browsers.includes('chromium')),
+      firefoxEnabled: String(prepared.settings.browsers.includes('firefox')),
+      webkitEnabled: String(prepared.settings.browsers.includes('webkit')),
+      loadTimeoutSeconds: String(prepared.settings.loadTimeoutSeconds),
+      elementTimeoutSeconds: String(prepared.settings.elementTimeoutSeconds),
+    };
+    for (const [key, value] of Object.entries(values)) {
+      const parameter = template.parameters.find(item => item.key === key);
+      this.patchParameter(key, { configured: true, source: parameter?.options.includes(value) ? 'OPTION' : 'TEXT', textValue: value });
+    }
+    this.playwrightWizardOpen.set(false);
   }
 
   protected openEdit(alert: Alert): void {
@@ -863,6 +890,10 @@ export class AlertsComponent implements OnInit {
       };
       if (editing) await this.api.updateAlert(editing.id, request);
       else await this.api.createAlert(request);
+      if (this.wizardDraftId) {
+        try { await this.wizardApi.request('DELETE', { id: this.wizardDraftId }); } catch { /* The alert was saved; retaining its draft is safe. */ }
+        this.wizardDraftId = null;
+      }
       this.drafts.remove('alerts');
       this.editorOpen.set(false);
       await Promise.all([this.loadAlerts(), this.loadTemplates()]);
