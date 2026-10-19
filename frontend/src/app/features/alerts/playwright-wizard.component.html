@@ -30,7 +30,7 @@
       <button type="button" [disabled]="busy() || !changed()" (click)="save()">{{ t('save') }}</button>
       <button type="button" [disabled]="busy()" (click)="remove()">{{ t('delete') }}</button>
     </div>
-    @if (state()!.error) { <p class="error" role="alert">{{ state()!.error }}</p> }
+    @if (stateError()) { <p class="error" role="alert">{{ stateError() }}</p> }
     @if (state()!.open && state()!.idleRemainingSeconds <= 30 && !state()!.busy) { <p class="warning" role="status">{{ t('idleWarning') }} {{ state()!.idleRemainingSeconds }} s <button type="button" (click)="activity()">{{ t('keepAlive') }}</button></p> }
     @if (state()!.busy) { <p class="working" role="status">{{ t('working') }} @if (state()!.progress; as progress) { · {{ t('line') }} {{ progress.line }} · {{ progress.completed }} {{ t('completed') }} }</p> }
 
@@ -55,8 +55,11 @@
             <article [hidden]="entry.role === 'SYSTEM'" [class.user]="entry.role === 'USER'"><strong>{{ t(entry.role === 'USER' ? 'you' : 'assistant') }}</strong><app-ai-chat-message [content]="entry.content" />@if (entry.hasImage) { <small>{{ t('captureSent') }}</small> }</article>
           } @empty { <p class="placeholder">{{ t('chatHelp') }}</p> }
         </div>
+        @if (state()!.document.proposalError; as failure) {
+          <section class="proposal-error" role="alert"><strong>{{ t('proposalFailed') }}</strong><p>{{ failure.error }}</p><p>{{ t('proposalFailedHelp') }}</p></section>
+        }
         @if (state()!.document.lastAction; as action) {
-          @if ((action.operation === 'EXECUTE' || action.operation === 'TEST' || action.status === 'FAILED') && action.status !== 'RUNNING') {
+          @if ((action.operation === 'EXECUTE' || action.operation === 'TEST' || action.status === 'FAILED') && action.status !== 'RUNNING' && (action.status === 'FAILED' || (!state()!.document.proposalError && !awaitingApproval()))) {
             <div class="execution-receipt" [class.failed]="action.status === 'FAILED'" role="status">
               <strong>{{ t(action.status === 'FAILED' ? 'executionFailed' : 'executionCompleted') }}</strong>
               @if (action.result?.completed !== undefined) { <p>{{ action.result!.completed }} {{ t('completed') }}</p> }

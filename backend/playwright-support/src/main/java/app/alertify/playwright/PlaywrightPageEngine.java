@@ -621,7 +621,8 @@ public class PlaywrightPageEngine implements AlertEvaluator {
         private final Map<String, String> variables = new LinkedHashMap<>();
     }
 
-    public record Navigation(Integer statusCode) {
+    public record Navigation(Integer statusCode, String contentType) {
+        public Navigation(Integer statusCode) { this(statusCode, ""); }
     }
 
     public enum BrowserEngine {
@@ -880,7 +881,7 @@ public class PlaywrightPageEngine implements AlertEvaluator {
         }
 
         private static Navigation navigation(Response response) {
-            return new Navigation(response == null ? null : response.status());
+            return new Navigation(response == null ? null : response.status(), response == null ? "" : response.headers().getOrDefault("content-type", ""));
         }
     }
 }

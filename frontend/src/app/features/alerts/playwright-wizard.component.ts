@@ -29,6 +29,12 @@ export class PlaywrightWizardComponent implements OnInit {
   private readonly clientId = crypto.randomUUID();
   protected readonly state = signal<WizardState | null>(null);
   protected readonly activeBrowser = computed(() => playwrightBrowserLabel(this.state()?.activeEngine));
+  protected readonly stateError = computed(() => {
+    const current = this.state();
+    if (current?.errorCode === 'STALE_SELECTION') return this.t('selectionChanged');
+    if (current?.errorCode === 'NO_SELECTION') return this.t('selectElement');
+    return current?.error ?? '';
+  });
   protected readonly drafts = signal<{ id: string; url: string; updatedAt: string }[]>([]);
   protected readonly error = signal('');
   protected readonly pending = signal(false);
@@ -50,7 +56,14 @@ export class PlaywrightWizardComponent implements OnInit {
   protected readonly referenceOptions = computed<readonly SearchableSelectOption[]>(() => this.references().map((reference, index) => ({ value: index, label: reference, description: this.t(reference.startsWith('configs.') ? 'configurationReference' : 'secretReference') })));
   protected readonly selectedReferenceId = computed(() => { const index = this.references().indexOf(this.selectedReference()); return index < 0 ? null : index; });
   protected readonly settings = signal<WizardSettings>({ url: '', steps: '', engine: 'chromium', browsers: ['chromium'], loadTimeoutSeconds: 10, elementTimeoutSeconds: 5, mode: 'ASK' });
-  protected readonly changed = computed(() => !!this.state() && JSON.stringify(this.settings()) !== JSON.stringify(this.state()!.document.settings));
+  protected readonly changed = computed(() => {
+    const saved = this.state()?.document.settings;
+    const current = this.settings();
+    return !!saved && (current.url !== saved.url || current.steps !== saved.steps || current.engine !== saved.engine
+      || current.loadTimeoutSeconds !== saved.loadTimeoutSeconds || current.elementTimeoutSeconds !== saved.elementTimeoutSeconds
+      || current.mode !== saved.mode || current.browsers.length !== saved.browsers.length
+      || current.browsers.some((browser, index) => browser !== saved.browsers[index]));
+  });
   protected readonly busy = computed(() => this.pending() || !!this.state()?.busy);
   protected readonly awaitingApproval = computed(() => !!this.state()?.document.proposal);
   protected readonly canPrepare = computed(() => !this.changed() && !!this.state()?.document.testedRevision);

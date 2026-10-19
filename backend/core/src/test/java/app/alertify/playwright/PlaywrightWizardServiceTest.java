@@ -29,6 +29,24 @@ class PlaywrightWizardServiceTest {
             mock(ProcedureExecutionOrchestrator.class), mock(ProcedureInvocationRegistry.class), mock(ProcedureRepository.class), json);
 
     @Test
+    void continuesInTheActualLastTestedBrowserWithoutChangingTheTestMatrixOrReplaying() {
+        var settings = new PlaywrightWizardService.Settings("https://example.com/", "QUERY h1", "chromium", List.of("chromium", "firefox"), 10, 5, "ASK");
+        var report = json.valueToTree(Map.of("activeEngine", "firefox", "passed", true));
+        var settled = PlaywrightWizardService.settingsAfterTest(settings, report);
+        assertThat(settled.engine()).isEqualTo("firefox");
+        assertThat(settled.steps()).isEqualTo(settings.steps());
+        assertThat(settled.browsers()).isEqualTo(settings.browsers());
+        assertThat(PlaywrightWizardService.settingsAfterTest(settings, json.valueToTree(Map.of("passed", true)))).isEqualTo(settled);
+    }
+
+    @Test
+    void doesNotInventAnActiveBrowserAfterAnOpeningFailureOrAcceptAnUnexpectedEngine() {
+        var settings = new PlaywrightWizardService.Settings("https://example.com/", "", "chromium", List.of("firefox"), 10, 5, "ASK");
+        assertThat(PlaywrightWizardService.settingsAfterTest(settings, json.valueToTree(Map.of("activeEngine", "", "passed", false)))).isNull();
+        assertThatThrownBy(() -> PlaywrightWizardService.settingsAfterTest(settings, json.valueToTree(Map.of("activeEngine", "webkit")))).hasMessageContaining("unexpected");
+    }
+
+    @Test
     void shortJsonResultsDoNotCorruptDeclaredPointersRevisionHashesOrExecutionStatus() {
         var document = json.valueToTree(Map.of("settings", Map.of("steps", "CALL PROCEDURE \"Uno\" POINTER \"/items/1\" AS codigo"), "testedRevision", "ab1234", "messages", List.of(Map.of("content", "Remote value 1")), "lastAction", Map.of("operation", "EXECUTE", "status", "SUCCESS", "error", "Remote value 1")));
         var protectedDraft = PlaywrightWizardService.protectedDraft(document, List.of("1", "SUCCESS"));
@@ -69,6 +87,40 @@ class PlaywrightWizardServiceTest {
         assertThatThrownBy(() -> service.request(admin, payload)).hasMessageContaining("successful test");
         var bypass = json.valueToTree(Map.of("operation", "PREPARE", "id", draft.getId(), "clientId", "browser-a", "bypass", true));
         assertThat(((Map<?, ?>) service.request(admin, bypass)).containsKey("settings")).isTrue();
+    }
+
+    @Test
+    void savingUnchangedSettingsPreservesThePendingProposalAndSuccessfulTest() {
+        var admin = new UsernamePasswordAuthenticationToken("admin-subject", "", List.of(new SimpleGrantedAuthority("ROLE_ADMIN")));
+        var settings = new PlaywrightWizardService.Settings("https://example.com/", "QUERY h1", "chromium", List.of("chromium"), 10, 5, "ASK");
+        var document = json.valueToTree(Map.of("settings", settings, "messages", List.of(), "proposal", "QUERY #menu\nHOVER", "proposalRevision", "original-revision", "proposalClient", "browser-a", "testedRevision", "passing-revision"));
+        var draft = new WizardDraft("admin-subject", json.writeValueAsString(document));
+        when(store.load("admin-subject", draft.getId())).thenReturn(draft);
+        var payload = json.createObjectNode().put("operation", "SAVE").put("id", draft.getId().toString()).put("clientId", "browser-a");
+        payload.set("settings", json.valueToTree(settings));
+        service.request(admin, payload);
+        var saved = org.mockito.ArgumentCaptor.forClass(String.class);
+        org.mockito.Mockito.verify(store).save(org.mockito.ArgumentMatchers.eq("admin-subject"), org.mockito.ArgumentMatchers.eq(draft.getId()), saved.capture());
+        assertThat(json.readTree(saved.getValue())).isEqualTo(document);
+    }
+
+    @Test
+    void changingSettingsInvalidatesTheProposalAndItsApprovalMetadata() {
+        var admin = new UsernamePasswordAuthenticationToken("admin-subject", "", List.of(new SimpleGrantedAuthority("ROLE_ADMIN")));
+        var settings = new PlaywrightWizardService.Settings("https://example.com/", "QUERY h1", "chromium", List.of("chromium"), 10, 5, "ASK");
+        var document = json.valueToTree(Map.of("settings", settings, "messages", List.of(), "proposal", "QUERY #menu\nHOVER", "proposalRevision", "original-revision", "proposalClient", "browser-a", "testedRevision", "passing-revision"));
+        var draft = new WizardDraft("admin-subject", json.writeValueAsString(document));
+        when(store.load("admin-subject", draft.getId())).thenReturn(draft);
+        var payload = json.createObjectNode().put("operation", "SAVE").put("id", draft.getId().toString()).put("clientId", "browser-a");
+        payload.set("settings", json.valueToTree(new PlaywrightWizardService.Settings(settings.url(), settings.steps(), "firefox", settings.browsers(), 10, 5, "ASK")));
+        service.request(admin, payload);
+        var saved = org.mockito.ArgumentCaptor.forClass(String.class);
+        org.mockito.Mockito.verify(store).save(org.mockito.ArgumentMatchers.eq("admin-subject"), org.mockito.ArgumentMatchers.eq(draft.getId()), saved.capture());
+        var updated = json.readTree(saved.getValue());
+        assertThat(updated.has("proposal")).isFalse();
+        assertThat(updated.has("proposalRevision")).isFalse();
+        assertThat(updated.has("proposalClient")).isFalse();
+        assertThat(updated.has("testedRevision")).isFalse();
     }
 
     @Test

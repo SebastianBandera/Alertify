@@ -112,15 +112,70 @@ class CodexChatReceiptTest {
         assertThat(JSON.writeValueAsString(exchange.requests.get(1))).contains("TOOL_RECEIPT_INVALID").doesNotContain("PRIVATE-MALFORMED");
     }
 
+    @Test
+    @Timeout(10)
+    void correctsARejectedBrowserProposalInTheSameTurnEvenWhenTheModelInitiallyTriesToStop() throws Exception {
+        Exchange exchange = exchange("Proposal ready", true, true);
+        ChatToolCall call = exchange.calls.poll(5, TimeUnit.SECONDS);
+        exchange.client.onNext(ChatClientMessage.newBuilder().setToolResult(ChatToolResult.newBuilder().setCallId(call.getCallId())
+                .setFailed(true).setDiagnosticCode("PLAYWRIGHT_STEPS_INVALID").setOutput("Line 9: CHECK TEXT requires an argument")
+                .setOperationMetadataJson("{\"phase\":\"VALIDATION\",\"executed\":false,\"retryable\":true,\"remainingCorrections\":2}")).build());
+        ChatToolCall corrected = exchange.calls.poll(5, TimeUnit.SECONDS);
+        assertThat(corrected).isNotNull();
+        assertThat(corrected.getName()).isEqualTo("browser_steps");
+        assertThat(exchange.frames.stream().noneMatch(ChatWorkerMessage::hasOutputText)).isTrue();
+        assertThat(JSON.writeValueAsString(exchange.requests.get(1))).contains("correct the DSL", "same turn", "remainingCorrections");
+        assertThat(JSON.writeValueAsString(exchange.requests.get(2))).contains("resubmit browser_steps now");
+        exchange.client.onNext(ChatClientMessage.newBuilder().setToolResult(ChatToolResult.newBuilder().setCallId(corrected.getCallId()).setOutput("PENDING_APPROVAL; no execution")).build());
+        assertThat(exchange.finished.await(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(exchange.requests).hasSize(4);
+        assertThat(exchange.frames.stream().filter(ChatWorkerMessage::hasCompleted).count()).isEqualTo(1);
+        assertThat(exchange.calls).isEmpty();
+    }
+
+    @Test
+    @Timeout(10)
+    void limitsCorrectionRemindersWhenTheModelDoesNotProduceAValidProposal() throws Exception {
+        Exchange exchange = exchange("Validation remains unresolved", true, false);
+        ChatToolCall call = exchange.calls.poll(5, TimeUnit.SECONDS);
+        exchange.client.onNext(ChatClientMessage.newBuilder().setToolResult(ChatToolResult.newBuilder().setCallId(call.getCallId())
+                .setFailed(true).setDiagnosticCode("PLAYWRIGHT_STEPS_INVALID").setOutput("Missing check argument")
+                .setOperationMetadataJson("{\"phase\":\"VALIDATION\",\"executed\":false,\"retryable\":true,\"remainingCorrections\":2}")).build());
+        assertThat(exchange.finished.await(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(exchange.requests).hasSize(4);
+        assertThat(exchange.calls).isEmpty();
+        assertThat(exchange.frames.stream().filter(ChatWorkerMessage::hasOutputText).count()).isEqualTo(1);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"EXECUTION", "MISSING_EXECUTED", "EXHAUSTED", "REGULAR_CHAT"})
+    @Timeout(10)
+    void neverRetriesExecutionFailuresIncompleteReceiptsExhaustedCorrectionsOrRegularChat(String scenario) throws Exception {
+        Exchange exchange = exchange("Explain the failure", !scenario.equals("REGULAR_CHAT"), false);
+        ChatToolCall call = exchange.calls.poll(5, TimeUnit.SECONDS);
+        var receipt = JSON.createObjectNode().put("phase", scenario.equals("EXECUTION") ? "EXECUTION" : "VALIDATION").put("retryable", !scenario.equals("EXHAUSTED")).put("remainingCorrections", scenario.equals("EXHAUSTED") ? 0 : 2);
+        if (!scenario.equals("MISSING_EXECUTED")) receipt.put("executed", scenario.equals("EXECUTION"));
+
+        exchange.client.onNext(ChatClientMessage.newBuilder().setToolResult(ChatToolResult.newBuilder().setCallId(call.getCallId())
+                .setFailed(true).setDiagnosticCode("PLAYWRIGHT_STEPS_INVALID").setOutput("Safe diagnostic").setOperationMetadataJson(JSON.writeValueAsString(receipt))).build());
+        assertThat(exchange.finished.await(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(exchange.requests).hasSize(2);
+        assertThat(exchange.calls).isEmpty();
+    }
+
     private Exchange exchange(String finalText) {
+        return exchange(finalText, false, false);
+    }
+
+    private Exchange exchange(String finalText, boolean browserSession, boolean correctAfterReminder) {
         var requests = new CopyOnWriteArrayList<JsonNode>();
         CodexHttpTransport transport = request -> {
             if (request.uri().getPath().endsWith("/models"))
                 return CompletableFuture.completedFuture(new Response(request, 200, "{\"data\":[{\"id\":\"synthetic-model\"}]}"));
 
             requests.add(JSON.readTree(body(request)));
-            Object output = requests.size() == 1
-                    ? Map.of("type", "function_call", "call_id", "synthetic-call", "name", "fixture_update", "arguments", "{}")
+            Object output = requests.size() == 1 || (correctAfterReminder && requests.size() == 3)
+                    ? Map.of("type", "function_call", "call_id", requests.size() == 1 ? "synthetic-call" : "corrected-call", "name", browserSession ? "browser_steps" : "fixture_update", "arguments", "{}")
                     : Map.of("type", "message", "role", "assistant", "content", List.of(Map.of("type", "output_text", "text", finalText)));
             String event = JSON.writeValueAsString(Map.of("type", "response.completed", "response", Map.of("output", List.of(output))));
             return CompletableFuture.completedFuture(new Response(request, 200, "data: " + event + "\n\n"));
@@ -152,6 +207,7 @@ class CodexChatReceiptTest {
         });
         client.onNext(ChatClientMessage.newBuilder().setStart(ChatStart.newBuilder().setConversationId(1).setTurnId(1)
                 .setModel("synthetic-model").setReasoningEffort("low").setMode("DIRECT").setApprovalPolicy("ASK")
+                .setEphemeralBrowserSession(browserSession)
                 .setInstructions("Audit at start: {\"operations\":[]}. Requested steps: 1 then 2.")).build());
         return new Exchange(client, calls, frames, requests, finished);
     }

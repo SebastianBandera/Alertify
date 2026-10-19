@@ -38,6 +38,8 @@ pre { max-height: 350px; overflow: auto; white-space: pre-wrap; overflow-wrap: a
 .proposal { margin: 15px 0 12px; padding: 14px; border: 1px solid #d9d6fe; border-radius: 10px; background: #f4f3ff; }
 .proposal pre { max-height: 140px; margin: 10px 0; }
 .proposal-help { margin-top: 8px; font-size: 12px; line-height: 1.5; }
+.proposal-error { margin-bottom: 12px; padding: 12px; border: 1px solid #fecdca; border-radius: 8px; background: #fef3f2; color: #b42318; font-size: 12px; }
+.proposal-error p { margin-top: 6px; line-height: 1.5; overflow-wrap: anywhere; }
 .proposal .actions { margin-bottom: 0; }
 .chat-panel:has(.proposal) .messages { height: 180px; }
 .execution-receipt { margin-bottom: 12px; padding: 12px; border-radius: 8px; background: #ecfdf3; color: #027a48; font-size: 12px; }

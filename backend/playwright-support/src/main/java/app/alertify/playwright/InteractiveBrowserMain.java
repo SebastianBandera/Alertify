@@ -11,6 +11,7 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Consumer;
 
 import com.google.protobuf.ByteString;
 import com.microsoft.playwright.Frame;
@@ -31,13 +32,18 @@ import app.alertify.worker.wizard.grpc.WizardEvent;
 import app.alertify.worker.wizard.grpc.WizardRequest;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 /** Per-session child process. Stdout is a protobuf pipe, never a diagnostic log. */
-public final class InteractiveBrowserMain {
+public final class InteractiveBrowserMain implements AutoCloseable {
     private final JsonMapper json = JsonMapper.builder().build();
+    private final Consumer<WizardEvent> output;
     private final ArrayBlockingQueue<WizardRequest> requests = new ArrayBlockingQueue<>(16);
     private final List<String> sensitive = new ArrayList<>();
     private PlaywrightBrowserSession session;
+    private BrowserPageInspection inspection;
+    private String activeEngine;
+    private boolean capturing;
     private JsonNode settings;
     private int completed;
     private String appliedSteps = "";
@@ -50,6 +56,9 @@ public final class InteractiveBrowserMain {
     private ScriptState scriptState = new ScriptState();
     private final ConcurrentMap<String, CompletableFuture<JsonNode>> valueReplies = new ConcurrentHashMap<>();
 
+    public InteractiveBrowserMain() { this(null); }
+    InteractiveBrowserMain(Consumer<WizardEvent> output) { this.output = output; }
+
     public static void main(String[] arguments) throws Exception {
         new InteractiveBrowserMain().run();
     }
@@ -60,8 +69,7 @@ public final class InteractiveBrowserMain {
                 WizardRequest request;
                 while ((request = WizardRequest.parseDelimitedFrom(System.in)) != null) {
                     if (request.getOperation().equals("PROCEDURE_REPLY")) {
-                        var reply = valueReplies.remove(request.getRequestId());
-                        if (reply != null) reply.complete(json.readTree(request.getJson()));
+                        procedureReply(request);
                     } else requests.put(request);
                 }
             } catch (Exception ignored) {
@@ -81,9 +89,7 @@ public final class InteractiveBrowserMain {
                     handle(request);
                 }
                 if (session != null) {
-                    if (System.nanoTime() - lastCapture >= 200_000_000L)
-                        capture("");
-
+                    captureIfDue();
                     session.page().waitForTimeout(10);
                 }
             }
@@ -92,7 +98,13 @@ public final class InteractiveBrowserMain {
         }
     }
 
-    private void handle(WizardRequest request) throws Exception {
+    void procedureReply(WizardRequest request) {
+        var reply = valueReplies.remove(request.getRequestId());
+        if (reply != null)
+            reply.complete(json.readTree(request.getJson()));
+    }
+
+    void handle(WizardRequest request) throws Exception {
         try {
             JsonNode payload = json.readTree(request.getJson());
             switch (request.getOperation()) {
@@ -111,7 +123,10 @@ public final class InteractiveBrowserMain {
                         throw new IllegalArgumentException("Invalid ARIA reference");
 
                     Locator locator = session.page().locator("aria-ref=" + reference);
-                    String selector = (String) locator.evaluate(SELECTOR_SCRIPT);
+                    String selector = BrowserPageInspection.selector(locator);
+                    if (selector == null)
+                        throw new SelectionFailure("NO_SELECTION");
+
                     result(request, Map.of("selector", sanitize(selector)));
                 }
                 case "SCROLL" -> {
@@ -130,6 +145,9 @@ public final class InteractiveBrowserMain {
             if (exception instanceof BrowserStepFailure step) {
                 failure.put("failedLine", step.line).put("failedCommand", step.command).put("failureCode", step.code);
             }
+            if (exception instanceof SelectionFailure selection)
+                failure.put("failureCode", selection.code);
+
             send(WizardEvent.newBuilder().setRequestId(request.getRequestId()).setType("ERROR")
                     .setJson(json.writeValueAsString(failure)).build());
         }
@@ -146,23 +164,21 @@ public final class InteractiveBrowserMain {
             throw new IllegalArgumentException("An HTTP or HTTPS URL without embedded credentials is required");
 
         session = PlaywrightBrowserSession.open(BrowserEngine.valueOf(engine.toUpperCase(java.util.Locale.ROOT)));
-        Page page = session.page();
-        page.setDefaultTimeout(elementTimeout());
-        // This request executes in the same worker/network as the actual browser.
-        var response = page.context().request().get(uri.toString(), com.microsoft.playwright.options.RequestOptions.create().setTimeout(loadTimeout()));
         try {
-            String type = response.headers().getOrDefault("content-type", "").toLowerCase(java.util.Locale.ROOT);
-            if (!response.ok() || !(type.startsWith("text/html") || type.startsWith("application/xhtml+xml")))
+            Page page = session.page();
+            page.setDefaultTimeout(elementTimeout());
+            inspection = new BrowserPageInspection(page, this::captureIfDue);
+            var navigation = session.navigate(uri.toString(), loadTimeout());
+            String type = navigation.contentType().split(";", 2)[0].strip().toLowerCase(java.util.Locale.ROOT);
+            if (navigation.statusCode() == null || navigation.statusCode() < 200 || navigation.statusCode() >= 300 || !(type.equals("text/html") || type.equals("application/xhtml+xml")))
                 throw new IllegalArgumentException("The URL must return successful HTML content");
-        } finally {
-            response.dispose();
-        }
-        page.context().clearCookies();
-        var navigation = session.navigate(uri.toString(), loadTimeout());
-        if (navigation.statusCode() != null && navigation.statusCode() >= 400)
-            throw new IllegalArgumentException("The browser received an unsuccessful HTTP response");
 
-        snapshotId++;
+            activeEngine = engine;
+            snapshotId++;
+        } catch (RuntimeException failure) {
+            closeBrowser();
+            throw failure;
+        }
     }
 
     private void execute(WizardRequest request, JsonNode payload) throws Exception {
@@ -217,8 +233,8 @@ public final class InteractiveBrowserMain {
         List<Map<String, Object>> results = new ArrayList<>();
         boolean passed = true;
         for (JsonNode engine : payload.path("browsers")) {
-            open(engine.asString());
             try {
+                open(engine.asString());
                 execute(request, payload, false);
                 results.add(Map.of("browser", engine.asString(), "passed", true, "completed", completed));
             } catch (Exception exception) {
@@ -226,7 +242,7 @@ public final class InteractiveBrowserMain {
                 results.add(Map.of("browser", engine.asString(), "passed", false, "completed", completed, "error", sanitize(exception.getMessage())));
             }
         }
-        result(request, Map.of("passed", passed && !results.isEmpty(), "browsers", results));
+        result(request, Map.of("passed", passed && !results.isEmpty(), "browsers", results, "activeEngine", activeEngine == null ? "" : activeEngine));
     }
 
     private AlertExecutionContext context(JsonNode payload) {
@@ -245,7 +261,8 @@ public final class InteractiveBrowserMain {
         valueReplies.put(id, reply);
         try {
             send(WizardEvent.newBuilder().setType("PROCEDURE_CALL").setRequestId(id).setJson(json.writeValueAsString(Map.of("token", token))).build());
-            JsonNode value = reply.get(175, TimeUnit.SECONDS);
+            session.page().waitForCondition(reply::isDone, new Page.WaitForConditionOptions().setTimeout(175_000));
+            JsonNode value = reply.get(0, TimeUnit.SECONDS);
             if (value.has("error"))
                 throw new IllegalArgumentException(value.path("error").asString());
 
@@ -267,14 +284,14 @@ public final class InteractiveBrowserMain {
         String scope = payload.path("selector").asString("body");
         String snapshot = session.page().locator(scope).ariaSnapshot(new Locator.AriaSnapshotOptions().setMode(AriaSnapshotMode.AI).setDepth(32).setBoxes(true));
         snapshotId++;
-        String safe = sanitize(snapshot);
+        String safe = BrowserObservationSanitizer.sanitize(snapshot, sensitive);
         List<Map<String, Object>> controls = new ArrayList<>();
         Locator interactive = session.page().locator(scope).locator("input:not([type=hidden]),textarea,select,button,a[href],[role=button],[role=textbox]")
                 .filter(new Locator.FilterOptions().setVisible(true));
         for (int index = 0; index < Math.min(interactive.count(), 40); index++) {
             Locator element = interactive.nth(index);
-            String selector = (String) element.evaluate(SELECTOR_SCRIPT);
-            if (session.page().locator(selector).filter(new Locator.FilterOptions().setVisible(true)).count() != 1)
+            String selector = BrowserPageInspection.selector(element);
+            if (selector == null || session.page().locator(selector).filter(new Locator.FilterOptions().setVisible(true)).count() != 1)
                 continue;
 
             // Accessible labels are not necessarily aria-label attributes. Never read control values.
@@ -294,53 +311,41 @@ public final class InteractiveBrowserMain {
         Locator matches = session.page().getByText(text, new Page.GetByTextOptions().setExact(true)).filter(new Locator.FilterOptions().setVisible(true));
         for (int index = 0; index < Math.min(matches.count(), 15); index++) {
             Locator element = matches.nth(index);
-            String selector = (String) element.evaluate(SELECTOR_SCRIPT);
+            String selector = BrowserPageInspection.selector(element);
+            if (selector == null)
+                continue;
+
             var box = element.boundingBox();
             found.add(Map.of("selector", sanitize(selector), "text", sanitize(element.innerText()), "x", box == null ? 0 : box.x, "y", box == null ? 0 : box.y));
         }
         return found;
     }
 
-    private Map<String, Object> select(JsonNode payload) {
+    private Map<String, Object> select(JsonNode payload) throws Exception {
         requireBrowser();
         // A stale frame must never silently select a different element after navigation.
-        if (!java.util.Objects.equals(frameRevisions.get(payload.path("frameId").asLong()), snapshotId))
-            throw new IllegalArgumentException("The image changed; select the element again");
+        if (!java.util.Objects.equals(frameRevisions.get(payload.path("frameId").asLong()), snapshotId)) {
+            capture("");
+            throw new SelectionFailure("STALE_SELECTION");
+        }
+        Map<String, Object> selected = inspection.select(payload.path("frameId").asLong(), payload.path("x").asDouble(), payload.path("y").asDouble());
+        if (selected.containsKey("error")) {
+            capture("");
+            throw new SelectionFailure(selected.get("error").toString());
+        }
+        String selector = selected.get("selector").toString();
+        if (!selector.equals(sanitize(selector)))
+            throw new SelectionFailure("NO_SELECTION");
 
-        Object selector = session.page().evaluate("""
-                ({x, y}) => {
-                  let element = document.elementFromPoint(x, y);
-                  if (!element) return null;
-
-                  element = element.closest('button,a,input,textarea,select,[role]') || element;
-                  if (element.id) return '#' + CSS.escape(element.id);
-
-                  const testId = element.getAttribute('data-testid');
-                  if (testId) return '[data-testid=' + JSON.stringify(testId) + ']';
-
-                  const segments = [];
-                  while (element && element !== document.body) {
-                    let selector = element.tagName.toLowerCase();
-                    const siblings = element.parentElement ? [...element.parentElement.children].filter(e => e.tagName === element.tagName) : [];
-                    if (siblings.length > 1) selector += ':nth-of-type(' + (siblings.indexOf(element) + 1) + ')';
-
-                    segments.unshift(selector);
-                    element = element.parentElement;
-                  }
-                  return 'body > ' + segments.join(' > ');
-                }
-                """, Map.of("x", payload.path("x").asDouble(), "y", payload.path("y").asDouble()));
-        if (selector == null)
-            throw new IllegalArgumentException("No element was found at that position");
-
-        return Map.of("selector", sanitize(selector.toString()), "snapshotId", snapshotId);
+        return Map.of("selector", selector, "snapshotId", snapshotId);
     }
 
     private void capture(String requestId) throws Exception {
-        lastCapture = System.nanoTime();
-        if (session == null)
+        if (session == null || inspection == null || capturing)
             return;
 
+        capturing = true;
+        lastCapture = System.nanoTime();
         try {
             List<Locator> masks = new ArrayList<>();
             for (Frame frame : session.page().frames()) {
@@ -356,8 +361,11 @@ public final class InteractiveBrowserMain {
             if (!sensitive.isEmpty())
                 options.setStyle("*::before, *::after { content: none !important; } * { background-image: none !important; }");
 
+            long nextFrame = frameId + 1;
+            inspection.beginFrame(nextFrame);
             byte[] image = session.page().screenshot(options);
-            frameId++;
+            inspection.finishFrame(nextFrame);
+            frameId = nextFrame;
             frameRevisions.put(frameId, snapshotId);
             while (frameRevisions.size() > 10) frameRevisions.remove(frameRevisions.keySet().iterator().next());
 
@@ -367,7 +375,17 @@ public final class InteractiveBrowserMain {
             // No raw fallback: a failed mask/capture must never release an unprotected frame.
             if (!requestId.isEmpty())
                 throw new IllegalStateException("A protected screenshot could not be produced");
+        } finally {
+            capturing = false;
         }
+    }
+
+    private void captureIfDue() {
+        if (capturing || session == null || System.nanoTime() - lastCapture < 200_000_000L)
+            return;
+
+        try { capture(""); }
+        catch (Exception failure) { inputClosed = true; }
     }
 
     private void remember(String value) {
@@ -396,16 +414,28 @@ public final class InteractiveBrowserMain {
         }
     }
 
-    private String sanitize(String text) { return SecretValueSanitizer.sanitize(text == null ? "" : text, sensitive); }
+    private String sanitize(String text) { return BrowserObservationSanitizer.sanitize(text == null ? "" : text, sensitive); }
     private long loadTimeout() { return settings.path("loadTimeoutSeconds").asInt(10) * 1000L; }
     private long elementTimeout() { return settings.path("elementTimeoutSeconds").asInt(5) * 1000L; }
     private static String text(JsonNode value, String name, String fallback) { return value.path(name).asString(fallback); }
 
     private void result(WizardRequest request, Object value) throws Exception {
-        send(WizardEvent.newBuilder().setRequestId(request.getRequestId()).setType("RESULT").setJson(json.writeValueAsString(SecretValueSanitizer.sanitize(json.valueToTree(value), sensitive))).build());
+        JsonNode document = json.valueToTree(value);
+        JsonNode safe = SecretValueSanitizer.sanitize(document, sensitive);
+        if (request.getOperation().equals("TEST")) {
+            // Engine identities are declared metadata, never resolved values.
+            ((ObjectNode) safe).set("activeEngine", document.path("activeEngine"));
+            for (int index = 0; index < document.path("browsers").size(); index++)
+                ((ObjectNode) safe.path("browsers").get(index)).set("browser", document.path("browsers").get(index).path("browser"));
+        }
+        send(WizardEvent.newBuilder().setRequestId(request.getRequestId()).setType("RESULT").setJson(json.writeValueAsString(safe)).build());
     }
 
     private void send(WizardEvent event) throws Exception {
+        if (output != null) {
+            output.accept(event);
+            return;
+        }
         event.writeDelimitedTo(System.out);
         System.out.flush();
     }
@@ -416,29 +446,23 @@ public final class InteractiveBrowserMain {
     }
 
     private void closeBrowser() {
-        if (session != null) {
-            try { session.close(); } catch (RuntimeException ignored) { /* The supervisor still owns the process tree. */ }
-            session = null;
-        }
+        PlaywrightBrowserSession closing = session;
+        session = null;
+        inspection = null;
+        activeEngine = null;
+        frameRevisions.clear();
+        if (closing != null)
+            try { closing.close(); } catch (RuntimeException ignored) { /* The supervisor still owns the process tree. */ }
     }
 
-    private static final String SELECTOR_SCRIPT = """
-            element => {
-              if (element.id) return '#' + CSS.escape(element.id);
+    @Override public void close() { closeBrowser(); }
 
-              const testId = element.getAttribute('data-testid');
-              if (testId) return '[data-testid=' + JSON.stringify(testId) + ']';
+    private static final class SelectionFailure extends IllegalArgumentException {
+        private final String code;
 
-              const segments = [];
-              while (element && element !== document.body) {
-                let selector = element.tagName.toLowerCase();
-                const siblings = element.parentElement ? [...element.parentElement.children].filter(e => e.tagName === element.tagName) : [];
-                if (siblings.length > 1) selector += ':nth-of-type(' + (siblings.indexOf(element) + 1) + ')';
-
-                segments.unshift(selector);
-                element = element.parentElement;
-              }
-              return 'body > ' + segments.join(' > ');
-            }
-            """;
+        private SelectionFailure(String code) {
+            super(code.equals("NO_SELECTION") ? "Select an element on the page" : "The selected element changed; select it again in the current image");
+            this.code = code.equals("NO_SELECTION") ? "NO_SELECTION" : "STALE_SELECTION";
+        }
+    }
 }

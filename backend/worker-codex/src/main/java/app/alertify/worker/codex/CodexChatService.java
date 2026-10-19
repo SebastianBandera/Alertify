@@ -154,6 +154,8 @@ class CodexChatService {
                 List<Object> tools = new ArrayList<>(start.getToolsList().stream().map(value -> (Object) tool(value)).toList());
                 CodexSessionService.CodexRequestMetadata metadata = sessions.requestMetadata(start.getModel(), start.getConversationId(), start.getTurnId());
                 int emptyResponses = 0;
+                boolean proposalNeedsCorrection = false;
+                int correctionReminders = 0;
                 for (int step = 0; step < MAX_STEPS && !cancelled; step++) {
                     phase = "MODEL_REQUEST";
                     long requestStartedAt = System.nanoTime();
@@ -186,6 +188,13 @@ class CodexChatService {
                     JsonNode call = firstFunctionCall(output);
                     String text = outputText(response).strip();
                     if (call == null) {
+                        // A rejected proposal has not touched the page. Give syntax repair a bounded
+                        // continuation instead of publishing a final refusal after the first error.
+                        if (proposalNeedsCorrection && correctionReminders++ < 2) {
+                            input.add(Map.of("role", "developer", CONTENT_FIELD, "The browser_steps block was rejected during validation before execution. Correct the recorded syntax error and resubmit browser_steps now, respecting the remainingCorrections limit. Do not end with an explanation while a safe correction is still available. Do not retry browser execution failures."));
+                            continue;
+                        }
+
                         if (text.isBlank() && emptyResponses++ == 0)
                             continue;
                         if (text.isBlank())
@@ -242,8 +251,11 @@ class CodexChatService {
                         }
                     }
 
+                    if (name.equals("browser_steps"))
+                        proposalNeedsCorrection = canCorrectProposal(start.getEphemeralBrowserSession(), outcome);
+
                     input.add(Map.of("type", MESSAGE_TYPE, "role", "developer", CONTENT_FIELD,
-                            List.of(Map.of("type", "input_text", "text", outcomeInstruction(outcome)
+                            List.of(Map.of("type", "input_text", "text", outcomeInstruction(outcome, start.getEphemeralBrowserSession())
                                     + "\nAlertify tool outcome (trusted backend metadata; original tool result is separate):\n" + json.writeValueAsString(outcome)))));
                 }
                 if (cancelled) {
@@ -312,7 +324,18 @@ class CodexChatService {
         }
     }
 
-    private static String outcomeInstruction(Map<String, Object> outcome) {
+    private static boolean canCorrectProposal(boolean browserSession, Map<String, Object> outcome) {
+        return browserSession && Boolean.TRUE.equals(outcome.get("failed")) && "PLAYWRIGHT_STEPS_INVALID".equals(outcome.get("diagnosticCode"))
+                && outcome.get("receipt") instanceof JsonNode receipt && "VALIDATION".equals(receipt.path("phase").asString())
+                && receipt.path("executed").isBoolean() && !receipt.path("executed").booleanValue()
+                && receipt.path("retryable").isBoolean() && receipt.path("retryable").booleanValue()
+                && receipt.path("remainingCorrections").asInt() > 0;
+    }
+
+    private static String outcomeInstruction(Map<String, Object> outcome, boolean browserSession) {
+        if (canCorrectProposal(browserSession, outcome))
+            return "The browser_steps block failed VALIDATION before any browser action executed. Read its exact diagnostic, correct the DSL and resubmit browser_steps in this same turn within remainingCorrections. Observe the page if an expected check value is missing; do not discard a required check merely to bypass validation. Preserve earlier executed steps. A valid ASK proposal still needs the user's Confirm and execute button. Do not restart or replay the browser for this syntax failure.";
+
         if (Boolean.TRUE.equals(outcome.get("failed")))
             return "Use the recorded phase and diagnostic code to explain this failure; do not invent a missing approval card or replay a stale proposal. Only a not-found from the matching scoped get after a successful delete may establish the expected absence; other failed reads do not verify a write.";
 

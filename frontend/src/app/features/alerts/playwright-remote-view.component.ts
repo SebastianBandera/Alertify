@@ -9,7 +9,8 @@ import { LocalizationService } from '../../core/i18n/localization.service';
   template: `
     <div class="remote" (wheel)="scroll($event)">
       @if (frame(); as current) {
-        <img [src]="current.url" [alt]="t('remoteAlt')" (click)="select($event)" draggable="false">
+        <img [src]="current.url" [alt]="t('remoteAlt')" (load)="loaded($event)" (click)="select($event)" draggable="false">
+        @if (stale()) { <p class="stale" role="status">{{ t('staleFrame') }}</p> }
       } @else {
         <p role="status">{{ t('waitingFrame') }}</p>
       }
@@ -17,9 +18,10 @@ import { LocalizationService } from '../../core/i18n/localization.service';
   `,
   styles: `
     :host { display: block; }
-    .remote { min-height: 200px; overflow: auto; border: 1px solid var(--border, #e4e7ec); border-radius: 10px; background: #101828; }
+    .remote { position: relative; min-height: 200px; overflow: auto; border: 1px solid var(--border, #e4e7ec); border-radius: 10px; background: #101828; }
     img { display: block; width: 100%; height: auto; cursor: crosshair; }
     p { padding: 50px 20px; color: white; text-align: center; }
+    .stale { position: absolute; inset: 0 0 auto; margin: 0; padding: 12px; background: #101828e8; pointer-events: none; }
   `,
 })
 export class PlaywrightRemoteViewComponent {
@@ -28,6 +30,7 @@ export class PlaywrightRemoteViewComponent {
   readonly elementSelected = output<{ x: number; y: number; frameId: number }>();
   readonly scrolled = output<number>();
   readonly frame = signal<{ url: string; id: number } | null>(null);
+  protected readonly stale = signal(true);
   private readonly auth = inject(AuthService);
   private readonly config = inject(RUNTIME_CONFIG);
   private readonly localization = inject(LocalizationService);
@@ -36,10 +39,16 @@ export class PlaywrightRemoteViewComponent {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private renewal: ReturnType<typeof setInterval> | null = null;
   private disposed = false;
+  private lastFrameAt = 0;
+  private displayedFrameId: number | null = null;
 
   constructor() {
     effect(() => { this.draftId(); this.connect(); });
+    const freshness = setInterval(() => {
+      if (Date.now() - this.lastFrameAt > 1500) this.stale.set(true);
+    }, 500);
     this.destroyRef.onDestroy(() => {
+      clearInterval(freshness);
       this.disposed = true;
       this.socket?.close();
       if (this.timer) clearTimeout(this.timer);
@@ -76,14 +85,24 @@ export class PlaywrightRemoteViewComponent {
       if (previous) URL.revokeObjectURL(previous.url);
     };
     socket.onclose = () => {
+      this.stale.set(true);
       if (!this.disposed) this.timer = setTimeout(() => this.connect(), 2000);
     };
     socket.onerror = () => socket.close();
   }
 
+  protected loaded(event: Event): void {
+    const current = this.frame();
+    if (current && (event.target as HTMLImageElement).currentSrc === current.url) {
+      this.displayedFrameId = current.id;
+      this.lastFrameAt = Date.now();
+      this.stale.set(false);
+    }
+  }
+
   protected select(event: MouseEvent): void {
     const current = this.frame();
-    if (this.disabled() || !current) return;
+    if (this.disabled() || this.stale() || !current || this.displayedFrameId !== current.id) return;
     const rect = (event.target as HTMLImageElement).getBoundingClientRect();
     this.elementSelected.emit({ x: (event.clientX - rect.left) * 1440 / rect.width, y: (event.clientY - rect.top) * 900 / rect.height, frameId: current.id });
   }

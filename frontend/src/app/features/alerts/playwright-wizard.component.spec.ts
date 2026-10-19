@@ -25,6 +25,8 @@ interface WizardHarness {
   selectedReference: WritableSignal<string>;
   credentialField: WritableSignal<string>;
   insertReference(): void;
+  update(next: WizardState): void;
+  command(operation: string): Promise<void>;
 }
 
 describe('PlaywrightWizardComponent', () => {
@@ -81,6 +83,34 @@ describe('PlaywrightWizardComponent', () => {
     fixture.destroy();
   });
 
+  it('adopts the last tested engine and retains the successful revision when the backend settles the test', async () => {
+    const next = structuredClone(current);
+    next.activeEngine = 'firefox';
+    next.document.settings.engine = 'firefox';
+    next.document.settings.browsers = ['chromium', 'firefox'];
+    next.document.testedRevision = 'passing-revision';
+    harness.update(next);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(harness.settings().engine).toBe('firefox');
+    expect((fixture.nativeElement.querySelector('.settings select') as HTMLSelectElement).value).toBe('firefox');
+    expect(fixture.nativeElement.querySelector('.browser-badge')?.textContent).toBe('activeBrowser: Firefox');
+    expect(button('prepare').disabled).toBe(false);
+    expect(request.mock.calls.some(([operation]) => operation === 'RESET' || operation === 'EXECUTE')).toBe(false);
+    fixture.destroy();
+  });
+
+  it('explains a stale selection in the selected language and offers no old query', () => {
+    current.error = 'Internal safe fallback';
+    current.errorCode = 'STALE_SELECTION';
+    harness.state.set(structuredClone(current));
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.error')?.textContent).toBe('selectionChanged');
+    expect(fixture.nativeElement.querySelector('.selection')).toBeNull();
+    fixture.destroy();
+  });
+
   it('inserts credential field references without embedding either credential value', async () => {
     harness.selectedReference.set('secrets.Login temporal');
     harness.credentialField.set('/username');
@@ -107,6 +137,18 @@ describe('PlaywrightWizardComponent', () => {
     expect(harness.state()!.document.settings.steps).toBe('QUERY #menu\nHOVER');
     expect(fixture.nativeElement.querySelector('.proposal')).toBeNull();
     expect((fixture.nativeElement.querySelector('.chat-panel textarea') as HTMLTextAreaElement).disabled).toBe(false);
+    fixture.destroy();
+  });
+
+  it('keeps approval available and avoids a save when settings only have a different property order', async () => {
+    const reordered = Object.fromEntries(Object.entries(current.document.settings).reverse()) as unknown as WizardSettings;
+    harness.settings.set(reordered);
+    fixture.detectChanges();
+    expect(button('approve').disabled).toBe(false);
+    await harness.command('OBSERVE');
+    fixture.detectChanges();
+    expect(request.mock.calls.some(([operation]) => operation === 'SAVE')).toBe(false);
+    expect(fixture.nativeElement.querySelector('.proposal')?.textContent).toContain('QUERY #menu');
     fixture.destroy();
   });
 
@@ -154,6 +196,44 @@ describe('PlaywrightWizardComponent', () => {
     fixture.detectChanges();
     expect(request.mock.calls.some(([operation]) => operation === 'CHAT')).toBe(true);
     expect(fixture.nativeElement.querySelector('.execution-receipt.failed')?.textContent).toContain('more than one element matches');
+    expect(button('execute').disabled).toBe(true);
+    fixture.destroy();
+  });
+
+  it('shows a rejected proposal instead of the earlier green execution receipt and permits another chat', async () => {
+    delete current.document.proposal;
+    current.document.lastAction = { operation: 'EXECUTE', status: 'SUCCESS', at: '2026-10-19T23:00:00Z', result: { completed: 4 } };
+    current.document.proposalError = { diagnosticCode: 'PLAYWRIGHT_STEPS_INVALID', phase: 'VALIDATION', status: 'FAILED', error: 'Line 9: CHECK TEXT requires an argument', executed: false, retryable: false, remainingCorrections: 0, at: '2026-10-19T23:01:00Z' };
+    harness.update(structuredClone(current));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.proposal-error')?.textContent).toContain('proposalFailed');
+    expect(fixture.nativeElement.querySelector('.proposal-error')?.textContent).toContain('Line 9: CHECK TEXT requires an argument');
+    expect(fixture.nativeElement.querySelector('.execution-receipt')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.proposal')).toBeNull();
+    expect((fixture.nativeElement.querySelector('.chat-panel textarea') as HTMLTextAreaElement).disabled).toBe(false);
+    const corrected = structuredClone(current);
+    delete corrected.document.proposalError;
+    corrected.document.proposal = 'QUERY #login\nUSE';
+    harness.update(corrected);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.proposal-error')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.execution-receipt')).toBeNull();
+    expect(button('approve').disabled).toBe(false);
+    fixture.destroy();
+  });
+
+  it('keeps a real execution failure visible and requires restart even if a proposal error is also present', () => {
+    delete current.document.proposal;
+    current.restartRequired = true;
+    current.document.lastAction = { operation: 'EXECUTE', status: 'FAILED', at: '2026-10-19T23:00:00Z', error: 'Browser action failed', result: { completed: 4 } };
+    current.document.proposalError = { diagnosticCode: 'PLAYWRIGHT_STEPS_INVALID', phase: 'VALIDATION', status: 'FAILED', error: 'Invalid steps', executed: false, retryable: false, remainingCorrections: 0, at: '2026-10-19T23:01:00Z' };
+    harness.update(structuredClone(current));
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.execution-receipt.failed')?.textContent).toContain('Browser action failed');
     expect(button('execute').disabled).toBe(true);
     fixture.destroy();
   });

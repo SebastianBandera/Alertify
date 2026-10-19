@@ -18,6 +18,7 @@ export interface WizardState {
     allowedProcedureIds?: number[];
     messages: { role: string; content: string; hasImage: boolean; at: string }[];
     proposal?: string;
+    proposalError?: { diagnosticCode: string; phase: 'VALIDATION'; status: 'FAILED'; error: string; executed: false; retryable: boolean; remainingCorrections: number; at: string };
     validationError?: string;
     testedRevision?: string;
     lastAction?: { operation: string; status?: 'RUNNING' | 'SUCCESS' | 'FAILED'; error?: string; at: string; result?: { completed?: number; failedLine?: number; failedCommand?: string; failureCode?: string } };
@@ -27,6 +28,7 @@ export interface WizardState {
   activeEngine?: string | null;
   busy: boolean;
   error: string;
+  errorCode?: string;
   idleRemainingSeconds: number;
   attachmentReady: boolean;
   restartRequired?: boolean;

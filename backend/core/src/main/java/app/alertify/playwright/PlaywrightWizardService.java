@@ -39,6 +39,7 @@ import tools.jackson.databind.node.ObjectNode;
 /** Owns browser leases, private drafts and the wizard-only AI tool surface. */
 @Service
 public class PlaywrightWizardService {
+    private static final int MAX_PROPOSAL_VALIDATION_FAILURES = 3;
     private final WizardDraftStore store;
     private final WorkerStatusService workers;
     private final WorkerGrpcChannelFactory channels;
@@ -143,12 +144,19 @@ public class PlaywrightWizardService {
 
             Settings settings = readSettings(payload.path("settings"));
             ObjectNode document = document(draft);
+            boolean settingsChanged = !settings.equals(readSettings(document.path("settings")));
             document.set("settings", json.valueToTree(settings));
             document.remove("validationError");
             try { PlaywrightPageEngine.parseCommands(settings.steps()); }
             catch (IllegalArgumentException exception) { document.put("validationError", exception.getMessage()); }
-            document.remove("testedRevision");
-            document.remove("proposal");
+            // Repeated saves must not erase an approval or successful test of the same settings.
+            if (settingsChanged) {
+                document.remove("testedRevision");
+                document.remove("proposal");
+                document.remove("proposalRevision");
+                document.remove("proposalClient");
+                document.remove("proposalError");
+            }
             store.save(owner, id, session == null ? json.writeValueAsString(document) : session.safeDocument(document));
             if (session != null) session.activity();
 
@@ -193,6 +201,8 @@ public class PlaywrightWizardService {
             case "EXECUTE", "TEST" -> start(session, () -> runScript(session, operation));
             case "OBSERVE" -> start(session, () -> session.observation = json.readTree(session.call("OBSERVE", Map.of()).getJson()));
             case "SELECT", "SCROLL" -> start(session, () -> {
+                if (operation.equals("SELECT")) session.selection = null;
+
                 WizardEvent reply = session.call(operation, payload);
                 if (operation.equals("SELECT")) session.selection = json.readTree(reply.getJson());
             });
@@ -265,6 +275,7 @@ public class PlaywrightWizardService {
         state.put("activeEngine", session == null || session.closed.get() || session.browserSettings == null ? null : session.browserSettings.engine());
         state.put("busy", session != null && session.busy.get());
         state.put("error", session == null ? document(draft).path("error").asString("") : session.error);
+        state.put("errorCode", session == null ? "" : session.errorCode);
         state.put("tokens", session == null ? 0 : session.tokens);
         state.put("modelRequests", session == null ? 0 : session.modelRequests);
         state.put("selection", session == null ? null : session.selection);
@@ -295,6 +306,7 @@ public class PlaywrightWizardService {
             throw new IllegalArgumentException("Another operation is running");
 
         session.error = "";
+        session.errorCode = "";
         session.operationStarted = System.nanoTime();
         Thread.ofVirtual().name("playwright-wizard-operation").start(() -> {
             var previousContext = org.springframework.security.core.context.SecurityContextHolder.getContext();
@@ -304,6 +316,7 @@ public class PlaywrightWizardService {
             try { action.run(); }
             catch (Exception exception) {
                 session.error = session.safe(exception instanceof IllegalArgumentException ? exception.getMessage() : "The operation failed or timed out. Restart the browser to continue.");
+                session.errorCode = exception instanceof BrowserOperationFailure failure ? failure.details.path("failureCode").asString("") : "";
                 ObjectNode doc = document(store.load(session.owner, session.id));
                 doc.put("error", session.error);
                 store.save(session.owner, session.id, json.writeValueAsString(doc));
@@ -363,15 +376,18 @@ public class PlaywrightWizardService {
             doc.remove("testedRevision");
             store.save(session.owner, session.id, session.safeDocument(doc));
             WizardEvent result = session.call(operation, payload);
-            session.browserSettings = operation.equals("TEST") ? settings.withEngine(settings.browsers().getLast()) : settings;
             JsonNode report = json.readTree(result.getJson());
-            boolean passed = !operation.equals("TEST") || report.path("passed").asBoolean();
+            Settings settled = operation.equals("TEST") ? settingsAfterTest(settings, report) : settings;
+            session.browserSettings = settled;
+            boolean passed = !operation.equals("TEST") || (settled != null && report.path("passed").asBoolean());
             session.restartRequired = !passed;
             recordAction(session, operation, passed ? "SUCCESS" : "FAILED", report, passed ? "" : "A clean replay failed. Review the browser report and restart before continuing.");
             if (operation.equals("TEST")) {
                 ObjectNode latest = document(store.load(session.owner, session.id));
+                if (settled != null) latest.set("settings", json.valueToTree(settled));
+
                 latest.set("testReport", report);
-                if (passed) latest.put("testedRevision", revision(settings));
+                if (passed) latest.put("testedRevision", revision(settled));
 
                 store.save(session.owner, session.id, session.safeDocument(latest));
             }
@@ -406,6 +422,8 @@ public class PlaywrightWizardService {
 
     private void recordAction(Session session, String operation, String status, JsonNode result, String error) {
         ObjectNode document = document(store.load(session.owner, session.id));
+        if (operation.equals("OPEN") || operation.equals("RESET")) document.remove("proposalError");
+
         document.set("lastAction", json.valueToTree(Map.of("operation", operation, "status", status, "result", result, "error", error, "at", Instant.now().toString())));
         if (status.equals("FAILED")) document.put("error", error);
         else document.remove("error");
@@ -444,6 +462,7 @@ public class PlaywrightWizardService {
             throw new IllegalArgumentException("The AI module is unavailable or is not authenticated");
 
         var settings = ai.settings();
+        session.proposalValidationFailures = 0;
         WizardEvent attached = session.attachment;
         session.attachment = null;
         addMessage(session, "USER", message, attached != null);
@@ -457,6 +476,8 @@ public class PlaywrightWizardService {
                 QUERY selects visible elements; actions and element checks need a preceding QUERY. RELOAD clears the current element. FILL never accepts literal values. No arbitrary JavaScript, new commands, coordinates, temporary refs or invented selectors in saved steps.
                 QUERY is the ONLY command that changes the selected element. WAIT_VISIBLE and WAIT_HIDDEN wait for a condition without selecting their target. After USE navigates, the previous QUERY still points to the old page: run a fresh QUERY for the expected new content BEFORE CHECK TEXT, COUNT, ATTRIBUTE or element state checks. For example: QUERY button[type=submit], USE, WAIT_VISIBLE main 10s, QUERY main, CHECK TEXT Sesión iniciada (each command on its own line). USE, HOVER and DOUBLE_USE take NO arguments; their target is the preceding QUERY.
                 Inspect the actual page before proposing selectors; use stable selectors verified by observations. Browser actions can change the remote site. Never retry a possibly completed action automatically. Never infer SUCCESS without a tool result. In ASK mode propose one block and explicitly direct the user to the Confirm and execute button beside the chat (in Spanish: «Confirmar y ejecutar»). Never ask them to confirm by replying Yes or Sí in chat. The user can select Discard proposal («Descartar propuesta») to continue chatting without executing the block.
+                A PLAYWRIGHT_STEPS_INVALID result with phase=VALIDATION, executed=false and retryable=true rejected the block before any action ran. Correct its exact syntax error and call browser_steps again in this same turn, within remainingCorrections. CHECK TEXT must include the expected text, CHECK URL a URL glob, and CHECK ATTRIBUTE both name and value; never submit an unfinished check. Do not silently remove a required check to bypass validation. If needed, observe the page to determine the correct expected value. A proposal validation failure does not require restarting the browser and does not invalidate earlier executed steps. If retryable=false, explain the recorded error and stop. Execution failures may have changed the page and must never be retried automatically.
+                The validation failure shown at the start of this turn is historical. A new user request starts a fresh syntax correction budget; procedure permissions and execution restart requirements still apply.
                 Prefer condition-based synchronization, bounded by a timeout, over fixed delays. QUERY already waits for a visible match; USE, DOUBLE_USE, HOVER, FILL and SELECT use Playwright actionability auto-waiting; CHECK conditions retry until the element timeout. When an explicit wait is needed, use WAIT_VISIBLE <selector> [timeout] or WAIT_HIDDEN <selector> [timeout], for example WAIT_VISIBLE #result 10s or WAIT_HIDDEN .loading 10s. An omitted timeout uses elementTimeoutSeconds. These waits finish as soon as the condition holds; the duration is a maximum, not a sleep. Use CHECK URL <glob> after navigation when appropriate. Do not generate WAIT <duration> for page loading, rendering, animations or network readiness. Reserve fixed WAIT for an actual timed business requirement explicitly requested by the user, and explain why that duration is necessary. Never toggle a completed control again merely to compensate for loading; wait for the expected next element or state instead.
                 The current script has already executed up to the completed count shown by the latest observation and execution receipt. Confirmation messages are recorded as SYSTEM metadata. On continuation, inspect the new state and advance to the NEXT action; never keep proposing an already completed hover. To open a page from a link, use USE (click), not repeated HOVER. Prefer the requested navigation menu near the top of the page over similarly named footer links. If hover does not expand a button, inspect aria-expanded and use USE when necessary.
                 The approval and execution state below is authoritative. A block already added to the script was accepted or edited; that does NOT prove execution succeeded. If the latest execution FAILED, say it failed and explain the recorded reason, never say it is still awaiting approval. An older success must not hide a later failure. If restartRequired=true, do not retry, append duplicate steps or propose another executable block: explain the needed selector correction and ask the user to restart and explicitly replay. Query selectors used by click/hover must match ONE visible element; refine by accessible text or a verified region when href alone matches duplicates. A pending proposal exists only if pendingProposal is nonempty, or browser_steps returned PENDING_APPROVAL during this turn.
@@ -466,6 +487,7 @@ public class PlaywrightWizardService {
                 """ + "\nLocale: " + locale + "\nCurrent settings and script: " + doc.path("settings")
                 + "\nSelected element: " + session.selection + "\nCurrent ARIA snapshot: " + observation
                 + "\nLast execution receipt: " + doc.path("lastAction")
+                + "\nLatest proposal validation failure (not an execution receipt): " + doc.path("proposalError")
                 + "\nAuthoritative approval/execution state: " + json.writeValueAsString(Map.of("pendingProposal", doc.path("proposal").asString(""), "restartRequired", session.restartRequired, "lastError", doc.path("error").asString("")))
                 + "\nExisting references: " + references(doc);
         var builder = ChatStart.newBuilder().setConversationId(session.id.getMostSignificantBits() & Long.MAX_VALUE).setTurnId(System.nanoTime()).setModel(settings.getModel())
@@ -536,7 +558,20 @@ public class PlaywrightWizardService {
     private void handleTool(Session session, ChatToolCall call, CompletableFuture<Void> finished) {
         var result = ChatToolResult.newBuilder().setCallId(call.getCallId());
         try {
-            JsonNode args = json.readTree(call.getArguments());
+            if (call.getName().equals("browser_steps") && session.restartRequired)
+                throw new IllegalArgumentException("EXECUTION_FAILED_RESTART_REQUIRED: the last approved execution failed. There is no new pending proposal. Explain the failure; do not append or repeat actions. Restart and explicitly replay the corrected script first.");
+
+            JsonNode args;
+            try { args = json.readTree(call.getArguments()); }
+            catch (RuntimeException failure) {
+                if (call.getName().equals("browser_steps"))
+                    throw new ProposalValidationFailure("Supply valid browser_steps JSON arguments containing a steps string", true);
+
+                throw failure;
+            }
+            if (call.getName().equals("browser_steps") && (args == null || !args.isObject() || !args.path("steps").isString()))
+                throw new ProposalValidationFailure("Supply valid browser_steps JSON arguments containing a steps string", true);
+
             switch (call.getName()) {
                 case "browser_observe" -> result.setOutput(session.call("OBSERVE", args).getJson());
                 case "browser_find" -> result.setOutput(session.call("FIND", args).getJson());
@@ -546,21 +581,32 @@ public class PlaywrightWizardService {
                 }
                 case "browser_resolve_ref" -> result.setOutput(session.call("RESOLVE_REF", args).getJson());
                 case "browser_steps" -> {
-                    if (session.restartRequired)
-                        throw new IllegalArgumentException("EXECUTION_FAILED_RESTART_REQUIRED: the last approved execution failed. There is no new pending proposal. Explain the failure; do not append or repeat actions. Restart and explicitly replay the corrected script first.");
-
                     ObjectNode doc = document(store.load(session.owner, session.id));
                     Settings current = readSettings(doc.path("settings"));
+                    if (!doc.path("proposal").asString().isBlank())
+                        throw new IllegalArgumentException("A proposal is already pending. Wait for the user to approve or discard it.");
+
+                    if (session.proposalValidationFailures >= MAX_PROPOSAL_VALIDATION_FAILURES)
+                        throw new ProposalValidationFailure(doc.path("proposalError").path("error").asString("The proposal correction limit was reached. Wait for a new user request."), false);
+
                     String block = args.path("steps").asString();
                     String combined = append(current.steps(), block);
-                    PlaywrightPageEngine.parseCommands(combined);
-                    validateProcedures(doc, combined);
-                    if (block.isBlank() || combined.length() > 100_000) throw new IllegalArgumentException("Invalid steps");
+                    try {
+                        if (block.isBlank() || combined.length() > 100_000)
+                            throw new IllegalArgumentException("Supply a nonempty steps block within the 100000-character script limit");
+
+                        if (PlaywrightPageEngine.parseCommands(combined).size() > 500)
+                            throw new IllegalArgumentException("The script exceeds 500 commands");
+
+                    } catch (IllegalArgumentException failure) {
+                        throw new ProposalValidationFailure(failure.getMessage(), true);
+                    }
+                    try { validateProcedures(doc, combined); }
+                    catch (IllegalArgumentException failure) { throw new ProposalValidationFailure(failure.getMessage(), false); }
+
+                    doc.remove("proposalError");
 
                     if (current.mode().equals("ASK")) {
-                        if (!doc.path("proposal").asString().isBlank())
-                            throw new IllegalArgumentException("A proposal is already pending. Wait for the user to approve or discard it.");
-
                         doc.put("proposal", block);
                         doc.put("proposalRevision", revision(current));
                         doc.put("proposalClient", session.clientId);
@@ -577,6 +623,15 @@ public class PlaywrightWizardService {
                 }
                 default -> throw new IllegalArgumentException("Unsupported wizard tool");
             }
+        } catch (ProposalValidationFailure failure) {
+            int remaining = Math.max(0, MAX_PROPOSAL_VALIDATION_FAILURES - ++session.proposalValidationFailures);
+            var receipt = json.valueToTree(Map.of("diagnosticCode", "PLAYWRIGHT_STEPS_INVALID", "phase", "VALIDATION", "status", "FAILED", "executed", false,
+                    "retryable", failure.retryable && remaining > 0, "remainingCorrections", remaining, "error", session.safe(failure.getMessage()), "at", Instant.now().toString()));
+            ObjectNode doc = document(store.load(session.owner, session.id));
+            doc.set("proposalError", receipt);
+            store.save(session.owner, session.id, session.safeDocument(doc));
+            publish(session);
+            result.setFailed(true).setDiagnosticCode("PLAYWRIGHT_STEPS_INVALID").setOutput(json.writeValueAsString(receipt)).setOperationMetadataJson(json.writeValueAsString(receipt));
         } catch (Exception exception) {
             result.setFailed(true).setOutput(session.safe(exception instanceof IllegalArgumentException ? exception.getMessage() : "Browser tool failed or timed out"));
         }
@@ -609,6 +664,18 @@ public class PlaywrightWizardService {
                 && first.loadTimeoutSeconds() == second.loadTimeoutSeconds() && first.elementTimeoutSeconds() == second.elementTimeoutSeconds();
     }
 
+    static Settings settingsAfterTest(Settings settings, JsonNode report) {
+        // Missing metadata is supported during a rolling update with an older worker.
+        String engine = report.path("activeEngine").asString(settings.browsers().getLast());
+        if (engine.isEmpty())
+            return null;
+
+        if (!settings.browsers().contains(engine))
+            throw new IllegalArgumentException("The test returned an unexpected browser engine");
+
+        return settings.withEngine(engine);
+    }
+
     // Declared DSL and identity/status metadata never contain resolved values. Redacting a short
     // result such as "1" there would corrupt pointers, revision hashes and subsequent clean replays.
     static JsonNode protectedDraft(JsonNode document, List<String> sensitive) {
@@ -621,6 +688,12 @@ public class PlaywrightWizardService {
             for (String field : List.of("operation", "status", "at")) {
                 if (document.path("lastAction").has(field)) receipt.set(field, document.path("lastAction").get(field).deepCopy());
             }
+        }
+        if (document.path("proposalError").isObject()) {
+            ObjectNode receipt = (ObjectNode) safe.path("proposalError");
+            for (String field : List.of("diagnosticCode", "phase", "status", "at"))
+                receipt.set(field, document.path("proposalError").get(field));
+
         }
         return safe;
     }
@@ -654,6 +727,11 @@ public class PlaywrightWizardService {
         private BrowserOperationFailure(JsonNode details) { super(details.path("error").asString("Browser operation failed")); this.details = details; }
     }
 
+    private static final class ProposalValidationFailure extends IllegalArgumentException {
+        private final boolean retryable;
+        private ProposalValidationFailure(String message, boolean retryable) { super(message); this.retryable = retryable; }
+    }
+
     private final class Session implements AutoCloseable {
         private final UUID id;
         private final String owner;
@@ -668,6 +746,7 @@ public class PlaywrightWizardService {
         private volatile long lastActivity = System.nanoTime();
         private volatile long operationStarted;
         private volatile String error = "";
+        private volatile String errorCode = "";
         private volatile JsonNode selection;
         private volatile JsonNode observation;
         private volatile JsonNode progress;
@@ -680,6 +759,7 @@ public class PlaywrightWizardService {
         private volatile AiWorkerClient.ChatHandle chat;
         private volatile Settings browserSettings;
         private volatile boolean restartRequired;
+        private int proposalValidationFailures;
         private volatile UUID valueOperation;
         private final java.util.Set<String> valueTokens = ConcurrentHashMap.newKeySet();
 
