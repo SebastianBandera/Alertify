@@ -7,6 +7,7 @@ import app.alertify.pipes.model.PipeStepType;
 public record PipeOptionResponse(
     long id,
     String name,
+    String templateKey,
     boolean enabled,
     PipeStepType type,
     List<String> outputs,

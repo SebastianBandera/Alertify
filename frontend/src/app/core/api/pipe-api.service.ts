@@ -43,6 +43,7 @@ export interface PipeStep {
   readonly phase: PipeStepPhase;
   readonly resourceId: number;
   readonly resourceName: string;
+  readonly resourceTemplateKey: string;
   readonly resourceEnabled: boolean;
   readonly timeout: string | null;
   readonly continueOn: readonly PipeOutcome[];
@@ -66,6 +67,7 @@ export interface Pipe {
 export interface PipeOption {
   readonly id: number;
   readonly name: string;
+  readonly templateKey: string;
   readonly enabled: boolean;
   readonly type: PipeStepType;
   readonly outputs: readonly string[];

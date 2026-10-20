@@ -16,7 +16,7 @@
 
 .expression-editor__input {
   width: 100%;
-  min-height: 126px;
+  min-height: var(--expression-editor-min-height, 126px);
   padding: 10px 11px;
   border: 1px solid #d0d5dd;
   border-radius: 9px;

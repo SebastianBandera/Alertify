@@ -20,7 +20,7 @@ public interface PipeRepository extends JpaRepository<Pipe, Long> {
     // Join only the ordered steps collection. Joining tags or bindings as well
     // multiplies rows and duplicates entries in the steps bag. Those collections
     // are loaded separately inside the caller's transaction.
-    @EntityGraph(attributePaths = { "steps", "steps.alert", "steps.procedure" })
+    @EntityGraph(attributePaths = { "steps", "steps.alert", "steps.alert.template", "steps.procedure", "steps.procedure.template" })
     @Query("select p from Pipe p where p.id = :id")
     Optional<Pipe> findDetailedById(Long id);
 }

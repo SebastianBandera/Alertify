@@ -50,7 +50,8 @@
       <p class="state">{{ dynamic('pipes.empty') }}</p>
     } @else {
       <div class="table-shell">
-        <table>
+        <table class="pipes-table">
+          <colgroup><col class="pipe-name-column"><col class="pipe-tags-column"><col class="pipe-steps-column"><col class="pipe-concurrent-column"><col class="pipe-status-column"><col class="pipe-updated-column"><col class="pipe-actions-column"></colgroup>
           <thead><tr>
             <th>{{ dynamic('pipes.column.name') }}</th>
             <th>{{ dynamic('pipes.column.tags') }}</th>
@@ -74,7 +75,11 @@
                 <td>
                   <ol class="compact-list">
                     @for (step of pipe.steps; track step.id) {
-                      <li><code>{{ step.key }}</code> <span class="type">{{ step.type }} · {{ step.phase }}</span> {{ step.resourceName }}</li>
+                      <li>
+                        <strong>{{ step.resourceName }}</strong>
+                        <span class="resource-meta"><code>{{ step.key }}</code><span class="type">{{ step.type }} · {{ step.phase }}</span></span>
+                        <code class="template-name" [title]="templateKeyFor(step)">{{ templateName(templateKeyFor(step)) }}</code>
+                      </li>
                     }
                   </ol>
                 </td>
@@ -157,16 +162,17 @@
             </dl>
             @if (execution.errorCode) { <p class="state state--error"><code>{{ execution.errorCode }}</code></p> }
             <div class="table-shell table-shell--steps">
-              <table>
+              <table class="history-steps-table">
+                <colgroup><col class="history-order-column"><col class="history-key-column"><col class="history-resource-column"><col class="history-status-column"><col class="history-execution-column"><col class="history-error-column"></colgroup>
                 <thead><tr><th>#</th><th>{{ dynamic('pipes.history.step') }}</th><th>{{ dynamic('pipes.history.resource') }}</th><th>{{ dynamic('pipes.history.status') }}</th><th>{{ dynamic('pipes.history.execution') }}</th><th>{{ dynamic('pipes.history.error') }}</th></tr></thead>
                 <tbody>
                   @for (step of execution.steps; track step.position) {
                     <tr>
                       <td>{{ step.position + 1 }}</td>
                       <td><code>{{ step.key }}</code></td>
-                      <td><span class="type">{{ step.type }} · {{ step.phase }}</span> {{ step.resourceName }}</td>
+                      <td><strong>{{ step.resourceName }}</strong><span class="resource-meta"><span class="type">{{ step.type }} · {{ step.phase }}</span><code class="template-name" [title]="templateKeyFor(step)">{{ templateName(templateKeyFor(step)) }}</code></span></td>
                       <td>{{ step.status }}@if (step.outcome && step.outcome !== step.status) { · {{ step.outcome }} }</td>
-                      <td><code>{{ step.resourceExecutionId || '—' }}</code></td>
+                      <td><code class="execution-id" [title]="step.resourceExecutionId || ''">{{ step.resourceExecutionId || '—' }}</code></td>
                       <td><code>{{ step.errorCode || '—' }}</code></td>
                     </tr>
                   }
@@ -228,23 +234,23 @@
           <p>{{ dynamic('pipes.form.stepsHelp') }}</p>
           <div class="step-adder">
             <label><span>{{ dynamic('pipes.form.type') }}</span><select name="newStepType" [ngModel]="newStepType()" (ngModelChange)="changeNewStepType($event)"><option value="ALERT">Alert</option><option value="PROCEDURE">Procedure</option></select></label>
-            <label><span>{{ dynamic('pipes.form.resource') }}</span><select name="newStepResource" [ngModel]="newStepResourceId()" (ngModelChange)="newStepResourceId.set($event)"><option [ngValue]="null">{{ dynamic('pipes.form.selectResource') }}</option>@for (option of resourceOptions(); track option.type + '-' + option.id) { <option [ngValue]="option.id">{{ option.name }}{{ option.enabled ? '' : ' (' + dynamic('pipes.disabled') + ')' }}</option> }</select></label>
+            <label><span>{{ dynamic('pipes.form.resource') }}</span><select name="newStepResource" [ngModel]="newStepResourceId()" (ngModelChange)="newStepResourceId.set($event)"><option [ngValue]="null">{{ dynamic('pipes.form.selectResource') }}</option>@for (option of resourceOptions(); track option.type + '-' + option.id) { <option [ngValue]="option.id" [title]="option.templateKey">{{ option.name }} · {{ templateName(option.templateKey) }}{{ option.enabled ? '' : ' (' + dynamic('pipes.disabled') + ')' }}</option> }</select></label>
             <button class="button button--secondary" type="button" [disabled]="newStepResourceId() === null" (click)="addStep()">{{ dynamic('pipes.form.addStep') }}</button>
           </div>
 
-          <label><span>{{ dynamic('pipes.form.finallyTimeout') }}</span><input type="number" name="finallyTimeout" min="1" [ngModel]="form().finallyTimeoutMinutes" (ngModelChange)="patchForm('finallyTimeoutMinutes', $event)"></label>
+          <label class="finally-timeout"><span>{{ dynamic('pipes.form.finallyTimeout') }}</span><input type="number" name="finallyTimeout" min="1" [ngModel]="form().finallyTimeoutMinutes" (ngModelChange)="patchForm('finallyTimeoutMinutes', $event)"></label>
 
           @for (step of form().steps; track $index; let index = $index) {
             <article class="step-card">
               <header>
-                <div><span class="order">{{ index + 1 }}</span><strong>{{ step.resourceName }}</strong><span class="type">{{ step.type }} · {{ step.phase }}</span>@if (!step.resourceEnabled) { <span class="warning">{{ dynamic('pipes.form.currentlyDisabled') }}</span> }</div>
-                <div class="order-actions"><button type="button" [disabled]="$first" (click)="moveStep(index, -1)">↑</button><button type="button" [disabled]="$last" (click)="moveStep(index, 1)">↓</button><button class="danger" type="button" (click)="removeStep(index)">{{ dynamic('pipes.form.remove') }}</button></div>
+                <div class="step-heading"><span class="order">{{ index + 1 }}</span><div class="step-heading__text"><strong>{{ step.resourceName }}</strong><span class="resource-meta"><span class="type">{{ step.type }} · {{ step.phase }}</span><code class="template-name" [title]="templateKeyFor(step)">{{ templateName(templateKeyFor(step)) }}</code></span>@if (!step.resourceEnabled) { <span class="warning">{{ dynamic('pipes.form.currentlyDisabled') }}</span> }</div></div>
+                <div class="order-actions"><button type="button" [disabled]="$first" [attr.aria-label]="dynamic('pipes.form.moveUp')" (click)="moveStep(index, -1)">↑</button><button type="button" [disabled]="$last" [attr.aria-label]="dynamic('pipes.form.moveDown')" (click)="moveStep(index, 1)">↓</button><button class="danger" type="button" (click)="removeStep(index)">{{ dynamic('pipes.form.remove') }}</button></div>
               </header>
               <div class="step-fields">
                 <label><span>{{ dynamic('pipes.form.phase') }}</span><select [name]="'phase-' + index" [ngModel]="step.phase" (ngModelChange)="patchStep(index, 'phase', $event)"><option value="MAIN">MAIN</option><option value="FINALLY">FINALLY</option></select></label>
                 <label><span>{{ dynamic('pipes.form.key') }}</span><input [name]="'key-' + index" required maxlength="255" [ngModel]="step.key" (ngModelChange)="patchStep(index, 'key', $event)"></label>
                 <label><span>{{ dynamic('pipes.form.timeout') }}</span><input type="number" [name]="'timeout-' + index" min="1" [ngModel]="step.timeoutMinutes" (ngModelChange)="patchStep(index, 'timeoutMinutes', $event)"></label>
-                @if (step.phase === 'MAIN') { <fieldset>
+                @if (step.phase === 'MAIN') { <fieldset class="step-outcomes">
                   <legend>{{ dynamic('pipes.form.continueOn') }}</legend>
                   @for (outcome of outcomes; track outcome) {
                     <label class="checkbox"><input type="checkbox" [name]="'continue-' + index + '-' + outcome" [ngModel]="step.continueOn.includes(outcome)" (ngModelChange)="toggleOutcome(index, outcome, $event)"><span>{{ outcome }}</span></label>
@@ -254,65 +260,64 @@
 
               @if (artifactInputs(index).length || stringInputs(index).length) {
                 <section class="binding-editor">
-                  <h4>{{ dynamic('pipes.form.bindings') }}</h4>
-                  <p>{{ dynamic('pipes.form.bindingsHelp') }}</p>
-                  @if (artifactInputs(index).length) {
-                    <p><strong>{{ dynamic('pipes.form.artifactBindings') }}</strong></p>
-                    <div class="binding-adder">
-                      <label><span>{{ dynamic('pipes.form.targetInput') }}</span><select [name]="'binding-target-' + index" [ngModel]="step.bindingTarget" (ngModelChange)="patchStep(index, 'bindingTarget', $event)"><option value="">—</option>@for (input of artifactInputs(index); track input) { <option [value]="input">{{ input }}</option> }</select></label>
-                      <label><span>{{ dynamic('pipes.form.sourceOutput') }}</span><select [name]="'binding-source-' + index" [ngModel]="step.bindingSource" (ngModelChange)="patchStep(index, 'bindingSource', $event)"><option value="">—</option>@for (source of bindingSources(index); track source.value) { <option [value]="source.value">{{ source.label }}</option> }</select></label>
-                      <button class="button button--secondary" type="button" [disabled]="!step.bindingTarget || !step.bindingSource" (click)="addBinding(index)">{{ dynamic('pipes.form.addBinding') }}</button>
-                    </div>
-                  }
-                  @if (stringInputs(index).length) {
-                    <p><strong>{{ dynamic('pipes.form.resultBindings') }}</strong></p>
-                    <div class="binding-adder binding-adder--result">
-                      <label><span>{{ dynamic('pipes.form.targetInput') }}</span><select [name]="'result-binding-target-' + index" [ngModel]="step.resultBindingTarget" (ngModelChange)="patchStep(index, 'resultBindingTarget', $event)"><option value="">—</option>@for (input of stringInputs(index); track input) { <option [value]="input">{{ input }}</option> }</select></label>
-                      <label><span>{{ dynamic('pipes.form.sourceResultStep') }}</span><select [name]="'result-binding-source-' + index" [ngModel]="step.resultBindingSourceStep" (ngModelChange)="patchStep(index, 'resultBindingSourceStep', $event)"><option value="">—</option>@for (source of resultSourceSteps(index); track source.key) { <option [value]="source.key">{{ source.key }}</option> }</select></label>
-                      <label><span>{{ dynamic('pipes.form.sourceResultPointer') }}</span><input [name]="'result-binding-pointer-' + index" maxlength="2000" [placeholder]="dynamic('pipes.form.sourceResultPointerPlaceholder')" [ngModel]="step.resultBindingPointer" (ngModelChange)="patchStep(index, 'resultBindingPointer', $event)"></label>
-                      <div class="binding-expression">
-                        <app-expression-editor
-                          [name]="'result-binding-expression-' + index"
-                          [label]="dynamic('pipes.form.valueExpression')"
-                          [placeholder]="dynamic('pipes.form.valueExpressionPlaceholder')"
-                          [required]="false"
-                          [rows]="2"
-                          [value]="step.resultBindingExpression"
-                          [scopes]="pipeExpressionScopes"
-                          [names]="pipeExpressionNames"
-                          [utilityFunctions]="options().expressionUtilityFunctions"
-                          (valueChange)="patchStep(index, 'resultBindingExpression', $event)"
-                        />
-                        <small>{{ dynamic('pipes.form.valueExpressionHelp') }}</small>
-                      </div>
-                      <button class="button button--secondary" type="button" [disabled]="!step.resultBindingTarget || !step.resultBindingSourceStep || !(step.resultBindingPointer || '').trim().startsWith('/')" (click)="addResultBinding(index)">{{ dynamic('pipes.form.addBinding') }}</button>
-                    </div>
-                  }
+                  <header class="binding-editor__header">
+                    <h4>{{ dynamic('pipes.form.bindings') }} <span class="binding-count">{{ step.bindings.length }}</span></h4>
+                    <button class="button button--secondary" type="button" [attr.data-binding-add]="index" [disabled]="!!step.bindingEditor || (!resultSourceSteps(index).length && !bindingSources(index).length)" (click)="openBindingEditor(index)">{{ dynamic('pipes.form.addBinding') }}</button>
+                  </header>
+                  <p>{{ dynamic('pipes.form.bindingsBrief') }}</p>
                   <ul class="binding-list">
                     @for (binding of step.bindings; track binding.targetParameterKey; let bindingIndex = $index) {
                       <li class="binding-list__item">
-                        <div class="binding-list__summary"><code>{{ binding.targetParameterKey }}</code><span>←</span><code>{{ binding.sourceStepKey }}{{ binding.sourceOutputKey ? ' / ' + binding.sourceOutputKey : binding.sourceResultPointer }}</code></div>
-                        <button class="danger" type="button" (click)="removeBinding(index, bindingIndex)">×</button>
-                        @if (binding.sourceResultPointer) {
-                          <div class="binding-expression binding-list__editor">
-                            <app-expression-editor
-                              [name]="'binding-expression-' + index + '-' + bindingIndex"
-                              [label]="dynamic('pipes.form.valueExpression')"
-                              [placeholder]="dynamic('pipes.form.valueExpressionPlaceholder')"
-                              [required]="false"
-                              [rows]="2"
-                              [value]="binding.valueExpression || ''"
-                              [scopes]="pipeExpressionScopes"
-                              [names]="pipeExpressionNames"
-                              [utilityFunctions]="options().expressionUtilityFunctions"
-                              (valueChange)="patchBindingExpression(index, bindingIndex, $event)"
-                            />
-                            <small>{{ dynamic('pipes.form.valueExpressionHelp') }}</small>
-                          </div>
-                        }
+                        <div class="binding-list__summary">
+                          <span class="binding-source"><code>{{ binding.sourceStepKey }}</code><code>{{ binding.sourceOutputKey ? ' / ' + binding.sourceOutputKey : binding.sourceResultPointer }}</code></span>
+                          <span aria-hidden="true">→</span>
+                          <code class="binding-target">{{ binding.targetParameterKey }}</code>
+                          @if (binding.valueExpression) { <span class="binding-expression-badge">{{ dynamic('pipes.form.withExpression') }}</span> }
+                        </div>
+                        <div class="binding-actions">
+                          <button type="button" [disabled]="!!step.bindingEditor" (click)="openBindingEditor(index, binding)">{{ dynamic('pipes.edit') }}</button>
+                          <button class="danger" type="button" [disabled]="!!step.bindingEditor" [attr.aria-label]="dynamic('pipes.form.removeBinding') + ': ' + binding.targetParameterKey" (click)="removeBinding(index, bindingIndex)">{{ dynamic('pipes.form.remove') }}</button>
+                        </div>
                       </li>
                     } @empty { <li class="muted">{{ dynamic('pipes.form.noBindings') }}</li> }
                   </ul>
+                  @if (step.bindingEditor; as editor) {
+                    <div class="binding-form" [attr.data-binding-step]="index">
+                      <h5>{{ dynamic(editor.originalTarget ? 'pipes.form.editBinding' : 'pipes.form.addBinding') }}</h5>
+                      @if (artifactInputs(index).length && stringInputs(index).length) {
+                        <label class="binding-kind"><span>{{ dynamic('pipes.form.bindingKind') }}</span><select [name]="'binding-kind-' + index" [ngModel]="editor.kind" (ngModelChange)="changeBindingKind(index, $event)"><option value="result">{{ dynamic('pipes.form.resultBindings') }}</option><option value="artifact">{{ dynamic('pipes.form.artifactBindings') }}</option></select></label>
+                      }
+                      <div class="binding-fields" [class.binding-fields--artifact]="editor.kind === 'artifact'">
+                        @if (editor.kind === 'result') {
+                          <label><span>{{ dynamic('pipes.form.sourceResultStep') }}</span><select data-binding-field="sourceStep" [attr.aria-invalid]="editor.invalidField === 'sourceStep'" [name]="'result-binding-source-' + index" [ngModel]="editor.sourceStep" (ngModelChange)="patchBindingEditor(index, 'sourceStep', $event)"><option value="">—</option>@for (source of resultSourceSteps(index); track source.key) { <option [value]="source.key">{{ source.key }}</option> }</select></label>
+                          <label><span>{{ dynamic('pipes.form.sourceResultPointer') }}</span><input data-binding-field="pointer" [attr.aria-invalid]="editor.invalidField === 'pointer'" [name]="'result-binding-pointer-' + index" maxlength="2000" [placeholder]="dynamic('pipes.form.sourceResultPointerPlaceholder')" [ngModel]="editor.pointer" (ngModelChange)="patchBindingEditor(index, 'pointer', $event)"></label>
+                        } @else {
+                          <label><span>{{ dynamic('pipes.form.sourceOutput') }}</span><select data-binding-field="artifactSource" [attr.aria-invalid]="editor.invalidField === 'artifactSource'" [name]="'binding-source-' + index" [ngModel]="editor.artifactSource" (ngModelChange)="patchBindingEditor(index, 'artifactSource', $event)"><option value="">—</option>@for (source of bindingSources(index); track source.value) { <option [value]="source.value">{{ source.label }}</option> }</select></label>
+                        }
+                        <label><span>{{ dynamic('pipes.form.targetInput') }}</span><select data-binding-field="target" [attr.aria-invalid]="editor.invalidField === 'target'" [name]="'binding-target-' + index" [ngModel]="editor.target" (ngModelChange)="patchBindingEditor(index, 'target', $event)"><option value="">—</option>@for (input of (editor.kind === 'result' ? stringInputs(index) : artifactInputs(index)); track input) { <option [value]="input">{{ input }}</option> }</select></label>
+                      </div>
+                      @if (editor.kind === 'result') {
+                        <div class="binding-expression">
+                          <app-expression-editor
+                            [name]="'result-binding-expression-' + index"
+                            [label]="dynamic('pipes.form.valueExpression')"
+                            [placeholder]="dynamic('pipes.form.valueExpressionPlaceholder')"
+                            [required]="false"
+                            [rows]="2"
+                            [value]="editor.expression"
+                            [scopes]="pipeExpressionScopes"
+                            [names]="pipeExpressionNames"
+                            [utilityFunctions]="options().expressionUtilityFunctions"
+                            (valueChange)="patchBindingEditor(index, 'expression', $event)"
+                          />
+                          <small>{{ dynamic('pipes.form.expressionBrief') }}</small>
+                          <details class="expression-help"><summary>{{ dynamic('pipes.form.expressionHelpTitle') }}</summary><p>{{ dynamic('pipes.form.valueExpressionHelp') }}</p><code>{{ dynamic('pipes.form.valueExpressionPlaceholder') }}</code></details>
+                        </div>
+                      }
+                      @if (editor.invalidField) { <p class="binding-error" role="alert">{{ dynamic('pipes.form.bindingInvalid') }}</p> }
+                      <footer class="binding-form__actions"><button class="button button--secondary" type="button" (click)="cancelBindingEditor(index)">{{ dynamic('pipes.cancel') }}</button><button class="button button--primary" type="button" (click)="applyBinding(index)">{{ dynamic('pipes.form.applyBinding') }}</button></footer>
+                    </div>
+                  }
                 </section>
               }
             </article>

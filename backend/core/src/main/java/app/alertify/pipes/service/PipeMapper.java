@@ -49,6 +49,7 @@ final class PipeMapper {
         return new PipeStepResponse(value.getId(), value.getStepKey(), value.getPosition(), value.getStepType(), value.getPhase(),
                 alert ? value.getAlert().getId() : value.getProcedure().getId(),
                 alert ? value.getAlert().getName() : value.getProcedure().getName(),
+                alert ? value.getAlert().getTemplate().getTemplateKey() : value.getProcedure().getTemplate().getTemplateKey(),
                 alert ? value.getAlert().isEnabled() : value.getProcedure().isEnabled(), Duration.ofMillis(value.getTimeoutMillis()),
                 value.getContinueOn().stream().map(PipeOutcome::valueOf)
                         .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new)),

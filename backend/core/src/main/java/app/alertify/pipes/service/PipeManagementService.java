@@ -104,7 +104,7 @@ public class PipeManagementService {
                     .stream().filter(value -> value.getJavaType().equals(String.class.getName()) && value.isBindingAllowed()
                             && !value.isWritableBindingRequired())
                     .map(AlertTemplateParameterDefinition::getParameterKey).toList();
-            resources.add(new PipeOptionResponse(alert.getId(), alert.getName(), alert.isEnabled(),
+            resources.add(new PipeOptionResponse(alert.getId(), alert.getName(), alert.getTemplate().getTemplateKey(), alert.isEnabled(),
                     PipeStepType.ALERT, List.of(), List.of(), stringInputs));
         });
         for (Procedure procedure : procedureRepository.findAll(Sort.by("name"))) {
@@ -117,7 +117,7 @@ public class PipeManagementService {
             List<String> stringInputs = parameters.stream()
                     .filter(value -> value.getJavaType().equals(String.class.getName()) && value.isBindingAllowed())
                     .map(ProcedureTemplateParameterDefinition::getParameterKey).toList();
-            resources.add(new PipeOptionResponse(procedure.getId(), procedure.getName(), procedure.isEnabled(),
+            resources.add(new PipeOptionResponse(procedure.getId(), procedure.getName(), procedure.getTemplate().getTemplateKey(), procedure.isEnabled(),
                     PipeStepType.PROCEDURE, outputs, inputs, stringInputs));
         }
         return new PipeOptionsResponse(resources, bindingExpressions.functionNames());
