@@ -26,6 +26,7 @@ export interface WizardState {
   };
   open: boolean;
   activeEngine?: string | null;
+  currentUrl?: string;
   busy: boolean;
   error: string;
   errorCode?: string;

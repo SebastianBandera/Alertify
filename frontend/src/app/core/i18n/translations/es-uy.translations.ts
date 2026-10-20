@@ -475,6 +475,7 @@ export const ES_UY_TRANSLATIONS = {
   'alerts.wizard.url': 'URL de la página',
   'alerts.wizard.browser': 'Navegador interactivo',
   'alerts.wizard.activeBrowser': 'Motor activo',
+  'alerts.wizard.currentUrl': 'URL actual',
   'alerts.wizard.referencesTitle': 'Configuraciones y secretos',
   'alerts.wizard.editHelpTitle': 'Cambios en pasos ya ejecutados',
   'alerts.wizard.noEnabledProcedures': 'Todavía no habilitaste ningún procedure para este asistente.',

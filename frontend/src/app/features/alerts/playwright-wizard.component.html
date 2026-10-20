@@ -39,6 +39,9 @@
         <div class="panel-heading"><div class="page-heading"><h3>{{ t('page') }}</h3>@if (state()!.open && activeBrowser()) { <span class="browser-badge">{{ t('activeBrowser') }}: {{ activeBrowser() }}</span> }</div>
           @if (state()!.open) { <button type="button" (click)="detached() ? reattach() : detach()">{{ t(detached() ? 'reattach' : 'detach') }}</button> }
         </div>
+        @if (state()!.open) {
+          <label class="current-url">{{ t('currentUrl') }}<input type="text" readonly [value]="state()!.currentUrl ?? ''"></label>
+        }
         @if (state()!.open && !detached()) {
           <app-playwright-remote-view [draftId]="state()!.id" [disabled]="busy()" (elementSelected)="command('SELECT', $event)" (scrolled)="command('SCROLL', { delta: $event })" />
           <small>{{ t('selectionHelp') }}</small>

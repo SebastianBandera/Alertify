@@ -81,3 +81,5 @@ fieldset.procedure-values { display: block; min-width: 0; margin: 22px 0 0; padd
 .drafts button { display: grid; gap: 5px; text-align: left; overflow-wrap: anywhere; }
 @media (max-width: 1000px) { .workspace { grid-template-columns: 1fr; } .settings { grid-template-columns: repeat(2, minmax(0, 1fr)); } .settings .url { grid-column: 1 / -1; } }
 @media (max-width: 600px) { .wizard { padding: 16px; } .settings { grid-template-columns: 1fr; } .wizard-heading, .panel-heading { align-items: flex-start; flex-direction: column; } }
+.current-url { display: grid; gap: 6px; margin: 0 0 12px; font-size: 12px; color: var(--text-muted, #667085); }
+.current-url input { width: 100%; min-width: 0; box-sizing: border-box; }

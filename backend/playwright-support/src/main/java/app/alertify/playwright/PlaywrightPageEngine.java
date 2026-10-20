@@ -472,7 +472,7 @@ public class PlaywrightPageEngine implements AlertEvaluator {
             if (uri.getHost() == null)
                 return uri.getScheme() == null ? "unknown" : uri.getScheme() + ":";
 
-            return new URI(uri.getScheme(), null, uri.getHost(), uri.getPort(), uri.getRawPath(), null, null).toString();
+            return new URI(uri.getScheme(), null, uri.getHost(), uri.getPort(), null, null, null).toString();
         } catch (IllegalArgumentException | URISyntaxException exception) {
             return "unknown";
         }

@@ -58,6 +58,39 @@ class PlaywrightWizardServiceTest {
     }
 
     @Test
+    void rejectsOfflineSaveAndBypassPreparationUsingDeclaredSecretValues() {
+        var admin = new UsernamePasswordAuthenticationToken("admin-subject", "", List.of(new SimpleGrantedAuthority("ROLE_ADMIN")));
+        String canary = "fixture-private-offline";
+        String steps = "QUERY #password\nFILL secrets.Fixture\nQUERY main\nCHECK TEXT " + canary;
+        var reference = new PlaywrightPageEngine.ValueReference(app.alertify.alerts.AlertExecutionValueSource.SECRET, "Fixture");
+        when(valuePreparation.resolve(org.mockito.ArgumentMatchers.eq(reference), org.mockito.ArgumentMatchers.any())).thenReturn(new app.alertify.alerts.AlertExecutionValue(reference.source(), reference.key(), canary));
+        var clean = new PlaywrightWizardService.Settings("https://fixture.test/", "QUERY #password\nFILL secrets.Fixture", "chromium", List.of("chromium"), 10, 5, "ASK");
+        var contaminated = clean.withSteps(steps);
+        var draft = new WizardDraft("admin-subject", json.writeValueAsString(Map.of("settings", clean, "messages", List.of())));
+        when(store.load("admin-subject", draft.getId())).thenReturn(draft);
+        var payload = json.valueToTree(Map.of("operation", "SAVE", "id", draft.getId(), "clientId", "browser-a", "settings", contaminated));
+        assertThatThrownBy(() -> service.request(admin, payload)).isInstanceOf(PlaywrightDraftProtection.SensitiveContentFailure.class).hasMessageNotContaining(canary);
+        org.mockito.Mockito.verify(store, org.mockito.Mockito.never()).save(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyString());
+        draft.update(json.writeValueAsString(Map.of("settings", contaminated, "messages", List.of())));
+        var bypass = json.valueToTree(Map.of("operation", "PREPARE", "id", draft.getId(), "clientId", "browser-a", "bypass", true));
+        assertThatThrownBy(() -> service.request(admin, bypass)).isInstanceOf(PlaywrightDraftProtection.SensitiveContentFailure.class).hasMessageNotContaining(canary);
+    }
+
+    @Test
+    void removingAFillReferenceCannotSmuggleItsKnownValueIntoTheReplacementScript() {
+        var admin = new UsernamePasswordAuthenticationToken("admin-subject", "", List.of(new SimpleGrantedAuthority("ROLE_ADMIN")));
+        String canary = "fixture-removed-reference";
+        var reference = new PlaywrightPageEngine.ValueReference(app.alertify.alerts.AlertExecutionValueSource.SECRET, "Fixture");
+        when(valuePreparation.resolve(org.mockito.ArgumentMatchers.eq(reference), org.mockito.ArgumentMatchers.any())).thenReturn(new app.alertify.alerts.AlertExecutionValue(reference.source(), reference.key(), canary));
+        var previous = new PlaywrightWizardService.Settings("https://fixture.test/", "QUERY #password\nFILL secrets.Fixture", "chromium", List.of("chromium"), 10, 5, "ASK");
+        var draft = new WizardDraft("admin-subject", json.writeValueAsString(Map.of("settings", previous, "messages", List.of())));
+        when(store.load("admin-subject", draft.getId())).thenReturn(draft);
+        var payload = json.valueToTree(Map.of("operation", "SAVE", "id", draft.getId(), "clientId", "browser-a", "settings", previous.withSteps("QUERY main\nCHECK TEXT " + canary)));
+        assertThatThrownBy(() -> service.request(admin, payload)).isInstanceOf(PlaywrightDraftProtection.SensitiveContentFailure.class);
+        org.mockito.Mockito.verify(store, org.mockito.Mockito.never()).save(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyString());
+    }
+
+    @Test
     void blocksAnUnselectedProcedureEvenWhenBypassingTheBrowserTest() {
         var admin = new UsernamePasswordAuthenticationToken("admin-subject", "", List.of(new SimpleGrantedAuthority("ROLE_ADMIN")));
         var procedure = mock(app.alertify.procedures.model.Procedure.class);

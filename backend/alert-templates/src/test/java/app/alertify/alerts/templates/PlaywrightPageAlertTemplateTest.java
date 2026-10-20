@@ -27,6 +27,27 @@ import app.alertify.worker.contract.WorkerCapability;
 class PlaywrightPageAlertTemplateTest {
 
     @Test
+    void reportsOnlyOriginsOnSuccessAndFailures() throws Exception {
+        for (String phase : List.of("success", "navigate", "reload", "query")) {
+            FakeBrowserSession session = new FakeBrowserSession();
+            session.finalUrl = "https://user:private@destination.test:8443/private-base64?token=private#private";
+            if (phase.equals("navigate")) session.navigationFailure = new IllegalStateException("private");
+
+            if (phase.equals("reload")) session.reloadFailure = new IllegalStateException("private");
+
+            if (phase.equals("query")) session.failQuery = true;
+
+            AlertExecutionContext context = new AlertExecutionContext();
+            String steps = phase.equals("reload") ? "RELOAD" : phase.equals("query") ? "QUERY #missing" : "";
+            AlertResult result = template("https://source.test:9443/private?token=private#private", steps, session).evaluate(context);
+            assertEquals("https://source.test:9443", result.statusMessage().get("endpoint"));
+            assertEquals("https://destination.test:8443", browserResult(result, 0).get("finalUrl"));
+            assertFalse(result.statusMessage().toString().contains("private"));
+            assertFalse(context.getState().contains("private"));
+        }
+    }
+
+    @Test
     void classifiesTimeoutsIncludingSubclassesForNavigationAndReload() throws Exception {
         for (RuntimeException failure : List.of(new TimeoutError("private-timeout"), new TimeoutError("private-timeout") { }, new IllegalStateException("private-error"))) {
             FakeBrowserSession navigation = new FakeBrowserSession();
@@ -190,7 +211,7 @@ class PlaywrightPageAlertTemplateTest {
         assertEquals(1, result.statusMessage().get("successfulBrowserCount"));
         assertEquals("chromium", browserResult.get("browser"));
         assertEquals(7, browserResult.get("completedCommandCount"));
-        assertEquals("https://anep.edu.uy/contacto-anep", browserResult.get("finalUrl"));
+        assertEquals("https://anep.edu.uy", browserResult.get("finalUrl"));
         assertEquals(List.of("navigate", "query", "hover", "query", "check", "click", "query", "click", "close"), session.operations);
         assertFalse(result.statusMessage().toString().contains("Institucional"));
         assertFalse(result.statusMessage().toString().contains("Presentación"));

@@ -42,6 +42,10 @@ public final class InteractiveBrowserMain implements AutoCloseable {
     private final List<String> sensitive = new ArrayList<>();
     private PlaywrightBrowserSession session;
     private BrowserPageInspection inspection;
+    private BrowserSecretProtection protection;
+    private SecretValueSanitizer.Protection filter = SecretValueSanitizer.protection(List.of());
+    private boolean filterDirty;
+    private String publishedUrl;
     private String activeEngine;
     private boolean capturing;
     private JsonNode settings;
@@ -107,6 +111,9 @@ public final class InteractiveBrowserMain implements AutoCloseable {
     void handle(WizardRequest request) throws Exception {
         try {
             JsonNode payload = json.readTree(request.getJson());
+            if (session != null && List.of("OBSERVE", "FIND", "SELECT", "RESOLVE_REF").contains(request.getOperation()))
+                rememberPasswords();
+
             switch (request.getOperation()) {
                 case "OPEN", "RESET" -> {
                     settings = payload;
@@ -168,6 +175,7 @@ public final class InteractiveBrowserMain implements AutoCloseable {
             Page page = session.page();
             page.setDefaultTimeout(elementTimeout());
             inspection = new BrowserPageInspection(page, this::captureIfDue);
+            protection = new BrowserSecretProtection(page);
             var navigation = session.navigate(uri.toString(), loadTimeout());
             String type = navigation.contentType().split(";", 2)[0].strip().toLowerCase(java.util.Locale.ROOT);
             if (navigation.statusCode() == null || navigation.statusCode() < 200 || navigation.statusCode() >= 300 || !(type.equals("text/html") || type.equals("application/xhtml+xml")))
@@ -282,9 +290,20 @@ public final class InteractiveBrowserMain implements AutoCloseable {
     private Map<String, Object> observe(JsonNode payload) {
         requireBrowser();
         String scope = payload.path("selector").asString("body");
-        String snapshot = session.page().locator(scope).ariaSnapshot(new Locator.AriaSnapshotOptions().setMode(AriaSnapshotMode.AI).setDepth(32).setBoxes(true));
+        String snapshot = null;
+        for (int attempt = 0; attempt < 3; attempt++) {
+            List<String> before = rememberPasswords();
+            String candidate = session.page().locator(scope).ariaSnapshot(new Locator.AriaSnapshotOptions().setMode(AriaSnapshotMode.AI).setDepth(32).setBoxes(true));
+            if (before.equals(rememberPasswords())) {
+                snapshot = candidate;
+                break;
+            }
+        }
+        if (snapshot == null)
+            throw new IllegalStateException("Password controls changed while producing the protected observation");
+
         snapshotId++;
-        String safe = BrowserObservationSanitizer.sanitize(snapshot, sensitive);
+        String safe = sanitize(snapshot);
         List<Map<String, Object>> controls = new ArrayList<>();
         Locator interactive = session.page().locator(scope).locator("input:not([type=hidden]),textarea,select,button,a[href],[role=button],[role=textbox]")
                 .filter(new Locator.FilterOptions().setVisible(true));
@@ -296,13 +315,14 @@ public final class InteractiveBrowserMain implements AutoCloseable {
 
             // Accessible labels are not necessarily aria-label attributes. Never read control values.
             Object metadata = element.evaluate("element => ({tag: element.tagName.toLowerCase(), type: element.getAttribute('type') || '', label: (element.getAttribute('aria-label') || element.labels?.[0]?.innerText || element.getAttribute('placeholder') || element.innerText || '').slice(0, 200)})");
-            controls.add(Map.of("selector", sanitize(selector), "metadata", SecretValueSanitizer.sanitize(json.valueToTree(metadata), sensitive)));
+            controls.add(Map.of("selector", sanitize(selector), "metadata", filter().sanitize(json.valueToTree(metadata))));
         }
         return Map.of("snapshot", safe.substring(0, Math.min(safe.length(), 40_000)), "controls", controls, "snapshotId", snapshotId, "completed", completed, "dirty", dirty);
     }
 
     private List<Map<String, Object>> find(JsonNode payload) {
         requireBrowser();
+        rememberPasswords();
         String text = payload.path("text").asString();
         if (text.isBlank() || text.length() > 300)
             throw new IllegalArgumentException("Search text must contain 1-300 characters");
@@ -347,14 +367,19 @@ public final class InteractiveBrowserMain implements AutoCloseable {
         capturing = true;
         lastCapture = System.nanoTime();
         try {
+            rememberPasswords();
+            publishUrl();
             List<Locator> masks = new ArrayList<>();
+            if (!sensitive.isEmpty())
+                masks.addAll(protection.componentAndFoldedTextMasks(filter().base64Values()));
+
             for (Frame frame : session.page().frames()) {
                 masks.add(frame.locator("input[type=password]"));
                 if (!sensitive.isEmpty()) {
                     // Canvas, images and frames cannot be reliably inspected for reflected secret pixels.
                     masks.add(frame.locator("canvas,img,video,iframe,svg,input,textarea,[contenteditable]"));
-                    for (String value : sensitive)
-                        masks.add(frame.getByText(value));
+                    if (filter().maskPattern() != null)
+                        masks.add(frame.getByText(filter().maskPattern()));
                 }
             }
             var options = new Page.ScreenshotOptions().setType(ScreenshotType.JPEG).setQuality(65).setMask(masks).setTimeout(2000);
@@ -393,6 +418,7 @@ public final class InteractiveBrowserMain implements AutoCloseable {
             return;
 
         sensitive.add(value);
+        filterDirty = true;
         try {
             JsonNode node = json.readTree(value);
             collect(node);
@@ -414,14 +440,42 @@ public final class InteractiveBrowserMain implements AutoCloseable {
         }
     }
 
-    private String sanitize(String text) { return BrowserObservationSanitizer.sanitize(text == null ? "" : text, sensitive); }
+    private SecretValueSanitizer.Protection filter() {
+        if (filterDirty) {
+            filter = SecretValueSanitizer.protection(sensitive);
+            filterDirty = false;
+        }
+        return filter;
+    }
+
+    private List<String> rememberPasswords() {
+        List<String> values = protection.passwords();
+        values.forEach(this::remember);
+        return values;
+    }
+
+    private void publishUrl() throws Exception {
+        String current;
+        try {
+            URI uri = URI.create(session.url());
+            current = uri.getHost() == null ? "" : uri.getScheme() + "://" + uri.getRawAuthority().substring(uri.getRawAuthority().lastIndexOf('@') + 1)
+                    + (uri.getRawPath() == null ? "" : uri.getRawPath()) + (uri.getRawQuery() == null ? "" : "?" + uri.getRawQuery()) + (uri.getRawFragment() == null ? "" : "#" + uri.getRawFragment());
+        } catch (IllegalArgumentException failure) { current = ""; }
+        current = sanitize(current);
+        if (!java.util.Objects.equals(current, publishedUrl)) {
+            publishedUrl = current;
+            send(WizardEvent.newBuilder().setType("PAGE_STATE").setJson(json.writeValueAsString(Map.of("currentUrl", current))).build());
+        }
+    }
+
+    private String sanitize(String text) { return filter().sanitize(text == null ? "" : text); }
     private long loadTimeout() { return settings.path("loadTimeoutSeconds").asInt(10) * 1000L; }
     private long elementTimeout() { return settings.path("elementTimeoutSeconds").asInt(5) * 1000L; }
     private static String text(JsonNode value, String name, String fallback) { return value.path(name).asString(fallback); }
 
     private void result(WizardRequest request, Object value) throws Exception {
         JsonNode document = json.valueToTree(value);
-        JsonNode safe = SecretValueSanitizer.sanitize(document, sensitive);
+        JsonNode safe = filter().sanitize(document);
         if (request.getOperation().equals("TEST")) {
             // Engine identities are declared metadata, never resolved values.
             ((ObjectNode) safe).set("activeEngine", document.path("activeEngine"));
@@ -449,6 +503,8 @@ public final class InteractiveBrowserMain implements AutoCloseable {
         PlaywrightBrowserSession closing = session;
         session = null;
         inspection = null;
+        protection = null;
+        publishedUrl = null;
         activeEngine = null;
         frameRevisions.clear();
         if (closing != null)

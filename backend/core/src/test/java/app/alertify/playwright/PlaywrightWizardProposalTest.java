@@ -50,6 +50,85 @@ class PlaywrightWizardProposalTest {
     private Object session;
 
     @Test
+    @SuppressWarnings("unchecked")
+    void sanitizesEveryProviderContextSourceAndKeepsReferencePointersExact() throws Exception {
+        prepare("ASK");
+        String canary = "fixture-provider-private";
+        ((List<String>) ReflectionTestUtils.getField(session, "sensitive")).addAll(List.of(canary, "1"));
+        var doc = (tools.jackson.databind.node.ObjectNode) document();
+        ((tools.jackson.databind.node.ObjectNode) doc.path("settings")).put("steps", "CALL PROCEDURE \"Fixture\" POINTER \"/items/1\" AS code1");
+        doc.set("messages", json.valueToTree(List.of(Map.of("role", "USER", "content", "Historical " + canary))));
+        draft.update(json.writeValueAsString(doc));
+        ReflectionTestUtils.setField(session, "selection", json.valueToTree(Map.of("selector", "[data-token=\"" + canary + "\"]")));
+        var ai = (AiWorkerClient) ReflectionTestUtils.getField(service, "ai");
+        when(ai.state()).thenReturn(app.alertify.worker.ai.grpc.ModuleStateResponse.newBuilder().setEnabled(true).setSessionStatus("ACTIVE").build());
+        when(ai.settings()).thenReturn(app.alertify.worker.ai.grpc.AiSettings.newBuilder().setModel("fixture-model").setReasoningEffort("low").build());
+        when(values.secretReferences()).thenReturn(List.of());
+        var completion = new java.util.concurrent.atomic.AtomicReference<Runnable>();
+        when(ai.chat(any(), any(), any())).thenAnswer(invocation -> { completion.set(invocation.getArgument(2)); return chat; });
+        var starts = new ArrayList<app.alertify.worker.ai.grpc.ChatStart>();
+        doAnswer(invocation -> {
+            ChatClientMessage message = invocation.getArgument(0);
+            if (message.hasStart()) { starts.add(message.getStart()); completion.get().run(); }
+            return null;
+        }).when(chat).send(any());
+        StreamObserver<WizardRequest> browser = mock(StreamObserver.class);
+        doAnswer(invocation -> {
+            WizardRequest request = invocation.getArgument(0);
+            var pending = (ConcurrentMap<String, CompletableFuture<WizardEvent>>) ReflectionTestUtils.getField(session, "pending");
+            pending.get(request.getRequestId()).complete(WizardEvent.newBuilder().setType("RESULT").setJson(json.writeValueAsString(Map.of("snapshot", "Remote " + canary))).build());
+            return null;
+        }).when(browser).onNext(any());
+        ReflectionTestUtils.setField(session, "requests", browser);
+        ReflectionTestUtils.invokeMethod(service, "chat", session, "Current request " + canary, "es-UY");
+        assertThat(starts).hasSize(1);
+        var start = starts.getFirst();
+        assertThat(start.getInstructions()).doesNotContain(canary).contains("/items/1", "[REDACTED]");
+        assertThat(start.getHistoryList()).allSatisfy(message -> assertThat(message.getContent()).doesNotContain(canary));
+        assertThat(draft.getDocument()).doesNotContain(canary);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void rejectsSensitiveProposalsInAskAndAutoWithoutSavingOrDispatching() throws Exception {
+        for (String mode : List.of("ASK", "AUTO")) {
+            prepare(mode);
+            String canary = "fixture-proposal-private";
+            ((List<String>) ReflectionTestUtils.getField(session, "sensitive")).add(canary);
+            String original = draft.getDocument();
+            var reply = steps("QUERY main\nCHECK TEXT " + canary);
+            assertThat(reply.getFailed()).isTrue();
+            assertThat(reply.getDiagnosticCode()).isEqualTo(PlaywrightDraftProtection.CODE);
+            assertThat(reply.getOutput()).doesNotContain(canary);
+            assertThat(draft.getDocument()).isEqualTo(original);
+            assertThat(browserRequests).isEmpty();
+        }
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void rejectsLegacySensitiveApprovalAndActiveSaveBeforeAnyMutation() throws Exception {
+        prepare("ASK");
+        String canary = "fixture-approval-private";
+        ((List<String>) ReflectionTestUtils.getField(session, "sensitive")).add(canary);
+        var sessions = (Map<UUID, Object>) ReflectionTestUtils.getField(service, "sessions");
+        sessions.put(draft.getId(), session);
+        var doc = (tools.jackson.databind.node.ObjectNode) document();
+        doc.put("proposal", "QUERY main\nCHECK TEXT " + canary);
+        draft.update(json.writeValueAsString(doc));
+        String original = draft.getDocument();
+        var authentication = new UsernamePasswordAuthenticationToken("admin-subject", "", List.of(new SimpleGrantedAuthority("ROLE_ADMIN")));
+        var request = json.valueToTree(Map.of("operation", "APPROVE", "id", draft.getId(), "clientId", "browser-a"));
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.request(authentication, request)).isInstanceOf(PlaywrightDraftProtection.SensitiveContentFailure.class);
+        assertThat(draft.getDocument()).isEqualTo(original);
+        var settings = json.treeToValue(doc.path("settings"), PlaywrightWizardService.Settings.class).withSteps("QUERY [data-token=\"" + canary + "\"]");
+        var save = json.valueToTree(Map.of("operation", "SAVE", "id", draft.getId(), "clientId", "browser-a", "settings", settings));
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.request(authentication, save)).isInstanceOf(PlaywrightDraftProtection.SensitiveContentFailure.class);
+        assertThat(draft.getDocument()).isEqualTo(original);
+        assertThat(browserRequests).isEmpty();
+    }
+
+    @Test
     void rejectsAnIncompleteCheckWithoutExecutionAndAcceptsItsCorrectionWithoutRestarting() throws Exception {
         prepare("ASK");
         var original = document();

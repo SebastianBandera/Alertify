@@ -992,6 +992,7 @@ export type TranslationKey =
   | 'alerts.wizard.url'
   | 'alerts.wizard.browser'
   | 'alerts.wizard.activeBrowser'
+  | 'alerts.wizard.currentUrl'
   | 'alerts.wizard.referencesTitle'
   | 'alerts.wizard.editHelpTitle'
   | 'alerts.wizard.noEnabledProcedures'

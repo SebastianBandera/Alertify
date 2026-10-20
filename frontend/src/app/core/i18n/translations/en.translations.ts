@@ -475,6 +475,7 @@ export const EN_TRANSLATIONS = {
   'alerts.wizard.url': 'Page URL',
   'alerts.wizard.browser': 'Interactive browser',
   'alerts.wizard.activeBrowser': 'Active engine',
+  'alerts.wizard.currentUrl': 'Current URL',
   'alerts.wizard.referencesTitle': 'Configurations and secrets',
   'alerts.wizard.editHelpTitle': 'Changes to previously executed steps',
   'alerts.wizard.noEnabledProcedures': 'No procedures have been enabled for this assistant yet.',

@@ -84,6 +84,7 @@ export class PlaywrightWizardComponent implements OnInit {
       if (event.data.type === 'WIZARD_SELECT') void this.command('SELECT', event.data.selection);
       if (event.data.type === 'WIZARD_SCROLL') void this.command('SCROLL', { delta: event.data.delta });
       if (event.data.type === 'WIZARD_REATTACH') this.detached.set(false);
+      if (event.data.type === 'WIZARD_READY') this.publishPageState();
     };
     window.addEventListener('message', listener);
     const unload = (): void => { void this.closeBrowser(); };
@@ -114,6 +115,10 @@ export class PlaywrightWizardComponent implements OnInit {
 
   protected t(key: string): string { return this.localization.translateDynamic('alerts.wizard.' + key); }
   protected activity(): void { this.active = true; }
+  private publishPageState(): void {
+    const current = this.state();
+    if (current) this.popup?.postMessage({ type: 'WIZARD_ENGINE', id: current.id, engine: current.activeEngine, currentUrl: current.currentUrl ?? '' }, location.origin);
+  }
   private payload(extra: Record<string, unknown> = {}): Record<string, unknown> { return { id: this.state()?.id, clientId: this.clientId, ...extra }; }
 
   private update(next: WizardState): void {
@@ -121,7 +126,7 @@ export class PlaywrightWizardComponent implements OnInit {
     const hadLocalEdits = this.changed();
     const differentDraft = this.state()?.id !== next.id;
     this.state.set(next);
-    this.popup?.postMessage({ type: 'WIZARD_ENGINE', id: next.id, engine: next.activeEngine }, location.origin);
+    this.publishPageState();
     if (differentDraft) {
       this.selectedProcedure.set(null);
       void this.api.request<{ id: number; name: string }[]>('PROCEDURE_CATALOG', { id: next.id }).then(values => this.procedures.set(Array.isArray(values) ? values : [])).catch(() => this.procedures.set([]));

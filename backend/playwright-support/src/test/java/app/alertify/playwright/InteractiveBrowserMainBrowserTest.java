@@ -40,16 +40,49 @@ class InteractiveBrowserMainBrowserTest {
     private static final Map<String, AtomicInteger> REQUESTS = new ConcurrentHashMap<>();
     private static HttpServer server;
     private static String origin;
+    private static final String LOGIN_USER = "fixture-user";
+    private static final String LOGIN_PASSWORD = UUID.randomUUID().toString();
+    private static final String LOGIN_STEPS = """
+            QUERY #username
+            FILL SECRET "Fixture" POINTER "/username"
+            QUERY #password
+            FILL SECRET "Fixture" POINTER "/password"
+            QUERY #login
+            USE
+            WAIT_VISIBLE #authenticated 10s
+            QUERY #authenticated
+            CHECK TEXT Área autenticada
+            QUERY #logout
+            USE
+            WAIT_VISIBLE #username 10s
+            QUERY main
+            CHECK TEXT Sesión cerrada
+            """;
     private static final String HTML = """
             <!doctype html><html><head><style>
             body{margin:0;height:100vh}#before,#after{position:absolute;left:20px;top:100px;width:180px;height:40px}
             #password{position:absolute;left:20px;top:20px;width:200px;height:30px}
-            #input{position:absolute;left:20px;top:180px}h1{position:absolute;left:20px;top:250px}
+            #input{position:absolute;left:20px;top:180px}h1{position:absolute;left:20px;top:250px;margin:0}
             #clock{position:absolute;left:600px;top:20px}#ready{position:absolute;left:20px;top:350px}
             </style></head><body><input id=password type=password value=fixture-canary>
             <button id=before>Run</button><span id=clock>Clock</span><textarea id=input></textarea><h1>Public content</h1>
+            <div id=closed style="position:absolute;left:20px;top:450px;width:500px;height:40px"></div>
+            <pre id=folded style="position:absolute;left:20px;top:510px;width:500px;height:60px"></pre>
+            <x-private id=late style="display:block;position:absolute;left:20px;top:650px;width:500px;height:40px"></x-private>
             <script>
             document.querySelector('#input').addEventListener('input', e => document.querySelector('h1').textContent = 'Reflected ' + e.target.value);
+            if(location.pathname==='/security') {
+              const closed=document.querySelector('#closed').attachShadow({mode:'closed'});
+              closed.innerHTML='<span>Private component</span>';
+              document.querySelector('#input').addEventListener('input', e => {
+                const encoded=btoa(unescape(encodeURIComponent(e.target.value)));
+                closed.querySelector('span').textContent=e.target.value;
+                document.querySelector('h1').textContent=encoded;
+                document.querySelector('#folded').textContent=encoded.match(/.{1,37}/g).join('\\n');
+                document.querySelector('#late').attachShadow({mode:'closed'}).textContent=e.target.value;
+                history.replaceState(null,'','/session/'+encodeURIComponent(encoded)+'?token='+encodeURIComponent(e.target.value));
+              });
+            }
             let count=0; document.querySelector('#before').onclick=()=>document.querySelector('#clock').textContent=String(++count);
             if(location.pathname==='/wait')setTimeout(()=>{const e=document.createElement('div');e.id='ready';e.textContent='Ready';document.body.append(e)},4000);
             if(location.pathname.startsWith('/once/'))document.querySelector('h1').textContent=document.cookie.includes('fixture=present')?'Cookie kept':'Cookie missing';
@@ -65,6 +98,32 @@ class InteractiveBrowserMainBrowserTest {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/", exchange -> {
             String path = exchange.getRequestURI().getPath();
+            if (path.equals("/authenticate") || path.equals("/logout")) {
+                String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                boolean valid = body.contains("username=" + LOGIN_USER) && body.contains("password=" + LOGIN_PASSWORD);
+                exchange.getResponseHeaders().add("Set-Cookie", path.equals("/authenticate") && valid ? "session=fixture; Path=/; HttpOnly; SameSite=Lax" : "session=; Path=/; Max-Age=0");
+                exchange.getResponseHeaders().set("Location", path.equals("/authenticate") && valid ? "/account" : "/login?loggedOut=true");
+                exchange.sendResponseHeaders(303, -1);
+                exchange.close();
+                return;
+            }
+            if (path.equals("/login") || path.equals("/account")) {
+                boolean authenticated = path.equals("/account") && exchange.getRequestHeaders().getOrDefault("Cookie", List.of()).stream().anyMatch(cookie -> cookie.contains("session=fixture"));
+                String page = authenticated ? "<main id=authenticated>Área autenticada<a id=logout href='/logout'>Cerrar sesión</a></main>"
+                        : "<main>Sesión cerrada<form method=post action='/authenticate'><label>Usuario<input id=username name=username></label><label>Contraseña<input id=password name=password type=password></label><button id=login>Ingresar</button></form></main>";
+                byte[] bytes = ("<!doctype html><html><body>" + page + "</body></html>").getBytes(StandardCharsets.UTF_8);
+                exchange.getResponseHeaders().set("Content-Type", "text/html; charset=utf-8");
+                exchange.sendResponseHeaders(200, bytes.length);
+                exchange.getResponseBody().write(bytes);
+                exchange.close();
+                return;
+            }
+            if (path.equals("/redirect")) {
+                exchange.getResponseHeaders().set("Location", "http://localhost:" + server.getAddress().getPort() + "/html");
+                exchange.sendResponseHeaders(302, -1);
+                exchange.close();
+                return;
+            }
             int count = REQUESTS.computeIfAbsent(path, ignored -> new AtomicInteger()).incrementAndGet();
             boolean once = path.startsWith("/once/");
             exchange.getResponseHeaders().set("Content-Type", path.equals("/json") ? "application/json" : "text/html; charset=utf-8");
@@ -81,6 +140,59 @@ class InteractiveBrowserMainBrowserTest {
 
     @AfterAll
     static void stopFixture() { if (server != null) server.stop(0); }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"chromium", "firefox", "webkit"})
+    void protectsUnknownPasswordValuesWithoutChangingTheField(String engine) throws Exception {
+        try (var harness = new Harness()) {
+            harness.success("OPEN", settings(engine, "/html", ""));
+            var observation = harness.success("OBSERVE", Map.of());
+            assertThat(JSON.writeValueAsString(observation).contains("fixture-canary")).as("A page-provided password must not leave in ARIA or control metadata").isFalse();
+            assertThat(observation.path("snapshot").asString()).contains("[REDACTED]", "Public content");
+            harness.success("EXECUTE", settings(engine, "/html", "QUERY #password\nCHECK ATTRIBUTE value fixture-canary"));
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"chromium", "firefox", "webkit"})
+    void masksClosedComponentsAndBase64AndPublishesOnlyFilteredCurrentUrls(String engine) throws Exception {
+        try (var harness = new Harness()) {
+            harness.success("OPEN", settings(engine, "/security", ""));
+            String value = "canary-private-" + UUID.randomUUID() + "-credential-".repeat(8);
+            String encoded = java.util.Base64.getEncoder().encodeToString(value.getBytes(StandardCharsets.UTF_8));
+            var payload = settings(engine, "/security", "QUERY #input\nFILL configs.Canary");
+            payload.set("values", JSON.valueToTree(List.of(Map.of("source", "CONFIGURATION", "name", "Canary", "value", value))));
+            harness.success("EXECUTE", payload);
+            var observation = harness.success("OBSERVE", Map.of());
+            assertThat(JSON.writeValueAsString(observation).contains(value)).isFalse();
+            assertThat(JSON.writeValueAsString(observation).contains(encoded)).isFalse();
+            var capture = harness.request("SCREENSHOT", Map.of());
+            assertThat(capture.getType()).isEqualTo("IMAGE");
+            var image = ImageIO.read(new ByteArrayInputStream(capture.getImage().toByteArray()));
+            for (int y : List.of(260, 460, 530, 660)) {
+                int color = image.getRGB(30, y);
+                assertThat((color >> 16) & 255).as("Mask red channel at y=%s", y).isGreaterThan(220);
+                assertThat((color >> 8) & 255).as("Mask green channel at y=%s", y).isLessThan(60);
+                assertThat(color & 255).as("Mask blue channel at y=%s", y).isGreaterThan(220);
+            }
+            String currentUrl = harness.events.stream().map(Event::event).filter(event -> event.getType().equals("PAGE_STATE")).reduce((first, second) -> second).map(event -> JSON.readTree(event.getJson()).path("currentUrl").asString()).orElseThrow();
+            assertThat(currentUrl).contains("/session/[REDACTED]", "token=[REDACTED]");
+            assertThat(currentUrl.contains(value) || currentUrl.contains(encoded)).isFalse();
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"chromium", "firefox", "webkit"})
+    void displaysRedirectedOriginAndKeepsFillAvailable(String engine) throws Exception {
+        try (var harness = new Harness()) {
+            harness.success("OPEN", settings(engine, "/redirect", ""));
+            var payload = settings(engine, "/redirect", "QUERY #input\nFILL secrets.Canary");
+            payload.set("values", JSON.valueToTree(List.of(Map.of("source", "SECRET", "name", "Canary", "value", "redirect-fixture-value"))));
+            harness.success("EXECUTE", payload);
+            String currentUrl = harness.events.stream().map(Event::event).filter(event -> event.getType().equals("PAGE_STATE")).reduce((first, second) -> second).map(event -> JSON.readTree(event.getJson()).path("currentUrl").asString()).orElseThrow();
+            assertThat(currentUrl).startsWith("http://localhost:").endsWith("/html");
+        }
+    }
 
     @ParameterizedTest
     @ValueSource(strings = {"chromium", "firefox", "webkit"})
@@ -199,6 +311,27 @@ class InteractiveBrowserMainBrowserTest {
             var observation = harness.success("OBSERVE", Map.of());
             assertThat(JSON.writeValueAsString(observation).contains("canary-")).isFalse();
         }
+    }
+
+    @Test
+    void replaysProtectedLoginAndLogoutInWizardAndAlertAcrossAllEngines() throws Exception {
+        var values = List.of(
+                new app.alertify.alerts.AlertExecutionValue(app.alertify.alerts.AlertExecutionValueSource.SECRET, PlaywrightDslValues.key("Fixture", "/username"), LOGIN_USER),
+                new app.alertify.alerts.AlertExecutionValue(app.alertify.alerts.AlertExecutionValueSource.SECRET, PlaywrightDslValues.key("Fixture", "/password"), LOGIN_PASSWORD));
+        try (var harness = new Harness()) {
+            harness.success("OPEN", settings("chromium", "/login", ""));
+            var payload = settings("chromium", "/login", LOGIN_STEPS);
+            payload.set("browsers", JSON.valueToTree(List.of("chromium", "firefox", "webkit")));
+            payload.set("values", JSON.valueToTree(values.stream().map(value -> Map.of("source", value.source().name(), "name", value.name(), "value", value.value())).toList()));
+            var result = harness.success("TEST", payload);
+            assertThat(result.path("passed").asBoolean()).as("Clean login/logout replay in all three engines").isTrue();
+            assertThat(harness.success("OBSERVE", Map.of()).toString().contains(LOGIN_PASSWORD)).isFalse();
+        }
+        var context = new app.alertify.alerts.AlertExecutionContext("", Map.of(), values);
+        var result = new PlaywrightPageEngine(origin + "/login", true, true, true, 10, 5, LOGIN_STEPS).evaluate(context);
+        assertThat(result.status().name()).isEqualTo("SUCCESS");
+        assertThat(result.statusMessage().get("endpoint")).isEqualTo(origin);
+        assertThat(result.statusMessage().toString().contains(LOGIN_PASSWORD)).isFalse();
     }
 
     @Test

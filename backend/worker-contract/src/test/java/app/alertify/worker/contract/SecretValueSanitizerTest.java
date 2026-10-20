@@ -5,6 +5,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Base64;
+import java.nio.charset.StandardCharsets;
+import java.net.URLEncoder;
 
 import org.junit.jupiter.api.Test;
 
@@ -15,6 +18,34 @@ import tools.jackson.databind.json.JsonMapper;
 class SecretValueSanitizerTest {
 
     private static final JsonMapper JSON = JsonMapper.builder().build();
+
+    @Test
+    void protectsBase64AlphabetsPaddingCharsetsAndArbitraryMimeFolding() {
+        for (String value : List.of("canary-contraseña-🔐", "canary-credential-with-long-content-".repeat(5), "ab", "abc", "abcd")) {
+            var protection = SecretValueSanitizer.protection(List.of(value));
+            for (var charset : List.of(StandardCharsets.UTF_8, StandardCharsets.UTF_16LE, StandardCharsets.UTF_16BE)) {
+                for (var encoder : List.of(Base64.getEncoder(), Base64.getUrlEncoder())) {
+                    String encoded = encoder.encodeToString(value.getBytes(charset));
+                    for (String representation : List.of(encoded, encoded.replaceFirst("=+$", ""), String.join("\r\n", encoded.split("(?<=\\G.{37})")))) {
+                        assertThat(protection.sanitize("before:" + representation + ":after")).isEqualTo("before:[REDACTED]:after");
+                        assertThat(protection.sanitize(JSON.valueToTree(Map.of("detail", representation))).path("detail").asString()).isEqualTo("[REDACTED]");
+                        assertThat(protection.sanitize(URLEncoder.encode(representation, StandardCharsets.UTF_8))).isEqualTo("[REDACTED]");
+                        assertThat(protection.sanitize(representation.replace("\r", "\\r").replace("\n", "\\n"))).isEqualTo("[REDACTED]");
+                    }
+                }
+            }
+            assertThat(protection.sanitize("Public page content")).isEqualTo("Public page content");
+        }
+    }
+
+    @Test
+    void protectsBase64FieldsOfStructuredSecretsWithoutChangingDiagnosticNumbers() {
+        String value = "fixture-credential";
+        String encoded = Base64.getEncoder().encodeToString(value.getBytes(StandardCharsets.UTF_8));
+        JsonNode result = SecretValueSanitizer.sanitize(JSON.valueToTree(Map.of("detail", encoded, "completed", 4)), List.of(JSON.writeValueAsString(Map.of("password", value))));
+        assertThat(result.path("detail").asString()).isEqualTo("[REDACTED]");
+        assertThat(result.path("completed").asInt()).isEqualTo(4);
+    }
 
     @Test
     void redactsPlainAndStructuredSecretValuesFromMessageAndStackTrace() {

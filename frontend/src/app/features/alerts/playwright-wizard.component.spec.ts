@@ -83,6 +83,19 @@ describe('PlaywrightWizardComponent', () => {
     fixture.destroy();
   });
 
+  it('shows the actual filtered redirect URL as readonly and keeps it outside saved settings', () => {
+    const next = structuredClone(current);
+    next.currentUrl = 'https://login.example.test/session/[REDACTED]';
+    harness.update(next);
+    fixture.detectChanges();
+    const address = fixture.nativeElement.querySelector('.current-url input') as HTMLInputElement;
+    expect(address.readOnly).toBe(true);
+    expect(address.value).toBe(next.currentUrl);
+    expect(harness.settings().url).toBe('https://example.com/');
+    expect(JSON.stringify(harness.settings())).not.toContain('login.example.test');
+    fixture.destroy();
+  });
+
   it('adopts the last tested engine and retains the successful revision when the backend settles the test', async () => {
     const next = structuredClone(current);
     next.activeEngine = 'firefox';
