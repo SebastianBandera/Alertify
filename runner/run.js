@@ -415,9 +415,9 @@ function positiveIntegerValue(environment, key) {
 function workerCapabilitiesValue(environment, key) {
   const rawValue = required(environment, key);
   const values = rawValue.split(',').map((value) => value.trim().toUpperCase()).filter(Boolean);
-  const allowedValues = new Set(['STANDARD', 'PLAYWRIGHT']);
+  const allowedValues = new Set(['STANDARD', 'PLAYWRIGHT', 'AI', 'CODEX']);
   if (values.length === 0 || values.some((value) => !allowedValues.has(value))) {
-    throw new Error(`${key} must contain STANDARD and/or PLAYWRIGHT; received: ${rawValue}.`);
+    throw new Error(`${key} contains an unsupported worker capability; received: ${rawValue}.`);
   }
   return [...new Set(values)];
 }
@@ -466,6 +466,12 @@ function applyApplicationContext(environment) {
   contextualEnvironment.set('APP_CONTEXT_PATH', contextPath || '/');
   contextualEnvironment.set('APP_PUBLIC_ORIGIN', appPublicUrl.origin);
   contextualEnvironment.set('KEYCLOAK_RELATIVE_PATH', `${contextPath}/identity`);
+  const oauthCallbackPort = isLocalhostHostname(appPublicUrl.hostname)
+    ? required(environment, 'PUBLIC_PORT')
+    : required(environment, 'PUBLIC_HTTP_PORT');
+  contextualEnvironment.set('AI_OAUTH_CALLBACK_URI', `http://127.0.0.1:${oauthCallbackPort}${contextPath}/api/ai/codex/oauth/callback`);
+  const extensionCallbackPort = portValue(environment, 'AI_OAUTH_EXTENSION_CALLBACK_PORT');
+  contextualEnvironment.set('AI_OAUTH_EXTENSION_CALLBACK_URI', `http://127.0.0.1:${extensionCallbackPort}${contextPath}/api/ai/codex/oauth/callback`);
 
   if (!contextPath) {
     return contextualEnvironment;
@@ -560,6 +566,7 @@ function buildPlan(environment, options = {}) {
   const skipPublisher = options.skipPublisher === true;
   const skipWorkerStandard = options.skipWorkerStandard === true;
   const skipWorkerPlaywright = options.skipWorkerPlaywright === true;
+  const skipWorkerCodex = options.skipWorkerCodex === true;
   const plan = {
     redisMode,
     redisUrl: required(environment, 'REDIS_URL'),
@@ -591,6 +598,9 @@ function buildPlan(environment, options = {}) {
     backendDebugEnabled: false,
     backendDebugPort: null,
     backendDebugSuspend: null,
+    workerCodexDebugEnabled: false,
+    workerCodexDebugPort: null,
+    workerCodexDebugSuspend: null,
     workerGrpcHost: null,
     workerGrpcPort: null,
     workerGrpcTlsEnabled: false,
@@ -600,6 +610,7 @@ function buildPlan(environment, options = {}) {
     rotateGrpcCertificates: false,
     skipWorkerStandard,
     skipWorkerPlaywright,
+    skipWorkerCodex,
     workerStandardReplicas: null,
     workerStandardCapabilities: null,
     workerStandardName: null,
@@ -610,6 +621,9 @@ function buildPlan(environment, options = {}) {
     workerPlaywrightName: null,
     workerPlaywrightUniqueNames: false,
     workerPlaywrightInstances: [],
+    workerCodexReplicas: null,
+    workerCodexCapabilities: null,
+    workerCodexName: null,
     identityDatabaseMode: null,
     applicationDatabaseMode: null,
     services: [],
@@ -716,7 +730,7 @@ function buildPlan(environment, options = {}) {
     plan.workerGrpcTlsServerName = dnsNameValue(environment, 'WORKER_GRPC_TLS_SERVER_NAME');
     plan.procedureMaxDepth = positiveIntegerValue(environment, 'PROCEDURE_MAX_DEPTH');
     plan.grpcCertificateValidityDays = positiveIntegerValue(environment, 'GRPC_CERTIFICATE_VALIDITY_DAYS');
-    plan.rotateGrpcCertificates = !skipBackend && !skipWorkerStandard && !skipWorkerPlaywright;
+    plan.rotateGrpcCertificates = !skipBackend && !skipWorkerStandard && !skipWorkerPlaywright && !skipWorkerCodex;
     booleanValue(environment, 'WORKER_DISCOVERY_ENABLED');
     required(environment, 'WORKER_DISCOVERY_INTERVAL');
     required(environment, 'WORKER_HEALTH_TIMEOUT');
@@ -732,6 +746,23 @@ function buildPlan(environment, options = {}) {
     plan.workerPlaywrightName = required(environment, 'WORKER_PLAYWRIGHT_NAME');
     plan.workerPlaywrightUniqueNames = booleanValue(environment, 'WORKER_PLAYWRIGHT_UNIQUE_NAMES');
     plan.workerPlaywrightInstances = workerInstances('worker-playwright', plan.workerPlaywrightName, plan.workerPlaywrightReplicas, plan.workerPlaywrightUniqueNames);
+    required(environment, 'WORKER_CODEX_IMAGE');
+    required(environment, 'WORKER_CODEX_CONTAINER_MEMORY');
+    required(environment, 'AI_WORKER_STATE_KEY');
+    required(environment, 'AI_REFRESH_TOKEN_LIFETIME');
+    positiveIntegerValue(environment, 'AI_MAX_CONCURRENT_MODEL_REQUESTS');
+    required(environment, 'AI_DEFAULT_MODEL');
+    required(environment, 'AI_DEFAULT_REASONING_EFFORT');
+    required(environment, 'AI_DEFAULT_REFRESH_POLICY');
+    plan.workerCodexReplicas = positiveIntegerValue(environment, 'WORKER_CODEX_REPLICAS');
+    if (plan.workerCodexReplicas !== 1) {
+      throw new Error('WORKER_CODEX_REPLICAS must be exactly 1.');
+    }
+    plan.workerCodexCapabilities = workerCapabilitiesValue(environment, 'WORKER_CODEX_CAPABILITIES');
+    if (!plan.workerCodexCapabilities.includes('AI') || !plan.workerCodexCapabilities.includes('CODEX')) {
+      throw new Error('WORKER_CODEX_CAPABILITIES must contain AI and CODEX.');
+    }
+    plan.workerCodexName = required(environment, 'WORKER_CODEX_NAME');
     validateUrlPort(environment, 'BACKEND_PUBLIC_URL', publicPort);
     if (keycloakMode === 'local') {
       validateUrlPort(environment, 'OIDC_ISSUER_URI', publicPort);
@@ -747,6 +778,22 @@ function buildPlan(environment, options = {}) {
       throw new Error(
         'BACKEND_DEBUG_ENABLED=true requires PUBLISH_ADDITIONAL_PORTS=true so the debugger is reachable from the host.',
       );
+    }
+    plan.workerCodexDebugEnabled = booleanValue(environment, 'WORKER_CODEX_DEBUG_ENABLED');
+    plan.workerCodexDebugPort = portValue(environment, 'WORKER_CODEX_DEBUG_PORT');
+    plan.workerCodexDebugSuspend = allowedValue(
+      environment,
+      'WORKER_CODEX_DEBUG_SUSPEND',
+      ['y', 'n'],
+    );
+    if (plan.workerCodexDebugEnabled && !publishAdditionalPorts) {
+      throw new Error(
+        'WORKER_CODEX_DEBUG_ENABLED=true requires PUBLISH_ADDITIONAL_PORTS=true so the debugger is reachable from the host.',
+      );
+    }
+    if (plan.backendDebugEnabled && plan.workerCodexDebugEnabled
+        && plan.backendDebugPort === plan.workerCodexDebugPort) {
+      throw new Error('BACKEND_DEBUG_PORT and WORKER_CODEX_DEBUG_PORT must be different.');
     }
 
     if (plan.applicationDatabaseMode === 'local') {
@@ -769,6 +816,9 @@ function buildPlan(environment, options = {}) {
     }
     if (!skipWorkerPlaywright) {
       plan.services.push({ name: 'worker-playwright', build: true, instances: plan.workerPlaywrightInstances });
+    }
+    if (!skipWorkerCodex) {
+      plan.services.push({ name: 'worker-codex', build: true });
     }
     if (!skipBackend) {
       plan.services.push({ name: 'backend', build: true });
@@ -798,6 +848,7 @@ function buildPlan(environment, options = {}) {
     ['cache', 30],
     ['worker-standard', 35],
     ['worker-playwright', 36],
+    ['worker-codex', 37],
     ['identity', 40],
     ['backend', 50],
     ['frontend', 60],
@@ -878,6 +929,11 @@ function printPlan(plan, environment) {
         `${plan.skipWorkerPlaywright ? 'reused without restart' : 'rebuilt and restarted'})`,
     );
     console.log(
+      `  - Codex worker: exactly one local gRPC instance published under ${plan.workerGrpcHost}:${plan.workerGrpcPort} ` +
+        `(name: ${plan.workerCodexName}; capabilities: ${plan.workerCodexCapabilities.join(', ')}; ` +
+        `${plan.skipWorkerCodex ? 'reused without restart' : 'rebuilt and restarted'})`,
+    );
+    console.log(
       `  - Worker gRPC security: mutual TLS, server name ${plan.workerGrpcTlsServerName}, ` +
         `certificate validity ${plan.grpcCertificateValidityDays} days; ` +
         `${plan.rotateGrpcCertificates ? 'leaf certificates will be renewed' : 'existing certificates will be reused without modification'}`,
@@ -885,11 +941,19 @@ function printPlan(plan, environment) {
     console.log(`  - Procedures: bidirectional worker streams, maximum nested depth ${plan.procedureMaxDepth}`);
     if (plan.backendDebugEnabled) {
       console.log(
-        `  - Java remote debug: enabled on port ${plan.backendDebugPort} ` +
+        `  - Backend Java remote debug: enabled on port ${plan.backendDebugPort} ` +
           `(suspend=${plan.backendDebugSuspend})`,
       );
     } else {
-      console.log('  - Java remote debug: disabled');
+      console.log('  - Backend Java remote debug: disabled');
+    }
+    if (plan.workerCodexDebugEnabled) {
+      console.log(
+        `  - Codex worker Java remote debug: enabled on port ${plan.workerCodexDebugPort} ` +
+          `(suspend=${plan.workerCodexDebugSuspend})`,
+      );
+    } else {
+      console.log('  - Codex worker Java remote debug: disabled');
     }
     if (plan.applicationDatabaseMode === 'local') {
       if (plan.skipDatabase) {
@@ -1108,7 +1172,7 @@ function prepareGrpcCertificates(plan, environment, projectDirectory) {
     if (missingVolumes.length > 0) {
       throw new Error(
         'gRPC mTLS certificates cannot be reused because their Docker volumes do not exist. ' +
-          'Run once without --skip-backend, --skip-worker-standard or --skip-worker-playwright.',
+          'Run once without --skip-backend, --skip-worker-standard, --skip-worker-playwright or --skip-worker-codex.',
       );
     }
   }
@@ -1141,10 +1205,12 @@ function createRuntimeComposeOverride(plan, projectDirectory) {
   const publishKeycloakAdminPort = plan.keycloakAdminPort != null;
   const publishApplicationDatabasePort = plan.applicationDatabaseHostPort != null;
   const publishBackendDebugPort = plan.publishAdditionalPorts === true && plan.backendDebugEnabled === true;
+  const publishWorkerCodexDebugPort = plan.publishAdditionalPorts === true && plan.workerCodexDebugEnabled === true;
   const hasAdditionalPortOverrides = publishIdentityDatabasePort
     || publishKeycloakAdminPort
     || publishApplicationDatabasePort
-    || publishBackendDebugPort;
+    || publishBackendDebugPort
+    || publishWorkerCodexDebugPort;
   if (workerGroups.length === 0 && !plan.publisherTlsEnabled && !hasAdditionalPortOverrides) {
     return null;
   }
@@ -1192,6 +1258,13 @@ function createRuntimeComposeOverride(plan, projectDirectory) {
       '  backend:',
       '    ports:',
       '      - "${BIND_ADDRESS:?Set BIND_ADDRESS in .env}:${BACKEND_DEBUG_PORT:?Set BACKEND_DEBUG_PORT in .env}:${BACKEND_DEBUG_PORT:?Set BACKEND_DEBUG_PORT in .env}"',
+    );
+  }
+  if (publishWorkerCodexDebugPort) {
+    lines.push(
+      '  worker-codex:',
+      '    ports:',
+      '      - "${BIND_ADDRESS:?Set BIND_ADDRESS in .env}:${WORKER_CODEX_DEBUG_PORT:?Set WORKER_CODEX_DEBUG_PORT in .env}:${WORKER_CODEX_DEBUG_PORT:?Set WORKER_CODEX_DEBUG_PORT in .env}"',
     );
   }
   for (const group of workerGroups) {
@@ -1487,6 +1560,7 @@ function printHelp() {
     '  --skip-publisher   Do not rebuild or restart the local HTTP/HTTPS publisher.\n' +
     '  --skip-worker-standard    Do not rebuild or restart standard workers.\n' +
     '  --skip-worker-playwright  Do not rebuild or restart Playwright workers.\n' +
+    '  --skip-worker-codex       Do not rebuild or restart the dedicated Codex worker.\n' +
     '  --cleanup-docker-preserve-images=PATTERNS\n' +
     '                     Remove unused Docker images and ordinary build cache. Dependency\n' +
     '                     cache mounts are kept automatically; images matching the required\n' +
@@ -1511,6 +1585,7 @@ const SKIP_ITEM_KEYS = [
   'skipPublisher',
   'skipWorkerStandard',
   'skipWorkerPlaywright',
+  'skipWorkerCodex',
 ];
 
 const INTERACTIVE_MENU_ITEMS = [
@@ -1523,6 +1598,7 @@ const INTERACTIVE_MENU_ITEMS = [
   { key: 'skipPublisher', label: 'Skip publisher: do not rebuild or restart the local HTTP/HTTPS publisher' },
   { key: 'skipWorkerStandard', label: 'Skip standard workers: do not rebuild or restart standard workers' },
   { key: 'skipWorkerPlaywright', label: 'Skip Playwright workers: do not rebuild or restart Playwright workers' },
+  { key: 'skipWorkerCodex', label: 'Skip Codex worker: do not rebuild or restart the dedicated Codex worker' },
   { key: 'configureOnly', label: 'Configure only: reconcile .env and show the plan without starting services' },
 ];
 
@@ -1662,6 +1738,7 @@ async function main(argv = process.argv.slice(2), projectDirectory = path.resolv
     '--skip-publisher',
     '--skip-worker-standard',
     '--skip-worker-playwright',
+    '--skip-worker-codex',
     '--help',
   ]);
   const unknown = argv.filter((argument) => !allowed.has(argument) && !['--cleanup-docker-preserve-images=', '--kubeconfig=', '--kube-context='].some((prefix) => argument.startsWith(prefix)));
@@ -1746,6 +1823,7 @@ async function main(argv = process.argv.slice(2), projectDirectory = path.resolv
       skipPublisher: selections.skipPublisher,
       skipWorkerStandard: selections.skipWorkerStandard,
       skipWorkerPlaywright: selections.skipWorkerPlaywright,
+      skipWorkerCodex: selections.skipWorkerCodex,
     };
     configureOnlySelected = selections.configureOnly;
     cleanupDocker = selections.cleanupDocker
@@ -1764,6 +1842,7 @@ async function main(argv = process.argv.slice(2), projectDirectory = path.resolv
       skipPublisher: argv.includes('--skip-publisher'),
       skipWorkerStandard: argv.includes('--skip-worker-standard'),
       skipWorkerPlaywright: argv.includes('--skip-worker-playwright'),
+      skipWorkerCodex: argv.includes('--skip-worker-codex'),
     };
     configureOnlySelected = argv.includes('--configure-only');
     cleanupDocker = cleanupDockerFromArgv;

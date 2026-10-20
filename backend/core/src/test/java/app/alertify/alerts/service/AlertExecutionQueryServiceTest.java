@@ -45,11 +45,13 @@ class AlertExecutionQueryServiceTest {
         AlertExecution execution = AlertExecution.result(executionId, alert, null, AlertExecutionStatus.WARN, startedAt, startedAt.plusSeconds(1), startedAt.plusSeconds(2), null);
         ReflectionTestUtils.setField(execution, "id", 31L);
         PageRequest pageable = PageRequest.of(0, 20, Sort.by(Sort.Direction.DESC, "startedAt"));
-        when(executionRepository.search(alertId, templateId, AlertExecutionStatus.WARN, executionId, pageable)).thenReturn(new PageImpl<>(List.of(execution), pageable, 1));
+        when(executionRepository.search(true, alertId, true, templateId, true, AlertExecutionStatus.WARN, true, executionId,
+                false, Instant.EPOCH, false, Instant.EPOCH, pageable)).thenReturn(new PageImpl<>(List.of(execution), pageable, 1));
 
         var result = new AlertExecutionQueryService(executionRepository, eventLogger).search(alertId, templateId, AlertExecutionStatus.WARN, executionId, pageable);
 
-        verify(executionRepository).search(alertId, templateId, AlertExecutionStatus.WARN, executionId, pageable);
+        verify(executionRepository).search(true, alertId, true, templateId, true, AlertExecutionStatus.WARN, true, executionId,
+                false, Instant.EPOCH, false, Instant.EPOCH, pageable);
         assertThat(result.getTotalElements()).isEqualTo(1);
         assertThat(result.getContent().getFirst().templateId()).isEqualTo(templateId);
         assertThat(result.getContent().getFirst().templateNameKey()).isEqualTo("template.name");

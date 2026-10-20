@@ -93,8 +93,10 @@ public final class NfsMountHelperMain {
             Path mount = MOUNT_ROOT.resolve(token);
             Files.createDirectory(mount);
             assignToApplication(mount, "rwx------");
+            // File copies do not take advisory locks; NFSv3 must not depend on rpc.statd.
+            String options = "rw,hard,nosuid,nodev,noexec,tcp,sec=sys,vers=" + version + (version.equals("3") ? ",nolock" : "");
             CommandResult result = command(List.of("mount", "-t", "nfs", "-o",
-                    "rw,hard,nosuid,nodev,noexec,tcp,sec=sys,vers=" + version, server + ":" + export, mount.toString()));
+                    options, server + ":" + export, mount.toString()));
             if (!result.success()) {
                 Files.deleteIfExists(mount);
                 failure(output, "mount exited unsuccessfully" + result.diagnostic());

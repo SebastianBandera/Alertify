@@ -28,6 +28,8 @@ import tools.jackson.databind.json.JsonMapper;
 @Service
 @Profile(SecretExportImportConfiguration.PROFILE)
 class SecretExportImportAuditService {
+    private static final String ORIGIN_FIELD = "origin";
+
 
     private static final String SOURCE = "alertify-backend";
     private static final String SYSTEM_ACTOR = "system";
@@ -51,24 +53,25 @@ class SecretExportImportAuditService {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void recordExportSuccess(int secretCount, int systemConfigurationCount) {
-        persist(ApplicationLogLevel.INFO, EXPORT_EVENT, ApplicationLogOutcome.SUCCESS, Map.of("origin", ORIGIN, "secretCount", secretCount, "systemConfigurationCount", systemConfigurationCount));
+        persist(ApplicationLogLevel.INFO, EXPORT_EVENT, ApplicationLogOutcome.SUCCESS, Map.of(ORIGIN_FIELD, ORIGIN, "secretCount", secretCount, "systemConfigurationCount", systemConfigurationCount));
     }
 
     @Transactional
     public void recordImportSuccess(int secretsCreated, int secretsSkipped, int systemConfigurationsCreated, int systemConfigurationsSkipped) {
-        persist(ApplicationLogLevel.INFO, IMPORT_EVENT, ApplicationLogOutcome.SUCCESS, Map.of("origin", ORIGIN, "secretsCreated", secretsCreated, "secretsSkipped", secretsSkipped, "systemConfigurationsCreated", systemConfigurationsCreated, "systemConfigurationsSkipped", systemConfigurationsSkipped));
+        persist(ApplicationLogLevel.INFO, IMPORT_EVENT, ApplicationLogOutcome.SUCCESS, Map.of(ORIGIN_FIELD, ORIGIN, "secretsCreated", secretsCreated, "secretsSkipped", secretsSkipped, "systemConfigurationsCreated", systemConfigurationsCreated, "systemConfigurationsSkipped", systemConfigurationsSkipped));
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void recordFailure(boolean export) {
-        persist(ApplicationLogLevel.WARN, export ? EXPORT_EVENT : IMPORT_EVENT, ApplicationLogOutcome.FAILURE, Map.of("origin", ORIGIN, "failureCategory", "OPERATION_FAILED"));
+        persist(ApplicationLogLevel.WARN, export ? EXPORT_EVENT : IMPORT_EVENT, ApplicationLogOutcome.FAILURE, Map.of(ORIGIN_FIELD, ORIGIN, "failureCategory", "OPERATION_FAILED"));
     }
 
     private void persist(ApplicationLogLevel level, String event, ApplicationLogOutcome outcome, Map<String, ?> data) {
         ApplicationLogLevelDefinition levelDefinition = levelRepository.findByCode(level.name()).orElseThrow(() -> missing("level", level.name()));
         ApplicationLogSource source = sourceRepository.findByCode(SOURCE).orElseThrow(() -> missing("source", SOURCE));
         ApplicationLogEvent eventDefinition = eventRepository.findByCode(event).orElseThrow(() -> missing("event", event));
-        logRepository.saveAndFlush(new ApplicationLog(Instant.now(), levelDefinition, source, eventDefinition, outcome, SYSTEM_ACTOR, SYSTEM_ACTOR, null, null, jsonMapper.valueToTree(data)));
+        logRepository.saveAndFlush(new ApplicationLog(Instant.now(), levelDefinition, source, eventDefinition, outcome,
+                SYSTEM_ACTOR, SYSTEM_ACTOR, false, null, null, null, jsonMapper.valueToTree(data)));
     }
 
     private static IllegalStateException missing(String catalog, String code) {

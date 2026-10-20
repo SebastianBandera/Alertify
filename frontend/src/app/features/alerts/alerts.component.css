@@ -14,6 +14,13 @@ h3 { font-size: 14px; }
 .tabs button.active { border-bottom-color: var(--primary); color: var(--primary-strong); }
 .tabs span { min-width: 22px; padding: 2px 6px; border-radius: 999px; background: #f2f4f7; color: #475467; font-size: 10px; text-align: center; }
 
+.wizard-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)); gap: 14px; padding: 26px; }
+.wizard-card { display: grid; gap: 6px; padding: 18px; border: 1px solid #e4e7ec; border-radius: 12px; background: #fcfcfd; color: inherit; cursor: pointer; font: inherit; text-align: left; }
+.wizard-card:hover { border-color: var(--primary); background: #f5f4ff; }
+.wizard-card code { overflow-wrap: anywhere; color: var(--text-muted); font-size: 11px; }
+.wizard-card p { color: var(--text-muted); font-size: 12px; line-height: 1.45; }
+.wizard-card .badge { justify-self: start; margin-top: 6px; }
+
 .toolbar { display: flex; align-items: end; gap: 10px; padding: 16px 26px; border-bottom: 1px solid var(--border); background: var(--surface-muted); }
 .execution-filter { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 26px; border-bottom: 1px solid #d9d6fe; background: #f4f3ff; color: #5925dc; }
 .execution-filter button { border: 0; background: transparent; color: var(--primary-strong); cursor: pointer; font: inherit; font-size: 12px; font-weight: 700; }
@@ -60,9 +67,9 @@ label .field-error { margin-top: 0; color: #b42318; font-weight: 500; }
 
 .table-shell { min-height: 280px; overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-size: 12px; }
-.instances-table { min-width: 1160px; table-layout: fixed; }
-.instances-table th:nth-child(1) { width: 20%; }
-.instances-table th:nth-child(2) { width: 21%; }
+.instances-table { --template-column-width: 224px; min-width: 1160px; table-layout: fixed; }
+.instances-table th:nth-child(1) { width: calc(41% - var(--template-column-width)); }
+.instances-table th:nth-child(2) { width: var(--template-column-width); }
 .instances-table th:nth-child(3) { width: 10%; }
 .instances-table th:nth-child(4) { width: 10%; }
 .instances-table th:nth-child(5) { width: 9%; }
@@ -81,9 +88,9 @@ th.sortable-column { padding: 0; }
 .sort-indicator--asc::before { content: "\2191"; }
 tbody tr:hover { background: #fcfcfd; }
 td small { display: block; max-width: 330px; margin-top: 4px; overflow: hidden; color: var(--text-muted); text-overflow: ellipsis; white-space: nowrap; }
-/* Template name and class key are the widest cell; kept narrower so the table fits a 1080p screen with the menu open. */
-.template-cell strong { display: block; max-width: 258px; }
-.template-cell small { max-width: 258px; }
+/* Keep the HTTPS expiry template readable and give the remaining space to alert names. */
+.template-cell strong { display: block; }
+.template-cell small { max-width: 100%; }
 .updated-at span, .updated-at small { white-space: nowrap; }
 code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .schedule-value { display: inline-flex; align-items: center; gap: 7px; }

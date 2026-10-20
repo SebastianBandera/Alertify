@@ -119,6 +119,29 @@ export const ALERT_MESSAGE_FORMATTERS: AlertMessageFormatters = {
     return { summary, identity };
   },
 
+  [`${TEMPLATES}KubernetesKubeProxyCertificateExpiryAlertTemplate`]: (context) => {
+    const message = context.message;
+    const reason = text(message['reason']);
+    const nodes = records(message['nodes']).filter((node) => node['status'] === 'WARN')
+      .sort((first, second) => String(first['node']).localeCompare(String(second['node'])));
+    const summary = context.translate('alertMessage.kubeProxyCertificate.summary', {
+      warnings: context.formatNumber(message['warningNodes']), total: context.formatNumber(message['totalNodes']),
+    });
+    const details = nodes.map((node) => {
+      const reason = text(node['reason']);
+      const validity = node['notAfter'] === undefined ? null
+        : context.translate(reason === 'kubeProxyCertificateNotYetValid' ? 'alertMessage.certificate.notYetValid'
+          : reason === 'kubeProxyCertificateExpired' ? 'alertMessage.certificate.expired' : 'alertMessage.certificate.expiresIn', {
+          days: context.formatNumber(node['daysRemaining']),
+          date: context.formatDate(reason === 'kubeProxyCertificateNotYetValid' ? node['notBefore'] : node['notAfter']),
+        });
+      return `${text(node['node']) ?? '?'}: ${validity ?? localizedReasons(context, reason === null ? [] : [reason]).join(', ')}`;
+    });
+    const problem = reason === null ? null : localizedReasons(context, [reason]).join(', ');
+    const identity = nodes.map((node) => `${text(node['node']) ?? '?'}:${text(node['reason']) ?? '?'}`).join(', ');
+    return { summary: join(summary, problem, ...details), identity: join('kubeProxyCertificate', reason, identity) };
+  },
+
   [`${TEMPLATES}HttpsCertificateExpiryAlertTemplate`]: (context) => {
     const message = context.message;
     const validity = message['notYetValid'] === true

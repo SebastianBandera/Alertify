@@ -20,10 +20,12 @@ import {
 } from '../../core/api/procedure-api.service';
 import { LocalizationService } from '../../core/i18n/localization.service';
 import { TranslationKey } from '../../core/i18n/localization.types';
+import { AdminEventChannelService } from '../../core/realtime/admin-event-channel.service';
 import { isCompatibleConfigurationValueType, isCompatibleSecretValueType } from '../../core/utils/parameter-binding-compatibility';
 import { templateClassName } from '../../core/utils/template-key';
 import { EditorDraftService } from '../../shared/editor-drafts/editor-draft.service';
 import { EditorViewportService } from '../../shared/editor-viewport/editor-viewport.service';
+import { ResizableTableDirective } from '../../shared/resizable-table/resizable-table.directive';
 import { SearchableSelectComponent, SearchableSelectOption } from '../../shared/searchable-select/searchable-select.component';
 
 type ProcedureTab = 'procedures' | 'templates' | 'wizards' | 'history';
@@ -104,7 +106,7 @@ function procedureTab(value: string | null): ProcedureTab {
 
 @Component({
   selector: 'app-procedures',
-  imports: [DatePipe, FormsModule, SearchableSelectComponent],
+  imports: [ResizableTableDirective, DatePipe, FormsModule, SearchableSelectComponent],
   templateUrl: './procedures.component.html',
   styleUrl: './procedures.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -118,6 +120,7 @@ export class ProceduresComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly events = inject(AdminEventChannelService);
   private readonly editorViewport = inject(EditorViewportService);
 
   protected readonly activeTab = signal<ProcedureTab>('procedures');
@@ -234,6 +237,10 @@ export class ProceduresComponent implements OnInit {
   }
 
   async ngOnInit(): Promise<void> {
+    this.events.on('AI_RESOURCES_INVALIDATED').pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event) => {
+      if (event.targets.includes('ALL') || event.targets.includes('PROCEDURES'))
+        void this.loadAll(false);
+    });
     const requestedTab = this.route.snapshot.queryParamMap.get('tab');
     const executionId = this.route.snapshot.queryParamMap.get('executionId');
     this.historyExecutionId.set(executionId);

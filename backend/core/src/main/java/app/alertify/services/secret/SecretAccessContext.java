@@ -23,6 +23,10 @@ public record SecretAccessContext(ConsumerType consumerType, long consumerId, St
         return new SecretAccessContext(ConsumerType.HOOK, id, name);
     }
 
+    public static SecretAccessContext wizard(String id) {
+        return new SecretAccessContext(ConsumerType.PLAYWRIGHT_WIZARD, 0, id);
+    }
+
     public void addTo(Map<String, Object> data) {
         data.put("consumerType", consumerType.name());
         data.put("consumerId", consumerId);
@@ -32,6 +36,7 @@ public record SecretAccessContext(ConsumerType consumerType, long consumerId, St
     public enum ConsumerType {
         ALERT,
         PROCEDURE,
-        HOOK
+        HOOK,
+        PLAYWRIGHT_WIZARD
     }
 }

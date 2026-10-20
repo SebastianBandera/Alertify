@@ -4,6 +4,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import ch.qos.logback.classic.Logger;
@@ -22,6 +23,9 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+
+import app.alertify.ai.AiInvocationContext;
+import app.alertify.ai.AiInvocationContextHolder;
 
 @ExtendWith(MockitoExtension.class)
 class ApplicationEventLoggerTest {
@@ -83,11 +87,14 @@ class ApplicationEventLoggerTest {
         messages.start();
         console.addAppender(messages);
         try {
-            logger.success("API_REQUEST", request.data(101), authentication, request);
+            AiInvocationContext aiContext = new AiInvocationContext("ai-subject", "ai-user", Set.of("ROLE_ADMIN"), 72L, UUID.randomUUID());
+            AiInvocationContextHolder.runWith(aiContext, () -> logger.success("API_REQUEST", request.data(101), authentication, request));
 
             ArgumentCaptor<ApplicationLogCommand> command = ArgumentCaptor.forClass(ApplicationLogCommand.class);
             verify(writer).persist(command.capture());
             org.assertj.core.api.Assertions.assertThat(command.getValue().actor()).isEqualTo(new LogActor("subject-123", "alice"));
+            org.assertj.core.api.Assertions.assertThat(command.getValue().aiProvenance().assisted()).isFalse();
+            org.assertj.core.api.Assertions.assertThat(command.getValue().aiProvenance().conversationId()).isNull();
             org.assertj.core.api.Assertions.assertThat(command.getValue().requestId()).isEqualTo(request.requestId());
             org.assertj.core.api.Assertions.assertThat(command.getValue().path()).isEqualTo(request.path());
             org.assertj.core.api.Assertions.assertThat(messages.list).singleElement().satisfies(entry ->
@@ -125,6 +132,23 @@ class ApplicationEventLoggerTest {
             .isEqualTo(ApplicationLogLevel.INFO);
         org.assertj.core.api.Assertions.assertThat(command.getValue().outcome())
             .isEqualTo(ApplicationLogOutcome.FAILURE);
+    }
+
+    @Test
+    void capturesAiProvenanceInTheImmutableLogCommand() {
+        ApplicationEventLogger logger = new ApplicationEventLogger(writer, "test-app");
+        AiInvocationContext context = new AiInvocationContext("subject", "admin", Set.of("ROLE_ADMIN"), 72L, UUID.randomUUID());
+        Jwt jwt = Jwt.withTokenValue("test-only-token").header("alg", "RS256").subject("thread-subject").claim("preferred_username", "thread-user").build();
+        SecurityContextHolder.getContext().setAuthentication(new JwtAuthenticationToken(jwt, java.util.List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_ADMIN"))));
+
+        AiInvocationContextHolder.runWith(context, () -> logger.success("CONFIGURATION_UPDATED", Map.of("id", 7)));
+
+        ArgumentCaptor<ApplicationLogCommand> command = ArgumentCaptor.forClass(ApplicationLogCommand.class);
+        verify(writer).persist(command.capture());
+        org.assertj.core.api.Assertions.assertThat(command.getValue().aiProvenance().assisted()).isTrue();
+        org.assertj.core.api.Assertions.assertThat(command.getValue().aiProvenance().conversationId()).isEqualTo(72L);
+        org.assertj.core.api.Assertions.assertThat(command.getValue().actor().subject()).isEqualTo("subject");
+        org.assertj.core.api.Assertions.assertThat(command.getValue().actor().username()).isEqualTo("admin");
     }
 
 }

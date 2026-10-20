@@ -25,6 +25,7 @@ import app.alertify.procedures.model.ProcedureTemplateParameterDefinition;
 import app.alertify.procedures.templates.CopyFileToNfsProcedureTemplate;
 import app.alertify.procedures.templates.ExecutePipeProcedureTemplate;
 import app.alertify.procedures.templates.HttpAccessTokenExchangeProcedureTemplate;
+import app.alertify.procedures.templates.JwtNegativeTestTokensProcedureTemplate;
 import app.alertify.procedures.templates.MariaDbBackupProcedureTemplate;
 import app.alertify.procedures.templates.OracleDataPumpExportProcedureTemplate;
 import app.alertify.procedures.templates.PostgresBackupProcedureTemplate;
@@ -50,10 +51,10 @@ class ProcedureTemplateRegistrationServiceTest {
                 templateRepository, parameterRepository, outputRepository, new DefaultResourceLoader()
         );
 
-        assertThat(service.scanAndRegister()).isEqualTo(12);
+        assertThat(service.scanAndRegister()).isEqualTo(13);
 
         ArgumentCaptor<ProcedureTemplateDefinition> template = ArgumentCaptor.captor();
-        verify(templateRepository, org.mockito.Mockito.times(12)).save(template.capture());
+        verify(templateRepository, org.mockito.Mockito.times(13)).save(template.capture());
         ProcedureTemplateDefinition totp = template.getAllValues().stream()
                 .filter(value -> value.getTemplateKey().equals(TotpProcedureTemplate.class.getName()))
                 .findFirst().orElseThrow();
@@ -67,6 +68,7 @@ class ProcedureTemplateRegistrationServiceTest {
                         SimulatedLongRunningProcedureTemplate.class.getName(),
                         SimulatedLongRunningPlaywrightProcedureTemplate.class.getName(),
                         HttpAccessTokenExchangeProcedureTemplate.class.getName(),
+                        JwtNegativeTestTokensProcedureTemplate.class.getName(),
                         ExecutePipeProcedureTemplate.class.getName(),
                         PostgresBackupProcedureTemplate.class.getName(),
                         MariaDbBackupProcedureTemplate.class.getName(),
@@ -75,7 +77,7 @@ class ProcedureTemplateRegistrationServiceTest {
                         CopyFileToNfsProcedureTemplate.class.getName());
 
         ArgumentCaptor<ProcedureTemplateParameterDefinition> parameters = ArgumentCaptor.captor();
-        verify(parameterRepository, org.mockito.Mockito.times(60)).save(parameters.capture());
+        verify(parameterRepository, org.mockito.Mockito.times(61)).save(parameters.capture());
         List<ProcedureTemplateParameterDefinition> totpParameters = parameters.getAllValues().stream()
                 .filter(value -> value.getTemplate() == totp).toList();
         assertThat(totpParameters.getFirst().getParameterKey()).isEqualTo("secret");
@@ -91,6 +93,19 @@ class ProcedureTemplateRegistrationServiceTest {
                 .extracting(ProcedureTemplateParameterDefinition::getParameterKey)
                 .containsExactly("credentials", "tokenUrl", "authenticationType", "basicMethod", "scope",
                         "clientAuthenticationType", "clientId", "clientCredentials", "tokenJsonPointer", "timeoutSeconds");
+
+        ProcedureTemplateDefinition negativeTokens = template.getAllValues().stream()
+                .filter(value -> value.getTemplateKey().equals(JwtNegativeTestTokensProcedureTemplate.class.getName()))
+                .findFirst().orElseThrow();
+        assertThat(negativeTokens.isSensitiveResult()).isTrue();
+        assertThat(negativeTokens.getTags()).singleElement().satisfies(tag ->
+                assertThat(tag.nameKey()).isEqualTo("procedures.templateTag.security"));
+        assertThat(parameters.getAllValues().stream().filter(value -> value.getTemplate() == negativeTokens))
+                .singleElement().satisfies(parameter -> {
+                    assertThat(parameter.getParameterKey()).isEqualTo("jwt");
+                    assertThat(parameter.getJavaType()).isEqualTo(String.class.getName());
+                    assertThat(parameter.getAllowedSecretValueTypes()).containsExactly("STRING");
+                });
 
         ProcedureTemplateDefinition postgres = template.getAllValues().stream()
                 .filter(value -> value.getTemplateKey().equals(PostgresBackupProcedureTemplate.class.getName()))

@@ -1,5 +1,5 @@
 <ng-template #cardTemplate let-card>
-  <article
+  <div
     [class]="cardClasses(card)"
     [attr.data-alert-id]="card.alert.id"
     animate.enter="alert-card--enter"
@@ -88,7 +88,7 @@
         }
       </footer>
     }
-  </article>
+  </div>
 </ng-template>
 
 <ng-template #mutedMark let-card>

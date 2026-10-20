@@ -18,7 +18,7 @@ import app.alertify.procedures.service.TotpQrAnalysisService;
  */
 @RestController
 @RequestMapping("/api/procedures/wizards")
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize(app.alertify.config.AuthorizationPolicies.ADMIN)
 public class ProcedureWizardController {
 
     private final TotpQrAnalysisService totpQrAnalysisService;

@@ -16,6 +16,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
+import app.alertify.ai.AiProvenance;
 import app.alertify.alerts.execution.AlertExecutionStatus;
 import app.alertify.alerts.model.Alert;
 import app.alertify.alerts.model.AlertExecution;
@@ -75,12 +76,12 @@ class AlertExecutionClosureServiceTest {
         when(repository.findById(1L)).thenReturn(Optional.of(execution));
         Instant at = Instant.parse("2026-10-03T12:00:00Z");
         when(audits.findByExecutionIdOrderByIdAsc(execution.getExecutionId())).thenReturn(List.of(
-                new AlertExecutionClosureAudit(execution.getExecutionId(), 3L, true, "internal-subject", "admin", "resolved", at),
-                new AlertExecutionClosureAudit(execution.getExecutionId(), 3L, false, "internal-subject", "reviewer", null, at.plusSeconds(1))
+                new AlertExecutionClosureAudit(execution.getExecutionId(), 3L, true, "internal-subject", "admin", "resolved", at, AiProvenance.NONE),
+                new AlertExecutionClosureAudit(execution.getExecutionId(), 3L, false, "internal-subject", "reviewer", null, at.plusSeconds(1), AiProvenance.NONE)
         ));
 
-        assertEquals(List.of(new AlertExecutionClosureService.ClosureAudit(true, "admin", "resolved", at),
-                new AlertExecutionClosureService.ClosureAudit(false, "reviewer", null, at.plusSeconds(1))), service.audit(1L));
+        assertEquals(List.of(new AlertExecutionClosureService.ClosureAudit(true, "admin", "resolved", at, false, null),
+                new AlertExecutionClosureService.ClosureAudit(false, "reviewer", null, at.plusSeconds(1), false, null)), service.audit(1L));
     }
 
     private static AlertExecution execution(AlertExecutionStatus status) {

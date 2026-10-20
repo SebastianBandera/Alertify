@@ -113,7 +113,7 @@ public final class DynamicSpecification {
             value = value.substring(1);
 
         boolean wildcard = value.contains("*");
-        String search = escapeLikeValue(value).replace("*", "%");
+        String search = wildcard ? escapeLikeValue(value).replace("*", "%") : value;
 
         Expression<String> fieldExpression;
         Expression<String> valueExpression;

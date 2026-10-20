@@ -100,6 +100,7 @@ const SKIP_ALL_OPTIONS = {
   skipPublisher: true,
   skipWorkerStandard: true,
   skipWorkerPlaywright: true,
+  skipWorkerCodex: true,
 };
 
 test('dockerBuildCachePruneArguments preserves dependency cache mounts', () => {
@@ -232,6 +233,7 @@ test('createRuntimeComposeOverride publishes enabled local service ports without
   assert.match(content, /KEYCLOAK_HTTP_PORT.*:8080/);
   assert.match(content, /DATABASE_HOST_PORT.*:5432/);
   assert.doesNotMatch(content, /BACKEND_DEBUG_PORT/);
+  assert.doesNotMatch(content, /WORKER_CODEX_DEBUG_PORT/);
 });
 
 test('buildPlan rejects remote debug when additional host ports are disabled', () => {
@@ -259,6 +261,31 @@ test('createRuntimeComposeOverride publishes remote debug when both switches are
   assert.match(content, /BACKEND_DEBUG_PORT.*:.*BACKEND_DEBUG_PORT/);
 });
 
+test('buildPlan rejects Codex worker remote debug when additional host ports are disabled', () => {
+  const environment = templateEnvironment();
+  environment.set('WORKER_CODEX_DEBUG_ENABLED', 'true');
+
+  assert.throws(
+    () => buildPlan(applyApplicationContext(environment), SKIP_ALL_OPTIONS),
+    /WORKER_CODEX_DEBUG_ENABLED=true requires PUBLISH_ADDITIONAL_PORTS=true/,
+  );
+});
+
+test('createRuntimeComposeOverride publishes Codex worker remote debug', (context) => {
+  const environment = templateEnvironment();
+  environment.set('PUBLISH_ADDITIONAL_PORTS', 'true');
+  environment.set('WORKER_CODEX_DEBUG_ENABLED', 'true');
+  const plan = buildPlan(applyApplicationContext(environment), SKIP_ALL_OPTIONS);
+  const projectDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'alertify-runner-test-'));
+  context.after(() => fs.rmSync(projectDirectory, { recursive: true, force: true }));
+
+  const override = createRuntimeComposeOverride(plan, projectDirectory);
+  context.after(() => fs.rmSync(override.directory, { recursive: true, force: true }));
+  const content = fs.readFileSync(override.path, 'utf8');
+
+  assert.match(content, /WORKER_CODEX_DEBUG_PORT.*:.*WORKER_CODEX_DEBUG_PORT/);
+});
+
 test('additional host ports do not create overrides for external services', () => {
   const environment = templateEnvironment();
   environment.set('PUBLISH_ADDITIONAL_PORTS', 'true');
@@ -284,6 +311,32 @@ test('applyApplicationContext derives a path-free public origin independently of
   assert.equal(contextualEnvironment.get('APP_CONTEXT_PATH'), '/tenant/alertify');
   assert.equal(contextualEnvironment.get('APP_PUBLIC_URL'), 'https://alertify.example:8443/tenant/alertify');
   assert.equal(contextualEnvironment.get('APP_PUBLIC_ORIGIN'), 'https://alertify.example:8443');
+  assert.equal(contextualEnvironment.get('AI_OAUTH_CALLBACK_URI'), 'http://127.0.0.1:80/tenant/alertify/api/ai/codex/oauth/callback');
+  assert.equal(contextualEnvironment.get('AI_OAUTH_EXTENSION_CALLBACK_URI'), 'http://127.0.0.1:53682/tenant/alertify/api/ai/codex/oauth/callback');
+});
+
+test('buildPlan enforces one dedicated worker with AI and CODEX capabilities', () => {
+  const environment = applyApplicationContext(templateEnvironment());
+  environment.set('WORKER_CODEX_REPLICAS', '2');
+  assert.throws(() => buildPlan(environment, SKIP_ALL_OPTIONS), /WORKER_CODEX_REPLICAS must be exactly 1/);
+
+  environment.set('WORKER_CODEX_REPLICAS', '1');
+  environment.set('WORKER_CODEX_CAPABILITIES', 'AI');
+  assert.throws(() => buildPlan(environment, SKIP_ALL_OPTIONS), /must contain AI and CODEX/);
+});
+
+test('buildPlan requires externally configured initial AI settings', () => {
+  const environment = applyApplicationContext(templateEnvironment());
+  environment.delete('AI_DEFAULT_MODEL');
+
+  assert.throws(() => buildPlan(environment, SKIP_ALL_OPTIONS), /AI_DEFAULT_MODEL/);
+});
+
+test('buildPlan requires a positive Codex model concurrency limit', () => {
+  const environment = applyApplicationContext(templateEnvironment());
+  environment.set('AI_MAX_CONCURRENT_MODEL_REQUESTS', '0');
+
+  assert.throws(() => buildPlan(environment, SKIP_ALL_OPTIONS), /AI_MAX_CONCURRENT_MODEL_REQUESTS must be a positive integer/);
 });
 
 test('applyApplicationContext derives the public origin when the application is published at root', () => {

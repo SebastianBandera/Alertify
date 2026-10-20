@@ -17,7 +17,7 @@ import app.alertify.alerts.service.AlertExecutionQueryService;
 
 @RestController
 @RequestMapping("/api/alert-executions")
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize(app.alertify.config.AuthorizationPolicies.ADMIN)
 public class AlertExecutionController {
 
     private final AlertExecutionQueryService service;

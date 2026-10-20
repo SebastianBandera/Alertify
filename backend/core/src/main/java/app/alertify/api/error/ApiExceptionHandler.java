@@ -5,6 +5,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.ConstraintViolationException;
 
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -21,6 +22,7 @@ import app.alertify.hooks.HookInvocationRejectedException;
 import app.alertify.logging.ApiRequestLoggingFilter;
 import app.alertify.logging.ApiResponseLogLevelResolver;
 import app.alertify.logging.ApplicationEventLogger;
+import app.alertify.codex.AiWorkerException;
 
 /**
  * Converts domain, validation and persistence exceptions into the stable API
@@ -35,9 +37,25 @@ public class ApiExceptionHandler {
         this.eventLogger = eventLogger;
     }
 
+    @ExceptionHandler(AiWorkerException.class)
+    ResponseEntity<ApiError> handleAiWorker(AiWorkerException exception, HttpServletRequest request) {
+        HttpStatus status = switch (exception.getCode()) {
+            case "AI_WORKER_UNAVAILABLE", "AI_WORKER_AMBIGUOUS" -> HttpStatus.SERVICE_UNAVAILABLE;
+            case "AI_INVALID_REQUEST" -> HttpStatus.BAD_REQUEST;
+            case "AI_OPERATION_CONFLICT" -> HttpStatus.CONFLICT;
+            default -> HttpStatus.BAD_GATEWAY;
+        };
+        return response(status, exception.getCode(), exception.getMessage(), Map.of(), exception, request);
+    }
+
     @ExceptionHandler(ResourceNotFoundException.class)
     ResponseEntity<ApiError> handleNotFound(ResourceNotFoundException exception, HttpServletRequest request) {
         return response(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND", exception.getMessage(), Map.of(), exception, request);
+    }
+
+    @ExceptionHandler(InvalidAiChatReasoningEffortException.class)
+    ResponseEntity<ApiError> handleInvalidAiChatReasoningEffort(InvalidAiChatReasoningEffortException exception, HttpServletRequest request) {
+        return response(HttpStatus.BAD_REQUEST, "AI_CHAT_REASONING_EFFORT_INVALID", exception.getMessage(), Map.of(), exception, request);
     }
 
     @ExceptionHandler(ConflictException.class)
@@ -58,6 +76,11 @@ public class ApiExceptionHandler {
     @ExceptionHandler(InvalidFilterException.class)
     ResponseEntity<ApiError> handleInvalidFilter(InvalidFilterException exception, HttpServletRequest request) {
         return response(HttpStatus.BAD_REQUEST, "INVALID_FILTER", exception.getMessage(), Map.of(), exception, request);
+    }
+
+    @ExceptionHandler(ConstraintViolationException.class)
+    ResponseEntity<ApiError> handleInvalidParameters(ConstraintViolationException exception, HttpServletRequest request) {
+        return response(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "Request parameters are invalid", Map.of(), exception, request);
     }
 
     @ExceptionHandler(InvalidConfigurationImportException.class)

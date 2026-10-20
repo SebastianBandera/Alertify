@@ -6,7 +6,7 @@ import { WorkerCapability } from './alert-api.service';
 
 export interface WorkerTaskStatus {
   readonly executionId: string;
-  readonly kind: 'ALERT' | 'PROCEDURE';
+  readonly kind: 'ALERT' | 'PROCEDURE' | 'BROWSER_SESSION';
   readonly resourceId: number;
   readonly resourceName: string;
   readonly parentExecutionId: string | null;

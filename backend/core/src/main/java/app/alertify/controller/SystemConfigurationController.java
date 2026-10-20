@@ -25,7 +25,7 @@ import jakarta.validation.Valid;
  */
 @RestController
 @RequestMapping("/api/system-configurations")
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize(app.alertify.config.AuthorizationPolicies.ADMIN)
 @Validated
 public class SystemConfigurationController {
 

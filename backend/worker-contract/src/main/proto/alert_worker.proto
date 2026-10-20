@@ -59,6 +59,7 @@ enum AlertExecutionValueSource {
   ALERT_EXECUTION_VALUE_SOURCE_UNSPECIFIED = 0;
   ALERT_EXECUTION_VALUE_SOURCE_CONFIGURATION = 1;
   ALERT_EXECUTION_VALUE_SOURCE_SECRET = 2;
+  ALERT_EXECUTION_VALUE_SOURCE_PROCEDURE = 3;
 }
 
 message AlertParameter {
@@ -321,6 +322,7 @@ message WorkerStatusResponse {
   int32 running_procedure_count = 12;
   repeated WorkerTask running_procedures = 13;
   WorkerResourceUsage resource_usage = 14;
+  bool playwright_wizard_supported = 15;
 }
 
 message WorkerResourceUsage {
@@ -347,4 +349,5 @@ enum WorkerTaskKind {
   WORKER_TASK_KIND_UNSPECIFIED = 0;
   WORKER_TASK_KIND_ALERT = 1;
   WORKER_TASK_KIND_PROCEDURE = 2;
+  WORKER_TASK_KIND_BROWSER_SESSION = 3;
 }

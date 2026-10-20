@@ -18,6 +18,11 @@
     <dependencies>
         <dependency>
             <groupId>app.alertify</groupId>
+            <artifactId>alertify-playwright-support</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>app.alertify</groupId>
             <artifactId>alertify-worker-contract</artifactId>
             <version>${project.version}</version>
         </dependency>

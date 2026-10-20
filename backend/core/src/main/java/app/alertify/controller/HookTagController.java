@@ -29,7 +29,7 @@ import jakarta.validation.constraints.PositiveOrZero;
 
 @RestController
 @RequestMapping("/api/hook-tags")
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize(app.alertify.config.AuthorizationPolicies.ADMIN)
 @Validated
 public class HookTagController {
     private final HookTagService service;

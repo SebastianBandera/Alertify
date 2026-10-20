@@ -10,7 +10,7 @@ import app.alertify.system.api.SystemStatusSummaryResponse;
 
 @RestController
 @RequestMapping("/api/system-status")
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize(app.alertify.config.AuthorizationPolicies.ADMIN)
 public class SystemStatusController {
 
     private final SystemStatusService service;

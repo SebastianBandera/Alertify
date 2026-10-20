@@ -121,7 +121,7 @@ public class HookManagementService {
     public HookResponse update(Long id, HookUpdateRequest request) {
         Hook hook = find(id);
         if (hook.getVersion() != request.version())
-            throw new ConflictException("Hook was modified by another request; reload it and try again");
+            throw ConflictException.versionConflict("Hook was modified by another request; reload it and try again");
 
         String name = required(request.name());
         ensureNameAvailable(name, id);
@@ -148,7 +148,7 @@ public class HookManagementService {
     public HookResponse rotate(Long id, long version) {
         Hook hook = find(id);
         if (hook.getVersion() != version)
-            throw new ConflictException("Hook was modified by another request; reload it and try again");
+            throw ConflictException.versionConflict("Hook was modified by another request; reload it and try again");
 
         hook.rotatePublicId();
         hookRepository.flush();
@@ -166,7 +166,7 @@ public class HookManagementService {
     public void delete(Long id, long version) {
         Hook hook = find(id);
         if (hook.getVersion() != version)
-            throw new ConflictException("Hook was modified by another request; reload it and try again");
+            throw ConflictException.versionConflict("Hook was modified by another request; reload it and try again");
 
         if (hook.isEnabled())
             throw new ConflictException("HOOK_ACTIVE", "An enabled hook cannot be deleted", Map.of());

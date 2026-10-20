@@ -123,7 +123,7 @@ public class AlertTagService {
 
     private static void ensureVersion(Tag tag, long version) {
         if (tag.getVersion() != version)
-            throw new ConflictException("Tag was modified by another request; reload it and try again");
+            throw ConflictException.versionConflict("Tag was modified by another request; reload it and try again");
     }
 
     private static void validateSort(Pageable pageable) {

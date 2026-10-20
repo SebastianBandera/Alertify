@@ -72,21 +72,36 @@ class ApplicationConfigurationServiceTest {
     }
 
     @Test
-    void flushesWhenValueReallyChanges() {
+    void allowsAdministrativeValueUpdateWhenExecutionPersistenceIsDisabled() {
         ApplicationConfiguration configuration = new ApplicationConfiguration(
             "notification.retry-count", null,
-            ConfigurationValueType.INTEGER, IntNode.valueOf(5), Set.of()
+            ConfigurationValueType.INTEGER, IntNode.valueOf(5), Set.of(), false
         );
         when(configurationRepository.findById(10L)).thenReturn(Optional.of(configuration));
         ApplicationConfigurationService service = service();
 
         service.update(10L, new ConfigurationUpdateRequest(
             0L, "notification.retry-count", null,
-            ConfigurationValueType.INTEGER, IntNode.valueOf(6), Set.of()
+            ConfigurationValueType.INTEGER, IntNode.valueOf(6), Set.of(), false
         ));
 
+        assertThat(configuration.getValue().intValue()).isEqualTo(6);
+        assertThat(configuration.isWritable()).isFalse();
         verify(configurationRepository).flush();
         verify(cacheInvalidator).evictAfterCommit(10L);
+    }
+
+    @Test
+    void rejectsAStaleAdministrativeVersionWithASpecificCodeAndPreservesTheValue() {
+        ApplicationConfiguration configuration = new ApplicationConfiguration("counter", null,
+                ConfigurationValueType.INTEGER, IntNode.valueOf(5), Set.of(), false);
+        when(configurationRepository.findById(10L)).thenReturn(Optional.of(configuration));
+        assertThatThrownBy(() -> service().update(10L, new ConfigurationUpdateRequest(
+                1L, "counter", null, ConfigurationValueType.INTEGER, IntNode.valueOf(6), Set.of(), false)))
+                .isInstanceOf(app.alertify.api.error.ConflictException.class)
+                .satisfies(error -> assertThat(((app.alertify.api.error.ConflictException) error).getCode()).isEqualTo("VERSION_CONFLICT"));
+        assertThat(configuration.getValue().intValue()).isEqualTo(5);
+        verify(configurationRepository, never()).flush();
     }
 
     @Test

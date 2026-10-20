@@ -18,11 +18,16 @@ interface AdminEventPayloads {
   readonly SYSTEM_STATUS: SystemStatusSummary;
   readonly DASHBOARD_ALERT: DashboardAlertCard;
   readonly DASHBOARD_ALERT_REMOVED: { readonly alertId: number };
+  readonly AI_CHAT_UPDATED: { readonly conversationId: number; readonly turnId: number | null; readonly status: string; readonly detail: unknown };
+  readonly AI_RESOURCES_INVALIDATED: { readonly targets: readonly string[] };
+  readonly PLAYWRIGHT_WIZARD_UPDATED: unknown;
 }
 
 export type AdminEventName = keyof AdminEventPayloads;
 
-const EVENT_NAMES: ReadonlySet<string> = new Set<AdminEventName>(['SYSTEM_STATUS', 'DASHBOARD_ALERT', 'DASHBOARD_ALERT_REMOVED']);
+const EVENT_NAMES: ReadonlySet<string> = new Set<AdminEventName>([
+  'SYSTEM_STATUS', 'DASHBOARD_ALERT', 'DASHBOARD_ALERT_REMOVED', 'AI_CHAT_UPDATED', 'AI_RESOURCES_INVALIDATED', 'PLAYWRIGHT_WIZARD_UPDATED',
+]);
 
 function isEventName(value: unknown): value is AdminEventName {
   return typeof value === 'string' && EVENT_NAMES.has(value);
@@ -46,7 +51,7 @@ function tokenExpiresAt(token: string): number | null {
     const payload = token.split('.')[1];
     if (!payload) return null;
 
-    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(payload.length / 4) * 4, '=');
+    const normalized = payload.replaceAll('-', '+').replaceAll('_', '/').padEnd(Math.ceil(payload.length / 4) * 4, '=');
     const decoded = JSON.parse(atob(normalized)) as { exp?: unknown };
     return typeof decoded.exp === 'number' ? decoded.exp * 1_000 : null;
   } catch {
@@ -188,6 +193,9 @@ export class AdminEventChannelService {
     if (!isEventName(name) || !message['payload']) return;
 
     this.events.next({ name, payload: message['payload'] } as AdminEventMessage);
+    if (name === 'AI_RESOURCES_INVALIDATED') {
+      this.document.defaultView?.dispatchEvent(new CustomEvent('alertify:resources-invalidated', { detail: message['payload'] }));
+    }
   }
 
   private completeRequest(message: Record<string, unknown>, failed: boolean): void {

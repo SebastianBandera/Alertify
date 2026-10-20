@@ -4,6 +4,8 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 
+import app.alertify.ai.AiProvenance;
+
 /**
  * Internal immutable command passed from event collection to independent log
  * persistence.
@@ -15,6 +17,7 @@ record ApplicationLogCommand(
     String event,
     ApplicationLogOutcome outcome,
     LogActor actor,
+    AiProvenance aiProvenance,
     UUID requestId,
     String path,
     Map<String, ?> data

@@ -33,6 +33,9 @@ import tools.jackson.databind.json.JsonMapper;
     sourcePath = "app/alertify/procedures/templates/PostgresBackupProcedureTemplate.java"
 )
 public final class PostgresBackupProcedureTemplate implements ProcedureEvaluator {
+    private static final String SSL_MODE_OPTION = "sslmode";
+    private static final String CONNECT_TIMEOUT_OPTION = "connect_timeout";
+
     private static final JsonMapper JSON = JsonMapper.builder().build();
     private static final String SQL_MEDIA_TYPE = "application/sql";
     private static final String GZIP_MEDIA_TYPE = "application/gzip";
@@ -114,10 +117,10 @@ public final class PostgresBackupProcedureTemplate implements ProcedureEvaluator
             List<String> command = pgDumpCommand(credentials, excludePrivileges, discardOwnership);
             ProcessBuilder builder = new ProcessBuilder(command);
             builder.environment().put("PGPASSFILE", passwordFile.toString());
-            if (options.containsKey("sslmode"))
-                builder.environment().put("PGSSLMODE", options.get("sslmode"));
-            if (options.containsKey("connect_timeout"))
-                builder.environment().put("PGCONNECT_TIMEOUT", options.get("connect_timeout"));
+            if (options.containsKey(SSL_MODE_OPTION))
+                builder.environment().put("PGSSLMODE", options.get(SSL_MODE_OPTION));
+            if (options.containsKey(CONNECT_TIMEOUT_OPTION))
+                builder.environment().put("PGCONNECT_TIMEOUT", options.get(CONNECT_TIMEOUT_OPTION));
             builder.redirectError(errorFile.toFile());
 
             Process process = builder.start();
@@ -194,11 +197,11 @@ public final class PostgresBackupProcedureTemplate implements ProcedureEvaluator
             String key = pair[0].trim().toLowerCase(Locale.ROOT);
             String value = pair[1].trim();
             switch (key) {
-                case "sslmode" -> {
+                case SSL_MODE_OPTION -> {
                     if (!List.of("disable", "allow", "prefer", "require", "verify-ca", "verify-full").contains(value))
                         throw new IllegalArgumentException("Unsupported PostgreSQL sslmode");
                 }
-                case "connect_timeout" -> {
+                case CONNECT_TIMEOUT_OPTION -> {
                     int seconds;
                     try { seconds = Integer.parseInt(value); }
                     catch (NumberFormatException exception) { throw new IllegalArgumentException("connect_timeout must be an integer", exception); }

@@ -3,9 +3,11 @@ package app.alertify.pipes.execution;
 import java.util.Map;
 import java.util.UUID;
 
+import org.hibernate.Hibernate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import app.alertify.ai.AiInvocationContextHolder;
 import app.alertify.api.error.ResourceNotFoundException;
 import app.alertify.jpa.repository.PipeExecutionRepository;
 import app.alertify.jpa.repository.PipeRepository;
@@ -35,15 +37,26 @@ public class PipeExecutionPersistenceService {
 
     @Transactional(readOnly = true)
     public Pipe definition(long pipeId) {
-        return pipeRepository.findDetailedById(pipeId)
-                .orElseThrow(() -> new ResourceNotFoundException("Pipe " + pipeId + " was not found"));
+        Pipe pipe = pipeRepository.findDetailedById(pipeId)
+                .orElseThrow(() -> new ResourceNotFoundException(notFoundMessage("Pipe", pipeId)));
+        // The orchestrator uses this definition after the transaction closes.
+        // Load collections separately to avoid multiplying the ordered steps.
+        pipe.getTags().forEach(Hibernate::initialize);
+        pipe.getSteps().forEach(step -> step.getBindings().forEach(binding -> {
+            Hibernate.initialize(binding.getSourceStep());
+            Hibernate.initialize(binding.getSourceOutput());
+            Hibernate.initialize(binding.getTargetProcedureParameter());
+            Hibernate.initialize(binding.getTargetAlertParameter());
+        }));
+        return pipe;
     }
 
     @Transactional
     public void start(UUID executionId, Pipe pipe, PipeExecutionTrigger trigger, UUID rootExecutionId, UUID parentProcedureExecutionId, int depth, String triggeredBy) {
         Pipe managed = pipeRepository.findDetailedById(pipe.getId())
-                .orElseThrow(() -> new ResourceNotFoundException("Pipe " + pipe.getId() + " was not found"));
+                .orElseThrow(() -> new ResourceNotFoundException(notFoundMessage("Pipe", pipe.getId())));
         PipeExecution execution = new PipeExecution(executionId, managed, trigger, rootExecutionId, parentProcedureExecutionId, depth, triggeredBy);
+        execution.recordAiProvenance(AiInvocationContextHolder.currentProvenance());
         managed.getSteps().forEach(step -> execution.addStep(new PipeStepResult(execution, step)));
         executionRepository.saveAndFlush(execution);
         eventLogger.successAfterCommit("PIPE_EXECUTION_STARTED", Map.of("executionId", executionId, "pipeId", pipe.getId(), "pipeName", pipe.getName()));
@@ -83,13 +96,15 @@ public class PipeExecutionPersistenceService {
         }
     }
 
+    private static String notFoundMessage(String resource, Object id) { return resource + " " + id + " was not found"; }
+
     private PipeExecution execution(UUID executionId) {
         return executionRepository.findByExecutionId(executionId)
-                .orElseThrow(() -> new IllegalStateException("Pipe execution " + executionId + " was not found"));
+                .orElseThrow(() -> new IllegalStateException(notFoundMessage("Pipe execution", executionId)));
     }
 
     private PipeStepResult step(UUID executionId, String stepKey) {
         return execution(executionId).getSteps().stream().filter(value -> value.getStepKey().equals(stepKey)).findFirst()
-                .orElseThrow(() -> new IllegalStateException("Pipe step " + stepKey + " was not found"));
+                .orElseThrow(() -> new IllegalStateException(notFoundMessage("Pipe step", stepKey)));
     }
 }

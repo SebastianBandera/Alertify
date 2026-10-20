@@ -17,7 +17,7 @@ import app.alertify.pipes.service.PipeExecutionQueryService;
 
 @RestController
 @RequestMapping("/api/pipe-executions")
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize(app.alertify.config.AuthorizationPolicies.ADMIN)
 public class PipeExecutionController {
     private final PipeExecutionQueryService service;
 

@@ -17,7 +17,7 @@ import app.alertify.logging.ApplicationEventLogger;
  */
 @RestController
 @RequestMapping("/api/dashboard/alerts")
-@PreAuthorize("hasRole('DASHBOARD') and hasRole('DASHBOARD_RUN')")
+@PreAuthorize(app.alertify.config.AuthorizationPolicies.DASHBOARD_RUN)
 public class DashboardAlertRunController {
 
     private final AlertManagementService service;

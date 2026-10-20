@@ -16,6 +16,7 @@ public record PipeStepResponse(
     PipeStepPhase phase,
     long resourceId,
     String resourceName,
+    String resourceTemplateKey,
     boolean resourceEnabled,
     Duration timeout,
     Set<PipeOutcome> continueOn,

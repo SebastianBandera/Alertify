@@ -127,3 +127,9 @@ worker:
 
 procedure:
   max-depth: ${PROCEDURE_MAX_DEPTH:16}
+
+ai:
+  public-url: ${APP_PUBLIC_URL:http://localhost:8080}
+  oauth:
+    callback-uri: ${AI_OAUTH_CALLBACK_URI:http://127.0.0.1:8080/api/ai/codex/oauth/callback}
+    extension-callback-uri: ${AI_OAUTH_EXTENSION_CALLBACK_URI:http://127.0.0.1:53682/api/ai/codex/oauth/callback}

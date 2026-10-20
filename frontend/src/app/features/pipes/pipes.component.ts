@@ -1,5 +1,6 @@
 import { DatePipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, ElementRef, OnDestroy, OnInit, effect, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, OnDestroy, OnInit, effect, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 
@@ -19,11 +20,24 @@ import {
   PipeStepWriteRequest,
 } from '../../core/api/pipe-api.service';
 import { LocalizationService } from '../../core/i18n/localization.service';
+import { AdminEventChannelService } from '../../core/realtime/admin-event-channel.service';
 import { EditorDraftService } from '../../shared/editor-drafts/editor-draft.service';
 import { EditorViewportService } from '../../shared/editor-viewport/editor-viewport.service';
+import { ResizableTableDirective } from '../../shared/resizable-table/resizable-table.directive';
 import { ExpressionEditorComponent, ExpressionEditorNames } from '../../shared/expression-editor/expression-editor.component';
 
 type PipeTab = 'pipes' | 'history';
+
+interface BindingEditorForm {
+  kind: 'result' | 'artifact';
+  originalTarget: string | null;
+  target: string;
+  sourceStep: string;
+  pointer: string;
+  artifactSource: string;
+  expression: string;
+  invalidField: 'target' | 'sourceStep' | 'pointer' | 'artifactSource' | null;
+}
 
 interface PipeStepForm {
   key: string;
@@ -31,16 +45,12 @@ interface PipeStepForm {
   phase: PipeStepPhase;
   resourceId: number;
   resourceName: string;
+  resourceTemplateKey: string;
   resourceEnabled: boolean;
   timeoutMinutes: number;
   continueOn: PipeOutcome[];
   bindings: PipeBinding[];
-  bindingTarget: string;
-  bindingSource: string;
-  resultBindingTarget: string;
-  resultBindingSourceStep: string;
-  resultBindingPointer: string;
-  resultBindingExpression: string;
+  bindingEditor: BindingEditorForm | null;
 }
 
 interface PipeForm {
@@ -74,7 +84,7 @@ function readStoredPageSize(): number {
 
 @Component({
   selector: 'app-pipes',
-  imports: [DatePipe, FormsModule, ExpressionEditorComponent],
+  imports: [ResizableTableDirective, DatePipe, FormsModule, ExpressionEditorComponent],
   templateUrl: './pipes.component.html',
   styleUrl: './pipes.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -86,6 +96,8 @@ export class PipesComponent implements OnInit, OnDestroy {
   private readonly api = inject(PipeApiService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+  private readonly destroyRef = inject(DestroyRef);
+  private readonly events = inject(AdminEventChannelService);
   private readonly elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly editorViewport = inject(EditorViewportService);
 
@@ -140,6 +152,10 @@ export class PipesComponent implements OnInit, OnDestroy {
   }
 
   async ngOnInit(): Promise<void> {
+    this.events.on('AI_RESOURCES_INVALIDATED').pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event) => {
+      if (event.targets.includes('ALL') || event.targets.includes('PIPES'))
+        void this.loadAll(false);
+    });
     const tab = this.route.snapshot.queryParamMap.get('tab');
     const executionId = this.route.snapshot.queryParamMap.get('executionId');
     if (tab === 'history' || executionId) this.activeTab.set('history');
@@ -249,16 +265,12 @@ export class PipesComponent implements OnInit, OnDestroy {
         phase: step.phase,
         resourceId: step.resourceId,
         resourceName: step.resourceName,
+        resourceTemplateKey: step.resourceTemplateKey ?? this.templateKeyFor(step),
         resourceEnabled: step.resourceEnabled,
         timeoutMinutes: this.durationMinutes(step.timeout) ?? 30,
         continueOn: [...step.continueOn],
         bindings: step.bindings.map((binding) => ({ ...binding, valueExpression: binding.valueExpression ?? null })),
-        bindingTarget: '',
-        bindingSource: '',
-        resultBindingTarget: '',
-        resultBindingSourceStep: '',
-        resultBindingPointer: '',
-        resultBindingExpression: '',
+        bindingEditor: null,
       })),
     });
     this.formError.set(null);
@@ -281,12 +293,17 @@ export class PipesComponent implements OnInit, OnDestroy {
     this.form.set({
       ...draft.form,
       steps: draft.form.steps.map((step) => ({
-        ...step,
+        key: step.key,
+        type: step.type,
+        phase: step.phase,
+        resourceId: step.resourceId,
+        resourceName: step.resourceName,
+        resourceEnabled: step.resourceEnabled,
+        timeoutMinutes: step.timeoutMinutes,
+        continueOn: [...step.continueOn],
+        resourceTemplateKey: step.resourceTemplateKey ?? this.templateKeyFor(step),
         bindings: step.bindings.map((binding) => ({ ...binding, valueExpression: binding.valueExpression ?? null })),
-        resultBindingTarget: step.resultBindingTarget ?? '',
-        resultBindingSourceStep: step.resultBindingSourceStep ?? '',
-        resultBindingPointer: step.resultBindingPointer ?? '',
-        resultBindingExpression: step.resultBindingExpression ?? '',
+        bindingEditor: this.restoreBindingEditor(step),
       })),
     });
     this.editing.set(draft.editing);
@@ -315,6 +332,13 @@ export class PipesComponent implements OnInit, OnDestroy {
     return this.options().resources.filter((option) => option.type === type);
   }
 
+  protected templateKeyFor(resource: { type: PipeStepType; resourceId: number; resourceTemplateKey?: string }): string {
+    return resource.resourceTemplateKey || this.options().resources.find(option =>
+      option.type === resource.type && option.id === resource.resourceId)?.templateKey || '';
+  }
+
+  protected templateName(key: string): string { return key.split('.').at(-1) || this.dynamic('pipes.form.templateUnavailable'); }
+
   protected addStep(): void {
     const option = this.options().resources.find((candidate) =>
       candidate.type === this.newStepType() && candidate.id === this.newStepResourceId());
@@ -326,17 +350,13 @@ export class PipesComponent implements OnInit, OnDestroy {
         type: option.type,
         resourceId: option.id,
         resourceName: option.name,
+        resourceTemplateKey: option.templateKey,
         resourceEnabled: option.enabled,
         timeoutMinutes: 30,
         phase: 'MAIN',
         continueOn: ['SUCCESS'],
         bindings: [],
-        bindingTarget: '',
-        bindingSource: '',
-        resultBindingTarget: '',
-        resultBindingSourceStep: '',
-        resultBindingPointer: '',
-        resultBindingExpression: '',
+        bindingEditor: null,
       }],
     }));
     this.newStepResourceId.set(null);
@@ -356,6 +376,12 @@ export class PipesComponent implements OnInit, OnDestroy {
                 ? { ...binding, sourceStepKey: String(value) }
                 : binding)
               : patchedStep.bindings,
+            bindingEditor: key === 'key' && previousKey && patchedStep.bindingEditor
+              ? { ...patchedStep.bindingEditor,
+                sourceStep: patchedStep.bindingEditor.sourceStep === previousKey ? String(value) : patchedStep.bindingEditor.sourceStep,
+                artifactSource: patchedStep.bindingEditor.artifactSource.startsWith(previousKey + '\u0000')
+                  ? String(value) + patchedStep.bindingEditor.artifactSource.slice(previousKey.length) : patchedStep.bindingEditor.artifactSource }
+              : patchedStep.bindingEditor,
           };
         }),
       };
@@ -376,21 +402,10 @@ export class PipesComponent implements OnInit, OnDestroy {
     this.form.update((form) => {
       const steps = [...form.steps];
       [steps[index], steps[destination]] = [steps[destination], steps[index]];
-      const movedKey = steps[destination].key;
       for (let position = 0; position < steps.length; position++)
         steps[position] = { ...steps[position], bindings: steps[position].bindings.filter((binding) =>
           steps.findIndex((candidate) => candidate.key === binding.sourceStepKey) < position) };
 
-      const moved = steps.findIndex((candidate) => candidate.key === movedKey);
-      if (moved >= 0) steps[moved] = {
-        ...steps[moved],
-        bindingSource: '',
-        bindingTarget: '',
-        resultBindingSourceStep: '',
-        resultBindingTarget: '',
-        resultBindingPointer: '',
-        resultBindingExpression: '',
-      };
       return { ...form, steps };
     });
   }
@@ -442,45 +457,90 @@ export class PipesComponent implements OnInit, OnDestroy {
     return sources;
   }
 
-  protected addBinding(index: number): void {
-    const step = this.form().steps[index];
-    if (!step.bindingTarget || !step.bindingSource) return;
-    const [sourceStepKey, sourceOutputKey] = step.bindingSource.split('\u0000', 2);
-    const binding: PipeBinding = {
-      targetParameterKey: step.bindingTarget,
-      sourceStepKey,
-      sourceOutputKey,
-      sourceResultPointer: null,
-      valueExpression: null,
-    };
-    this.patchStep(index, 'bindings', [
-      ...step.bindings.filter((candidate) => candidate.targetParameterKey !== binding.targetParameterKey),
-      binding,
-    ]);
-    this.patchStep(index, 'bindingTarget', '');
-    this.patchStep(index, 'bindingSource', '');
+  protected openBindingEditor(index: number, binding?: PipeBinding): void {
+    if (this.form().steps[index].bindingEditor) return;
+    this.patchStep(index, 'bindingEditor', {
+      kind: binding ? binding.sourceOutputKey ? 'artifact' : 'result' : this.stringInputs(index).length ? 'result' : 'artifact',
+      originalTarget: binding?.targetParameterKey ?? null,
+      target: binding?.targetParameterKey ?? '',
+      sourceStep: binding?.sourceStepKey ?? '',
+      pointer: binding?.sourceResultPointer ?? '',
+      artifactSource: binding?.sourceOutputKey ? this.bindingValue(binding.sourceStepKey, binding.sourceOutputKey) : '',
+      expression: binding?.valueExpression ?? '',
+      invalidField: null,
+    });
+    this.focusBindingField(index, this.form().steps[index].bindingEditor?.kind === 'artifact' ? 'artifactSource' : 'sourceStep');
   }
 
-  protected addResultBinding(index: number): void {
+  protected patchBindingEditor<K extends keyof BindingEditorForm>(index: number, key: K, value: BindingEditorForm[K]): void {
+    const editor = this.form().steps[index].bindingEditor;
+    if (!editor) return;
+    this.patchStep(index, 'bindingEditor', { ...editor, [key]: value, invalidField: null });
+  }
+
+  protected changeBindingKind(index: number, kind: BindingEditorForm['kind']): void {
+    const editor = this.form().steps[index].bindingEditor;
+    if (!editor) return;
+    this.patchStep(index, 'bindingEditor', { ...editor, kind, target: '', invalidField: null });
+  }
+
+  protected cancelBindingEditor(index: number): void {
+    this.patchStep(index, 'bindingEditor', null);
+    requestAnimationFrame(() => this.elementRef.nativeElement.querySelector<HTMLElement>(`[data-binding-add="${index}"]`)?.focus({ preventScroll: true }));
+  }
+
+  protected applyBinding(index: number): boolean {
     const step = this.form().steps[index];
-    const pointer = (step.resultBindingPointer ?? '').trim();
-    if (!step.resultBindingTarget || !step.resultBindingSourceStep || !pointer.startsWith('/')) return;
-    const expression = step.resultBindingExpression ?? '';
+    const editor = step.bindingEditor;
+    if (!editor) return true;
+    const targets = editor.kind === 'result' ? this.stringInputs(index) : this.artifactInputs(index);
+    let invalidField: BindingEditorForm['invalidField'] = !targets.includes(editor.target) ? 'target' : null;
+    if (!invalidField && editor.kind === 'result') {
+      if (!this.resultSourceSteps(index).some(source => source.key === editor.sourceStep)) invalidField = 'sourceStep';
+      else if (!editor.pointer.trim().startsWith('/')) invalidField = 'pointer';
+    }
+    if (!invalidField && editor.kind === 'artifact' && !this.bindingSources(index).some(source => source.value === editor.artifactSource))
+      invalidField = 'artifactSource';
+
+    if (invalidField) {
+      this.patchStep(index, 'bindingEditor', { ...editor, invalidField });
+      this.focusBindingField(index, invalidField);
+      return false;
+    }
+    const [sourceStepKey, sourceOutputKey] = editor.artifactSource.split('\u0000', 2);
     const binding: PipeBinding = {
-      targetParameterKey: step.resultBindingTarget,
-      sourceStepKey: step.resultBindingSourceStep,
-      sourceOutputKey: null,
-      sourceResultPointer: pointer,
-      valueExpression: expression.trim() ? expression : null,
+      targetParameterKey: editor.target,
+      sourceStepKey: editor.kind === 'result' ? editor.sourceStep : sourceStepKey,
+      sourceOutputKey: editor.kind === 'artifact' ? sourceOutputKey : null,
+      sourceResultPointer: editor.kind === 'result' ? editor.pointer.trim() : null,
+      valueExpression: editor.kind === 'result' && editor.expression.trim() ? editor.expression : null,
     };
-    this.patchStep(index, 'bindings', [
-      ...step.bindings.filter((candidate) => candidate.targetParameterKey !== binding.targetParameterKey),
-      binding,
-    ]);
-    this.patchStep(index, 'resultBindingTarget', '');
-    this.patchStep(index, 'resultBindingSourceStep', '');
-    this.patchStep(index, 'resultBindingPointer', '');
-    this.patchStep(index, 'resultBindingExpression', '');
+    this.patchStep(index, 'bindings', [...step.bindings.filter(candidate =>
+      candidate.targetParameterKey !== editor.originalTarget && candidate.targetParameterKey !== binding.targetParameterKey), binding]);
+    this.cancelBindingEditor(index);
+    return true;
+  }
+
+  private focusBindingField(index: number, field: string): void {
+    requestAnimationFrame(() => {
+      const input = this.elementRef.nativeElement.querySelector<HTMLElement>(`[data-binding-step="${index}"] [data-binding-field="${field}"]`);
+      input?.focus({ preventScroll: true });
+      input?.scrollIntoView({ block: 'nearest' });
+    });
+  }
+
+  private restoreBindingEditor(step: PipeStepForm): BindingEditorForm | null {
+    if (step.bindingEditor) return { ...step.bindingEditor, invalidField: null };
+    // Drafts made before the compact editor stored their pending fields separately.
+    const old = step as PipeStepForm & { bindingTarget?: string; bindingSource?: string;
+      resultBindingTarget?: string; resultBindingSourceStep?: string; resultBindingPointer?: string; resultBindingExpression?: string };
+    if (old.resultBindingTarget || old.resultBindingSourceStep || old.resultBindingPointer || old.resultBindingExpression)
+      return { kind: 'result', originalTarget: null, target: old.resultBindingTarget ?? '', sourceStep: old.resultBindingSourceStep ?? '',
+        pointer: old.resultBindingPointer ?? '', expression: old.resultBindingExpression ?? '', artifactSource: '', invalidField: null };
+    if (old.bindingTarget || old.bindingSource)
+      return { kind: 'artifact', originalTarget: null, target: old.bindingTarget ?? '', sourceStep: '', pointer: '', expression: '',
+        artifactSource: old.bindingSource ?? '', invalidField: null };
+    return null;
   }
 
   protected removeBinding(stepIndex: number, bindingIndex: number): void {
@@ -488,13 +548,9 @@ export class PipesComponent implements OnInit, OnDestroy {
     this.patchStep(stepIndex, 'bindings', bindings);
   }
 
-  protected patchBindingExpression(stepIndex: number, bindingIndex: number, value: string): void {
-    const bindings = this.form().steps[stepIndex].bindings.map((binding, index) => index === bindingIndex
-      ? { ...binding, valueExpression: value.trim() ? value : null } : binding);
-    this.patchStep(stepIndex, 'bindings', bindings);
-  }
-
   protected async save(): Promise<void> {
+    for (let index = 0; index < this.form().steps.length; index++)
+      if (!this.applyBinding(index)) return;
     const form = this.form();
     const keys = form.steps.map((step) => step.key.trim());
     if (!form.name.trim() || form.enabled && !form.steps.length) {

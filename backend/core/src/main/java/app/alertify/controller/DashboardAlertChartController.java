@@ -21,7 +21,7 @@ import app.alertify.dashboard.DashboardHistoryWindow;
 import app.alertify.jpa.repository.AlertExecutionRepository;
 
 @RestController
-@PreAuthorize("hasRole('ADMIN') or hasRole('DASHBOARD')")
+@PreAuthorize(app.alertify.config.AuthorizationPolicies.ADMIN_OR_DASHBOARD)
 public class DashboardAlertChartController {
     private static final int MAX_CHART_EXECUTIONS = 2_000;
 

@@ -24,6 +24,8 @@ public record PipeExecutionResponse(
     Instant finishedAt,
     Long durationMillis,
     String triggeredBy,
+    boolean aiAssisted,
+    Long aiConversationId,
     String errorCode,
     List<PipeStepResultResponse> steps
 ) {

@@ -29,6 +29,7 @@ import app.alertify.alerts.templates.GitLabPipelineAlertTemplate;
 import app.alertify.alerts.templates.HttpsCertificateExpiryAlertTemplate;
 import app.alertify.alerts.templates.InternetConnectionAlertTemplate;
 import app.alertify.alerts.templates.KubernetesWorkloadAlertTemplate;
+import app.alertify.alerts.templates.KubernetesKubeProxyCertificateExpiryAlertTemplate;
 import app.alertify.alerts.templates.PlaywrightPageAlertTemplate;
 import app.alertify.alerts.templates.ScheduledReminderAlertTemplate;
 import app.alertify.alerts.templates.SqlStatusAlertTemplate;
@@ -92,6 +93,13 @@ class AlertTemplateRegistrationServiceTest {
         assertEquals("#0EA5E9", httpsCertificateTemplate.getTags().get(0).color());
         assertEquals("alerts.templateTag.security", httpsCertificateTemplate.getTags().get(1).nameKey());
         assertEquals("#7C3AED", httpsCertificateTemplate.getTags().get(1).color());
+
+        AlertTemplateDefinition kubeProxyCertificateTemplate = templatesByKey.get(KubernetesKubeProxyCertificateExpiryAlertTemplate.class.getName());
+        assertNotNull(kubeProxyCertificateTemplate);
+        assertEquals("alerts.template.kubernetesKubeProxyCertificate.name", kubeProxyCertificateTemplate.getNameKey());
+        assertEquals("app/alertify/alerts/templates/KubernetesKubeProxyCertificateExpiryAlertTemplate.java", kubeProxyCertificateTemplate.getSourcePath());
+        assertEquals(WorkerCapability.STANDARD, kubeProxyCertificateTemplate.getRequiredCapability());
+        assertEquals(2, kubeProxyCertificateTemplate.getTags().size());
 
         AlertTemplateDefinition internetTemplate =
             templatesByKey.get(InternetConnectionAlertTemplate.class.getName());

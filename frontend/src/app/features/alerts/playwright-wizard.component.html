@@ -1,0 +1,129 @@
+<section class="wizard" aria-labelledby="playwright-wizard-title">
+  <header class="wizard-heading">
+    <div><h2 id="playwright-wizard-title">{{ t('title') }}</h2><p>{{ t('description') }}</p></div>
+    <button type="button" (click)="back()">{{ t('back') }}</button>
+  </header>
+  @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
+  @if (!state()) {
+    <button type="button" class="primary" [disabled]="pending()" (click)="create()">{{ t('new') }}</button>
+    <h3>{{ t('drafts') }}</h3>
+    <div class="drafts">
+      @for (draft of drafts(); track draft.id) {
+        <button type="button" (click)="restore(draft.id)">{{ draft.url || t('untitled') }} <small>{{ draft.updatedAt }}</small></button>
+      } @empty { <p>{{ t('noDrafts') }}</p> }
+    </div>
+  } @else {
+    <div class="settings">
+      <label class="url"><span>{{ t('url') }}</span><input type="url" [ngModel]="settings().url" (ngModelChange)="patch({ url: $event })" [disabled]="busy()" placeholder="https://example.com/" required></label>
+      <label><span>{{ t('browser') }}</span><select [ngModel]="settings().engine" (ngModelChange)="patch({ engine: $event })" [disabled]="busy()"><option value="chromium">Chromium</option><option value="firefox">Firefox</option><option value="webkit">WebKit</option></select></label>
+      <label><span>{{ t('loadTimeout') }}</span><input type="number" min="5" max="60" [ngModel]="settings().loadTimeoutSeconds" (ngModelChange)="patch({ loadTimeoutSeconds: $event })" [disabled]="busy()"></label>
+      <label><span>{{ t('elementTimeout') }}</span><input type="number" min="1" max="30" [ngModel]="settings().elementTimeoutSeconds" (ngModelChange)="patch({ elementTimeoutSeconds: $event })" [disabled]="busy()"></label>
+    </div>
+    <div class="actions">
+      @if (!state()!.open) {
+        <button type="button" class="primary" [disabled]="busy() || !settings().url.trim()" (click)="command('OPEN')">{{ t('open') }}</button>
+      } @else {
+        <button type="button" [disabled]="busy()" (click)="command('RESET')">{{ t('restart') }}</button>
+        <button type="button" (click)="command('CANCEL')">{{ t('stop') }}</button>
+        <span class="capacity">{{ t('capacity') }}</span>
+      }
+      <button type="button" [disabled]="busy() || !changed()" (click)="save()">{{ t('save') }}</button>
+      <button type="button" [disabled]="busy()" (click)="remove()">{{ t('delete') }}</button>
+    </div>
+    @if (stateError()) { <p class="error" role="alert">{{ stateError() }}</p> }
+    @if (state()!.open && state()!.idleRemainingSeconds <= 30 && !state()!.busy) { <p class="warning" role="status">{{ t('idleWarning') }} {{ state()!.idleRemainingSeconds }} s <button type="button" (click)="activity()">{{ t('keepAlive') }}</button></p> }
+    @if (state()!.busy) { <p class="working" role="status">{{ t('working') }} @if (state()!.progress; as progress) { · {{ t('line') }} {{ progress.line }} · {{ progress.completed }} {{ t('completed') }} }</p> }
+
+    <div class="workspace">
+      <section class="browser-panel">
+        <div class="panel-heading"><div class="page-heading"><h3>{{ t('page') }}</h3>@if (state()!.open && activeBrowser()) { <span class="browser-badge">{{ t('activeBrowser') }}: {{ activeBrowser() }}</span> }</div>
+          @if (state()!.open) { <button type="button" (click)="detached() ? reattach() : detach()">{{ t(detached() ? 'reattach' : 'detach') }}</button> }
+        </div>
+        @if (state()!.open) {
+          <label class="current-url">{{ t('currentUrl') }}<input type="text" readonly [value]="state()!.currentUrl ?? ''"></label>
+        }
+        @if (state()!.open && !detached()) {
+          <app-playwright-remote-view [draftId]="state()!.id" [disabled]="busy()" (elementSelected)="command('SELECT', $event)" (scrolled)="command('SCROLL', { delta: $event })" />
+          <small>{{ t('selectionHelp') }}</small>
+        } @else { <p class="placeholder">{{ t(detached() ? 'detached' : 'closed') }}</p> }
+        @if (state()!.selection; as selection) { <div class="selection"><strong>{{ t('selected') }}</strong><code>{{ selection.selector }}</code><button type="button" [disabled]="busy()" (click)="patch({ steps: settings().steps + '\nQUERY ' + selection.selector })">{{ t('insertQuery') }}</button></div> }
+        <div class="actions"><button type="button" [disabled]="busy() || !state()!.open" (click)="command('OBSERVE')">{{ t('observe') }}</button></div>
+        @if (state()!.observation; as observation) { <details><summary>{{ t('snapshot') }}</summary><pre>{{ observation.snapshot }}</pre></details> }
+      </section>
+
+      <section class="chat-panel" [attr.aria-label]="t('chat')">
+        <div class="panel-heading"><h3>{{ t('chat') }}</h3><label for="playwright-wizard-mode">{{ t('interactionMode') }}<select id="playwright-wizard-mode" [ngModel]="settings().mode" (ngModelChange)="patch({ mode: $event })" [disabled]="busy() || awaitingApproval()"><option value="ASK">{{ t('ask') }}</option><option value="AUTO">{{ t('auto') }}</option></select></label></div>
+        <div class="messages" aria-live="polite">
+          @for (entry of state()!.document.messages; track $index) {
+            <article [hidden]="entry.role === 'SYSTEM'" [class.user]="entry.role === 'USER'"><strong>{{ t(entry.role === 'USER' ? 'you' : 'assistant') }}</strong><app-ai-chat-message [content]="entry.content" />@if (entry.hasImage) { <small>{{ t('captureSent') }}</small> }</article>
+          } @empty { <p class="placeholder">{{ t('chatHelp') }}</p> }
+        </div>
+        @if (state()!.document.proposalError; as failure) {
+          <section class="proposal-error" role="alert"><strong>{{ t('proposalFailed') }}</strong><p>{{ failure.error }}</p><p>{{ t('proposalFailedHelp') }}</p></section>
+        }
+        @if (state()!.document.lastAction; as action) {
+          @if ((action.operation === 'EXECUTE' || action.operation === 'TEST' || action.status === 'FAILED') && action.status !== 'RUNNING' && (action.status === 'FAILED' || (!state()!.document.proposalError && !awaitingApproval()))) {
+            <div class="execution-receipt" [class.failed]="action.status === 'FAILED'" role="status">
+              <strong>{{ t(action.status === 'FAILED' ? 'executionFailed' : 'executionCompleted') }}</strong>
+              @if (action.result?.completed !== undefined) { <p>{{ action.result!.completed }} {{ t('completed') }}</p> }
+              @if (action.error) { <p>{{ action.error }}</p> }
+              @if (state()!.restartRequired) { <p>{{ t('executionRestartRequired') }}</p><button type="button" [disabled]="busy() || !state()!.open" (click)="command('RESET')">{{ t('restart') }}</button> }
+            </div>
+          }
+        }
+        @if (state()!.document.proposal; as proposal) {
+          <section class="proposal" aria-labelledby="wizard-proposal-title"><h3 id="wizard-proposal-title">{{ t('proposal') }}</h3><p class="proposal-help">{{ t('proposalHelp') }}</p><pre>{{ proposal }}</pre><div class="actions"><button type="button" class="primary" [disabled]="busy() || changed() || !state()!.open || !!state()!.restartRequired" (click)="command('APPROVE')">{{ t('approve') }}</button><button type="button" [disabled]="busy() || !state()!.open" (click)="command('REJECT')">{{ t('reject') }}</button></div></section>
+        }
+        @if (attachment(); as capture) { <div class="attachment"><img [src]="capture" [alt]="t('capturePreview')"><button type="button" (click)="command('REMOVE_ATTACHMENT')">{{ t('removeCapture') }}</button></div> }
+        <textarea rows="3" [ngModel]="message()" (ngModelChange)="message.set($event)" [placeholder]="t(awaitingApproval() ? 'proposalChatPlaceholder' : 'messagePlaceholder')" [attr.aria-label]="t('chat')" [disabled]="busy() || awaitingApproval()" (keydown.control.enter)="send()"></textarea>
+        <div class="actions"><button type="button" [disabled]="busy() || !state()!.open || detached() || awaitingApproval()" (click)="attach()">{{ t('attach') }}</button><button type="button" class="primary" [disabled]="busy() || !state()!.open || !message().trim() || awaitingApproval()" (click)="send()">{{ t('send') }}</button></div>
+        <small>{{ t('usage') }}: {{ state()!.tokens }} · {{ state()!.modelRequests }} {{ t('requests') }}</small>
+      </section>
+    </div>
+
+    <section class="steps-panel">
+      <div class="panel-heading"><h3>{{ t('steps') }}</h3><span>{{ t('redaction') }}</span></div>
+      <textarea class="code" rows="10" [ngModel]="settings().steps" (ngModelChange)="patch({ steps: $event })" [disabled]="busy()" [attr.aria-label]="t('steps')" spellcheck="false"></textarea>
+      @if (state()!.document.validationError; as validationError) { <p class="error" role="alert">{{ validationError }}</p> }
+      <div class="steps-execution"><button type="button" [disabled]="busy() || !state()!.open || !!state()!.restartRequired" (click)="command('EXECUTE')">{{ t('execute') }}</button></div>
+      <p class="edit-help"><strong>{{ t('editHelpTitle') }}</strong><span>{{ t('editHelp') }}</span></p>
+      <section class="reference-values" aria-labelledby="wizard-reference-title">
+        <h4 id="wizard-reference-title">{{ t('referencesTitle') }}</h4>
+        <div class="reference-controls">
+          <app-searchable-select [options]="referenceOptions()" [value]="selectedReferenceId()" [placeholder]="t('reference')" [ariaLabel]="t('reference')" [emptyLabel]="t('noReferencesFound')" [clearLabel]="t('clearReference')" [disabled]="busy()" (valueChange)="selectReference($event)" />
+          @if (isCredentialReference()) {
+            <label>{{ t('credentialField') }}<select [ngModel]="credentialField()" (ngModelChange)="credentialField.set($event)" [disabled]="busy()"><option value="/username">{{ t('credentialUsername') }}</option><option value="/password">{{ t('credentialPassword') }}</option></select></label>
+          }
+          <button type="button" [disabled]="busy() || !selectedReference()" (click)="insertReference()">{{ t('insertFill') }}</button>
+        </div>
+      </section>
+      <fieldset class="procedure-values">
+        <legend>{{ t('procedures') }}</legend>
+        <p class="section-help">{{ t('proceduresHelp') }}</p>
+        <div class="procedure-picker">
+          <app-searchable-select [options]="procedureOptions()" [value]="selectedProcedure()" [placeholder]="t('selectProcedure')" [ariaLabel]="t('selectProcedure')" [emptyLabel]="t('noProcedures')" [clearLabel]="t('clearReference')" [disabled]="busy()" (valueChange)="selectedProcedure.set($event)" />
+          <button type="button" [disabled]="busy() || !selectedProcedure()" (click)="allowProcedure(selectedProcedure(), true)">{{ t('enableProcedure') }}</button>
+        </div>
+        @if (allowedProcedures().length) {
+          <ul class="enabled-procedures">@for (procedure of allowedProcedures(); track procedure.id) { <li><span>{{ procedure.name }}</span><button type="button" [disabled]="busy()" (click)="allowProcedure(procedure.id, false)" [attr.aria-label]="t('disableProcedure') + ': ' + procedure.name">×</button></li> }</ul>
+        } @else { <p class="empty-hint">{{ t('noEnabledProcedures') }}</p> }
+        <div class="procedure-call">
+          <h4>{{ t('procedureCallTitle') }}</h4>
+          <p class="section-help">{{ t('procedureCallHelp') }}</p>
+          <div class="procedure-call-controls">
+          <label>JSON Pointer<input [ngModel]="procedurePointer()" (ngModelChange)="procedurePointer.set($event)" [disabled]="busy()" placeholder="/code" /></label>
+          <label>{{ t('variableAlias') }}<input [ngModel]="procedureAlias()" (ngModelChange)="procedureAlias.set($event)" [disabled]="busy()" /></label>
+          <button type="button" [disabled]="busy() || !canInsertProcedure()" (click)="insertProcedure()">{{ t('insertCall') }}</button>
+          </div>
+        </div>
+      </fieldset>
+    </section>
+    <footer>
+      <fieldset><legend>{{ t('testBrowsers') }}</legend>@for (browser of ['chromium', 'firefox', 'webkit']; track browser) { <label class="check"><input type="checkbox" [checked]="settings().browsers.includes(browser)" [disabled]="busy()" (change)="toggleBrowser(browser, $any($event.target).checked)">{{ browser }}</label> }</fieldset>
+      <div class="actions"><button type="button" class="primary" [disabled]="busy() || !state()!.open || !settings().browsers.length" (click)="command('TEST')">{{ t('test') }}</button><button type="button" class="primary" [disabled]="busy() || !canPrepare()" (click)="prepare()">{{ t('prepare') }}</button><button type="button" [disabled]="busy()" (click)="prepare(true)">{{ t('bypass') }}</button></div>
+      @if (state()!.document.testReport; as report) {
+        <div class="test-report" [class.passed]="report.passed && canPrepare()" role="status"><strong>{{ t(canPrepare() ? 'testPassed' : 'testRequired') }}</strong>@for (result of report.browsers; track result.browser) { <p>{{ result.browser }}: {{ result.passed ? 'SUCCESS' : 'FAIL' }} · {{ result.completed }} {{ t('completed') }} @if (result.error) { · {{ result.error }} }</p> }</div>
+      }
+    </footer>
+  }
+</section>

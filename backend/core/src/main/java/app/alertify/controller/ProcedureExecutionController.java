@@ -18,7 +18,7 @@ import app.alertify.procedures.service.ProcedureExecutionQueryService;
 /** Read-only endpoint over the procedure execution history. */
 @RestController
 @RequestMapping("/api/procedure-executions")
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize(app.alertify.config.AuthorizationPolicies.ADMIN)
 public class ProcedureExecutionController {
     private final ProcedureExecutionQueryService service;
 

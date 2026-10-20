@@ -38,7 +38,7 @@ import jakarta.validation.constraints.PositiveOrZero;
 
 @RestController
 @RequestMapping("/api/hooks")
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize(app.alertify.config.AuthorizationPolicies.ADMIN)
 @Validated
 public class HookAdminController {
 

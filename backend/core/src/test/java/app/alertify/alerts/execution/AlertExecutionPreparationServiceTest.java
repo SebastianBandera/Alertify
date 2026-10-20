@@ -32,22 +32,21 @@ import app.alertify.alerts.templates.PlaywrightPageAlertTemplate;
 import app.alertify.alerts.template.annotation.AlertParameterSource;
 import app.alertify.grpc.WorkerGrpcProperties;
 import app.alertify.jpa.entity.ApplicationSecret;
-import app.alertify.jpa.entity.ApplicationConfiguration;
-import app.alertify.jpa.entity.ConfigurationValueType;
 import app.alertify.jpa.entity.SecretValueType;
 import app.alertify.jpa.repository.AlertParameterValueRepository;
 import app.alertify.jpa.repository.AlertRepository;
 import app.alertify.jpa.repository.AlertStateRepository;
 import app.alertify.jpa.repository.AlertTemplateParameterDefinitionRepository;
-import app.alertify.jpa.repository.ApplicationConfigurationRepository;
 import app.alertify.jpa.repository.ApplicationSecretRepository;
+import app.alertify.jpa.repository.ProcedureRepository;
 import app.alertify.pipes.execution.PipeParameterValue;
+import app.alertify.playwright.PlaywrightValuePreparationService;
 import app.alertify.services.secret.SecretAccessService;
 import app.alertify.services.secret.SecretAccessContext;
 import app.alertify.binary.BinaryBindingService;
 import app.alertify.worker.contract.WorkerCapability;
 import app.alertify.configuration.service.ConfigurationExpressionService;
-import tools.jackson.databind.node.StringNode;
+import tools.jackson.databind.json.JsonMapper;
 
 @ExtendWith(MockitoExtension.class)
 class AlertExecutionPreparationServiceTest {
@@ -60,8 +59,8 @@ class AlertExecutionPreparationServiceTest {
     @Mock private AlertStateRepository stateRepository;
     @Mock private ConfigurationExpressionService configurationExpressionService;
     @Mock private SecretAccessService secretAccessService;
-    @Mock private ApplicationConfigurationRepository configurationRepository;
     @Mock private ApplicationSecretRepository secretRepository;
+    @Mock private ProcedureRepository procedureRepository;
     @Mock private BinaryBindingService binaryBindingService;
 
     @Test
@@ -174,9 +173,6 @@ class AlertExecutionPreparationServiceTest {
             QUERY input[name=password]
             FILL secrets.Login Password
             """);
-        ApplicationConfiguration configuration = new ApplicationConfiguration(
-                "LOGIN USER", null, ConfigurationValueType.EXPRESSION, StringNode.valueOf("expression"), Set.of()
-        );
         ApplicationSecret secret = new ApplicationSecret(
                 "LOGIN PASSWORD", null, SecretValueType.EXPRESSION, "cipher-value-here".getBytes(StandardCharsets.UTF_8),
                 new byte[12], new byte[32], new byte[16], (short) 1, Set.of(), false
@@ -187,21 +183,20 @@ class AlertExecutionPreparationServiceTest {
         when(parameterValueRepository.findAllByAlertIdOrdered(17L)).thenReturn(List.of(configured));
         when(definitionRepository.findAllByTemplate_IdOrderByParameterOrderAscIdAsc(12L)).thenReturn(List.of(definition));
         when(stateRepository.findById(17L)).thenReturn(Optional.empty());
-        when(configurationRepository.findByNameIgnoreCase("Login User")).thenReturn(Optional.of(configuration));
         when(secretRepository.findByNameIgnoreCase("Login Password")).thenReturn(Optional.of(secret));
-        when(configurationExpressionService.getResolvedValueByName("LOGIN USER")).thenReturn("user-one", "user-two");
-        when(secretAccessService.getValueByName(eq("LOGIN PASSWORD"), any(SecretAccessContext.class))).thenReturn("password-one", "password-two");
+        when(configurationExpressionService.getResolvedValueByName("Login User")).thenReturn("user-one", "user-two");
+        when(secretAccessService.getValueByName(eq("Login Password"), any(SecretAccessContext.class))).thenReturn("password-one", "password-two");
 
         PreparedAlertExecution first = service().prepare(17L).orElseThrow();
         PreparedAlertExecution second = service().prepare(17L).orElseThrow();
 
         assertThat(first.preparedValues()).containsExactly(
-                new app.alertify.alerts.AlertExecutionValue(AlertExecutionValueSource.CONFIGURATION, "LOGIN USER", "user-one"),
-                new app.alertify.alerts.AlertExecutionValue(AlertExecutionValueSource.SECRET, "LOGIN PASSWORD", "password-one")
+                new app.alertify.alerts.AlertExecutionValue(AlertExecutionValueSource.CONFIGURATION, "Login User", "user-one"),
+                new app.alertify.alerts.AlertExecutionValue(AlertExecutionValueSource.SECRET, "Login Password", "password-one")
         );
         assertThat(second.preparedValues()).extracting(app.alertify.alerts.AlertExecutionValue::value)
                 .containsExactly("user-two", "password-two");
-        verify(secretAccessService, times(2)).getValueByName(eq("LOGIN PASSWORD"), org.mockito.ArgumentMatchers.argThat(context ->
+        verify(secretAccessService, times(2)).getValueByName(eq("Login Password"), org.mockito.ArgumentMatchers.argThat(context ->
                 context.consumerType() == SecretAccessContext.ConsumerType.ALERT
                         && context.consumerId() == 17L
                         && context.consumerName().equals("Form alert")));
@@ -269,11 +264,12 @@ class AlertExecutionPreparationServiceTest {
         return new AlertExecutionPreparationService(
                 alertRepository, definitionRepository, parameterValueRepository, stateRepository,
                 configurationExpressionService, secretAccessService,
-                configurationRepository, secretRepository,
                 new WorkerGrpcProperties(
                         "worker", 9090, null, null,
                         new WorkerGrpcProperties.Execution(null, sourceRoot)
-                ), binaryBindingService
+                ), binaryBindingService,
+                new PlaywrightValuePreparationService(secretRepository, procedureRepository, secretAccessService,
+                        configurationExpressionService, JsonMapper.builder().build())
         );
     }
 }

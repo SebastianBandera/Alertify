@@ -37,6 +37,8 @@ import app.alertify.procedures.model.Procedure;
 
 @Service
 public class PipeCsvService {
+    private static final String BINDING_SEPARATOR = "\u0000";
+
     private static final long MAX_IMPORT_FILE_SIZE = 10L * 1024 * 1024;
     private final PipeRepository pipeRepository;
     private final AlertRepository alertRepository;
@@ -141,13 +143,13 @@ public class PipeCsvService {
                     || !new LinkedHashSet<>(current.getContinueOn()).equals(value.continueOn()))
                 return false;
             List<String> currentBindings = current.getBindings().stream().map(binding -> binding.getTargetParameterKey()
-                    + "\u0000" + binding.getSourceStep().getStepKey() + "\u0000"
+                    + BINDING_SEPARATOR + binding.getSourceStep().getStepKey() + BINDING_SEPARATOR
                     + (binding.isArtifactOutput() ? "artifact\u0000" + binding.getSourceOutput().getOutputKey()
-                            : "result\u0000" + binding.getSourceResultPointer() + "\u0000" + Objects.toString(binding.getValueExpression(), ""))).toList();
+                            : "result\u0000" + binding.getSourceResultPointer() + BINDING_SEPARATOR + Objects.toString(binding.getValueExpression(), ""))).toList();
             List<String> requestedBindings = value.bindings().stream().map(binding -> binding.targetParameterKey()
-                    + "\u0000" + binding.sourceStepKey() + "\u0000"
+                    + BINDING_SEPARATOR + binding.sourceStepKey() + BINDING_SEPARATOR
                     + (binding.sourceOutputKey() != null ? "artifact\u0000" + binding.sourceOutputKey()
-                            : "result\u0000" + binding.sourceResultPointer() + "\u0000" + Objects.toString(binding.valueExpression(), ""))).toList();
+                            : "result\u0000" + binding.sourceResultPointer() + BINDING_SEPARATOR + Objects.toString(binding.valueExpression(), ""))).toList();
             if (!currentBindings.equals(requestedBindings))
                 return false;
         }

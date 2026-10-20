@@ -44,7 +44,7 @@ function tokenExpiresAt(token: string): number | null {
     const payload = token.split('.')[1];
     if (!payload) return null;
 
-    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(payload.length / 4) * 4, '=');
+    const normalized = payload.replaceAll('-', '+').replaceAll('_', '/').padEnd(Math.ceil(payload.length / 4) * 4, '=');
     const decoded = JSON.parse(atob(normalized)) as { exp?: unknown };
     return typeof decoded.exp === 'number' ? decoded.exp * 1_000 : null;
   } catch {

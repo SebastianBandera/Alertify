@@ -70,7 +70,7 @@ test('public API readiness preserves the configured host and context and rejects
   }
 });
 
-test('resources isolate secrets, persist databases and discover both worker types', () => {
+test('resources isolate secrets, persist databases and discover every worker type', () => {
   const templates = Object.fromEntries(['namespace', 'configmap', 'secret', 'pvc', 'deployment', 'statefulset', 'service'].map((name) => [name, fs.readFileSync(path.join(__dirname, '..', 'kubernetes', `${name}.yaml.template`), 'utf8')]));
   templates.publisherNginx = fs.readFileSync(path.join(__dirname, '..', 'publisher', 'default.conf.template'), 'utf8');
   templates.keycloakRealm = fs.readFileSync(path.join(__dirname, '..', 'identity', 'realm-template.json'), 'utf8');
@@ -79,7 +79,7 @@ test('resources isolate secrets, persist databases and discover both worker type
     APP_CONTEXT_PATH: '/alertify', APP_PUBLIC_URL: 'https://alertify/alertify', APP_PUBLIC_ORIGIN: 'https://alertify',
     WORKER_GRPC_HOST: 'worker', WORKER_GRPC_PORT: '9090', WORKER_GRPC_TLS_ENABLED: 'true',
     WORKER_STANDARD_UNIQUE_NAMES: 'true', WORKER_PLAYWRIGHT_UNIQUE_NAMES: 'true',
-    KUBERNETES_DATABASE_STORAGE: '5Gi', PUBLISHER_TLS_SERVER_NAME: 'alertify',
+    KUBERNETES_DATABASE_STORAGE: '5Gi', KUBERNETES_AI_WORKER_STORAGE: '1Gi', PUBLISHER_TLS_SERVER_NAME: 'alertify',
     KUBERNETES_CLUSTER_DNS: '10.96.0.10',
     KUBERNETES_INGRESS_ENABLED: 'false',
   }));
@@ -90,6 +90,7 @@ test('resources isolate secrets, persist databases and discover both worker type
     publisher: { image: 'publisher', environment: {} },
     'worker-standard': { image: 'worker-standard', environment: { WORKER_NAME: 'base' }, deploy: { replicas: 2 } },
     'worker-playwright': { image: 'worker-playwright', environment: { WORKER_NAME: 'base' } },
+    'worker-codex': { image: 'worker-codex', environment: { WORKER_NAME: 'codex', AI_WORKER_STATE_KEY: 'private' }, deploy: { replicas: 1 } },
   } }, environment, 'test', templates);
   const find = (kind, name) => resources.find((resource) => resource.kind === kind && resource.metadata.name === name);
   assert.equal(find('ConfigMap', 'database-config').data.POSTGRES_PASSWORD, undefined);
@@ -107,6 +108,13 @@ test('resources isolate secrets, persist databases and discover both worker type
   assert.equal(worker.spec.template.spec.containers[0].env[0].valueFrom.fieldRef.fieldPath, 'metadata.name');
   assert.equal(worker.spec.template.metadata.labels['app.alertify/worker'], 'true');
   assert.equal(find('Deployment', 'worker-playwright').spec.template.metadata.labels['app.alertify/worker'], 'true');
+  const codex = find('Deployment', 'worker-codex');
+  assert.equal(codex.spec.replicas, 1);
+  assert.equal(find('Secret', 'worker-codex-credentials').stringData.AI_WORKER_STATE_KEY, 'private');
+  assert.equal(find('ConfigMap', 'worker-codex-config').data.AI_WORKER_STATE_KEY, undefined);
+  assert.equal(find('PersistentVolumeClaim', 'worker-codex-data').spec.resources.requests.storage, '1Gi');
+  assert.equal(codex.spec.template.spec.volumes.some((volume) => volume.persistentVolumeClaim?.claimName === 'worker-codex-data'), true);
+  assert.equal(codex.spec.template.spec.containers[0].volumeMounts.some((mount) => mount.mountPath === '/application/data'), true);
   assert.equal(backend.automountServiceAccountToken, false);
   assert.match(find('StatefulSet', 'database').spec.template.spec.containers[0].readinessProbe.exec.command[2], /database-migrations-complete/);
   assert.equal(find('Deployment', 'backend').spec.template.spec.containers[0].readinessProbe.httpGet.path, '/alertify/actuator/health');

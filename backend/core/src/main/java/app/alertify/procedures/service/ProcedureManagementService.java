@@ -1,9 +1,5 @@
 package app.alertify.procedures.service;
 
-import java.math.BigDecimal;
-import java.math.BigInteger;
-import java.net.URI;
-import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -24,7 +20,8 @@ import org.springframework.scheduling.support.CronExpression;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import app.alertify.alerts.template.ParameterValueTypeCompatibility;
+import app.alertify.alerts.template.TemplateParameterRules;
+import app.alertify.alerts.template.TemplateParameterValidation;
 import app.alertify.alerts.template.annotation.AlertParameterSource;
 import app.alertify.api.error.ConflictException;
 import app.alertify.api.error.InvalidProcedureRequestException;
@@ -59,6 +56,9 @@ import app.alertify.procedures.model.ProcedureParameterValue;
 import app.alertify.procedures.model.ProcedureTemplateDefinition;
 import app.alertify.procedures.model.ProcedureTemplateParameterDefinition;
 import app.alertify.pipes.model.Pipe;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
+import jakarta.persistence.OptimisticLockException;
 
 /**
  * CRUD and manual runs for user-configured procedures. Updates and deletions
@@ -92,6 +92,7 @@ public class ProcedureManagementService {
     private final ApplicationEventLogger eventLogger;
     private final ProcedureExecutionOrchestrator orchestrator;
     private final ProcedureScheduleService scheduleService;
+    private final EntityManager entityManager;
 
     public ProcedureManagementService(ProcedureRepository procedureRepository,
             ProcedureTemplateDefinitionRepository templateRepository,
@@ -103,7 +104,7 @@ public class ProcedureManagementService {
             ApplicationSecretRepository secretRepository, TagRepository tagRepository,
             PipeRepository pipeRepository,
             ApplicationEventLogger eventLogger, ProcedureExecutionOrchestrator orchestrator,
-            ProcedureScheduleService scheduleService) {
+            ProcedureScheduleService scheduleService, EntityManager entityManager) {
         this.procedureRepository = procedureRepository;
         this.templateRepository = templateRepository;
         this.templateParameterRepository = templateParameterRepository;
@@ -117,6 +118,7 @@ public class ProcedureManagementService {
         this.eventLogger = eventLogger;
         this.orchestrator = orchestrator;
         this.scheduleService = scheduleService;
+        this.entityManager = entityManager;
     }
 
     @Transactional(readOnly = true)
@@ -160,7 +162,7 @@ public class ProcedureManagementService {
     public ProcedureResponse update(Long id, ProcedureUpdateRequest request) {
         Procedure procedure = procedureRepository.findById(id).orElseThrow(() -> notFound(PROCEDURE, id));
         if (procedure.getVersion() != request.version())
-            throw new ConflictException("Procedure was modified by another request; reload it and try again");
+            throw ConflictException.versionConflict("Procedure was modified by another request; reload it and try again");
 
         String name = required(request.name(), "name");
         ensureNameAvailable(name, id);
@@ -177,6 +179,15 @@ public class ProcedureManagementService {
         List<ProcedureParameterValue> values = synchronizeParameters(procedure, request.parameters(),
                 parameterValueRepository.findAllByOwnerIdOrdered(id));
         procedureRepository.flush();
+        // Parameter-only edits do not dirty the owner. Advance its version now so
+        // both the response and pending full-definition updates see the new version.
+        if (procedure.getVersion() == request.version()) {
+            try {
+                entityManager.lock(procedure, LockModeType.PESSIMISTIC_FORCE_INCREMENT);
+            } catch (OptimisticLockException exception) {
+                throw ConflictException.versionConflict("Procedure was modified by another request; reload it and try again");
+            }
+        }
         eventLogger.successAfterCommit("PROCEDURE_UPDATED", Map.of(PROCEDURE_ID, id, "name", procedure.getName(), "version", procedure.getVersion(), ALLOW_CONCURRENT_EXECUTIONS, procedure.isConcurrentExecutionAllowed()));
         scheduleService.rescheduleAfterCommit(procedure.getId());
         return ProcedureMapper.toProcedure(procedure, values);
@@ -203,7 +214,7 @@ public class ProcedureManagementService {
     public void delete(Long id, long version) {
         Procedure procedure = procedureRepository.findById(id).orElseThrow(() -> notFound(PROCEDURE, id));
         if (procedure.getVersion() != version)
-            throw new ConflictException("Procedure was modified by another request; reload it and try again");
+            throw ConflictException.versionConflict("Procedure was modified by another request; reload it and try again");
 
         if (orchestrator.isRunning(id) || executionRepository.existsByProcedure_IdAndStatus(id, ProcedureExecutionStatus.RUNNING))
             throw new ConflictException("Procedure is currently running and cannot be deleted");
@@ -253,8 +264,11 @@ public class ProcedureManagementService {
 
                 continue;
             }
-            if (!definition.getAllowedSources().contains(request.source()))
-                throw invalid("Source " + request.source() + " is not allowed for parameter '" + definition.getParameterKey() + "'");
+            try {
+                TemplateParameterValidation.source(TemplateParameterRules.of(definition), request.source());
+            } catch (IllegalArgumentException exception) {
+                throw invalid(exception.getMessage(), exception);
+            }
 
             ProcedureParameterValue value = existingByKey.get(definition.getParameterKey());
             if (value == null)
@@ -318,21 +332,19 @@ public class ProcedureManagementService {
     }
 
     private void validateConfigurationBinding(ProcedureTemplateParameterDefinition definition, ApplicationConfiguration configuration) {
-        if (!ParameterValueTypeCompatibility.isConfigurationValueTypeCompatible(definition.getJavaType(), configuration.getValueType()))
-            throw invalid(PARAMETER_PREFIX + definition.getParameterKey() + "' and its binding must both be binary or both be non-binary");
-
-        List<String> allowed = definition.getAllowedConfigurationValueTypes();
-        if (!allowed.isEmpty() && !allowed.contains(configuration.getValueType().name()))
-            throw invalid(PARAMETER_PREFIX + definition.getParameterKey() + "' only accepts configurations of type " + allowed);
+        try {
+            TemplateParameterValidation.configuration(TemplateParameterRules.of(definition), configuration.getValueType(), configuration.isWritable());
+        } catch (IllegalArgumentException exception) {
+            throw invalid(exception.getMessage(), exception);
+        }
     }
 
     private void validateSecretBinding(ProcedureTemplateParameterDefinition definition, ApplicationSecret secret) {
-        if (!ParameterValueTypeCompatibility.isSecretValueTypeCompatible(definition.getJavaType(), secret.getValueType()))
-            throw invalid(PARAMETER_PREFIX + definition.getParameterKey() + "' and its binding must match the parameter's required secret type");
-
-        List<String> allowed = definition.getAllowedSecretValueTypes();
-        if (!allowed.isEmpty() && !allowed.contains(secret.getValueType().name()))
-            throw invalid(PARAMETER_PREFIX + definition.getParameterKey() + "' only accepts secrets of type " + allowed);
+        try {
+            TemplateParameterValidation.secret(TemplateParameterRules.of(definition), secret.getValueType(), secret.isWritable());
+        } catch (IllegalArgumentException exception) {
+            throw invalid(exception.getMessage(), exception);
+        }
     }
 
     private Procedure procedure(Long id) {
@@ -355,45 +367,10 @@ public class ProcedureManagementService {
     }
 
     private String validateText(ProcedureTemplateParameterDefinition definition, String value) {
-        if (value == null)
-            throw invalid("Text value is required for parameter '" + definition.getParameterKey() + "'");
-
-        if (app.alertify.procedures.Procedure.class.getName().equals(definition.getJavaType()))
-            throw invalid("Procedure parameter '" + definition.getParameterKey() + "' must use a procedure binding");
-
-        if (!definition.isBindingAllowed() && !definition.getOptions().contains(value))
-            throw invalid(PARAMETER_PREFIX + definition.getParameterKey() + "' must use one of its declared options");
-
         try {
-            validateJavaType(definition.getJavaType(), value);
-        } catch (RuntimeException exception) {
-            throw invalid(PARAMETER_PREFIX + definition.getParameterKey() + "' is not a valid " + definition.getJavaType(), exception);
-        }
-        return value;
-    }
-
-    private static void validateJavaType(String type, String value) {
-        switch (type) {
-            case "byte", "java.lang.Byte" -> Byte.parseByte(value);
-            case "short", "java.lang.Short" -> Short.parseShort(value);
-            case "int", "java.lang.Integer" -> Integer.parseInt(value);
-            case "long", "java.lang.Long" -> Long.parseLong(value);
-            case "float", "java.lang.Float" -> Float.parseFloat(value);
-            case "double", "java.lang.Double" -> Double.parseDouble(value);
-            case "boolean", "java.lang.Boolean" -> {
-                if (!"true".equalsIgnoreCase(value) && !"false".equalsIgnoreCase(value))
-                    throw new IllegalArgumentException("not a boolean");
-            }
-            case "char", "java.lang.Character" -> {
-                if (value.length() != 1)
-                    throw new IllegalArgumentException("not a character");
-            }
-            case "java.math.BigInteger" -> new BigInteger(value);
-            case "java.math.BigDecimal" -> new BigDecimal(value);
-            case "java.net.URI" -> URI.create(value);
-            case "java.time.Duration" -> Duration.parse(value);
-            case "java.time.Instant" -> Instant.parse(value);
-            default -> { }
+            return TemplateParameterValidation.text(TemplateParameterRules.of(definition), value);
+        } catch (IllegalArgumentException exception) {
+            throw invalid(exception.getMessage(), exception);
         }
     }
 

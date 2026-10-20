@@ -110,6 +110,9 @@
       {{ localization.translate('alerts.tabs.templates') }}
       <span>@if (countsLoaded()) { {{ templates().length }} } @else { <i class="tab-count-spinner" aria-hidden="true"></i> }</span>
     </button>
+    <button type="button" [class.active]="activeTab() === 'wizards'" (click)="selectTab('wizards')">
+      {{ localization.translate('alerts.tabs.wizards') }}
+    </button>
     <button type="button" [class.active]="activeTab() === 'history'" (click)="selectTab('history')">
       {{ localization.translate('alerts.tabs.history') }}
       <span>@if (countsLoaded()) { {{ historyTotalElements() }} } @else { <i class="tab-count-spinner" aria-hidden="true"></i> }</span>
@@ -184,14 +187,15 @@
       <p class="state">{{ localization.translate('alerts.empty') }}</p>
     } @else {
       <div class="table-shell">
-        <table class="instances-table">
+        <table class="instances-table" appResizableTable="alerts">
           <thead><tr>
-            <th>{{ localization.translate('alerts.column.name') }}</th>
-            <th>{{ localization.translate('alerts.column.template') }}</th>
-            <th>{{ localization.translate('alerts.column.tags') }}</th>
-            <th>{{ localization.translate('alerts.column.schedule') }}</th>
-            <th>{{ localization.translate('alerts.column.status') }}</th>
+            <th data-column-id="name">{{ localization.translate('alerts.column.name') }}</th>
+            <th data-column-id="template">{{ localization.translate('alerts.column.template') }}</th>
+            <th data-column-id="tags">{{ localization.translate('alerts.column.tags') }}</th>
+            <th data-column-id="schedule">{{ localization.translate('alerts.column.schedule') }}</th>
+            <th data-column-id="status" data-resize-min-content="alerts.status.enabled|alerts.status.disabled">{{ localization.translate('alerts.column.status') }}</th>
             <th
+              data-column-id="updatedAt"
               class="sortable-column"
               scope="col"
               [attr.aria-sort]="updatedAtSort() === null ? 'none' : updatedAtSort() === 'desc' ? 'descending' : 'ascending'"
@@ -212,7 +216,7 @@
                 ></span>
               </button>
             </th>
-            <th>{{ localization.translate('alerts.column.actions') }}</th>
+            <th data-column-id="actions" data-resize-min-content="actions">{{ localization.translate('alerts.column.actions') }}</th>
           </tr></thead>
           <tbody>
             @for (alert of alerts(); track alert.id) {
@@ -330,15 +334,15 @@
         <p class="state">{{ localization.translate('alerts.templates.noMatching') }}</p>
       } @else {
         <div class="table-shell">
-          <table>
+          <table appResizableTable="alert-templates">
             <thead><tr>
-              <th>{{ localization.translate('alerts.templates.column.name') }}</th>
-              <th class="template-class-cell">{{ localization.translate('alerts.templates.column.key') }}</th>
-              <th>{{ localization.translate('alerts.templates.column.capability') }}</th>
-              <th>{{ localization.translate('alerts.templates.column.tags') }}</th>
-              <th>{{ localization.translate('alerts.templates.column.parameters') }}</th>
-              <th>{{ localization.translate('alerts.templates.column.alerts') }}</th>
-              <th>{{ localization.translate('alerts.column.actions') }}</th>
+              <th data-column-id="name">{{ localization.translate('alerts.templates.column.name') }}</th>
+              <th data-column-id="key" class="template-class-cell">{{ localization.translate('alerts.templates.column.key') }}</th>
+              <th data-column-id="capability">{{ localization.translate('alerts.templates.column.capability') }}</th>
+              <th data-column-id="tags">{{ localization.translate('alerts.templates.column.tags') }}</th>
+              <th data-column-id="parameters">{{ localization.translate('alerts.templates.column.parameters') }}</th>
+              <th data-column-id="instances">{{ localization.translate('alerts.templates.column.alerts') }}</th>
+              <th data-column-id="actions" data-resize-min-content="actions">{{ localization.translate('alerts.column.actions') }}</th>
             </tr></thead>
             <tbody>
               @for (template of pagedTemplates(); track template.id) {
@@ -408,6 +412,20 @@
     }
   }
 
+  @if (activeTab() === 'wizards') {
+    @if (playwrightWizardOpen()) {
+      <app-playwright-wizard (prepared)="preparePlaywrightAlert($event)" (dismissed)="playwrightWizardOpen.set(false)" />
+    } @else {
+      <div class="wizard-grid">
+      <button type="button" class="wizard-card" (click)="playwrightWizardOpen.set(true)">
+        <strong>{{ localization.translate('alerts.wizards.playwrightPage.title') }}</strong>
+        <code>PlaywrightPageAlertTemplate</code>
+        <p>{{ localization.translate('alerts.wizards.playwrightPage.description') }}</p>
+      </button>
+    </div>
+    }
+  }
+
   @if (activeTab() === 'history') {
     @if (historyExecutionId()) {
       <div class="execution-filter"><code>{{ historyExecutionId() }}</code><button type="button" (click)="clearHistoryExecutionFilter()">{{ localization.translate('alerts.history.clearExecution') }}</button></div>
@@ -449,16 +467,16 @@
       <p class="state">{{ localization.translate('alerts.history.empty') }}</p>
     } @else {
       <div class="table-shell">
-        <table>
+        <table appResizableTable="alert-history">
           <thead><tr>
-            <th>{{ localization.translate('alerts.history.startedFinishedAt') }}</th>
-            <th>{{ localization.translate('alerts.history.name') }}</th>
-            <th>{{ localization.translate('alerts.history.status') }}</th>
-            <th>{{ localization.translate('alerts.history.origin') }}</th>
-            <th>{{ localization.translate('alerts.history.parent') }}</th>
-            <th>{{ localization.translate('alerts.history.duration') }}</th>
-            <th>{{ localization.translate('alerts.history.message') }}</th>
-            <th>{{ localization.translateDynamic('alerts.history.closure') }}</th>
+            <th data-column-id="startedFinishedAt">{{ localization.translate('alerts.history.startedFinishedAt') }}</th>
+            <th data-column-id="name">{{ localization.translate('alerts.history.name') }}</th>
+            <th data-column-id="status" data-resize-min-content="SUCCESS|WARN|ERROR|RUNNING">{{ localization.translate('alerts.history.status') }}</th>
+            <th data-column-id="origin">{{ localization.translate('alerts.history.origin') }}</th>
+            <th data-column-id="parent">{{ localization.translate('alerts.history.parent') }}</th>
+            <th data-column-id="duration">{{ localization.translate('alerts.history.duration') }}</th>
+            <th data-column-id="message">{{ localization.translate('alerts.history.message') }}</th>
+            <th data-column-id="closure" data-resize-min-content="actions">{{ localization.translateDynamic('alerts.history.closure') }}</th>
           </tr></thead>
           <tbody>
             @for (execution of executions(); track execution.id) {

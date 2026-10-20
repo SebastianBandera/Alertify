@@ -50,6 +50,9 @@ public class PipeTagService {
         return tags.findAll(scope.and(DynamicSpecification.from(params, FILTER_ALIASES, FIELDS)), pageable).map(PipeTagService::response);
     }
 
+    @Transactional(readOnly = true)
+    public TagResponse get(Long id) { return response(find(id)); }
+
     @Transactional
     public TagResponse create(TagCreateRequest request) {
         String name = request.name().trim();
@@ -63,7 +66,7 @@ public class PipeTagService {
     public TagResponse update(Long id, TagUpdateRequest request) {
         Tag tag = find(id);
         if (tag.getVersion() != request.version())
-            throw new ConflictException("Tag was modified by another request; reload it and try again");
+            throw ConflictException.versionConflict("Tag was modified by another request; reload it and try again");
 
         String name = request.name().trim();
         ensureAvailable(name, id);
@@ -78,7 +81,7 @@ public class PipeTagService {
     public void delete(Long id, long version) {
         Tag tag = find(id);
         if (tag.getVersion() != version)
-            throw new ConflictException("Tag was modified by another request; reload it and try again");
+            throw ConflictException.versionConflict("Tag was modified by another request; reload it and try again");
 
         if (pipes.existsByTagsId(id))
             throw new ConflictException("PIPE_TAG_IN_USE", "Tag '" + tag.getName() + "' is assigned to pipes", Map.of("tagName", tag.getName()));

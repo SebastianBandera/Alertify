@@ -1,0 +1,380 @@
+<section class="ai-page">
+  <header>
+    <h1>{{ localization.translate('ai.title') }}</h1>
+    <p>{{ localization.translate('ai.description') }}</p>
+  </header>
+
+  @if (loading()) {
+    <div class="notice">{{ localization.translate('ai.loading') }}</div>
+  } @else {
+    @if (unavailable()) {
+      <div class="notice notice--error"><strong>{{ localization.translate('ai.workerUnavailable') }}</strong> {{ localization.translate('ai.workerUnavailableHelp') }}</div>
+    }
+
+    <nav class="tabs" [attr.aria-label]="localization.translate('ai.tabs.label')">
+      <button type="button" [class.active]="tab() === 'general'" (click)="selectTab('general')">{{ localization.translate('ai.tabs.general') }}</button>
+      <button type="button" [class.active]="tab() === 'conversations'" (click)="selectTab('conversations')">{{ localization.translate('ai.tabs.conversations') }}</button>
+      <button type="button" [class.active]="tab() === 'memories'" (click)="selectTab('memories')">{{ localization.translate('ai.memories.title') }}</button>
+      <button type="button" [class.active]="tab() === 'codex'" (click)="selectTab('codex')">{{ localization.translate('ai.tabs.codex') }}</button>
+    </nav>
+
+    @if (message()) { <div class="notice notice--success">{{ messageText() }}</div> }
+    @if (error()) { <div class="notice notice--error">{{ error() }}</div> }
+
+    @if (tab() === 'general') {
+      <form class="card form" (submit)="$event.preventDefault(); save()">
+        <fieldset [disabled]="busy() || unavailable()">
+          <div class="setting-checks">
+            <div class="setting-check">
+              <input id="ai-module-enabled" type="checkbox" [ngModel]="form().enabled" (ngModelChange)="patch('enabled', $event)" name="enabled">
+              <label class="check" for="ai-module-enabled">{{ localization.translate('ai.general.enabled') }}</label>
+            </div>
+            <div class="setting-check">
+              <input id="ai-conversation-history" type="checkbox" [ngModel]="form().conversationHistorySearchEnabled" (ngModelChange)="patch('conversationHistorySearchEnabled', $event)" name="conversationHistorySearchEnabled" aria-describedby="conversation-history-search-help">
+              <div>
+                <label class="check" for="ai-conversation-history">{{ localization.translate('ai.general.conversationHistorySearchEnabled') }}</label>
+                <p id="conversation-history-search-help" class="setting-check__help">{{ localization.translate('ai.general.conversationHistorySearchHelp') }}</p>
+              </div>
+            </div>
+            <div class="setting-check">
+              <input id="ai-memory-enabled" type="checkbox" [ngModel]="form().memoryEnabled" (ngModelChange)="patch('memoryEnabled', $event)" name="memoryEnabled" aria-describedby="memory-help">
+              <div>
+                <label class="check" for="ai-memory-enabled">{{ localization.translate('ai.general.memoryEnabled') }}</label>
+                <p id="memory-help" class="setting-check__help">{{ localization.translate('ai.general.memoryHelp') }}</p>
+              </div>
+            </div>
+          </div>
+          <label>{{ localization.translate('ai.general.provider') }}<input value="CODEX" readonly></label>
+          <div class="model-settings">
+            <label>{{ localization.translate('ai.general.defaultModel') }}<input type="text" [ngModel]="form().model" (ngModelChange)="patch('model', $event)" name="model" maxlength="128" required></label>
+            <label>{{ localization.translate('ai.general.reasoningEffort') }}
+              <select [ngModel]="form().reasoningEffort" (ngModelChange)="patch('reasoningEffort', $event)" name="reasoningEffort">
+                <option value="low">{{ localization.translate('ai.reasoning.low') }}</option>
+                <option value="medium">{{ localization.translate('ai.reasoning.medium') }}</option>
+                <option value="high">{{ localization.translate('ai.reasoning.high') }}</option>
+                <option value="xhigh">{{ localization.translate('ai.reasoning.xhigh') }}</option>
+              </select>
+            </label>
+          </div>
+          <div class="model-settings">
+            <label>{{ localization.translate('ai.general.reviewerModel') }}<input type="text" [ngModel]="form().reviewerModel" (ngModelChange)="patch('reviewerModel', $event)" name="reviewerModel" maxlength="128" [placeholder]="localization.translate('ai.general.reviewerModelPlaceholder')"></label>
+            <label>{{ localization.translate('ai.general.reviewerReasoningEffort') }}
+              <select [ngModel]="form().reviewerReasoningEffort" (ngModelChange)="patch('reviewerReasoningEffort', $event)" name="reviewerReasoningEffort">
+                <option value="low">{{ localization.translate('ai.reasoning.low') }}</option>
+                <option value="medium">{{ localization.translate('ai.reasoning.medium') }}</option>
+                <option value="high">{{ localization.translate('ai.reasoning.high') }}</option>
+                <option value="xhigh">{{ localization.translate('ai.reasoning.xhigh') }}</option>
+              </select>
+            </label>
+          </div>
+          <label>{{ localization.translate('ai.general.agents') }}<textarea rows="12" [ngModel]="form().agentInstructions" (ngModelChange)="patch('agentInstructions', $event)" name="agentInstructions" maxlength="65536" [placeholder]="localization.translate('ai.general.agentsPlaceholder')"></textarea></label>
+          <label>{{ localization.translate('ai.general.refreshPolicy') }}
+            <select [ngModel]="form().refreshPolicy" (ngModelChange)="patch('refreshPolicy', $event)" name="refreshPolicy">
+              <option value="AUTOMATIC">{{ localization.translate('ai.refreshPolicy.AUTOMATIC') }}</option>
+              <option value="ON_USE">{{ localization.translate('ai.refreshPolicy.ON_USE') }}</option>
+              <option value="NONE">{{ localization.translate('ai.refreshPolicy.NONE') }}</option>
+            </select>
+          </label>
+          <button class="primary" type="submit">{{ localization.translate('ai.save') }}</button>
+        </fieldset>
+      </form>
+    } @else if (tab() === 'conversations') {
+      <section class="card conversation-management">
+        <header class="conversation-management__header">
+          <div>
+            <h2>{{ localization.translate('ai.conversations.title') }}</h2>
+            <p class="help">{{ localization.translate('ai.conversations.description') }}</p>
+          </div>
+          <div class="actions">
+            <button type="button" [disabled]="conversationsLoading() || busy()" (click)="loadManagedConversations()">{{ localization.translate('ai.conversations.refresh') }}</button>
+            <button class="danger" type="button" [disabled]="conversationsLoading() || busy() || managedConversations().length === 0" (click)="deleteAllManagedConversations()">{{ localization.translate('ai.conversations.deleteAll') }}</button>
+          </div>
+        </header>
+
+        @if (conversationsLoading()) {
+          <div class="notice">{{ localization.translate('ai.conversations.loading') }}</div>
+        } @else {
+          <div class="conversation-table-scroll">
+            <table class="conversation-table">
+              <thead>
+                <tr>
+                  <th>{{ localization.translate('ai.conversations.id') }}</th>
+                  <th>{{ localization.translate('ai.conversations.name') }}</th>
+                  <th>{{ localization.translate('ai.conversations.user') }}</th>
+                  <th>{{ localization.translate('ai.conversations.mode') }}</th>
+                  <th>{{ localization.translate('ai.conversations.updatedAt') }}</th>
+                  <th>{{ localization.translate('ai.conversations.actions') }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (conversation of managedConversations(); track conversation.id) {
+                  <tr [class.conversation-table__selected]="selectedConversation()?.id === conversation.id">
+                    <td>{{ conversation.id }}</td>
+                    <td class="conversation-table__title" [attr.title]="conversation.title">{{ conversation.title }}</td>
+                    <td>{{ conversation.username }}</td>
+                    <td>{{ modeLabel(conversation.mode) }}</td>
+                    <td>{{ formatDate(conversation.updatedAt) }}</td>
+                    <td>
+                      <div class="conversation-table__actions">
+                        <button type="button" [disabled]="conversationDetailLoading() || busy()" (click)="selectManagedConversation(conversation.id)">{{ localization.translate('ai.conversations.view') }}</button>
+                        <button class="danger danger--subtle" type="button" [disabled]="busy()" (click)="deleteManagedConversation(conversation)">{{ localization.translate('ai.conversations.delete') }}</button>
+                      </div>
+                    </td>
+                  </tr>
+                } @empty {
+                  <tr><td colspan="6" class="conversation-table__empty">{{ localization.translate('ai.conversations.empty') }}</td></tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+
+        @if (conversationDetailLoading()) {
+          <div class="notice">{{ localization.translate('ai.conversations.detailLoading') }}</div>
+        } @else if (selectedConversation(); as conversation) {
+          <section #conversationDetail class="conversation-detail" tabindex="-1" aria-labelledby="ai-conversation-detail-title">
+            <header class="conversation-detail__header">
+              <div>
+                <h2 id="ai-conversation-detail-title">{{ conversation.title }}</h2>
+                <p class="help">{{ localization.translate('ai.conversations.detail') }} #{{ conversation.id }}</p>
+              </div>
+              <button class="danger" type="button" [disabled]="busy()" (click)="deleteManagedConversation(conversation)">{{ localization.translate('ai.conversations.delete') }}</button>
+            </header>
+
+            <dl class="state conversation-detail__metadata">
+              <div><dt>{{ localization.translate('ai.conversations.user') }}</dt><dd>{{ conversation.username }}</dd></div>
+              <div><dt>{{ localization.translate('ai.conversations.subject') }}</dt><dd><code>{{ conversation.userSubject }}</code></dd></div>
+              <div><dt>{{ localization.translate('ai.conversations.mode') }}</dt><dd>{{ modeLabel(conversation.mode) }}</dd></div>
+              <div><dt>{{ localization.translate('ai.conversations.approval') }}</dt><dd>{{ approvalLabel(conversation.approvalPolicy) }}</dd></div>
+              <div><dt>{{ localization.translate('ai.conversations.status') }}</dt><dd>{{ localization.translateDynamic('ai.conversations.status.' + conversation.status) }}</dd></div>
+              <div><dt>{{ localization.translate('ai.conversations.createdAt') }}</dt><dd>{{ formatDate(conversation.createdAt) }}</dd></div>
+              <div><dt>{{ localization.translate('ai.conversations.updatedAt') }}</dt><dd>{{ formatDate(conversation.updatedAt) }}</dd></div>
+            </dl>
+
+            <section>
+              <h3>{{ localization.translate('ai.conversations.usage') }}</h3>
+              <pre class="stored-value">{{ formatJson(conversation.usage) }}</pre>
+            </section>
+
+            <section>
+              <h3>{{ localization.translate('ai.conversations.messages') }} ({{ conversation.messages.length }})</h3>
+              <div class="stored-records">
+                @for (messageItem of conversation.messages; track messageItem.id) {
+                  <article class="stored-record">
+                    <header><strong>#{{ messageItem.id }} · {{ messageItem.role }}</strong><span>{{ formatDate(messageItem.createdAt) }}</span></header>
+                    <small>{{ localization.translate('ai.conversations.turn') }}: {{ messageItem.turnId ?? '—' }}</small>
+                    <pre class="stored-value">{{ messageItem.content }}</pre>
+                  </article>
+                } @empty {
+                  <p class="help">{{ localization.translate('ai.conversations.noMessages') }}</p>
+                }
+              </div>
+            </section>
+
+            <section>
+              <h3>{{ localization.translate('ai.conversations.turns') }} ({{ conversation.turns.length }})</h3>
+              <div class="stored-records">
+                @for (turn of conversation.turns; track turn.id) {
+                  <details class="stored-record">
+                    <summary>#{{ turn.id }} · {{ turn.status }} · {{ turn.model }}</summary>
+                    <dl class="state stored-record__metadata">
+                      <div><dt>{{ localization.translate('ai.conversations.reasoning') }}</dt><dd>{{ turn.reasoningEffort }}</dd></div>
+                      <div><dt>{{ localization.translate('ai.conversations.reasoningUpgraded') }}</dt><dd>{{ booleanLabel(turn.reasoningUpgraded) }}</dd></div>
+                      <div><dt>{{ localization.translate('ai.conversations.rejections') }}</dt><dd>{{ turn.rejectionCount }}</dd></div>
+                      <div><dt>{{ localization.translate('ai.conversations.createdAt') }}</dt><dd>{{ formatDate(turn.createdAt) }}</dd></div>
+                      <div><dt>{{ localization.translate('ai.conversations.finishedAt') }}</dt><dd>{{ formatOptionalDate(turn.finishedAt) }}</dd></div>
+                      <div><dt>{{ localization.translate('ai.conversations.errorCode') }}</dt><dd>{{ turn.errorCode || '—' }}</dd></div>
+                    </dl>
+                    @if (turn.errorMessage) {
+                      <div><strong>{{ localization.translate('ai.conversations.error') }}</strong><pre class="stored-value">{{ turn.errorMessage }}</pre></div>
+                    }
+                    <div><strong>{{ localization.translate('ai.conversations.usage') }}</strong><pre class="stored-value">{{ formatJson(turn.usage) }}</pre></div>
+                    <div class="tool-records">
+                      <h4>{{ localization.translate('ai.conversations.tools') }} ({{ turn.tools.length }})</h4>
+                      @for (tool of turn.tools; track tool.id) {
+                        <article class="tool-record">
+                          <header><strong>#{{ tool.id }} · {{ tool.toolName }} <span class="tool-kind">{{ localization.translateDynamic('ai.conversations.kind.' + tool.kind) }}</span></strong><span>{{ tool.status }}</span></header>
+                          <dl class="tool-record__hints">
+                            <div><dt>{{ localization.translate('ai.conversations.callId') }}</dt><dd><code>{{ tool.callId }}</code></dd></div>
+                            <div><dt>{{ localization.translate('ai.conversations.generation') }}</dt><dd>{{ tool.generation }}</dd></div>
+                            <div><dt>{{ localization.translate('ai.conversations.declared') }}</dt><dd>{{ booleanLabel(tool.declared) }}</dd></div>
+                            <div><dt>{{ localization.translate('ai.conversations.allowed') }}</dt><dd>{{ booleanLabel(tool.allowed) }}</dd></div>
+                            <div><dt>readOnly</dt><dd>{{ booleanLabel(tool.readOnly) }}</dd></div>
+                            <div><dt>destructiveHint</dt><dd>{{ booleanLabel(tool.destructiveHint) }}</dd></div>
+                            <div><dt>idempotentHint</dt><dd>{{ booleanLabel(tool.idempotentHint) }}</dd></div>
+                            <div><dt>openWorldHint</dt><dd>{{ booleanLabel(tool.openWorldHint) }}</dd></div>
+                            <div><dt>{{ localization.translate('ai.conversations.refreshTargets') }}</dt><dd>{{ tool.refreshTargets.join(', ') || '—' }}</dd></div>
+                            <div><dt>{{ localization.translate('ai.conversations.createdAt') }}</dt><dd>{{ formatDate(tool.createdAt) }}</dd></div>
+                            <div><dt>{{ localization.translate('ai.conversations.finishedAt') }}</dt><dd>{{ formatOptionalDate(tool.finishedAt) }}</dd></div>
+                          </dl>
+                          @if (tool.diagnosticCode) { <div><strong>{{ localization.translate('ai.conversations.diagnosticCode') }}</strong><pre class="stored-value">{{ tool.diagnosticCode }}</pre></div> }
+                          @if (tool.reviewReason) { <div><strong>{{ localization.translate('ai.conversations.reviewReason') }}</strong><pre class="stored-value">{{ tool.reviewReason }}</pre></div> }
+                          <div><strong>{{ localization.translate('ai.conversations.arguments') }}</strong><pre class="stored-value">{{ tool.arguments }}</pre></div>
+                          <div><strong>{{ localization.translate('ai.conversations.result') }}</strong><pre class="stored-value">{{ tool.result ?? '—' }}</pre></div>
+                        </article>
+                      } @empty {
+                        <p class="help">{{ localization.translate('ai.conversations.noTools') }}</p>
+                      }
+                    </div>
+                  </details>
+                } @empty {
+                  <p class="help">{{ localization.translate('ai.conversations.noTurns') }}</p>
+                }
+              </div>
+            </section>
+          </section>
+        }
+      </section>
+    } @else if (tab() === 'memories') {
+      <section class="card conversation-management">
+        <header class="conversation-management__header">
+          <div><h2>{{ localization.translate('ai.memories.title') }}</h2><p class="help">{{ localization.translate('ai.memories.description') }}</p></div>
+          <div class="actions">
+            <button type="button" [disabled]="memoriesLoading() || memoryDetailLoading() || busy()" (click)="loadManagedMemories()">{{ localization.translate('ai.conversations.refresh') }}</button>
+            <button class="danger" type="button" [disabled]="memoriesLoading() || memoryDetailLoading() || busy() || managedMemories().totalElements === 0" (click)="deleteAllManagedMemories()">{{ localization.translate('ai.conversations.deleteAll') }}</button>
+          </div>
+        </header>
+        @if (memoriesLoading()) {
+          <div class="notice">{{ localization.translate('ai.memories.loading') }}</div>
+        } @else {
+          <div class="conversation-table-scroll">
+            <table class="conversation-table">
+              <thead><tr>
+                <th>{{ localization.translate('ai.conversations.id') }}</th><th>{{ localization.translate('ai.memories.key') }}</th>
+                <th>{{ localization.translate('ai.conversations.subject') }}</th><th>{{ localization.translate('ai.memories.version') }}</th>
+                <th>{{ localization.translate('ai.conversations.createdAt') }}</th><th>{{ localization.translate('ai.conversations.updatedAt') }}</th>
+                <th>{{ localization.translate('ai.conversations.actions') }}</th>
+              </tr></thead>
+              <tbody>
+                @for (memory of managedMemories().content; track memory.id) {
+                  <tr [class.conversation-table__selected]="selectedMemory()?.id === memory.id">
+                    <td>{{ memory.id }}</td><td class="conversation-table__title">{{ memory.key }}</td><td>{{ memory.userSubject }}</td><td>{{ memory.version }}</td>
+                    <td>{{ formatDate(memory.createdAt) }}</td><td>{{ formatDate(memory.updatedAt) }}</td>
+                    <td><div class="conversation-table__actions">
+                      <button type="button" [disabled]="memoryDetailLoading() || busy()" (click)="selectManagedMemory(memory.id)">{{ localization.translate('ai.conversations.view') }}</button>
+                      <button class="danger danger--subtle" type="button" [disabled]="memoryDetailLoading() || busy()" (click)="deleteManagedMemory(memory)">{{ localization.translate('ai.conversations.delete') }}</button>
+                    </div></td>
+                  </tr>
+                } @empty {
+                  <tr><td colspan="7" class="conversation-table__empty">{{ localization.translate('ai.memories.empty') }}</td></tr>
+                }
+              </tbody>
+            </table>
+          </div>
+          <nav class="memory-pagination" [attr.aria-label]="localization.translate('ai.memories.pagination')">
+            <button type="button" [disabled]="busy() || memoryDetailLoading() || managedMemories().page === 0" (click)="loadManagedMemories(managedMemories().page - 1)">{{ localization.translate('ai.memories.previous') }}</button>
+            <span class="memory-pagination__status">{{ managedMemories().totalElements }} {{ localization.translate('ai.memories.records') }} · {{ managedMemories().page + 1 }} / {{ managedMemories().totalPages || 1 }}</span>
+            <button type="button" [disabled]="busy() || memoryDetailLoading() || managedMemories().page + 1 >= managedMemories().totalPages" (click)="loadManagedMemories(managedMemories().page + 1)">{{ localization.translate('ai.memories.next') }}</button>
+          </nav>
+        }
+        @if (memoryDetailLoading()) {
+          <div class="notice">{{ localization.translate('ai.memories.loading') }}</div>
+        } @else if (selectedMemory(); as memory) {
+          <section class="conversation-detail">
+            <h2>{{ memory.key }} #{{ memory.id }}</h2>
+            <dl class="state conversation-detail__metadata">
+              <div><dt>{{ localization.translate('ai.conversations.subject') }}</dt><dd>{{ memory.userSubject }}</dd></div>
+              <div><dt>{{ localization.translate('ai.memories.version') }}</dt><dd>{{ memory.version }}</dd></div>
+              <div><dt>{{ localization.translate('ai.memories.sourceConversation') }}</dt><dd>{{ memory.sourceConversationId ?? '—' }}</dd></div>
+              <div><dt>{{ localization.translate('ai.conversations.createdAt') }}</dt><dd>{{ formatDate(memory.createdAt) }}</dd></div>
+              <div><dt>{{ localization.translate('ai.conversations.updatedAt') }}</dt><dd>{{ formatDate(memory.updatedAt) }}</dd></div>
+            </dl>
+            <h3>{{ localization.translate('ai.memories.content') }}</h3>
+            <pre class="stored-value">{{ memory.content }}</pre>
+          </section>
+        }
+      </section>
+    } @else {
+      <div class="card">
+        <dl class="state">
+          <div><dt>{{ localization.translate('ai.codex.worker') }}</dt><dd>{{ localization.translate(module()?.workerAvailable ? 'ai.codex.workerActive' : 'ai.codex.workerInactive') }}</dd></div>
+          <div><dt>{{ localization.translate('ai.codex.session') }}</dt><dd>{{ localization.translateDynamic('ai.sessionStatus.' + module()?.sessionStatus) }}</dd></div>
+          <div><dt>{{ localization.translate('ai.codex.mode') }}</dt><dd>{{ module()?.authMode ? localization.translateDynamic('ai.authMode.' + module()?.authMode) : '—' }}</dd></div>
+          <div><dt>{{ localization.translate('ai.codex.account') }}</dt><dd>{{ module()?.accountLabel || '—' }}</dd></div>
+          <div><dt>{{ localization.translate('ai.codex.expiresAt') }}</dt><dd>{{ formatDate(module()?.expiresAt || '') }}</dd></div>
+          <div><dt>{{ localization.translate('ai.codex.refreshExpiresAt') }}</dt><dd>{{ refreshExpiration(module()?.refreshExpiresAt || '') }}</dd></div>
+          <div><dt>{{ localization.translate('ai.codex.lastRefreshedAt') }}</dt><dd>{{ lastRefresh(module()?.lastRefreshedAt || '') }}</dd></div>
+          <div><dt>{{ localization.translate('ai.codex.refreshPolicy') }}</dt><dd>{{ module()?.workerAvailable ? localization.translateDynamic('ai.refreshPolicy.' + module()?.refreshPolicy) : '—' }}</dd></div>
+        </dl>
+
+        <section class="extension-setup">
+          <div>
+            <h2>{{ localization.translate('ai.extension.title') }}</h2>
+            <p class="help">{{ localization.translate('ai.extension.description') }}</p>
+            <p class="extension-status" [class.extension-status--ready]="extensionCompatible()">
+              {{ localization.translate(extensionStatusKey()) }}
+            </p>
+          </div>
+          <div class="actions">
+            @for (browser of browserOrder(); track browser; let first = $first) {
+              <button type="button" [class.primary]="first" [disabled]="busy()" (click)="downloadExtension(browser)">
+                {{ localization.translate(first ? 'ai.extension.downloadRecommended' : 'ai.extension.downloadOther') }} {{ browserName(browser) }}
+              </button>
+            }
+          </div>
+          <details>
+            <summary>{{ localization.translate('ai.extension.instructions') }}</summary>
+            <div class="instructions">
+              <section>
+                <h3>{{ localization.translate('ai.extension.chrome') }}</h3>
+                <ol>
+                  <li>{{ localization.translate('ai.extension.chromeStep1') }}</li>
+                  <li>{{ localization.translate('ai.extension.chromeStep2') }}</li>
+                  <li>{{ localization.translate('ai.extension.chromeStep3') }}</li>
+                  <li>{{ localization.translate('ai.extension.reload') }}</li>
+                </ol>
+              </section>
+              <section>
+                <h3>{{ localization.translate('ai.extension.firefox') }}</h3>
+                <ol>
+                  <li>{{ localization.translate('ai.extension.firefoxStep1') }}</li>
+                  <li>{{ localization.translate('ai.extension.firefoxStep2') }}</li>
+                  <li>{{ localization.translate('ai.extension.firefoxStep3') }}</li>
+                  <li>{{ localization.translate('ai.extension.reload') }}</li>
+                </ol>
+                <p class="help">{{ localization.translate('ai.extension.firefoxTemporary') }}</p>
+              </section>
+            </div>
+          </details>
+        </section>
+
+        @if (module()?.workerAvailable && module()?.sessionStatus === 'SIGNED_OUT' && !module()?.loginPending) {
+          <section class="login-options">
+            <h2>{{ localization.translate('ai.codex.browserLogin') }}</h2>
+            <div class="choice-group">
+              <label><input type="radio" name="loginChoice" value="AUTO" [ngModel]="loginChoice()" (ngModelChange)="setLoginChoice($event)"> {{ localization.translate('ai.loginMode.AUTO') }}</label>
+              <label><input type="radio" name="loginChoice" value="EXTENSION" [ngModel]="loginChoice()" (ngModelChange)="setLoginChoice($event)"> {{ localization.translate('ai.loginMode.EXTENSION') }}</label>
+              <label><input type="radio" name="loginChoice" value="DIRECT" [ngModel]="loginChoice()" (ngModelChange)="setLoginChoice($event)"> {{ localization.translate('ai.loginMode.DIRECT') }}</label>
+            </div>
+            <p class="help">{{ localization.translate('ai.extension.remoteWarning') }}</p>
+            <div class="actions">
+              <button class="primary" type="button" [disabled]="busy()" (click)="browserLogin()">{{ localization.translate('ai.codex.continueBrowserLogin') }}</button>
+              <button type="button" [disabled]="busy()" (click)="deviceLogin()">{{ localization.translate('ai.codex.deviceLogin') }}</button>
+            </div>
+            <p class="help">{{ localization.translate('ai.codex.deviceHelp') }}</p>
+          </section>
+        }
+
+        @if (module()?.loginPending) {
+          <div class="device-box">
+            <strong>{{ localization.translate(module()?.pendingLoginMode === 'DEVICE' ? 'ai.codex.authorizationDevice' : 'ai.codex.authorizationBrowser') }}</strong>
+            @if (device(); as attempt) {
+              <p>{{ localization.translate('ai.codex.openVerification') }} <a [href]="attempt.verificationUri" target="_blank" rel="noopener">{{ attempt.verificationUri }}</a> {{ localization.translate('ai.codex.enterCode') }}</p>
+              <div class="device-code">{{ attempt.userCode }} <button type="button" (click)="copyCode()">{{ localization.translate('ai.codex.copy') }}</button></div>
+              <p>{{ localization.translate('ai.codex.status') }}: {{ localization.translateDynamic('ai.deviceStatus.' + attempt.status) }} · {{ localization.translate('ai.codex.expires') }} {{ formatDate(attempt.expiresAt) }}</p>
+            }
+            <button type="button" [disabled]="busy()" (click)="cancelLogin()">{{ localization.translate('ai.codex.cancel') }}</button>
+          </div>
+        }
+
+        @if (module()?.sessionStatus === 'ACTIVE' || module()?.sessionStatus === 'REAUTH_REQUIRED') {
+          <div class="actions">
+            <button type="button" [disabled]="busy()" (click)="test()">{{ localization.translate('ai.codex.test') }}</button>
+            <button type="button" [disabled]="busy()" (click)="refresh()">{{ localization.translate('ai.codex.refreshDebug') }}</button>
+            <button class="danger" type="button" [disabled]="busy()" (click)="logout()">{{ localization.translate('ai.codex.logout') }}</button>
+          </div>
+        }
+      </div>
+    }
+  }
+</section>

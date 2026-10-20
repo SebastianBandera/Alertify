@@ -36,6 +36,12 @@ public class AdminEventPublisher {
             handler.sendTextTo(sessionId, message);
     }
 
+    public void publishToSubject(String subject, String eventName, Object payload) {
+        String message = serialize(eventName, payload);
+        if (message != null)
+            handler.sendTextToSubject(subject, message);
+    }
+
     private String serialize(String eventName, Object payload) {
         try {
             return jsonMapper.writeValueAsString(new EventMessage("EVENT", eventName, payload));

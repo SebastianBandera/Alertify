@@ -29,7 +29,7 @@ import jakarta.validation.constraints.PositiveOrZero;
 
 @RestController
 @RequestMapping("/api/alert-tags")
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize(app.alertify.config.AuthorizationPolicies.ADMIN)
 @Validated
 public class AlertTagController {
 
