@@ -5,6 +5,18 @@ import { adminGuard } from './core/auth/admin.guard';
 
 export const routes: Routes = [
   {
+    path: 'playwright-view',
+    title: 'Playwright | Alertify',
+    canActivate: [adminGuard],
+    loadComponent: () => import('./features/alerts/playwright-view-popout.component').then(component => component.PlaywrightViewPopoutComponent),
+  },
+  {
+    path: 'ai-chat',
+    title: 'AI Chat | Alertify',
+    canActivate: [adminGuard],
+    loadComponent: () => import('./features/ai-chat/ai-chat-popout.component').then((component) => component.AiChatPopoutComponent),
+  },
+  {
     path: '',
     component: AppShellComponent,
     children: [
@@ -59,6 +71,15 @@ export const routes: Routes = [
         loadComponent: () =>
           import('./features/status/status.component').then(
             (component) => component.StatusComponent,
+          ),
+      },
+      {
+        path: 'ai',
+        title: 'AI Module | Alertify',
+        canActivate: [adminGuard],
+        loadComponent: () =>
+          import('./features/ai-module/ai-module.component').then(
+            (component) => component.AiModuleComponent,
           ),
       },
       {

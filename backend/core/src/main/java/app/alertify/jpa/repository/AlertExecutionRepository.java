@@ -66,10 +66,12 @@ public interface AlertExecutionRepository extends JpaRepository<AlertExecution, 
     @EntityGraph(attributePaths = { "alert", "alert.template" })
     @Query("""
             select execution from AlertExecution execution
-            where (:alertId is null or execution.alert.id = :alertId)
-              and (:templateId is null or execution.alert.template.id = :templateId)
-              and (:status is null or execution.status = :status)
-              and (:executionId is null or execution.executionId = :executionId)
+            where (:filterAlertId = false or execution.alert.id = :alertId)
+              and (:filterTemplateId = false or execution.alert.template.id = :templateId)
+              and (:filterStatus = false or execution.status = :status)
+              and (:filterExecutionId = false or execution.executionId = :executionId)
+              and (:filterFrom = false or execution.finishedAt >= :from)
+              and (:filterTo = false or execution.finishedAt <= :to)
             """)
-    Page<AlertExecution> search(@Param("alertId") Long alertId, @Param("templateId") Long templateId, @Param("status") AlertExecutionStatus status, @Param("executionId") UUID executionId, Pageable pageable);
+    Page<AlertExecution> search(@Param("filterAlertId") boolean filterAlertId, @Param("alertId") Long alertId, @Param("filterTemplateId") boolean filterTemplateId, @Param("templateId") Long templateId, @Param("filterStatus") boolean filterStatus, @Param("status") AlertExecutionStatus status, @Param("filterExecutionId") boolean filterExecutionId, @Param("executionId") UUID executionId, @Param("filterFrom") boolean filterFrom, @Param("from") Instant from, @Param("filterTo") boolean filterTo, @Param("to") Instant to, Pageable pageable);
 }

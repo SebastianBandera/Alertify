@@ -42,7 +42,7 @@ import jakarta.validation.constraints.Pattern;
 
 @RestController
 @RequestMapping("/api/alerts")
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize(app.alertify.config.AuthorizationPolicies.ADMIN)
 @Validated
 public class AlertController {
 

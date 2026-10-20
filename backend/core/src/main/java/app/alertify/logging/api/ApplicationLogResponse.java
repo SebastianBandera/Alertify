@@ -20,6 +20,8 @@ public record ApplicationLogResponse(
     ApplicationLogOutcome outcome,
     String userSubject,
     String username,
+    boolean aiAssisted,
+    Long aiConversationId,
     UUID requestId,
     String path,
     JsonNode data

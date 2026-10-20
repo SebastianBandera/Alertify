@@ -208,7 +208,7 @@
                 @for (task of worker.runningTasks; track task.executionId) {
                   <article class="task-item">
                     <div>
-                      <strong>{{ task.resourceName }}</strong>
+                      <strong>{{ task.kind === 'BROWSER_SESSION' ? localization.translateDynamic('alerts.wizard.session') : task.resourceName }}</strong>
                       <small>#{{ task.resourceId }} · {{ task.executionId }}</small>
                     </div>
                     <div class="task-item__time">

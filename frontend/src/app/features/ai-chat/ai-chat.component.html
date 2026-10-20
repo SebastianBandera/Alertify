@@ -1,0 +1,206 @@
+@if (!popout()) {
+  <div
+    class="ai-chat-trigger-shell"
+    [class.ai-chat-trigger-shell--disabled]="!chatAvailable()"
+    [hidden]="detached()"
+    [attr.tabindex]="chatAvailable() ? null : 0"
+    [attr.title]="chatUnavailableReason() || null"
+  >
+    <button
+      class="ai-chat-trigger"
+      type="button"
+      [disabled]="!chatAvailable()"
+      (click)="toggle()"
+      [attr.aria-expanded]="open()"
+      [attr.aria-describedby]="chatAvailable() ? null : 'ai-chat-unavailable-tooltip'"
+    >
+      {{ localization.translateDynamic('ai.chat.title') }}
+    </button>
+    @if (chatUnavailableReason(); as unavailableReason) {
+      <span id="ai-chat-unavailable-tooltip" class="ai-chat-trigger__tooltip" role="tooltip">
+        {{ unavailableReason }}
+      </span>
+    }
+  </div>
+}
+
+@if (open() || popout()) {
+  <aside
+    class="ai-chat"
+    [class.ai-chat--popout]="popout()"
+    [style.width.px]="popout() ? null : panelWidth()"
+    [attr.aria-label]="localization.translateDynamic('ai.chat.title')"
+  >
+    @if (!popout()) {
+      <div
+        class="ai-chat__resize-handle"
+        role="separator"
+        tabindex="0"
+        aria-orientation="vertical"
+        [attr.aria-label]="localization.translateDynamic('ai.chat.resize')"
+        [attr.aria-valuemin]="minimumPanelWidth()"
+        [attr.aria-valuemax]="maximumPanelWidth()"
+        [attr.aria-valuenow]="panelWidth()"
+        (pointerdown)="startResize($event)"
+        (keydown)="resizeWithKeyboard($event)"
+      ></div>
+    }
+    <header class="ai-chat__header">
+      <strong>{{ localization.translateDynamic('ai.chat.title') }}</strong>
+      <div>
+        @if (popout()) {
+          <button class="ai-chat__secondary-button" type="button" (click)="reattach()">{{ localization.translateDynamic('ai.chat.reattach') }}</button>
+        } @else {
+          <button class="ai-chat__secondary-button" type="button" (click)="detach()">{{ localization.translateDynamic('ai.chat.detach') }}</button>
+          <button class="ai-chat__close-button" type="button" (click)="toggle()" aria-label="Close">&times;</button>
+        }
+      </div>
+    </header>
+
+    <div class="ai-chat__toolbar">
+      <label class="ai-chat__control-label" for="ai-chat-conversation">{{ localization.translateDynamic('ai.chat.conversation') }}</label>
+      <select id="ai-chat-conversation" [ngModel]="desiredConversationId() ?? ''" (ngModelChange)="$event ? select(+$event) : newConversation()" [attr.title]="selected()?.title ?? localization.translateDynamic('ai.chat.new')">
+        <option value="">{{ localization.translateDynamic('ai.chat.new') }}</option>
+        @for (conversation of conversations(); track conversation.id) {
+          <option [value]="conversation.id">{{ conversation.title }}</option>
+        }
+      </select>
+      <button class="ai-chat__new-button" type="button" (click)="newConversation()" [attr.aria-label]="localization.translateDynamic('ai.chat.new')" [attr.title]="localization.translateDynamic('ai.chat.new')">+</button>
+    </div>
+
+    <div class="ai-chat__options">
+      @if (reasoningOptions().length > 1) {
+        <label for="ai-chat-reasoning">{{ localization.translateDynamic('ai.general.reasoningEffort') }}
+          <select id="ai-chat-reasoning" [ngModel]="reasoningEffort()" (ngModelChange)="setReasoningEffort($event)">
+            @for (effort of reasoningOptions(); track effort) {
+              <option [value]="effort">{{ localization.translateDynamic('ai.reasoning.' + effort) }}</option>
+            }
+          </select>
+        </label>
+      }
+      <label>{{ localization.translateDynamic('ai.chat.mode') }}
+        <select [ngModel]="mode()" (ngModelChange)="mode.set($event)">
+          <option value="READ_ONLY">{{ localization.translateDynamic('ai.chat.mode.readOnly') }}</option>
+          <option value="PLAN">{{ localization.translateDynamic('ai.chat.mode.plan') }}</option>
+          <option value="DIRECT">{{ localization.translateDynamic('ai.chat.mode.direct') }}</option>
+        </select>
+      </label>
+      @if (mode() === 'DIRECT') {
+        <label>{{ localization.translateDynamic('ai.chat.approval') }}
+          <select [ngModel]="approvalPolicy()" (ngModelChange)="approvalPolicy.set($event)">
+            <option value="ASK">{{ localization.translateDynamic('ai.chat.approval.ask') }}</option>
+            <option value="AUTO">{{ localization.translateDynamic('ai.chat.approval.auto') }}</option>
+          </select>
+        </label>
+      }
+    </div>
+
+    <div
+      #messagesViewport
+      class="ai-chat__messages"
+      tabindex="0"
+      (scroll)="updateScrollFollowing()"
+      (wheel)="noteManualScrollIntent()"
+      (pointerdown)="noteManualScrollIntent()"
+      (touchstart)="noteManualScrollIntent()"
+      (keydown)="noteManualScrollIntent()"
+    >
+      @for (item of timeline(); track item.key) {
+        @if (item.kind === 'message') {
+          <article [class.ai-chat__message--user]="item.message.role === 'USER'" class="ai-chat__message">
+            <small>{{ messageAuthor(item.message.role) }}</small>
+            <app-ai-chat-message [content]="item.message.content" />
+          </article>
+        } @else {
+          <article class="ai-chat__turn-failure" role="alert">
+            <strong>{{ localization.translateDynamic('ai.chat.failure.title') }}</strong>
+            <p>{{ item.turn.errorMessage || localization.translateDynamic('ai.chat.failure.message') }}</p>
+            @if (item.turn.errorCode) {
+              <small>{{ localization.translateDynamic('ai.chat.failure.code') }}: <code>{{ item.turn.errorCode }}</code></small>
+            }
+          </article>
+        }
+      } @empty {
+        <p class="ai-chat__empty">{{ localization.translateDynamic('ai.chat.empty') }}</p>
+      }
+
+      @for (tool of pendingTools(); track tool.id) {
+        <article class="ai-chat__approval">
+          <strong>{{ localization.translateDynamic('ai.chat.approvalRequired') }}</strong>
+          <code>{{ tool.toolName }}</code>
+          <pre>{{ tool.arguments }}</pre>
+          <div>
+            <button type="button" [disabled]="busy() || !chatAvailable()" (click)="approve(tool)">{{ localization.translateDynamic('ai.chat.approve') }}</button>
+            <button type="button" [disabled]="busy() || !chatAvailable()" (click)="reject(tool)">{{ localization.translateDynamic('ai.chat.reject') }}</button>
+          </div>
+        </article>
+      }
+
+      @if (modelWorking()) {
+        <div class="ai-chat__working" role="status" aria-live="polite">
+          <span class="ai-chat__working-spinner" aria-hidden="true"></span>
+          <span>{{ localization.translateDynamic('ai.chat.working') }}</span>
+        </div>
+      }
+    </div>
+
+    @if (error()) { <p class="ai-chat__error">{{ error() }}</p> }
+    <footer class="ai-chat__composer">
+      <label class="ai-chat__control-label" for="ai-chat-message">{{ localization.translateDynamic('ai.chat.message') }}</label>
+      <textarea id="ai-chat-message" rows="3" maxlength="32768" [disabled]="!chatAvailable()" [value]="message()" (input)="updateMessage($event)" (keydown)="handleComposerKeydown($event)" [placeholder]="localization.translateDynamic('ai.chat.placeholder')"></textarea>
+      <div class="ai-chat__composer-bottom">
+        <div class="ai-chat__usage" aria-live="polite">
+          @if (selected()) {
+            <span class="ai-chat__token-summary" tabindex="0" [attr.title]="usageTooltip()">{{ usageSummary() }}</span>
+          }
+          <span
+            class="ai-chat__meter"
+            [class.ai-chat__meter--unavailable]="!contextMeter().available"
+            [style.--meter-value]="contextMeter().remaining + '%'"
+            role="img"
+            tabindex="0"
+            [attr.title]="contextMeter().tooltip"
+            [attr.aria-label]="contextMeter().tooltip"
+          >
+            <small>{{ localization.translateDynamic('ai.chat.context.short') }}</small>
+            <strong>{{ contextMeter().label }}</strong>
+          </span>
+          @if (weeklyMeter(); as weekly) {
+            <span
+              class="ai-chat__meter"
+              [style.--meter-value]="weekly.remaining + '%'"
+              role="img"
+              tabindex="0"
+              [attr.title]="weekly.tooltip"
+              [attr.aria-label]="weekly.tooltip"
+            >
+              <small>{{ localization.translateDynamic('ai.chat.weekly.short') }}</small>
+              <strong>{{ weekly.label }}</strong>
+            </span>
+          }
+        </div>
+        <div class="ai-chat__actions">
+          @if (activeTurnId(); as turnId) {
+            <span class="ai-chat__cancel-action">
+              <button
+                class="ai-chat__cancel-button"
+                type="button"
+                [disabled]="busy() || !chatAvailable()"
+                (click)="cancelTurn(turnId)"
+                [attr.aria-label]="localization.translateDynamic('ai.chat.cancel')"
+                aria-describedby="ai-chat-cancel-tooltip"
+                [attr.title]="localization.translateDynamic('ai.chat.cancel')"
+              >
+                <span aria-hidden="true"></span>
+              </button>
+              <span id="ai-chat-cancel-tooltip" class="ai-chat__action-tooltip" role="tooltip">
+                {{ localization.translateDynamic('ai.chat.cancel') }}
+              </span>
+            </span>
+          }
+          <button class="ai-chat__send-button" type="button" [disabled]="busy() || !chatAvailable() || !conversationReady() || !!activeTurnId() || !message().trim()" (click)="send()">{{ localization.translateDynamic('ai.chat.send') }}</button>
+        </div>
+      </div>
+    </footer>
+  </aside>
+}

@@ -143,7 +143,7 @@ public class PipeManagementService {
     public PipeResponse update(long id, PipeUpdateRequest request) {
         Pipe pipe = find(id);
         if (pipe.getVersion() != request.version())
-            throw new ConflictException("Pipe was modified by another request; reload it and try again");
+            throw ConflictException.versionConflict("Pipe was modified by another request; reload it and try again");
 
         String name = required(request.name());
         ensureNameAvailable(name, id);
@@ -182,7 +182,7 @@ public class PipeManagementService {
     public void delete(long id, long version) {
         Pipe pipe = find(id);
         if (pipe.getVersion() != version)
-            throw new ConflictException("Pipe was modified by another request; reload it and try again");
+            throw ConflictException.versionConflict("Pipe was modified by another request; reload it and try again");
         if (pipe.isEnabled())
             throw new ConflictException("PIPE_ACTIVE", "An enabled Pipe cannot be deleted", Map.of());
         if (orchestrator.isRunning(id))
@@ -222,11 +222,11 @@ public class PipeManagementService {
             PipeStep step;
             if (request.type() == PipeStepType.ALERT) {
                 Alert alert = alertRepository.findById(request.resourceId())
-                        .orElseThrow(() -> new ResourceNotFoundException("Alert " + request.resourceId() + " was not found"));
+                        .orElseThrow(() -> new ResourceNotFoundException(notFoundMessage("Alert", request.resourceId())));
                 step = PipeStep.alert(pipe, key, position, alert, timeout.toMillis(), continueOn);
             } else {
                 Procedure procedure = procedureRepository.findById(request.resourceId())
-                        .orElseThrow(() -> new ResourceNotFoundException("Procedure " + request.resourceId() + " was not found"));
+                        .orElseThrow(() -> new ResourceNotFoundException(notFoundMessage("Procedure", request.resourceId())));
                 step = PipeStep.procedure(pipe, key, position, procedure, timeout.toMillis(), continueOn);
             }
             step.setPhase(request.phase());
@@ -253,11 +253,13 @@ public class PipeManagementService {
         Set<String> targets = new HashSet<>();
         for (var binding : request.bindings()) {
             if (!targets.add(binding.targetParameterKey()))
-                throw invalid("Target parameter '" + binding.targetParameterKey() + "' is bound more than once");
+                throw invalid(targetParameterDescription(binding.targetParameterKey()) + " is bound more than once");
+
             ProcedureTemplateParameterDefinition procedureParameter = procedureParameters.get(binding.targetParameterKey());
             AlertTemplateParameterDefinition alertParameter = alertParameters.get(binding.targetParameterKey());
             if (procedureParameter == null && alertParameter == null)
-                throw invalid("Target parameter '" + binding.targetParameterKey() + "' does not exist");
+                throw invalid(targetParameterDescription(binding.targetParameterKey()) + " does not exist");
+
             PipeStep source = steps.get(binding.sourceStepKey());
             if (source == null || source.getPosition() >= target.getPosition()
                     || target.getPhase() == app.alertify.pipes.model.PipeStepPhase.MAIN && source.getPhase() == app.alertify.pipes.model.PipeStepPhase.FINALLY)
@@ -271,7 +273,7 @@ public class PipeManagementService {
 
             if (artifact) {
                 if (procedureParameter == null || !procedureParameter.getJavaType().equals(ProcedureArtifactInput.class.getName()))
-                    throw invalid("Target parameter '" + binding.targetParameterKey() + "' is not a ProcedureArtifactInput");
+                    throw invalid(targetParameterDescription(binding.targetParameterKey()) + " is not a ProcedureArtifactInput");
                 if (binding.valueExpression() != null && !binding.valueExpression().isBlank())
                     throw invalid("Artifact binding for target parameter '" + binding.targetParameterKey() + "' cannot declare a value expression");
                 ProcedureTemplateOutputDefinition output = outputRepository
@@ -286,18 +288,19 @@ public class PipeManagementService {
                     : alertParameter.getJavaType().equals(String.class.getName()) && alertParameter.isBindingAllowed()
                             && !alertParameter.isWritableBindingRequired();
             if (!bindableString)
-                throw invalid("Target parameter '" + binding.targetParameterKey() + "' is not a bindable String");
+                throw invalid(targetParameterDescription(binding.targetParameterKey()) + " is not a bindable String");
 
             String pointer = binding.sourceResultPointer();
             if (pointer.isEmpty() || pointer.charAt(0) != '/')
-                throw invalid("Result pointer for target parameter '" + binding.targetParameterKey() + "' must start with '/'");
+                throw invalid(resultPointerDescription(binding.targetParameterKey()) + " must start with '/'");
+
             if (pointer.length() > 2000)
-                throw invalid("Result pointer for target parameter '" + binding.targetParameterKey() + "' exceeds 2000 characters");
+                throw invalid(resultPointerDescription(binding.targetParameterKey()) + " exceeds 2000 characters");
 
             try {
                 JsonPointer.compile(pointer);
             } catch (IllegalArgumentException exception) {
-                throw invalid("Result pointer for target parameter '" + binding.targetParameterKey() + "' is invalid");
+                throw invalid(resultPointerDescription(binding.targetParameterKey()) + " is invalid");
             }
             String expression = optionalExpression(binding.valueExpression());
             if (expression != null) {
@@ -315,7 +318,7 @@ public class PipeManagementService {
     }
 
     private Pipe find(long id) {
-        return pipeRepository.findDetailedById(id).orElseThrow(() -> new ResourceNotFoundException("Pipe " + id + " was not found"));
+        return pipeRepository.findDetailedById(id).orElseThrow(() -> new ResourceNotFoundException(notFoundMessage("Pipe", id)));
     }
 
     private Set<Tag> resolveTags(Set<Long> requestedIds) {
@@ -375,6 +378,13 @@ public class PipeManagementService {
     private static String required(String value) { return value.trim(); }
     private static String optional(String value) { return value == null || value.isBlank() ? null : value.trim(); }
     private static String optionalExpression(String value) { return value == null || value.isBlank() ? null : value; }
+
+    private static String notFoundMessage(String resource, Object id) { return resource + " " + id + " was not found"; }
+
+    private static String targetParameterDescription(String key) { return "Target parameter '" + key + "'"; }
+
+    private static String resultPointerDescription(String key) { return "Result pointer for target parameter '" + key + "'"; }
+
     private static InvalidPipeRequestException invalid(String message) { return new InvalidPipeRequestException(message); }
     private static Map<String, Object> data(Pipe pipe) { return Map.<String, Object>of("pipeId", pipe.getId(), "pipeName", pipe.getName(), "enabled", pipe.isEnabled(), "stepCount", pipe.getSteps().size()); }
 }

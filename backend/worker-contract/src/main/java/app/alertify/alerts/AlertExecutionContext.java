@@ -19,6 +19,8 @@ public final class AlertExecutionContext {
     private final Map<String, AlertParameterSource> parameterSources;
     /** Execution-scoped values keyed privately so templates cannot enumerate the prepared pool. */
     private final Map<ValueKey, String> preparedValues;
+    private final java.util.function.Function<String, String> procedureValues;
+    private final java.util.function.Consumer<String> protectedValue;
 
     public AlertExecutionContext() {
         this(null, Map.of());
@@ -33,6 +35,10 @@ public final class AlertExecutionContext {
     }
 
     public AlertExecutionContext(String state, Map<String, AlertParameterSource> parameterSources, List<AlertExecutionValue> preparedValues) {
+        this(state, parameterSources, preparedValues, _ -> { throw new IllegalArgumentException("Procedure invocation is unavailable"); }, _ -> { });
+    }
+
+    public AlertExecutionContext(String state, Map<String, AlertParameterSource> parameterSources, List<AlertExecutionValue> preparedValues, java.util.function.Function<String, String> procedureValues, java.util.function.Consumer<String> protectedValue) {
         this.state = state == null ? "" : state;
         this.parameterSources = Map.copyOf(Objects.requireNonNull(parameterSources, "parameterSources must not be null"));
         Objects.requireNonNull(preparedValues, "preparedValues must not be null");
@@ -44,6 +50,14 @@ public final class AlertExecutionContext {
                 throw new IllegalArgumentException("Duplicate prepared value '" + value.name() + "'");
         }
         this.preparedValues = Map.copyOf(values);
+        this.procedureValues = Objects.requireNonNull(procedureValues);
+        this.protectedValue = Objects.requireNonNull(protectedValue);
+    }
+
+    public String callProcedureValue(String reference) {
+        String value = Objects.requireNonNull(procedureValues.apply(requireValue(AlertExecutionValueSource.PROCEDURE, reference)));
+        protectedValue.accept(value);
+        return value;
     }
 
     public String getState() {

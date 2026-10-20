@@ -21,6 +21,9 @@ import tools.jackson.databind.json.JsonMapper;
 
 @Service
 public class ResourceResultObserverService {
+    private static final String RESOURCE_KIND_PROCEDURE = "PROCEDURE";
+    private static final String STATUS_FIELD = "status";
+
     public static final String TEMPLATE = ResourceResultObserverAlertTemplate.class.getName();
     private final JdbcTemplate jdbc;
     private final JsonMapper mapper;
@@ -59,7 +62,7 @@ public class ResourceResultObserverService {
                 insert into core.alert_resource_observers (alert_id, pipe_id, procedure_id, hook_id)
                 values (?, ?, ?, ?)
                 on conflict (alert_id) do update set pipe_id = excluded.pipe_id, procedure_id = excluded.procedure_id, hook_id = excluded.hook_id
-                """, alert.getId(), "PIPE".equals(kind) ? id : null, "PROCEDURE".equals(kind) ? id : null, "HOOK".equals(kind) ? id : null);
+                """, alert.getId(), "PIPE".equals(kind) ? id : null, RESOURCE_KIND_PROCEDURE.equals(kind) ? id : null, "HOOK".equals(kind) ? id : null);
     }
 
     @Transactional(readOnly = true)
@@ -75,7 +78,7 @@ public class ResourceResultObserverService {
         Resource resource = resources.getFirst();
         String sql = switch (resource.kind()) {
             case "PIPE" -> "select execution_id, status, outcome as severity, finished_at from core.pipe_executions where pipe_id = ? and finished_at is not null order by finished_at desc, id desc limit 1";
-            case "PROCEDURE" -> "select execution_id, status, case when status = 'ERROR' then 'ERROR' else 'SUCCESS' end as severity, finished_at from core.procedure_executions where procedure_id = ? and finished_at is not null order by finished_at desc, id desc limit 1";
+            case RESOURCE_KIND_PROCEDURE -> "select execution_id, status, case when status = 'ERROR' then 'ERROR' else 'SUCCESS' end as severity, finished_at from core.procedure_executions where procedure_id = ? and finished_at is not null order by finished_at desc, id desc limit 1";
             case "HOOK" -> """
                     select invocation_id as execution_id, status,
                         case when status = 'FAILED' or exists(select 1 from core.hook_invocation_targets t where t.hook_invocation_id = h.id and t.status = 'ERROR') then 'ERROR'
@@ -85,13 +88,13 @@ public class ResourceResultObserverService {
             default -> throw new IllegalStateException("Invalid observer resource kind");
         };
         List<Terminal> results = jdbc.query(sql, (row, index) -> new Terminal(row.getObject("execution_id", UUID.class),
-                row.getString("status"), row.getString("severity"), row.getObject("finished_at", OffsetDateTime.class).toInstant()), resource.id());
+                row.getString(STATUS_FIELD), row.getString("severity"), row.getObject("finished_at", OffsetDateTime.class).toInstant()), resource.id());
         var summary = mapper.createObjectNode().put("resourceKind", resource.kind()).put("resourceId", resource.id());
         if (results.isEmpty())
-            return new ObservedResult(AlertExecutionStatus.WARN, summary.put("status", "NO_TERMINAL_RESULT"));
+            return new ObservedResult(AlertExecutionStatus.WARN, summary.put(STATUS_FIELD, "NO_TERMINAL_RESULT"));
 
         Terminal terminal = results.getFirst();
-        summary.put("executionId", terminal.id().toString()).put("status", terminal.status()).put("finishedAt", terminal.finishedAt().toString());
+        summary.put("executionId", terminal.id().toString()).put(STATUS_FIELD, terminal.status()).put("finishedAt", terminal.finishedAt().toString());
         AlertExecutionStatus status = terminal.severity() == null ? AlertExecutionStatus.ERROR : AlertExecutionStatus.valueOf(terminal.severity());
         summary.put("outcome", status.name());
         return new ObservedResult(status, summary);
@@ -100,7 +103,7 @@ public class ResourceResultObserverService {
     private static String table(String kind) {
         return switch (kind == null ? "" : kind) {
             case "PIPE" -> "pipes";
-            case "PROCEDURE" -> "procedures";
+            case RESOURCE_KIND_PROCEDURE -> "procedures";
             case "HOOK" -> "hooks";
             default -> throw new InvalidAlertRequestException("Observed resource kind must be PIPE, PROCEDURE or HOOK");
         };

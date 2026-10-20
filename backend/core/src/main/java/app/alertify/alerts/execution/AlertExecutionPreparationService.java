@@ -21,19 +21,16 @@ import app.alertify.alerts.model.AlertState;
 import app.alertify.alerts.model.AlertTemplateDefinition;
 import app.alertify.alerts.model.AlertTemplateParameterDefinition;
 import app.alertify.alerts.AlertExecutionValue;
-import app.alertify.alerts.AlertExecutionValueSource;
 import app.alertify.alerts.template.ParameterValueTypeCompatibility;
 import app.alertify.alerts.template.annotation.AlertParameterSource;
 import app.alertify.alerts.templates.PlaywrightPageAlertTemplate;
-import app.alertify.api.error.ResourceNotFoundException;
 import app.alertify.configuration.service.ConfigurationExpressionService;
 import app.alertify.grpc.WorkerGrpcProperties;
 import app.alertify.jpa.repository.AlertParameterValueRepository;
 import app.alertify.jpa.repository.AlertRepository;
 import app.alertify.jpa.repository.AlertStateRepository;
 import app.alertify.jpa.repository.AlertTemplateParameterDefinitionRepository;
-import app.alertify.jpa.repository.ApplicationConfigurationRepository;
-import app.alertify.jpa.repository.ApplicationSecretRepository;
+import app.alertify.playwright.PlaywrightValuePreparationService;
 import app.alertify.services.secret.SecretAccessContext;
 import app.alertify.services.secret.SecretAccessService;
 import app.alertify.binary.BinaryBindingService;
@@ -57,22 +54,20 @@ public class AlertExecutionPreparationService {
     private final AlertStateRepository stateRepository;
     private final ConfigurationExpressionService configurationExpressionService;
     private final SecretAccessService secretAccessService;
-    private final ApplicationConfigurationRepository configurationRepository;
-    private final ApplicationSecretRepository secretRepository;
     private final BinaryBindingService binaryBindingService;
     private final WorkerGrpcProperties properties;
+    private final PlaywrightValuePreparationService playwrightValues;
 
-    public AlertExecutionPreparationService(AlertRepository alertRepository, AlertTemplateParameterDefinitionRepository definitionRepository, AlertParameterValueRepository parameterValueRepository, AlertStateRepository stateRepository, ConfigurationExpressionService configurationExpressionService, SecretAccessService secretAccessService, ApplicationConfigurationRepository configurationRepository, ApplicationSecretRepository secretRepository, WorkerGrpcProperties properties, BinaryBindingService binaryBindingService) {
+    public AlertExecutionPreparationService(AlertRepository alertRepository, AlertTemplateParameterDefinitionRepository definitionRepository, AlertParameterValueRepository parameterValueRepository, AlertStateRepository stateRepository, ConfigurationExpressionService configurationExpressionService, SecretAccessService secretAccessService, WorkerGrpcProperties properties, BinaryBindingService binaryBindingService, PlaywrightValuePreparationService playwrightValues) {
         this.alertRepository = alertRepository;
         this.definitionRepository = definitionRepository;
         this.parameterValueRepository = parameterValueRepository;
         this.stateRepository = stateRepository;
         this.configurationExpressionService = configurationExpressionService;
         this.secretAccessService = secretAccessService;
-        this.configurationRepository = configurationRepository;
-        this.secretRepository = secretRepository;
         this.binaryBindingService = binaryBindingService;
         this.properties = properties;
+        this.playwrightValues = playwrightValues;
     }
 
     @Transactional(readOnly = true)
@@ -141,31 +136,8 @@ public class AlertExecutionPreparationService {
                 .map(ResolvedAlertParameter::value)
                 .orElse(null);
         return PlaywrightPageAlertTemplate.requiredValues(steps).stream()
-                .map(reference -> resolveValue(reference, accessContext))
+                .map(reference -> playwrightValues.resolve(reference, accessContext))
                 .toList();
-    }
-
-    private AlertExecutionValue resolveValue(PlaywrightPageAlertTemplate.ValueReference reference, SecretAccessContext accessContext) {
-        return switch (reference.source()) {
-            case CONFIGURATION -> {
-                var configuration = configurationRepository.findByNameIgnoreCase(reference.name()).orElseThrow(
-                        () -> new ResourceNotFoundException("Configuration '" + reference.name() + "' was not found")
-                );
-                if (configuration.getValueType() == ConfigurationValueType.BINARY)
-                    throw new IllegalArgumentException("Configuration '" + configuration.getName() + "' cannot be used by FILL because it is binary");
-
-                yield new AlertExecutionValue(AlertExecutionValueSource.CONFIGURATION, configuration.getName(), configurationExpressionService.getResolvedValueByName(configuration.getName()));
-            }
-            case SECRET -> {
-                var secret = secretRepository.findByNameIgnoreCase(reference.name()).orElseThrow(
-                        () -> new ResourceNotFoundException("Secret '" + reference.name() + "' was not found")
-                );
-                if (secret.getValueType() != SecretValueType.STRING && secret.getValueType() != SecretValueType.EXPRESSION)
-                    throw new IllegalArgumentException("Secret '" + secret.getName() + "' cannot be used by FILL because it is not textual");
-
-                yield new AlertExecutionValue(AlertExecutionValueSource.SECRET, secret.getName(), secretAccessService.getValueByName(secret.getName(), accessContext));
-            }
-        };
     }
 
     private ResolvedAlertParameter resolve(AlertTemplateParameterDefinition definition, AlertParameterValue configured, SecretAccessContext accessContext, PipeParameterValue pipeInput) {

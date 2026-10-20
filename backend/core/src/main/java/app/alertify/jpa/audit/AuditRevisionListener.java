@@ -5,6 +5,10 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 
+import app.alertify.ai.AiInvocationContext;
+import app.alertify.ai.AiInvocationContextHolder;
+import app.alertify.ai.AiProvenance;
+
 /**
  * Populates each Envers revision with the current authenticated actor so audit
  * history identifies who performed a change.
@@ -17,6 +21,15 @@ public final class AuditRevisionListener implements RevisionListener {
     @Override
     public void newRevision(Object revisionObject) {
         AuditRevisionEntity revision = (AuditRevisionEntity) revisionObject;
+        AiProvenance provenance = AiInvocationContextHolder.currentProvenance();
+        revision.setAiProvenance(provenance.assisted(), provenance.conversationId());
+        AiInvocationContext aiContext = AiInvocationContextHolder.current();
+        if (aiContext != null) {
+            revision.setUserSubject(aiContext.userSubject());
+            revision.setUsername(aiContext.username());
+            return;
+        }
+
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 
         if (authentication instanceof JwtAuthenticationToken jwtAuthentication && authentication.isAuthenticated()) {

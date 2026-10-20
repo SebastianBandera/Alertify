@@ -1,5 +1,6 @@
-import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
 import {
   ApiRequestError,
@@ -13,6 +14,7 @@ import {
   TagMatchMode,
 } from '../../core/api/configuration-api.service';
 import { LocalizationService } from '../../core/i18n/localization.service';
+import { AdminEventChannelService } from '../../core/realtime/admin-event-channel.service';
 import { EditorViewportService } from '../../shared/editor-viewport/editor-viewport.service';
 import { ExpressionEditorComponent } from '../../shared/expression-editor/expression-editor.component';
 
@@ -71,6 +73,8 @@ export class ConfigsComponent implements OnInit {
   protected readonly pageSizeOptions = PAGE_SIZE_OPTIONS;
 
   private readonly api = inject(ConfigurationApiService);
+  private readonly events = inject(AdminEventChannelService);
+  private readonly destroyRef = inject(DestroyRef);
   private readonly editorViewport = inject(EditorViewportService);
 
   protected readonly configurations = signal<readonly ApplicationConfiguration[]>([]);
@@ -126,7 +130,15 @@ export class ConfigsComponent implements OnInit {
   protected readonly tagError = signal<string | null>(null);
 
   async ngOnInit(): Promise<void> {
+    this.events.on('AI_RESOURCES_INVALIDATED').pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event) => {
+      if (event.targets.includes('ALL') || event.targets.includes('CONFIGURATIONS'))
+        void this.refreshAfterAiChange();
+    });
     await Promise.all([this.loadConfigurations(), this.loadTags(), this.loadExpressionSuggestions(), this.loadBinaryLimits()]);
+  }
+
+  private async refreshAfterAiChange(): Promise<void> {
+    await Promise.all([this.loadConfigurations(), this.loadTags(), this.loadExpressionSuggestions()]);
   }
 
   private async loadBinaryLimits(): Promise<void> {

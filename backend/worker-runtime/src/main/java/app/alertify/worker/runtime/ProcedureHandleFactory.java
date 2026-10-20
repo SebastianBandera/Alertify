@@ -40,6 +40,14 @@ class ProcedureHandleFactory {
 
     PipeInvoker pipeInvoker() { return pipeInvoker; }
 
+    String value(String token, Deadline deadline) {
+        JsonNode value = invoke(token, deadline);
+        if (!value.isString())
+            throw new ProcedureExecutionException("Procedure value reply must be textual");
+
+        return value.stringValue();
+    }
+
     Procedure create(AlertParameter parameter, Deadline deadline) {
         if (parameter.getInvocationToken().isBlank() || parameter.getProcedureId() <= 0)
             throw new IllegalArgumentException("Procedure parameter '" + parameter.getName() + "' has no invocation capability");

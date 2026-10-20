@@ -37,6 +37,11 @@ import app.alertify.services.secret.SymmetricKeyService;
  */
 @Service
 public class SystemConfigurationService {
+    private static final String VALUE_FIELD = "value";
+    private static final String CHANGED_FIELD = "changed";
+    private static final String CHANGED_FIELDS_FIELD = "changedFields";
+    private static final String UPDATED_EVENT = "SYSTEM_CONFIGURATION_UPDATED";
+
 
     private static final int RANDOM_VALUE_BYTES = 32;
     private static final String SYSTEM_CONFIGURATION_ID = "systemConfigurationId";
@@ -52,7 +57,7 @@ public class SystemConfigurationService {
      * than inferred from {@code valueHidden} alone: a future hidden entry is
      * not guaranteed to be a flat opaque string either.
      */
-    private static final Set<String> REGENERATABLE_NAMES = Set.of("KEY_PART");
+    private static final Set<String> REGENERATABLE_NAMES = Set.of(KEY_PART_NAME);
 
     private final SystemConfigurationRepository repository;
     private final ApplicationEventLogger eventLogger;
@@ -102,7 +107,7 @@ public class SystemConfigurationService {
 
         if (!configuration.getValue().equals(persistedValue)) {
             configuration.changeValue(persistedValue);
-            changedFields.add("value");
+            changedFields.add(VALUE_FIELD);
         }
 
         if (!changedFields.isEmpty())
@@ -111,9 +116,9 @@ public class SystemConfigurationService {
         Map<String, Object> logData = new LinkedHashMap<>();
         logData.put(SYSTEM_CONFIGURATION_ID, id);
         logData.put("name", configuration.getName());
-        logData.put("changed", !changedFields.isEmpty());
-        logData.put("changedFields", changedFields);
-        eventLogger.successAfterCommit("SYSTEM_CONFIGURATION_UPDATED", logData);
+        logData.put(CHANGED_FIELD, !changedFields.isEmpty());
+        logData.put(CHANGED_FIELDS_FIELD, changedFields);
+        eventLogger.successAfterCommit(UPDATED_EVENT, logData);
         boolean changed = !changedFields.isEmpty();
         applicationEventPublisher.publishEvent(new SystemConfigurationChangedEvent(
                 "MAINTENANCE_MODE".equals(configuration.getName()) && changed,
@@ -143,10 +148,7 @@ public class SystemConfigurationService {
         configuration.changeValue(prepareKeyPartTransition(configuration, StringNode.valueOf(newValue)));
         repository.flush();
 
-        eventLogger.successAfterCommit(
-                "SYSTEM_CONFIGURATION_UPDATED",
-                Map.of(SYSTEM_CONFIGURATION_ID, id, "name", configuration.getName(), "changed", true, "changedFields", Set.of("value"))
-        );
+        eventLogger.successAfterCommit(UPDATED_EVENT, Map.of(SYSTEM_CONFIGURATION_ID, id, "name", configuration.getName(), CHANGED_FIELD, true, CHANGED_FIELDS_FIELD, Set.of(VALUE_FIELD)));
         return SystemConfigurationMapper.toResponse(configuration);
     }
 
@@ -167,7 +169,7 @@ public class SystemConfigurationService {
 
         configuration.changeValue(StringNode.valueOf(currentValue.substring(delimiterIndex + KEY_TRANSITION_DELIMITER.length())));
         repository.flush();
-        eventLogger.successAfterCommit("SYSTEM_CONFIGURATION_UPDATED", Map.of(SYSTEM_CONFIGURATION_ID, id, "name", configuration.getName(), "changed", true, "changedFields", Set.of("value")));
+        eventLogger.successAfterCommit(UPDATED_EVENT, Map.of(SYSTEM_CONFIGURATION_ID, id, "name", configuration.getName(), CHANGED_FIELD, true, CHANGED_FIELDS_FIELD, Set.of(VALUE_FIELD)));
         return SystemConfigurationMapper.toResponse(configuration);
     }
 

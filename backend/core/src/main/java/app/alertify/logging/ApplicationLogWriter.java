@@ -32,6 +32,7 @@ class ApplicationLogWriter {
                         command.eventAt(), catalog.level(command.level()), catalog.source(command.source()),
                         catalog.event(command.event()),
                         command.outcome(), command.actor().subject(), command.actor().username(),
+                        command.aiProvenance().assisted(), command.aiProvenance().conversationId(),
                         command.requestId(), command.path(), jsonMapper.valueToTree(command.data())
                 )
         );

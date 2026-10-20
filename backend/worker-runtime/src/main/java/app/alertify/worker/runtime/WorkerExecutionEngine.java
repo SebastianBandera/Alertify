@@ -91,7 +91,7 @@ class WorkerExecutionEngine implements AutoCloseable {
             List<AlertExecutionValue> preparedValues = request.getPreparedValuesList().stream()
                     .map(value -> new AlertExecutionValue(valueSource(value.getSource()), value.getName(), value.getValue()))
                     .toList();
-            context = new AlertExecutionContext(SecretValueSanitizer.sanitize(request.getState(), secretValues), parameterSources, preparedValues);
+            context = new AlertExecutionContext(SecretValueSanitizer.sanitize(request.getState(), secretValues), parameterSources, preparedValues, token -> procedureHandles.value(token, deadline), secretValues::add);
 
             CompiledAlertTemplate template = compiler.get(request.getTemplateClassName(), request.getSourceChecksum());
             AlertEvaluator evaluator = template.newInstance(request.getParametersList(), procedureHandles, deadline);
@@ -174,6 +174,7 @@ class WorkerExecutionEngine implements AutoCloseable {
         return switch (source) {
             case ALERT_EXECUTION_VALUE_SOURCE_CONFIGURATION -> AlertExecutionValueSource.CONFIGURATION;
             case ALERT_EXECUTION_VALUE_SOURCE_SECRET -> AlertExecutionValueSource.SECRET;
+            case ALERT_EXECUTION_VALUE_SOURCE_PROCEDURE -> AlertExecutionValueSource.PROCEDURE;
             case ALERT_EXECUTION_VALUE_SOURCE_UNSPECIFIED, UNRECOGNIZED ->
                     throw new IllegalArgumentException("Prepared alert value source must be specified");
         };
@@ -208,7 +209,7 @@ class WorkerExecutionEngine implements AutoCloseable {
                 .map(app.alertify.worker.grpc.PreparedAlertValue::getValue)
                 .filter(value -> !value.isEmpty())
                 .forEach(values::add);
-        return List.copyOf(values);
+        return values;
     }
 
     @Override

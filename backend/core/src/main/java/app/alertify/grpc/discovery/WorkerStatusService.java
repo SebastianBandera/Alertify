@@ -96,6 +96,14 @@ public class WorkerStatusService implements AutoCloseable {
      * using {@link #reserve(WorkerCapability)} and may queue on the worker.
      */
     public synchronized CapacityReservation tryReserveAvailable(WorkerCapability capability) {
+        return tryReserveAvailable(capability, false);
+    }
+
+    public synchronized CapacityReservation tryReserveBrowser() {
+        return tryReserveAvailable(WorkerCapability.PLAYWRIGHT, true);
+    }
+
+    private CapacityReservation tryReserveAvailable(WorkerCapability capability, boolean browser) {
         Set<AvailableWorker> discovered = availabilityService.availableWorkersWith(capability);
         if (discovered.isEmpty())
             return CapacityReservation.unavailable();
@@ -107,6 +115,7 @@ public class WorkerStatusService implements AutoCloseable {
             return CapacityReservation.unavailable();
 
         List<SelectedWorker> workers = reachable.stream()
+                .filter(result -> !browser || result.status().getPlaywrightWizardSupported())
                 .filter(this::hasFreeAlertCapacity)
                 .map(result -> new SelectedWorker(result.endpoint(), result.status()))
                 .sorted(Comparator.comparingInt(this::effectiveLoad).thenComparing(worker -> worker.endpoint().toString()))
@@ -256,6 +265,7 @@ public class WorkerStatusService implements AutoCloseable {
         return switch (kind) {
             case WORKER_TASK_KIND_ALERT -> "ALERT";
             case WORKER_TASK_KIND_PROCEDURE -> "PROCEDURE";
+            case WORKER_TASK_KIND_BROWSER_SESSION -> "BROWSER_SESSION";
             default -> kind.name();
         };
     }

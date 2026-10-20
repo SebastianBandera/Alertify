@@ -38,7 +38,7 @@ import jakarta.validation.constraints.PositiveOrZero;
 
 @RestController
 @RequestMapping("/api/pipes")
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize(app.alertify.config.AuthorizationPolicies.ADMIN)
 @Validated
 public class PipeController {
     private final PipeManagementService service;

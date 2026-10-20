@@ -30,7 +30,7 @@ import jakarta.validation.constraints.PositiveOrZero;
 /** CRUD endpoints for the tags scoped to procedures. */
 @RestController
 @RequestMapping("/api/procedure-tags")
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize(app.alertify.config.AuthorizationPolicies.ADMIN)
 @Validated
 public class ProcedureTagController {
     private final ProcedureTagService service;

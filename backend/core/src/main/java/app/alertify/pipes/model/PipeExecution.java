@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
+import app.alertify.ai.AiProvenance;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -72,6 +73,12 @@ public class PipeExecution {
     @Column(name = "triggered_by", updatable = false, columnDefinition = "text")
     private String triggeredBy;
 
+    @Column(name = "ai_assisted", nullable = false, updatable = false)
+    private boolean aiAssisted;
+
+    @Column(name = "ai_conversation_id", updatable = false)
+    private Long aiConversationId;
+
     @Column(name = "error_code", length = 64)
     private String errorCode;
 
@@ -124,4 +131,11 @@ public class PipeExecution {
     public String getTriggeredBy() { return triggeredBy; }
     public String getErrorCode() { return errorCode; }
     public List<PipeStepResult> getSteps() { return Collections.unmodifiableList(steps); }
+    public void recordAiProvenance(AiProvenance provenance) {
+        Objects.requireNonNull(provenance);
+        aiAssisted = provenance.assisted();
+        aiConversationId = provenance.conversationId();
+    }
+    public boolean isAiAssisted() { return aiAssisted; }
+    public Long getAiConversationId() { return aiConversationId; }
 }

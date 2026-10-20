@@ -41,6 +41,9 @@ import tools.jackson.databind.json.JsonMapper;
  */
 @Service
 public class DatabaseSecretProbeService {
+    private static final String CONNECTED_FIELD = "connected";
+    private static final String FAILURE_REASON_FIELD = "failureReason";
+
     private static final String EVENT = "SECRET_DATABASE_TESTED";
     private static final String PROBE_NAME = "DB_SECRET connection test";
     private static final int TIMEOUT_SECONDS = 10;
@@ -84,15 +87,15 @@ public class DatabaseSecretProbeService {
         try {
             response = probe(credentials);
         } catch (RuntimeException exception) {
-            data.put("connected", false);
-            data.put("failureReason", EXECUTION_ERROR);
+            data.put(CONNECTED_FIELD, false);
+            data.put(FAILURE_REASON_FIELD, EXECUTION_ERROR);
             data.put("exceptionType", exception.getClass().getName());
             eventLogger.failure(EVENT, data);
             throw exception;
         }
-        data.put("connected", response.connected());
+        data.put(CONNECTED_FIELD, response.connected());
         if (response.failureReason() != null)
-            data.put("failureReason", response.failureReason());
+            data.put(FAILURE_REASON_FIELD, response.failureReason());
 
         if (response.connectMs() != null)
             data.put("connectMs", response.connectMs());
@@ -162,9 +165,9 @@ public class DatabaseSecretProbeService {
             return failure(EXECUTION_ERROR, workerName);
 
         JsonNode message = result.getStatusMessageJson().isBlank() ? JSON.createObjectNode() : JSON.readTree(result.getStatusMessageJson());
-        boolean connected = message.path("connected").asBoolean(false);
+        boolean connected = message.path(CONNECTED_FIELD).asBoolean(false);
         return new DatabaseSecretTestResponse(
-                connected, connected ? null : failureReason(text(message, "failureReason")), text(message, "sqlState"),
+                connected, connected ? null : failureReason(text(message, FAILURE_REASON_FIELD)), text(message, "sqlState"),
                 text(message, "productName"), text(message, "productVersion"), text(message, "driverName"),
                 number(message, "connectMs"), number(message, "totalLatencyMs"), workerName);
     }
@@ -179,7 +182,7 @@ public class DatabaseSecretProbeService {
 
     private static String text(JsonNode node, String field) {
         JsonNode value = node.path(field);
-        return value.isMissingNode() || value.isNull() ? null : value.asText();
+        return value.isMissingNode() || value.isNull() ? null : value.asString();
     }
 
     private static Long number(JsonNode node, String field) {

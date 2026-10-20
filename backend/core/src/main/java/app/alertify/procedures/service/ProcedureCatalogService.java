@@ -20,6 +20,8 @@ import app.alertify.logging.ApplicationEventLogger;
 import app.alertify.procedures.api.ProcedureBindingOptionResponse;
 import app.alertify.procedures.api.ProcedureBindingOptionsResponse;
 import app.alertify.procedures.api.ProcedureTemplateResponse;
+import app.alertify.api.error.ResourceNotFoundException;
+import app.alertify.api.error.TemplateSelectionException;
 
 /**
  * Read-only catalog behind the procedure editor: the registered templates with
@@ -66,6 +68,19 @@ public class ProcedureCatalogService {
                 .toList();
         eventLogger.success("PROCEDURE_TEMPLATE_CATALOG_VIEWED", Map.of("templateCount", result.size()));
         return result;
+    }
+
+    @Transactional(readOnly = true)
+    public ProcedureTemplateResponse template(Long id, String templateKey) {
+        if ((id != null && id <= 0) || (id == null && (templateKey == null || templateKey.isBlank())))
+            throw new TemplateSelectionException();
+
+        var template = (id == null ? templateRepository.findByTemplateKey(templateKey.strip()) : templateRepository.findById(id))
+                .orElseThrow(() -> new ResourceNotFoundException("Procedure template not found"));
+        if (templateKey != null && !templateKey.isBlank() && !template.getTemplateKey().equals(templateKey.strip()))
+            throw new TemplateSelectionException();
+
+        return ProcedureMapper.toTemplate(template, parameterRepository.findAllByTemplate_IdOrderByParameterOrderAscIdAsc(template.getId()), outputRepository.findAllByTemplate_IdOrderByOutputOrderAscIdAsc(template.getId()), procedureRepository.countByTemplate_Id(template.getId()));
     }
 
     @Transactional(readOnly = true)

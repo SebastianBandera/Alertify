@@ -9,10 +9,50 @@ import static org.mockito.Mockito.when;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.Test;
 
 class SymmetricKeyServiceTest {
+
+    @Test
+    void readsAndChecksTheActiveKeyDuringConcurrentReplacement() throws Exception {
+        DatabaseKeyPartSource database = mock(DatabaseKeyPartSource.class);
+        PrivateClassKeyPartSource privateClass = mock(PrivateClassKeyPartSource.class);
+        when(database.read()).thenReturn("database");
+        when(privateClass.read()).thenReturn("");
+        SymmetricKeyService service = new SymmetricKeyService(database, privateClass,
+                new EnvironmentKeyPartSource("environment"), new Sha256HashService());
+        service.initializeTargetKey();
+        try (SymmetricKeyRotation rotation = service.readRotation()) {
+            CountDownLatch start = new CountDownLatch(1);
+            List<Runnable> actions = List.of(
+                    () -> service.activate(rotation.newKey()),
+                    () -> {
+                        var key = service.getKey();
+                        try {
+                            assertEquals(32, key.getEncoded().length);
+                        } finally {
+                            ObfuscatedKeyMaterial.destroyRevealedKey(key);
+                        }
+                    },
+                    () -> assertEquals(true, service.activeKeyMatchesCurrentTarget()));
+            var tasks = actions.stream().map(action -> new FutureTask<Void>(() -> {
+                start.await();
+                for (int index = 0; index < 1_000; index++)
+                    action.run();
+
+                return null;
+            })).toList();
+            tasks.forEach(task -> Thread.ofPlatform().daemon().start(task));
+            start.countDown();
+            for (FutureTask<Void> task : tasks)
+                task.get(10, TimeUnit.SECONDS);
+        }
+    }
 
     @Test
     void derivesAes256KeyWithPrivateClassPartBetweenDatabaseAndEnvironmentParts() throws Exception {

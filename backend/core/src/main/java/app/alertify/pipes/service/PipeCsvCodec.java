@@ -22,6 +22,13 @@ import tools.jackson.databind.json.JsonMapper;
 
 @Component
 class PipeCsvCodec {
+    private static final String SOURCE_RESULT_POINTER_FIELD = "sourceResultPointer";
+    private static final String VALUE_EXPRESSION_FIELD = "valueExpression";
+    private static final String SOURCE_OUTPUT_KEY_FIELD = "sourceOutputKey";
+    private static final String TIMEOUT_MILLIS_FIELD = "timeoutMillis";
+    private static final String CONTINUE_ON_FIELD = "continueOn";
+    private static final String BINDINGS_FIELD = "bindings";
+
     private static final List<String> HEADER = List.of("name", "description", "enabled", "allowConcurrentExecutions", "steps", "finallyTimeoutMillis");
     private static final int MAX_ROWS = 10_000;
     private final JsonMapper jsonMapper;
@@ -102,9 +109,9 @@ class PipeCsvCodec {
         List<ImportStep> result = new ArrayList<>();
         for (JsonNode value : node) {
             if (!value.isObject() || !string(value, "key") || !string(value, "type") || !string(value, "resource")
-                    || !value.has("timeoutMillis") || !value.get("timeoutMillis").isIntegralNumber()
-                    || !value.has("continueOn") || !value.get("continueOn").isArray()
-                    || !value.has("bindings") || !value.get("bindings").isArray())
+                    || !value.has(TIMEOUT_MILLIS_FIELD) || !value.get(TIMEOUT_MILLIS_FIELD).isIntegralNumber()
+                    || !value.has(CONTINUE_ON_FIELD) || !value.get(CONTINUE_ON_FIELD).isArray()
+                    || !value.has(BINDINGS_FIELD) || !value.get(BINDINGS_FIELD).isArray())
                 throw error(row, "each step requires key, type, resource, timeoutMillis, continueOn, and bindings");
 
             String key = value.get("key").stringValue().trim();
@@ -115,18 +122,19 @@ class PipeCsvCodec {
 
             PipeStepType type;
             try { type = PipeStepType.valueOf(value.get("type").stringValue().trim().toUpperCase(Locale.ROOT)); }
-            catch (RuntimeException exception) { throw error(row, "step '" + key + "' has an invalid type", exception); }
+            catch (RuntimeException exception) { throw error(row, stepDescription(key) + " has an invalid type", exception); }
             String resource = value.get("resource").stringValue().trim();
             if (resource.isEmpty())
-                throw error(row, "step '" + key + "' requires a resource name");
-            long timeout = value.get("timeoutMillis").longValue();
-            if (timeout <= 0)
-                throw error(row, "step '" + key + "' timeoutMillis must be positive");
+                throw error(row, stepDescription(key) + " requires a resource name");
 
-            Set<String> continueOn = strings(value.get("continueOn"), row, "step '" + key + "' continueOn");
+            long timeout = value.get(TIMEOUT_MILLIS_FIELD).longValue();
+            if (timeout <= 0)
+                throw error(row, stepDescription(key) + " timeoutMillis must be positive");
+
+            Set<String> continueOn = strings(value.get(CONTINUE_ON_FIELD), row, stepDescription(key) + " continueOn");
             if (continueOn.isEmpty())
                 continueOn = Set.of("SUCCESS");
-            List<ImportBinding> bindings = bindings(value.get("bindings"), row, key);
+            List<ImportBinding> bindings = bindings(value.get(BINDINGS_FIELD), row, key);
             PipeStepPhase phase;
             try { phase = value.has("phase") ? PipeStepPhase.valueOf(value.get("phase").stringValue()) : PipeStepPhase.MAIN; }
             catch (RuntimeException exception) { throw error(row, "step phase must be MAIN or FINALLY", exception); }
@@ -141,15 +149,15 @@ class PipeCsvCodec {
         for (JsonNode value : node) {
             if (!value.isObject() || !string(value, "targetParameterKey") || !string(value, "sourceStepKey"))
                 throw error(row, "each binding on step '" + stepKey + "' requires targetParameterKey and sourceStepKey");
-            if (value.has("sourceOutputKey") && !value.get("sourceOutputKey").isNull() && !value.get("sourceOutputKey").isString()
-                    || value.has("sourceResultPointer") && !value.get("sourceResultPointer").isNull() && !value.get("sourceResultPointer").isString()
-                    || value.has("valueExpression") && !value.get("valueExpression").isNull() && !value.get("valueExpression").isString())
+            if (value.has(SOURCE_OUTPUT_KEY_FIELD) && !value.get(SOURCE_OUTPUT_KEY_FIELD).isNull() && !value.get(SOURCE_OUTPUT_KEY_FIELD).isString()
+                    || value.has(SOURCE_RESULT_POINTER_FIELD) && !value.get(SOURCE_RESULT_POINTER_FIELD).isNull() && !value.get(SOURCE_RESULT_POINTER_FIELD).isString()
+                    || value.has(VALUE_EXPRESSION_FIELD) && !value.get(VALUE_EXPRESSION_FIELD).isNull() && !value.get(VALUE_EXPRESSION_FIELD).isString())
                 throw error(row, "binding sources on step '" + stepKey + "' must be strings or null");
             String target = value.get("targetParameterKey").stringValue().trim();
             String sourceStep = value.get("sourceStepKey").stringValue().trim();
-            String sourceOutput = nullableString(value, "sourceOutputKey");
-            String sourceResultPointer = nullableString(value, "sourceResultPointer");
-            String valueExpression = nullableString(value, "valueExpression");
+            String sourceOutput = nullableString(value, SOURCE_OUTPUT_KEY_FIELD);
+            String sourceResultPointer = nullableString(value, SOURCE_RESULT_POINTER_FIELD);
+            String valueExpression = nullableString(value, VALUE_EXPRESSION_FIELD);
             if (target.isEmpty() || sourceStep.isEmpty())
                 throw error(row, "binding keys on step '" + stepKey + "' cannot be empty");
             if ((sourceOutput == null) == (sourceResultPointer == null))
@@ -211,6 +219,9 @@ class PipeCsvCodec {
     }
 
     private static String nullable(String value) { return value == null ? "" : value; }
+
+    private static String stepDescription(String key) { return "step '" + key + "'"; }
+
     private static InvalidPipeImportException error(int row, String message) { return new InvalidPipeImportException("CSV row " + row + ": " + message); }
     private static InvalidPipeImportException error(int row, String message, Exception cause) { return new InvalidPipeImportException("CSV row " + row + ": " + message, cause); }
 

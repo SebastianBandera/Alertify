@@ -20,6 +20,7 @@ import org.junit.jupiter.api.io.TempDir;
 import com.google.protobuf.ByteString;
 
 import app.alertify.worker.contract.WorkerCapability;
+import app.alertify.worker.contract.WorkerResourceMonitor;
 import app.alertify.worker.grpc.ArtifactChunk;
 import app.alertify.worker.grpc.ArtifactDescriptor;
 import app.alertify.worker.grpc.ArtifactRequest;

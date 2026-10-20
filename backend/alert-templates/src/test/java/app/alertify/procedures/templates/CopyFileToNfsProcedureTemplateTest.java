@@ -37,7 +37,7 @@ class CopyFileToNfsProcedureTemplateTest {
 
         JsonNode result = executeCopy(null, true, unmountRequest);
 
-        assertThat(result.get("fileName").asText()).isEqualTo("backup.bak");
+        assertThat(result.get("fileName").asString()).isEqualTo("backup.bak");
         assertThat(result.get("size").asLong()).isEqualTo(CONTENT.length);
         assertUnmountRequested(unmountRequest);
     }

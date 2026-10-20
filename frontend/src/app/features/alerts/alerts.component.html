@@ -110,6 +110,9 @@
       {{ localization.translate('alerts.tabs.templates') }}
       <span>@if (countsLoaded()) { {{ templates().length }} } @else { <i class="tab-count-spinner" aria-hidden="true"></i> }</span>
     </button>
+    <button type="button" [class.active]="activeTab() === 'wizards'" (click)="selectTab('wizards')">
+      {{ localization.translate('alerts.tabs.wizards') }}
+    </button>
     <button type="button" [class.active]="activeTab() === 'history'" (click)="selectTab('history')">
       {{ localization.translate('alerts.tabs.history') }}
       <span>@if (countsLoaded()) { {{ historyTotalElements() }} } @else { <i class="tab-count-spinner" aria-hidden="true"></i> }</span>
@@ -405,6 +408,20 @@
           <button type="button" (click)="templatePageTo(templatePage() + 1)" [disabled]="templatePage() + 1 >= templateTotalPages()" [attr.aria-label]="localization.translate('alerts.pagination.next')" [title]="localization.translate('alerts.pagination.next')">›</button>
         </div>
       </footer>
+    }
+  }
+
+  @if (activeTab() === 'wizards') {
+    @if (playwrightWizardOpen()) {
+      <app-playwright-wizard (prepared)="preparePlaywrightAlert($event)" (dismissed)="playwrightWizardOpen.set(false)" />
+    } @else {
+      <div class="wizard-grid">
+      <button type="button" class="wizard-card" (click)="playwrightWizardOpen.set(true)">
+        <strong>{{ localization.translate('alerts.wizards.playwrightPage.title') }}</strong>
+        <code>PlaywrightPageAlertTemplate</code>
+        <p>{{ localization.translate('alerts.wizards.playwrightPage.description') }}</p>
+      </button>
+    </div>
     }
   }
 

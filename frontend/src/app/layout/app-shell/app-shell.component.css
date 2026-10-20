@@ -340,6 +340,11 @@
   -webkit-mask-image: url('../../../../public/icons/status.svg');
 }
 
+.navigation__icon--ai {
+  mask-image: url('../../../../public/icons/ai.svg');
+  -webkit-mask-image: url('../../../../public/icons/ai.svg');
+}
+
 .navigation__icon--configs {
   mask-image: url('../../../../public/icons/configs.svg');
   -webkit-mask-image: url('../../../../public/icons/configs.svg');

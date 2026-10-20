@@ -10,5 +10,6 @@ public enum ProcedureExecutionTrigger {
     ALERT,
     PROCEDURE,
     PIPE,
-    HOOK
+    HOOK,
+    WIZARD
 }

@@ -63,7 +63,7 @@ public class HookTagService {
     public TagResponse update(Long id, TagUpdateRequest request) {
         Tag tag = find(id);
         if (tag.getVersion() != request.version())
-            throw new ConflictException("Tag was modified by another request; reload it and try again");
+            throw ConflictException.versionConflict("Tag was modified by another request; reload it and try again");
 
         String name = request.name().trim();
         ensureAvailable(name, id);
@@ -78,7 +78,7 @@ public class HookTagService {
     public void delete(Long id, long version) {
         Tag tag = find(id);
         if (tag.getVersion() != version)
-            throw new ConflictException("Tag was modified by another request; reload it and try again");
+            throw ConflictException.versionConflict("Tag was modified by another request; reload it and try again");
 
         if (hooks.existsByTagsId(id))
             throw new ConflictException("HOOK_TAG_IN_USE", "Tag '" + tag.getName() + "' is assigned to hooks", Map.of("tagName", tag.getName()));

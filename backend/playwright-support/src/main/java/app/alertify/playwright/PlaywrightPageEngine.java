@@ -1,0 +1,887 @@
+package app.alertify.playwright;
+
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.function.BooleanSupplier;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import com.microsoft.playwright.Browser;
+import com.microsoft.playwright.BrowserContext;
+import com.microsoft.playwright.BrowserType;
+import com.microsoft.playwright.Locator;
+import com.microsoft.playwright.Page;
+import com.microsoft.playwright.Playwright;
+import com.microsoft.playwright.Response;
+import com.microsoft.playwright.TimeoutError;
+import com.microsoft.playwright.options.WaitForSelectorState;
+import com.microsoft.playwright.options.WaitUntilState;
+
+import app.alertify.alerts.AlertEvaluator;
+import app.alertify.alerts.AlertExecutionContext;
+import app.alertify.alerts.AlertExecutionValueSource;
+import app.alertify.alerts.AlertResult;
+import app.alertify.worker.contract.WorkerCapability;
+
+/**
+ * Loads a page in the selected Playwright browsers and runs a small, fail-fast
+ * browser monitoring DSL sequentially in Chromium, Firefox and WebKit order.
+ * Command arguments are deliberately excluded from the persisted status message
+ * because the multiline script may be backed by a configuration or secret.
+ */
+public class PlaywrightPageEngine implements AlertEvaluator {
+    private static final String STATUS_SUCCESS = "SUCCESS";
+    private static final String RELOAD_COMMAND = "RELOAD";
+    private static final String COMPLETED_COMMAND_COUNT_FIELD = "completedCommandCount";
+    private static final String FINAL_URL_FIELD = "finalUrl";
+    private static final String SELECT_COMMAND = "SELECT";
+    private static final String CHECK_COMMAND = "CHECK";
+
+
+    private static final Pattern DURATION = Pattern.compile("^(\\d+)(ms|s)$", Pattern.CASE_INSENSITIVE);
+    private static final Pattern SELECTOR_TIMEOUT = Pattern.compile("^(.*\\S)\\s+(\\d+(?:ms|s))$", Pattern.CASE_INSENSITIVE);
+    private static final Pattern COUNT_CHECK = Pattern.compile("^(=|!=|>=|<=|>|<)\\s+(\\d+)$");
+    private static final long POLL_INTERVAL_MILLIS = 50;
+
+    private final String url;
+
+    private final boolean chromiumEnabled;
+
+    private final boolean firefoxEnabled;
+
+    private final boolean webkitEnabled;
+
+    private final int loadTimeoutSeconds;
+
+    private final int elementTimeoutSeconds;
+
+    private final String steps;
+
+    private final BrowserSessionFactory sessionFactory;
+
+    public PlaywrightPageEngine(String url, boolean chromiumEnabled, boolean firefoxEnabled, boolean webkitEnabled, int loadTimeoutSeconds, int elementTimeoutSeconds, String steps) {
+        this(url, chromiumEnabled, firefoxEnabled, webkitEnabled, loadTimeoutSeconds, elementTimeoutSeconds, steps, PlaywrightBrowserSession::open);
+    }
+
+    public PlaywrightPageEngine(String url, boolean chromiumEnabled, boolean firefoxEnabled, boolean webkitEnabled, int loadTimeoutSeconds, int elementTimeoutSeconds, String steps, BrowserSessionFactory sessionFactory) {
+        this.url = url;
+        this.chromiumEnabled = chromiumEnabled;
+        this.firefoxEnabled = firefoxEnabled;
+        this.webkitEnabled = webkitEnabled;
+        this.loadTimeoutSeconds = loadTimeoutSeconds;
+        this.elementTimeoutSeconds = elementTimeoutSeconds;
+        this.steps = steps;
+        this.sessionFactory = Objects.requireNonNull(sessionFactory, "sessionFactory must not be null");
+    }
+
+    @Override
+    public AlertResult evaluate(AlertExecutionContext context) throws Exception {
+        URI configuredUrl = parseUrl(url);
+        long loadTimeoutMillis = timeoutMillis(loadTimeoutSeconds, "loadTimeoutSeconds");
+        long elementTimeoutMillis = timeoutMillis(elementTimeoutSeconds, "elementTimeoutSeconds");
+        List<Command> commands = parseCommands(steps);
+        List<BrowserEngine> browsers = selectedBrowsers();
+        String endpoint = safeUrl(configuredUrl.toString());
+        Map<String, Object> statusMessage = baseStatus(endpoint, loadTimeoutSeconds, elementTimeoutSeconds, commands.size(), browsers.size());
+        List<Map<String, Object>> browserResults = new ArrayList<>();
+        int successfulBrowsers = 0;
+
+        for (BrowserEngine browser : browsers) {
+            Map<String, Object> browserStatus = browserStatus(browser);
+            boolean success = evaluateBrowser(context, configuredUrl, loadTimeoutMillis, elementTimeoutMillis, commands, browserStatus, browser);
+            browserStatus.put("status", success ? STATUS_SUCCESS : "WARN");
+            if (success)
+                successfulBrowsers++;
+
+            browserResults.add(browserStatus);
+        }
+
+        int warningBrowsers = browsers.size() - successfulBrowsers;
+        statusMessage.put("successfulBrowserCount", successfulBrowsers);
+        statusMessage.put("warningBrowserCount", warningBrowsers);
+        statusMessage.put("browserResults", List.copyOf(browserResults));
+        String status = warningBrowsers == 0 ? STATUS_SUCCESS : "WARN";
+        context.setState("endpoint=" + endpoint + ";status=" + status + ";browsers=" + browsers.size() + ";warnings=" + warningBrowsers);
+        return warningBrowsers == 0 ? AlertResult.success(statusMessage) : AlertResult.warn(statusMessage);
+    }
+
+    private boolean evaluateBrowser(AlertExecutionContext context, URI configuredUrl, long loadTimeoutMillis, long elementTimeoutMillis, List<Command> commands, Map<String, Object> statusMessage, BrowserEngine browser) throws Exception {
+        try (BrowserSession session = sessionFactory.open(browser)) {
+            long startedNanos = System.nanoTime();
+            Navigation navigation;
+            try {
+                navigation = session.navigate(configuredUrl.toString(), loadTimeoutMillis);
+            } catch (RuntimeException exception) {
+                statusMessage.put("loadDurationMs", elapsedMillis(startedNanos));
+                statusMessage.put(FINAL_URL_FIELD, safeUrl(session.url()));
+                warn(statusMessage, isPlaywrightTimeout(exception) ? "loadTimeout" : "navigationFailure", null, null);
+                return false;
+            }
+
+            long loadDurationMillis = elapsedMillis(startedNanos);
+            updateNavigationStatus(statusMessage, session, navigation, loadDurationMillis, "load");
+            if (navigationWarning(statusMessage, navigation, loadDurationMillis, loadTimeoutMillis, null))
+                return false;
+
+            int completed = 0;
+            ScriptState scriptState = new ScriptState();
+            for (Command command : commands) {
+                if (command.type() == CommandType.RELOAD) {
+                    startedNanos = System.nanoTime();
+                    try {
+                        navigation = session.reload(loadTimeoutMillis);
+                    } catch (RuntimeException exception) {
+                        statusMessage.put("reloadDurationMs", elapsedMillis(startedNanos));
+                        statusMessage.put(FINAL_URL_FIELD, safeUrl(session.url()));
+                        warn(statusMessage, isPlaywrightTimeout(exception) ? "reloadTimeout" : "reloadFailure", command, RELOAD_COMMAND);
+                        return false;
+                    }
+                    loadDurationMillis = elapsedMillis(startedNanos);
+                    updateNavigationStatus(statusMessage, session, navigation, loadDurationMillis, "reload");
+                    if (navigationWarning(statusMessage, navigation, loadDurationMillis, loadTimeoutMillis, command))
+                        return false;
+                } else {
+                    try {
+                        execute(context, session, command, elementTimeoutMillis, scriptState);
+                    } catch (RuntimeException exception) {
+                        warn(statusMessage, "commandFailure", command, command.keyword());
+                        return false;
+                    }
+                }
+                completed++;
+                statusMessage.put(COMPLETED_COMMAND_COUNT_FIELD, completed);
+            }
+
+            statusMessage.put(COMPLETED_COMMAND_COUNT_FIELD, completed);
+            statusMessage.put(FINAL_URL_FIELD, safeUrl(session.url()));
+            return true;
+        }
+    }
+
+    public static List<Command> parseCommands(String configured) {
+        if (configured == null || configured.isBlank())
+            return List.of();
+
+        List<Command> commands = new ArrayList<>();
+        boolean currentElement = false;
+        java.util.Set<String> aliases = new java.util.HashSet<>();
+        String[] lines = configured.split("\\R", -1);
+        for (int index = 0; index < lines.length; index++) {
+            String line = lines[index].trim();
+            if (line.isEmpty() || line.startsWith("#"))
+                continue;
+
+            int lineNumber = index + 1;
+            String[] tokens = line.split("\\s+", 2);
+            String keyword = tokens[0].toUpperCase(Locale.ROOT);
+            String arguments = tokens.length == 2 ? tokens[1].trim() : "";
+            Command command;
+            switch (keyword) {
+                case "QUERY" -> {
+                    command = command(lineNumber, CommandType.QUERY, requireArgument(arguments, lineNumber, "QUERY"));
+                    currentElement = true;
+                }
+                case "USE" -> command = currentCommand(lineNumber, CommandType.USE, arguments, currentElement);
+                case "DOUBLE_USE" -> command = currentCommand(lineNumber, CommandType.DOUBLE_USE, arguments, currentElement);
+                case "HOVER" -> command = currentCommand(lineNumber, CommandType.HOVER, arguments, currentElement);
+                case "FOCUS" -> command = currentCommand(lineNumber, CommandType.FOCUS, arguments, currentElement);
+                case "FILL" -> {
+                    command = fillCommand(lineNumber, arguments, currentElement);
+                    if (command.type() == CommandType.FILL_VARIABLE && !aliases.contains(command.first()))
+                        throw lineError(lineNumber, "Variable must be defined by an earlier CALL");
+                }
+                case "CALL" -> {
+                    List<String> parts = PlaywrightDslValues.tokens(arguments);
+                    if (parts.size() != 6 || !parts.get(0).equalsIgnoreCase("PROCEDURE") || !parts.get(2).equalsIgnoreCase("POINTER") || !parts.get(4).equalsIgnoreCase("AS") || !parts.get(5).matches("[A-Za-z_][A-Za-z0-9_]{0,63}"))
+                        throw lineError(lineNumber, "CALL requires PROCEDURE \"name\" POINTER \"/path\" AS alias");
+
+                    String name = PlaywrightDslValues.quoted(parts.get(1));
+                    if (name.isBlank())
+                        throw lineError(lineNumber, "Procedure name must not be blank");
+
+                    command = new Command(lineNumber, CommandType.CALL, name, PlaywrightDslValues.pointer(PlaywrightDslValues.quoted(parts.get(3))), 0, null, 0, AlertExecutionValueSource.PROCEDURE, parts.get(5));
+                    aliases.add(parts.get(5));
+                }
+                case SELECT_COMMAND -> {
+                    requireCurrent(currentElement, lineNumber, SELECT_COMMAND);
+                    command = command(lineNumber, CommandType.SELECT, requireArgument(arguments, lineNumber, SELECT_COMMAND));
+                }
+                case "WAIT" -> command = durationCommand(lineNumber, arguments);
+                case "WAIT_VISIBLE" -> command = selectorWaitCommand(lineNumber, CommandType.WAIT_VISIBLE, arguments);
+                case "WAIT_HIDDEN" -> command = selectorWaitCommand(lineNumber, CommandType.WAIT_HIDDEN, arguments);
+                case RELOAD_COMMAND -> {
+                    requireNoArguments(arguments, lineNumber, RELOAD_COMMAND);
+                    command = command(lineNumber, CommandType.RELOAD);
+                    currentElement = false;
+                }
+                case CHECK_COMMAND -> command = checkCommand(lineNumber, arguments, currentElement);
+                default -> throw lineError(lineNumber, "Unsupported command '" + tokens[0] + "'");
+            }
+            commands.add(command);
+        }
+        return List.copyOf(commands);
+    }
+
+    private static Command checkCommand(int lineNumber, String arguments, boolean currentElement) {
+        String value = requireArgument(arguments, lineNumber, CHECK_COMMAND);
+        String[] tokens = value.split("\\s+", 2);
+        String check = tokens[0].toUpperCase(Locale.ROOT);
+        String checkArguments = tokens.length == 2 ? tokens[1].trim() : "";
+        return switch (check) {
+            case "TEXT" -> {
+                requireCurrent(currentElement, lineNumber, "CHECK TEXT");
+                yield command(lineNumber, CommandType.CHECK_TEXT, requireArgument(checkArguments, lineNumber, "CHECK TEXT"));
+            }
+            case "COUNT" -> {
+                requireCurrent(currentElement, lineNumber, "CHECK COUNT");
+                Matcher matcher = COUNT_CHECK.matcher(checkArguments);
+                if (!matcher.matches())
+                    throw lineError(lineNumber, "CHECK COUNT must be '<operator> <non-negative integer>'");
+
+                yield new Command(lineNumber, CommandType.CHECK_COUNT, null, null, 0, CountOperator.parse(matcher.group(1)), Integer.parseInt(matcher.group(2)), null);
+            }
+            case "ENABLED" -> currentCheck(lineNumber, CommandType.CHECK_ENABLED, checkArguments, currentElement, "CHECK ENABLED");
+            case "DISABLED" -> currentCheck(lineNumber, CommandType.CHECK_DISABLED, checkArguments, currentElement, "CHECK DISABLED");
+            case "CHECKED" -> currentCheck(lineNumber, CommandType.CHECK_CHECKED, checkArguments, currentElement, "CHECK CHECKED");
+            case "UNCHECKED" -> currentCheck(lineNumber, CommandType.CHECK_UNCHECKED, checkArguments, currentElement, "CHECK UNCHECKED");
+            case "ATTRIBUTE" -> {
+                requireCurrent(currentElement, lineNumber, "CHECK ATTRIBUTE");
+                String[] attribute = checkArguments.split("\\s+", 2);
+                if (attribute.length != 2 || attribute[0].isBlank() || attribute[1].isBlank())
+                    throw lineError(lineNumber, "CHECK ATTRIBUTE must be '<name> <value>'");
+
+                yield new Command(lineNumber, CommandType.CHECK_ATTRIBUTE, attribute[0], attribute[1].trim(), 0, null, 0, null);
+            }
+            case "URL" -> command(lineNumber, CommandType.CHECK_URL, requireArgument(checkArguments, lineNumber, "CHECK URL"));
+            default -> throw lineError(lineNumber, "Unsupported CHECK '" + tokens[0] + "'");
+        };
+    }
+
+    private static Command currentCommand(int lineNumber, CommandType type, String arguments, boolean currentElement) {
+        String keyword = type.name();
+        requireNoArguments(arguments, lineNumber, keyword);
+        requireCurrent(currentElement, lineNumber, keyword);
+        return command(lineNumber, type);
+    }
+
+    private static Command currentCheck(int lineNumber, CommandType type, String arguments, boolean currentElement, String keyword) {
+        requireNoArguments(arguments, lineNumber, keyword);
+        requireCurrent(currentElement, lineNumber, keyword);
+        return command(lineNumber, type);
+    }
+
+    private static Command fillCommand(int lineNumber, String arguments, boolean currentElement) {
+        requireCurrent(currentElement, lineNumber, "FILL");
+        String reference = requireArgument(arguments, lineNumber, "FILL");
+        if (reference.startsWith("vars.")) {
+            String alias = reference.substring(5);
+            if (!alias.matches("[A-Za-z_][A-Za-z0-9_]{0,63}"))
+                throw lineError(lineNumber, "Invalid variable alias");
+
+            return command(lineNumber, CommandType.FILL_VARIABLE, alias);
+        }
+        if (reference.length() > 6 && reference.regionMatches(true, 0, "SECRET", 0, 6) && Character.isWhitespace(reference.charAt(6))) {
+            List<String> parts = PlaywrightDslValues.tokens(reference);
+            if (parts.size() != 4 || !parts.get(2).equalsIgnoreCase("POINTER"))
+                throw lineError(lineNumber, "FILL SECRET requires \"name\" POINTER \"/username\" or \"/password\"");
+
+            String name = PlaywrightDslValues.quoted(parts.get(1));
+            String pointer = PlaywrightDslValues.quoted(parts.get(3));
+            if (name.isBlank() || !List.of("/username", "/password").contains(pointer))
+                throw lineError(lineNumber, "A credential secret name and /username or /password are required");
+
+            return new Command(lineNumber, CommandType.FILL, name, pointer, 0, null, 0, AlertExecutionValueSource.SECRET);
+        }
+        AlertExecutionValueSource source;
+        String name;
+        if (reference.startsWith("configs.")) {
+            source = AlertExecutionValueSource.CONFIGURATION;
+            name = reference.substring("configs.".length()).trim();
+        } else if (reference.startsWith("secrets.")) {
+            source = AlertExecutionValueSource.SECRET;
+            name = reference.substring("secrets.".length()).trim();
+        } else {
+            throw lineError(lineNumber, "FILL must reference configs.<name> or secrets.<name>");
+        }
+        if (name.isEmpty())
+            throw lineError(lineNumber, "FILL reference name must not be blank");
+
+        return new Command(lineNumber, CommandType.FILL, name, null, 0, null, 0, source);
+    }
+
+    private static Command durationCommand(int lineNumber, String arguments) {
+        String duration = requireArgument(arguments, lineNumber, "WAIT");
+        if (duration.indexOf(' ') >= 0 || duration.indexOf('\t') >= 0)
+            throw lineError(lineNumber, "WAIT accepts exactly one duration");
+
+        return new Command(lineNumber, CommandType.WAIT, null, null, parseDurationMillis(duration, lineNumber), null, 0, null);
+    }
+
+    private static Command selectorWaitCommand(int lineNumber, CommandType type, String arguments) {
+        String configured = requireArgument(arguments, lineNumber, type.name());
+        Matcher matcher = SELECTOR_TIMEOUT.matcher(configured);
+        if (!matcher.matches())
+            return command(lineNumber, type, configured);
+
+        return new Command(lineNumber, type, matcher.group(1), null, parseDurationMillis(matcher.group(2), lineNumber), null, 0, null);
+    }
+
+    private static long parseDurationMillis(String configured, int lineNumber) {
+        Matcher matcher = DURATION.matcher(configured);
+        if (!matcher.matches())
+            throw lineError(lineNumber, "Duration must be a positive integer followed by ms or s");
+
+        try {
+            long value = Long.parseLong(matcher.group(1));
+            long millis = "s".equalsIgnoreCase(matcher.group(2)) ? Math.multiplyExact(value, 1_000) : value;
+            if (millis <= 0)
+                throw lineError(lineNumber, "Duration must be positive");
+
+            return millis;
+        } catch (ArithmeticException | NumberFormatException exception) {
+            throw lineError(lineNumber, "Duration is too large");
+        }
+    }
+
+    public static void execute(AlertExecutionContext context, BrowserSession session, Command command, long elementTimeoutMillis) throws InterruptedException {
+        execute(context, session, command, elementTimeoutMillis, new ScriptState());
+    }
+
+    public static void execute(AlertExecutionContext context, BrowserSession session, Command command, long elementTimeoutMillis, ScriptState scriptState) throws InterruptedException {
+        long timeout = command.durationMillis() > 0 ? command.durationMillis() : elementTimeoutMillis;
+        switch (command.type()) {
+            case QUERY -> session.query(command.first(), elementTimeoutMillis);
+            case USE -> session.click(elementTimeoutMillis);
+            case DOUBLE_USE -> session.doubleClick(elementTimeoutMillis);
+            case HOVER -> session.hover(elementTimeoutMillis);
+            case FOCUS -> session.focus(elementTimeoutMillis);
+            case FILL -> session.fill(context.requireValue(command.valueSource(), PlaywrightDslValues.key(command.first(), command.second())), elementTimeoutMillis);
+            case CALL -> scriptState.variables.put(command.alias(), context.callProcedureValue(PlaywrightDslValues.key(command.first(), command.second())));
+            case FILL_VARIABLE -> {
+                String value = scriptState.variables.get(command.first());
+                if (value == null)
+                    throw new IllegalArgumentException("Variable is unavailable; restart and replay the script");
+
+                session.fill(value, elementTimeoutMillis);
+            }
+            case SELECT -> session.select(command.first(), elementTimeoutMillis);
+            case WAIT -> Thread.sleep(command.durationMillis());
+            case WAIT_VISIBLE -> session.waitVisible(command.first(), timeout);
+            case WAIT_HIDDEN -> session.waitHidden(command.first(), timeout);
+            case CHECK_TEXT -> session.check(() -> session.currentText().contains(command.first()), elementTimeoutMillis);
+            case CHECK_COUNT -> session.check(() -> command.countOperator().matches(session.currentCount(), command.count()), elementTimeoutMillis);
+            case CHECK_ENABLED -> session.check(session::currentEnabled, elementTimeoutMillis);
+            case CHECK_DISABLED -> session.check(() -> !session.currentEnabled(), elementTimeoutMillis);
+            case CHECK_CHECKED -> session.check(session::currentChecked, elementTimeoutMillis);
+            case CHECK_UNCHECKED -> session.check(() -> !session.currentChecked(), elementTimeoutMillis);
+            case CHECK_ATTRIBUTE -> session.check(() -> Objects.equals(command.second(), session.currentAttribute(command.first())), elementTimeoutMillis);
+            case CHECK_URL -> session.checkUrl(command.first(), elementTimeoutMillis);
+            case RELOAD -> throw new IllegalStateException("RELOAD must be executed by the navigation path");
+        }
+    }
+
+    private static boolean navigationWarning(Map<String, Object> statusMessage, Navigation navigation, long durationMillis, long timeoutMillis, Command command) {
+        if (durationMillis > timeoutMillis) {
+            warn(statusMessage, command == null ? "loadTimeout" : "reloadTimeout", command, command == null ? null : RELOAD_COMMAND);
+            return true;
+        }
+
+        if (navigation.statusCode() != null && navigation.statusCode() >= 400) {
+            warn(statusMessage, "httpStatus", command, command == null ? null : RELOAD_COMMAND);
+            return true;
+        }
+
+        return false;
+    }
+
+    private static void updateNavigationStatus(Map<String, Object> statusMessage, BrowserSession session, Navigation navigation, long durationMillis, String prefix) {
+        statusMessage.put(prefix + "DurationMs", durationMillis);
+        if (navigation.statusCode() != null)
+            statusMessage.put(prefix + "StatusCode", navigation.statusCode());
+
+        statusMessage.put(FINAL_URL_FIELD, safeUrl(session.url()));
+    }
+
+    private static void warn(Map<String, Object> statusMessage, String failureReason, Command command, String failedCommand) {
+        statusMessage.put("failureReason", failureReason);
+        if (command != null)
+            statusMessage.put("failedLine", command.lineNumber());
+
+        if (failedCommand != null)
+            statusMessage.put("failedCommand", failedCommand);
+    }
+
+    private static Map<String, Object> baseStatus(String endpoint, int loadTimeoutSeconds, int elementTimeoutSeconds, int commandCount, int browserCount) {
+        Map<String, Object> status = new LinkedHashMap<>();
+        status.put("endpoint", endpoint);
+        status.put("loadTimeoutSeconds", loadTimeoutSeconds);
+        status.put("elementTimeoutSeconds", elementTimeoutSeconds);
+        status.put("commandCount", commandCount);
+        status.put("browserCount", browserCount);
+        status.put("checkedAt", Instant.now().toString());
+        return status;
+    }
+
+    private static Map<String, Object> browserStatus(BrowserEngine browser) {
+        Map<String, Object> status = new LinkedHashMap<>();
+        status.put("browser", browser.key());
+        status.put("status", STATUS_SUCCESS);
+        status.put(COMPLETED_COMMAND_COUNT_FIELD, 0);
+        return status;
+    }
+
+    private List<BrowserEngine> selectedBrowsers() {
+        List<BrowserEngine> browsers = new ArrayList<>();
+        if (chromiumEnabled)
+            browsers.add(BrowserEngine.CHROMIUM);
+
+        if (firefoxEnabled)
+            browsers.add(BrowserEngine.FIREFOX);
+
+        if (webkitEnabled)
+            browsers.add(BrowserEngine.WEBKIT);
+
+        if (browsers.isEmpty())
+            throw new IllegalArgumentException("At least one browser must be enabled");
+
+        return List.copyOf(browsers);
+    }
+
+    private static URI parseUrl(String configured) {
+        try {
+            URI uri = URI.create(requireText(configured, "url"));
+            if (!uri.isAbsolute() || uri.getHost() == null || !("http".equalsIgnoreCase(uri.getScheme()) || "https".equalsIgnoreCase(uri.getScheme())))
+                throw new IllegalArgumentException("url must be an absolute HTTP or HTTPS URL");
+
+            return uri;
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException("Invalid url", exception);
+        }
+    }
+
+    private static String safeUrl(String configured) {
+        try {
+            URI uri = URI.create(configured);
+            if (uri.getHost() == null)
+                return uri.getScheme() == null ? "unknown" : uri.getScheme() + ":";
+
+            return new URI(uri.getScheme(), null, uri.getHost(), uri.getPort(), null, null, null).toString();
+        } catch (IllegalArgumentException | URISyntaxException exception) {
+            return "unknown";
+        }
+    }
+
+    private static long timeoutMillis(int seconds, String parameter) {
+        if (seconds <= 0)
+            throw new IllegalArgumentException(parameter + " must be positive");
+
+        return Math.multiplyExact((long) seconds, 1_000);
+    }
+
+    private static String requireText(String value, String parameter) {
+        if (value == null || value.isBlank())
+            throw new IllegalArgumentException(parameter + " must not be blank");
+
+        return value.trim();
+    }
+
+    private static String requireArgument(String arguments, int lineNumber, String command) {
+        if (arguments.isBlank())
+            throw lineError(lineNumber, command + " requires an argument");
+
+        return arguments;
+    }
+
+    private static void requireNoArguments(String arguments, int lineNumber, String command) {
+        if (!arguments.isBlank())
+            throw lineError(lineNumber, command + " does not accept arguments");
+    }
+
+    private static void requireCurrent(boolean currentElement, int lineNumber, String command) {
+        if (!currentElement)
+            throw lineError(lineNumber, command + " requires a previous QUERY");
+    }
+
+    private static IllegalArgumentException lineError(int lineNumber, String message) {
+        return new IllegalArgumentException("Line " + lineNumber + ": " + message);
+    }
+
+    private static Command command(int lineNumber, CommandType type) {
+        return new Command(lineNumber, type, null, null, 0, null, 0, null);
+    }
+
+    private static Command command(int lineNumber, CommandType type, String first) {
+        return new Command(lineNumber, type, first, null, 0, null, 0, null);
+    }
+
+    /** Returns the read-only values that must be prepared before worker dispatch. */
+    public static List<ValueReference> requiredValues(String configured) {
+        Map<String, ValueReference> references = new LinkedHashMap<>();
+        for (Command command : parseCommands(configured)) {
+            if (command.type() != CommandType.FILL && command.type() != CommandType.CALL)
+                continue;
+
+            ValueReference reference = new ValueReference(command.valueSource(), command.first(), command.second());
+            references.putIfAbsent(reference.source().name() + ":" + reference.key().toLowerCase(Locale.ROOT), reference);
+        }
+        return List.copyOf(references.values());
+    }
+
+    private static long elapsedMillis(long startedNanos) {
+        return Math.max(0, (System.nanoTime() - startedNanos) / 1_000_000);
+    }
+
+    private static boolean isPlaywrightTimeout(RuntimeException exception) {
+        return exception instanceof TimeoutError;
+    }
+
+    public enum CommandType {
+        QUERY,
+        USE,
+        DOUBLE_USE,
+        HOVER,
+        FOCUS,
+        FILL,
+        CALL,
+        FILL_VARIABLE,
+        SELECT,
+        WAIT,
+        WAIT_VISIBLE,
+        WAIT_HIDDEN,
+        RELOAD,
+        CHECK_TEXT,
+        CHECK_COUNT,
+        CHECK_ENABLED,
+        CHECK_DISABLED,
+        CHECK_CHECKED,
+        CHECK_UNCHECKED,
+        CHECK_ATTRIBUTE,
+        CHECK_URL
+    }
+
+    public enum CountOperator {
+        EQUAL,
+        NOT_EQUAL,
+        GREATER,
+        GREATER_OR_EQUAL,
+        LOWER,
+        LOWER_OR_EQUAL;
+
+        static CountOperator parse(String configured) {
+            return switch (configured) {
+                case "=" -> EQUAL;
+                case "!=" -> NOT_EQUAL;
+                case ">" -> GREATER;
+                case ">=" -> GREATER_OR_EQUAL;
+                case "<" -> LOWER;
+                case "<=" -> LOWER_OR_EQUAL;
+                default -> throw new IllegalArgumentException("Unsupported count operator: " + configured);
+            };
+        }
+
+        boolean matches(int actual, int expected) {
+            return switch (this) {
+                case EQUAL -> actual == expected;
+                case NOT_EQUAL -> actual != expected;
+                case GREATER -> actual > expected;
+                case GREATER_OR_EQUAL -> actual >= expected;
+                case LOWER -> actual < expected;
+                case LOWER_OR_EQUAL -> actual <= expected;
+            };
+        }
+    }
+
+    public record Command(int lineNumber, CommandType type, String first, String second, long durationMillis, CountOperator countOperator, int count, AlertExecutionValueSource valueSource, String alias) {
+
+        public Command(int lineNumber, CommandType type, String first, String second, long durationMillis, CountOperator countOperator, int count, AlertExecutionValueSource valueSource) {
+            this(lineNumber, type, first, second, durationMillis, countOperator, count, valueSource, null);
+        }
+
+        public String keyword() {
+            return switch (type) {
+                case CHECK_TEXT, CHECK_COUNT, CHECK_ENABLED, CHECK_DISABLED, CHECK_CHECKED, CHECK_UNCHECKED, CHECK_ATTRIBUTE, CHECK_URL -> CHECK_COMMAND;
+                default -> type.name();
+            };
+        }
+    }
+
+    public record ValueReference(AlertExecutionValueSource source, String name, String pointer) {
+        public ValueReference(AlertExecutionValueSource source, String name) { this(source, name, null); }
+        public String key() { return PlaywrightDslValues.key(name, pointer); }
+    }
+
+    public static final class ScriptState {
+        private final Map<String, String> variables = new LinkedHashMap<>();
+    }
+
+    public record Navigation(Integer statusCode, String contentType) {
+        public Navigation(Integer statusCode) { this(statusCode, ""); }
+    }
+
+    public enum BrowserEngine {
+        CHROMIUM("chromium"),
+        FIREFOX("firefox"),
+        WEBKIT("webkit");
+
+        private final String key;
+
+        BrowserEngine(String key) {
+            this.key = key;
+        }
+
+        public String key() {
+            return key;
+        }
+    }
+
+    @FunctionalInterface
+    public interface BrowserSessionFactory {
+        BrowserSession open(BrowserEngine browser);
+    }
+
+    public interface BrowserSession extends AutoCloseable {
+        Navigation navigate(String url, long timeoutMillis);
+        Navigation reload(long timeoutMillis);
+        String url();
+        void query(String selector, long timeoutMillis);
+        void click(long timeoutMillis);
+        void doubleClick(long timeoutMillis);
+        void hover(long timeoutMillis);
+        void focus(long timeoutMillis);
+        void fill(String value, long timeoutMillis);
+        void select(String value, long timeoutMillis);
+        void waitVisible(String selector, long timeoutMillis);
+        void waitHidden(String selector, long timeoutMillis);
+        void check(BooleanSupplier condition, long timeoutMillis);
+        void checkUrl(String glob, long timeoutMillis);
+        String currentText();
+        int currentCount();
+        boolean currentEnabled();
+        boolean currentChecked();
+        String currentAttribute(String name);
+        @Override void close();
+    }
+
+    public static final class PlaywrightBrowserSession implements BrowserSession {
+
+        private final Playwright playwright;
+        private final Browser browser;
+        private final BrowserContext context;
+        private final Page page;
+        private Locator current;
+
+        private PlaywrightBrowserSession(Playwright playwright, Browser browser, BrowserContext context, Page page) {
+            this.playwright = playwright;
+            this.browser = browser;
+            this.context = context;
+            this.page = page;
+        }
+
+        // The returned session owns all four Playwright resources and closes them together.
+        @SuppressWarnings("java:S2095")
+        public static PlaywrightBrowserSession open(BrowserEngine engine) {
+            Playwright playwright = Playwright.create();
+            try {
+                BrowserType browserType = switch (engine) {
+                    case CHROMIUM -> playwright.chromium();
+                    case FIREFOX -> playwright.firefox();
+                    case WEBKIT -> playwright.webkit();
+                };
+                Browser browser = browserType.launch(new BrowserType.LaunchOptions().setHeadless(true));
+                try {
+                    BrowserContext context = browser.newContext(new Browser.NewContextOptions().setViewportSize(1440, 900));
+                    Page page = null;
+                    try {
+                        page = context.newPage();
+                        return new PlaywrightBrowserSession(playwright, browser, context, page);
+                    } catch (RuntimeException exception) {
+                        if (page != null) {
+                            try {
+                                page.close();
+                            } catch (RuntimeException closeException) {
+                                exception.addSuppressed(closeException);
+                            }
+                        }
+                        try {
+                            context.close();
+                        } catch (RuntimeException closeException) {
+                            exception.addSuppressed(closeException);
+                        }
+                        throw exception;
+                    }
+                } catch (RuntimeException exception) {
+                    try {
+                        browser.close();
+                    } catch (RuntimeException closeException) {
+                        exception.addSuppressed(closeException);
+                    }
+                    throw exception;
+                }
+            } catch (RuntimeException exception) {
+                try {
+                    playwright.close();
+                } catch (RuntimeException closeException) {
+                    exception.addSuppressed(closeException);
+                }
+                throw exception;
+            }
+        }
+
+        public Page page() { return page; }
+
+        @Override
+        public Navigation navigate(String url, long timeoutMillis) {
+            Response response = page.navigate(url, new Page.NavigateOptions().setWaitUntil(WaitUntilState.LOAD).setTimeout((double) timeoutMillis));
+            return navigation(response);
+        }
+
+        @Override
+        public Navigation reload(long timeoutMillis) {
+            current = null;
+            Response response = page.reload(new Page.ReloadOptions().setWaitUntil(WaitUntilState.LOAD).setTimeout((double) timeoutMillis));
+            return navigation(response);
+        }
+
+        @Override
+        public String url() {
+            return page.url();
+        }
+
+        @Override
+        public void query(String selector, long timeoutMillis) {
+            Locator visible = page.locator(selector).filter(new Locator.FilterOptions().setVisible(true));
+            visible.first().waitFor(new Locator.WaitForOptions().setState(WaitForSelectorState.VISIBLE).setTimeout((double) timeoutMillis));
+            current = visible;
+        }
+
+        @Override
+        public void click(long timeoutMillis) {
+            current.click(new Locator.ClickOptions().setTimeout((double) timeoutMillis));
+        }
+
+        @Override
+        public void doubleClick(long timeoutMillis) {
+            current.dblclick(new Locator.DblclickOptions().setTimeout((double) timeoutMillis));
+        }
+
+        @Override
+        public void hover(long timeoutMillis) {
+            current.hover(new Locator.HoverOptions().setTimeout((double) timeoutMillis));
+        }
+
+        @Override
+        public void focus(long timeoutMillis) {
+            current.focus(new Locator.FocusOptions().setTimeout((double) timeoutMillis));
+        }
+
+        @Override
+        public void fill(String value, long timeoutMillis) {
+            current.fill(value, new Locator.FillOptions().setTimeout((double) timeoutMillis));
+        }
+
+        @Override
+        public void select(String value, long timeoutMillis) {
+            current.selectOption(value, new Locator.SelectOptionOptions().setTimeout((double) timeoutMillis));
+        }
+
+        @Override
+        public void waitVisible(String selector, long timeoutMillis) {
+            page.locator(selector).filter(new Locator.FilterOptions().setVisible(true)).first().waitFor(new Locator.WaitForOptions().setState(WaitForSelectorState.VISIBLE).setTimeout((double) timeoutMillis));
+        }
+
+        @Override
+        public void waitHidden(String selector, long timeoutMillis) {
+            page.locator(selector).first().waitFor(new Locator.WaitForOptions().setState(WaitForSelectorState.HIDDEN).setTimeout((double) timeoutMillis));
+        }
+
+        @Override
+        public void check(BooleanSupplier condition, long timeoutMillis) {
+            long deadlineNanos = System.nanoTime() + Math.multiplyExact(timeoutMillis, 1_000_000);
+            do {
+                if (condition.getAsBoolean())
+                    return;
+
+                long remainingMillis = Math.max(1, (deadlineNanos - System.nanoTime()) / 1_000_000);
+                page.waitForTimeout(Math.min(POLL_INTERVAL_MILLIS, remainingMillis));
+            } while (System.nanoTime() < deadlineNanos);
+            throw new IllegalStateException("Condition was not satisfied before timeout");
+        }
+
+        @Override
+        public void checkUrl(String glob, long timeoutMillis) {
+            page.waitForURL(glob, new Page.WaitForURLOptions().setTimeout((double) timeoutMillis));
+        }
+
+        @Override
+        public String currentText() {
+            return current.innerText();
+        }
+
+        @Override
+        public int currentCount() {
+            return current.count();
+        }
+
+        @Override
+        public boolean currentEnabled() {
+            return current.isEnabled();
+        }
+
+        @Override
+        public boolean currentChecked() {
+            return current.isChecked();
+        }
+
+        @Override
+        public String currentAttribute(String name) {
+            return current.getAttribute(name);
+        }
+
+        @Override
+        public void close() {
+            RuntimeException failure = null;
+            try {
+                page.close();
+            } catch (RuntimeException exception) {
+                failure = exception;
+            }
+            try {
+                context.close();
+            } catch (RuntimeException exception) {
+                if (failure == null)
+                    failure = exception;
+                else
+                    failure.addSuppressed(exception);
+            }
+            try {
+                browser.close();
+            } catch (RuntimeException exception) {
+                if (failure == null)
+                    failure = exception;
+                else
+                    failure.addSuppressed(exception);
+            }
+            try {
+                playwright.close();
+            } catch (RuntimeException exception) {
+                if (failure == null)
+                    failure = exception;
+                else
+                    failure.addSuppressed(exception);
+            }
+            if (failure != null)
+                throw failure;
+        }
+
+        private static Navigation navigation(Response response) {
+            return new Navigation(response == null ? null : response.status(), response == null ? "" : response.headers().getOrDefault("content-type", ""));
+        }
+    }
+}

@@ -37,7 +37,7 @@ class SecretExportImportAuditServiceTest {
         assertThat(log.getUsername()).isEqualTo("system");
         assertThat(log.getRequestId()).isNull();
         assertThat(log.getPath()).isNull();
-        assertThat(log.getData().get("origin").asText()).isEqualTo("secrets-tool");
+        assertThat(log.getData().get("origin").asString()).isEqualTo("secrets-tool");
         assertThat(log.getData().get("secretCount").asInt()).isEqualTo(3);
         assertThat(log.getData().get("systemConfigurationCount").asInt()).isEqualTo(2);
         assertThat(log.getData().size()).isEqualTo(3);
@@ -52,8 +52,8 @@ class SecretExportImportAuditServiceTest {
         ApplicationLog log = fixture.savedLog();
         assertThat(log.getEvent()).isEqualTo("SECRET_IMPORT");
         assertThat(log.getOutcome()).isEqualTo(ApplicationLogOutcome.FAILURE);
-        assertThat(log.getData().get("origin").asText()).isEqualTo("secrets-tool");
-        assertThat(log.getData().get("failureCategory").asText()).isEqualTo("OPERATION_FAILED");
+        assertThat(log.getData().get("origin").asString()).isEqualTo("secrets-tool");
+        assertThat(log.getData().get("failureCategory").asString()).isEqualTo("OPERATION_FAILED");
         assertThat(log.getData().size()).isEqualTo(2);
     }
 

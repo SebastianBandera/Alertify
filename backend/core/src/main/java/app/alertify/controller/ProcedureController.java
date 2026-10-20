@@ -45,7 +45,7 @@ import jakarta.validation.constraints.PositiveOrZero;
  */
 @RestController
 @RequestMapping("/api/procedures")
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize(app.alertify.config.AuthorizationPolicies.ADMIN)
 @Validated
 public class ProcedureController {
     private final ProcedureManagementService service;

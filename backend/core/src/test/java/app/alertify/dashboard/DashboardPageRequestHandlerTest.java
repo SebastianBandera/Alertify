@@ -71,7 +71,7 @@ class DashboardPageRequestHandlerTest {
         Instant at = Instant.parse("2026-09-24T12:00:00Z");
         return new AlertExecutionResponse(
                 1L, UUID.randomUUID(), 16L, "Alert", 2L, "template.name", AlertExecutionStatus.WARN,
-                AlertExecutionTrigger.MANUAL, "admin", at, at, at, 0, 0, 0, null, null, null,
+                AlertExecutionTrigger.MANUAL, "admin", false, null, at, at, at, 0, 0, 0, null, null, null,
                 "worker-standard-2", "172.18.0.4", 9090, UUID.randomUUID(), null, null, null, null,
                 false, null, null, null
         );

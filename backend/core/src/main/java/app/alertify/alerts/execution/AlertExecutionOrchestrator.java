@@ -16,6 +16,7 @@ import java.util.concurrent.Executors;
 
 import org.springframework.stereotype.Service;
 
+import app.alertify.ai.AiInvocationContextHolder;
 import app.alertify.alerts.template.annotation.AlertParameterSource;
 import app.alertify.dashboard.DashboardEventPublisher;
 import app.alertify.grpc.AlertWorkerClient;
@@ -55,6 +56,8 @@ import app.alertify.worker.grpc.TemplateKind;
  */
 @Service
 public class AlertExecutionOrchestrator implements AutoCloseable {
+    private static final String EXECUTION_TRIGGERED_EVENT = "ALERT_EXECUTION_TRIGGERED";
+
 
     private final AlertExecutionPreparationService preparationService;
     private final AlertExecutionPersistenceService persistenceService;
@@ -119,9 +122,9 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
             eventLogger.failure("ALERT_EXECUTION_SKIPPED", data(alertId, alertName, source, triggeredBy, "reason", "ALREADY_RUNNING"));
             return false;
         }
-        eventLogger.success("ALERT_EXECUTION_TRIGGERED", data(alertId, alertName, source, triggeredBy));
+        eventLogger.success(EXECUTION_TRIGGERED_EVENT, data(alertId, alertName, source, triggeredBy));
         UUID executionId = UUID.randomUUID();
-        executor.submit(() -> execute(alertId, source, triggeredBy, executionId, null));
+        executor.submit(AiInvocationContextHolder.wrap(() -> execute(alertId, source, triggeredBy, executionId, null)));
         return true;
     }
 
@@ -142,9 +145,10 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
         }
 
         UUID executionId = UUID.randomUUID();
-        eventLogger.success("ALERT_EXECUTION_TRIGGERED", data(alertId, alertName, AlertExecutionTrigger.SMART, null));
+        eventLogger.success(EXECUTION_TRIGGERED_EVENT, data(alertId, alertName, AlertExecutionTrigger.SMART, null));
         try {
-            executor.submit(() -> execute(alertId, AlertExecutionTrigger.SMART, null, executionId, capacity.reservation()));
+            executor.submit(AiInvocationContextHolder.wrap(() -> execute(alertId, AlertExecutionTrigger.SMART, null,
+                    executionId, capacity.reservation())));
         } catch (RuntimeException exception) {
             capacity.reservation().close();
             leave(alertId);
@@ -189,7 +193,7 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
 
         runCallback(acquiredCallback);
         UUID executionId = UUID.randomUUID();
-        eventLogger.success("ALERT_EXECUTION_TRIGGERED", data(alertId, alertName, source, triggeredBy));
+        eventLogger.success(EXECUTION_TRIGGERED_EVENT, data(alertId, alertName, source, triggeredBy));
         AlertExecutionStatus status = execute(alertId, source, triggeredBy, executionId, null, parentPipeExecutionId, parentStepKey, parentHookInvocationId, parentHookName, pipeDeadline, pipeInputs);
         return new AlertHookExecution(status == null ? null : executionId, status, status == null, false, false);
     }
@@ -309,6 +313,7 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
                 preReservedWorker.close();
 
             procedureInvocationRegistry.unregister(executionId);
+            procedureExecutionOrchestrator.releaseValues(executionId);
             persistenceService.clearTrigger(executionId);
             leave(alertId);
             statusEventPublisher.publish();
@@ -363,10 +368,14 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
             request.addParameters(value);
         }
         for (var preparedValue : execution.preparedValues()) {
+            String value = preparedValue.value();
+            if (preparedValue.source() == app.alertify.alerts.AlertExecutionValueSource.PROCEDURE)
+                value = procedureExecutionOrchestrator.prepareAlertValue(value, UUID.fromString(executionId), deadline);
+
             request.addPreparedValues(PreparedAlertValue.newBuilder()
                     .setSource(toGrpcValueSource(preparedValue.source()))
                     .setName(preparedValue.name())
-                    .setValue(preparedValue.value()));
+                    .setValue(value));
         }
         return request.build();
     }
@@ -389,6 +398,7 @@ public class AlertExecutionOrchestrator implements AutoCloseable {
         return switch (source) {
             case CONFIGURATION -> app.alertify.worker.grpc.AlertExecutionValueSource.ALERT_EXECUTION_VALUE_SOURCE_CONFIGURATION;
             case SECRET -> app.alertify.worker.grpc.AlertExecutionValueSource.ALERT_EXECUTION_VALUE_SOURCE_SECRET;
+            case PROCEDURE -> app.alertify.worker.grpc.AlertExecutionValueSource.ALERT_EXECUTION_VALUE_SOURCE_PROCEDURE;
         };
     }
 

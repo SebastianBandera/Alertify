@@ -1,9 +1,5 @@
 package app.alertify.alerts.service;
 
-import java.math.BigDecimal;
-import java.math.BigInteger;
-import java.net.URI;
-import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -39,7 +35,8 @@ import app.alertify.alerts.model.AlertState;
 import app.alertify.alerts.model.AlertTemplateDefinition;
 import app.alertify.alerts.model.AlertTemplateParameterDefinition;
 import app.alertify.alerts.model.SmartExecutionPolicy;
-import app.alertify.alerts.template.ParameterValueTypeCompatibility;
+import app.alertify.alerts.template.TemplateParameterRules;
+import app.alertify.alerts.template.TemplateParameterValidation;
 import app.alertify.alerts.template.annotation.AlertParameterSource;
 import app.alertify.api.error.ConflictException;
 import app.alertify.api.error.InvalidAlertRequestException;
@@ -62,7 +59,9 @@ import app.alertify.jpa.repository.ProcedureRepository;
 import app.alertify.jpa.repository.TagRepository;
 import app.alertify.jpa.specification.AlertSpecifications;
 import app.alertify.logging.ApplicationEventLogger;
-import app.alertify.worker.contract.DatabaseCredentials;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
+import jakarta.persistence.OptimisticLockException;
 
 /**
  * CRUD, manual runs and stored state for user-configured alerts. Updates and
@@ -98,8 +97,9 @@ public class AlertManagementService {
     private final AlertExecutionOrchestrator executionOrchestrator;
     private final DashboardEventPublisher dashboardEventPublisher;
     private final ResourceResultObserverService resourceObserver;
+    private final EntityManager entityManager;
 
-    public AlertManagementService(AlertRepository alertRepository, AlertTemplateDefinitionRepository templateRepository, AlertTemplateParameterDefinitionRepository templateParameterRepository, AlertParameterValueRepository parameterValueRepository, AlertExecutionRepository executionRepository, AlertStateRepository stateRepository, ApplicationConfigurationRepository configurationRepository, ApplicationSecretRepository secretRepository, ProcedureRepository procedureRepository, TagRepository tagRepository, ApplicationEventLogger eventLogger, AlertScheduleService scheduleService, AlertExecutionOrchestrator executionOrchestrator, DashboardEventPublisher dashboardEventPublisher, ResourceResultObserverService resourceObserver) {
+    public AlertManagementService(AlertRepository alertRepository, AlertTemplateDefinitionRepository templateRepository, AlertTemplateParameterDefinitionRepository templateParameterRepository, AlertParameterValueRepository parameterValueRepository, AlertExecutionRepository executionRepository, AlertStateRepository stateRepository, ApplicationConfigurationRepository configurationRepository, ApplicationSecretRepository secretRepository, ProcedureRepository procedureRepository, TagRepository tagRepository, ApplicationEventLogger eventLogger, AlertScheduleService scheduleService, AlertExecutionOrchestrator executionOrchestrator, DashboardEventPublisher dashboardEventPublisher, ResourceResultObserverService resourceObserver, EntityManager entityManager) {
         this.alertRepository = alertRepository;
         this.templateRepository = templateRepository;
         this.templateParameterRepository = templateParameterRepository;
@@ -115,6 +115,7 @@ public class AlertManagementService {
         this.executionOrchestrator = executionOrchestrator;
         this.dashboardEventPublisher = dashboardEventPublisher;
         this.resourceObserver = resourceObserver;
+        this.entityManager = entityManager;
     }
 
     @Transactional(readOnly = true)
@@ -205,6 +206,15 @@ public class AlertManagementService {
         List<AlertParameterValue> existing = parameterValueRepository.findAllByAlertIdOrdered(id);
         List<AlertParameterValue> values = synchronizeParameters(alert, request.parameters(), existing);
         alertRepository.flush();
+        // Parameter-only edits do not dirty the owner. Advance its version now so
+        // both the response and pending full-definition updates see the new version.
+        if (alert.getVersion() == request.version()) {
+            try {
+                entityManager.lock(alert, LockModeType.PESSIMISTIC_FORCE_INCREMENT);
+            } catch (OptimisticLockException exception) {
+                throw ConflictException.versionConflict("Alert was modified by another request; reload it and try again");
+            }
+        }
         eventLogger.successAfterCommit("ALERT_UPDATED", Map.of(ALERT_ID, alert.getId(), "name", alert.getName(), "version", alert.getVersion(), ALLOW_CONCURRENT_EXECUTIONS, alert.isConcurrentExecutionAllowed(), PERSISTENT_ISSUES, alert.getPersistentIssuesSince() != null));
         scheduleService.rescheduleAfterCommit(alert.getId());
         dashboardEventPublisher.alertChangedAfterCommit(alert.getId());
@@ -317,8 +327,11 @@ public class AlertManagementService {
 
                 continue;
             }
-            if (!definition.getAllowedSources().contains(value.source()))
-                throw invalid("Source " + value.source() + " is not allowed for parameter '" + definition.getParameterKey() + "'");
+            try {
+                TemplateParameterValidation.source(TemplateParameterRules.of(definition), value.source());
+            } catch (IllegalArgumentException exception) {
+                throw invalid(exception.getMessage(), exception);
+            }
 
             AlertParameterValue parameterValue = existingByKey.get(definition.getParameterKey());
             if (parameterValue == null)
@@ -383,27 +396,19 @@ public class AlertManagementService {
     }
 
     private void validateConfigurationBinding(AlertTemplateParameterDefinition definition, ApplicationConfiguration configuration) {
-        if (definition.isWritableBindingRequired() && !configuration.isWritable())
-            throw invalid(PARAMETER_PREFIX + definition.getParameterKey() + "' requires a writable configuration");
-
-        if (!ParameterValueTypeCompatibility.isConfigurationValueTypeCompatible(definition.getJavaType(), configuration.getValueType()))
-                    throw invalid(PARAMETER_PREFIX + definition.getParameterKey() + "' and its binding must both be binary or both be non-binary");
-
-        List<String> allowed = definition.getAllowedConfigurationValueTypes();
-        if (!allowed.isEmpty() && !allowed.contains(configuration.getValueType().name()))
-            throw invalid(PARAMETER_PREFIX + definition.getParameterKey() + "' only accepts configurations of type " + allowed);
+        try {
+            TemplateParameterValidation.configuration(TemplateParameterRules.of(definition), configuration.getValueType(), configuration.isWritable());
+        } catch (IllegalArgumentException exception) {
+            throw invalid(exception.getMessage(), exception);
+        }
     }
 
     private void validateSecretBinding(AlertTemplateParameterDefinition definition, ApplicationSecret secret) {
-        if (definition.isWritableBindingRequired() && !secret.isWritable())
-            throw invalid(PARAMETER_PREFIX + definition.getParameterKey() + "' requires a writable secret");
-
-        if (!ParameterValueTypeCompatibility.isSecretValueTypeCompatible(definition.getJavaType(), secret.getValueType()))
-            throw invalid(PARAMETER_PREFIX + definition.getParameterKey() + "' and its binding must match the parameter's required secret type");
-
-        List<String> allowed = definition.getAllowedSecretValueTypes();
-        if (!allowed.isEmpty() && !allowed.contains(secret.getValueType().name()))
-            throw invalid(PARAMETER_PREFIX + definition.getParameterKey() + "' only accepts secrets of type " + allowed);
+        try {
+            TemplateParameterValidation.secret(TemplateParameterRules.of(definition), secret.getValueType(), secret.isWritable());
+        } catch (IllegalArgumentException exception) {
+            throw invalid(exception.getMessage(), exception);
+        }
     }
 
     private app.alertify.procedures.model.Procedure procedure(Long id) {
@@ -422,54 +427,11 @@ public class AlertManagementService {
     }
 
     private String validateText(AlertTemplateParameterDefinition definition, String value) {
-        if (app.alertify.procedures.Procedure.class.getName().equals(definition.getJavaType()))
-            throw invalid("Procedure parameter '" + definition.getParameterKey() + "' must use a procedure binding");
-
-        if (value == null)
-            throw invalid("Text value is required for parameter '" + definition.getParameterKey() + "'");
-
-        if (!definition.isBindingAllowed() && !definition.getOptions().contains(value))
-            throw invalid(PARAMETER_PREFIX + definition.getParameterKey() + "' must use one of its declared options");
-
         try {
-            validateJavaType(definition.getJavaType(), value);
-        } catch (RuntimeException exception) {
-            throw invalid(PARAMETER_PREFIX + definition.getParameterKey() + "' is not a valid " + definition.getJavaType(), exception);
+            return TemplateParameterValidation.text(TemplateParameterRules.of(definition), value);
+        } catch (IllegalArgumentException exception) {
+            throw invalid(exception.getMessage(), exception);
         }
-        return value;
-    }
-
-    private static void validateJavaType(String javaType, String value) {
-        switch (javaType) {
-            case "byte", "java.lang.Byte" -> Byte.parseByte(value);
-            case "short", "java.lang.Short" -> Short.parseShort(value);
-            case "int", "java.lang.Integer" -> Integer.parseInt(value);
-            case "long", "java.lang.Long" -> Long.parseLong(value);
-            case "float", "java.lang.Float" -> Float.parseFloat(value);
-            case "double", "java.lang.Double" -> Double.parseDouble(value);
-            case "boolean", "java.lang.Boolean" -> {
-                if (!"true".equalsIgnoreCase(value) && !"false".equalsIgnoreCase(value))
-                    throw new IllegalArgumentException("not a boolean");
-            }
-            case "char", "java.lang.Character" -> {
-                if (value.length() != 1)
-                    throw new IllegalArgumentException("not a character");
-            }
-            case "java.math.BigInteger" -> new BigInteger(value);
-            case "java.math.BigDecimal" -> new BigDecimal(value);
-            case "java.net.URI" -> URI.create(value);
-            case "java.time.Duration" -> Duration.parse(value);
-            case "java.time.Instant" -> Instant.parse(value);
-            case "org.springframework.scheduling.support.CronExpression" -> validateTemplateCron(value);
-            case "app.alertify.worker.contract.DatabaseCredentials" -> DatabaseCredentials.fromJson(value);
-            default -> { }
-        }
-    }
-
-    private static void validateTemplateCron(String value) {
-        CronExpression expression = CronExpression.parse(value);
-        if (expression.next(ZonedDateTime.now(ZoneId.systemDefault())) == null)
-            throw new IllegalArgumentException("Cron expression never matches a future date");
     }
 
     private void ensureNameAvailable(String name, Long id) {
@@ -538,7 +500,7 @@ public class AlertManagementService {
 
     private static void ensureVersion(Alert alert, long requestedVersion) {
         if (alert.getVersion() != requestedVersion)
-            throw new ConflictException("Alert was modified by another request; reload it and try again");
+            throw ConflictException.versionConflict("Alert was modified by another request; reload it and try again");
     }
 
     private static ResourceNotFoundException notFound(String resource, Long id) {

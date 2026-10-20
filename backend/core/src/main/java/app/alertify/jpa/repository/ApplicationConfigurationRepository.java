@@ -19,6 +19,10 @@ import app.alertify.jpa.entity.ApplicationConfiguration;
  */
 public interface ApplicationConfigurationRepository extends JpaRepository<ApplicationConfiguration, Long>, JpaSpecificationExecutor<ApplicationConfiguration> {
 
+    List<app.alertify.alerts.template.ParameterBindingMetadata.Configuration> findAllProjectedBy();
+
+    Optional<app.alertify.alerts.template.ParameterBindingMetadata.Configuration> findProjectedById(Long id);
+
     boolean existsByNameIgnoreCase(String name);
 
     boolean existsByNameIgnoreCaseAndIdNot(String name, Long id);

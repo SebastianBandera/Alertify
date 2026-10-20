@@ -21,7 +21,8 @@ public class SymmetricKeyService {
     private final PrivateClassKeyPartSource privateClassKeyPartSource;
     private final EnvironmentKeyPartSource environmentKeyPartSource;
     private final Sha256HashService sha256HashService;
-    private volatile ObfuscatedKeyMaterial activeKey;
+    private final Object activeKeyLock = new Object();
+    private ObfuscatedKeyMaterial activeKey;
 
     public SymmetricKeyService(DatabaseKeyPartSource databaseKeyPartSource, PrivateClassKeyPartSource privateClassKeyPartSource, EnvironmentKeyPartSource environmentKeyPartSource, Sha256HashService sha256HashService) {
         this.databaseKeyPartSource = databaseKeyPartSource;
@@ -31,11 +32,12 @@ public class SymmetricKeyService {
     }
 
     public SecretKey getKey() {
-        ObfuscatedKeyMaterial current = activeKey;
-        if (current == null)
-            throw new IllegalStateException("The symmetric key has not been initialized");
+        synchronized (activeKeyLock) {
+            if (activeKey == null)
+                throw new IllegalStateException("The symmetric key has not been initialized");
 
-        return current.revealKey();
+            return activeKey.revealKey();
+        }
     }
 
     /** Initializes this process with the target key without rotating persisted values. */
@@ -63,21 +65,24 @@ public class SymmetricKeyService {
         }
     }
 
-    synchronized void activate(ObfuscatedKeyMaterial keyMaterial) {
+    void activate(ObfuscatedKeyMaterial keyMaterial) {
         ObfuscatedKeyMaterial replacement = keyMaterial.copy();
-        ObfuscatedKeyMaterial previous = activeKey;
-        activeKey = replacement;
-        if (previous != null)
-            previous.destroy();
+        synchronized (activeKeyLock) {
+            ObfuscatedKeyMaterial previous = activeKey;
+            activeKey = replacement;
+            if (previous != null)
+                previous.destroy();
+        }
     }
 
     public boolean activeKeyMatchesCurrentTarget() {
-        ObfuscatedKeyMaterial current = activeKey;
-        if (current == null)
-            return false;
+        synchronized (activeKeyLock) {
+            if (activeKey == null)
+                return false;
 
-        try (SymmetricKeyRotation rotation = readRotation()) {
-            return current.hasSameKey(rotation.newKey());
+            try (SymmetricKeyRotation rotation = readRotation()) {
+                return activeKey.hasSameKey(rotation.newKey());
+            }
         }
     }
 

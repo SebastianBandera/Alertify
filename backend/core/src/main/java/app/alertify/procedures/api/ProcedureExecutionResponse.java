@@ -20,6 +20,7 @@ public record ProcedureExecutionResponse(
     UUID rootExecutionId,
     UUID parentAlertExecutionId,
     UUID parentProcedureExecutionId,
+    UUID wizardDraftId,
     int depth,
     Instant startedAt,
     Instant workStartedAt,
@@ -35,6 +36,8 @@ public record ProcedureExecutionResponse(
     String workerIpAddress,
     Integer workerPort,
     UUID workerInstanceId,
-    String triggeredBy
+    String triggeredBy,
+    boolean aiAssisted,
+    Long aiConversationId
 ) {
 }

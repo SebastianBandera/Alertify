@@ -4,6 +4,8 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Set;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import app.alertify.alerts.model.SmartExecutionPolicy;
 import app.alertify.configuration.api.TagResponse;
 
@@ -28,6 +30,10 @@ public record AlertResponse(
     Integer smartExecutionIntervalHours,
     SmartExecutionPolicy smartExecutionPolicy
 ) {
+    /** Boolean projection of the persisted option, available to API clients and AI tools. */
+    @JsonProperty("persistentIssues")
+    public boolean persistentIssues() { return persistentIssuesSince != null; }
+
     public AlertResponse(
         Long id, long version, Long templateId, String templateKey, String templateNameKey,
         String name, String description, String cronExpression, boolean enabled, boolean allowConcurrentExecutions,

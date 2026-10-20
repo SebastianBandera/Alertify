@@ -28,6 +28,8 @@ import app.alertify.alerts.execution.AlertExecutionStatus;
  */
 @Component
 public class DashboardExecutionQuery {
+    private static final String ALERT_ID_COLUMN = "alert_id";
+
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -53,7 +55,7 @@ public class DashboardExecutionQuery {
                 ) latest
                 """.formatted(valueRows(alertIds.size())),
                 resultSet -> {
-                    result.put(resultSet.getLong("alert_id"), resultSet.getLong("id"));
+                    result.put(resultSet.getLong(ALERT_ID_COLUMN), resultSet.getLong("id"));
                 },
                 alertIds.toArray());
         return result;
@@ -91,7 +93,7 @@ public class DashboardExecutionQuery {
                 ) previous
                 """.formatted(valueRows(latestExecutionIds.size(), 2)),
                 resultSet -> {
-                    result.put(resultSet.getLong("alert_id"), resultSet.getLong("id"));
+                    result.put(resultSet.getLong(ALERT_ID_COLUMN), resultSet.getLong("id"));
                 },
                 parameters.toArray());
         return result;
@@ -158,7 +160,7 @@ public class DashboardExecutionQuery {
                 order by alerts.alert_id, candidate.severity desc
                 """.formatted(valueRows(alertIds.size())),
                 resultSet -> {
-                    result.put(resultSet.getLong("alert_id"), new DashboardHistorySummaryResponse(
+                    result.put(resultSet.getLong(ALERT_ID_COLUMN), new DashboardHistorySummaryResponse(
                             AlertExecutionStatus.valueOf(resultSet.getString("worst_status")),
                             instant(resultSet.getObject("worst_last_at", OffsetDateTime.class)),
                             instant(resultSet.getObject("since", OffsetDateTime.class))
@@ -207,7 +209,7 @@ public class DashboardExecutionQuery {
                 where last_warn.finished_at is not null or last_error.finished_at is not null
                 """.formatted(rows),
                 resultSet -> {
-                    result.put(resultSet.getLong("alert_id"), new DashboardIssueTimesResponse(
+                    result.put(resultSet.getLong(ALERT_ID_COLUMN), new DashboardIssueTimesResponse(
                             instant(resultSet.getObject("last_warn_at", OffsetDateTime.class)),
                             instant(resultSet.getObject("last_error_at", OffsetDateTime.class))
                     ));

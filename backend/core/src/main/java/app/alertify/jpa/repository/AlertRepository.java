@@ -20,6 +20,8 @@ public interface AlertRepository extends JpaRepository<Alert, Long>, JpaSpecific
 
     boolean existsByTagsId(Long tagId);
 
+    long countByTemplate_Id(Long templateId);
+
     @Override
     @EntityGraph(attributePaths = "template")
     Optional<Alert> findById(Long id);

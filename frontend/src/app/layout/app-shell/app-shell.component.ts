@@ -26,16 +26,17 @@ import { TranslationKey } from '../../core/i18n/localization.types';
 import { DashboardLiveService } from '../../features/dashboard/dashboard-live.service';
 import { EditorDraftService } from '../../shared/editor-drafts/editor-draft.service';
 import { AdminStatusBarComponent } from '../admin-status-bar/admin-status-bar.component';
+import { AiChatComponent } from '../../features/ai-chat/ai-chat.component';
 
 interface NavigationItem {
   readonly labelKey: TranslationKey;
   readonly path: string;
-  readonly icon: 'dashboard' | 'alerts' | 'procedures' | 'pipes' | 'hooks' | 'status' | 'configs' | 'system-configs' | 'secrets' | 'logs';
+  readonly icon: 'dashboard' | 'alerts' | 'procedures' | 'pipes' | 'hooks' | 'status' | 'ai' | 'configs' | 'system-configs' | 'secrets' | 'logs';
 }
 
 @Component({
   selector: 'app-shell',
-  imports: [FormsModule, RouterLink, RouterLinkActive, RouterOutlet, AdminStatusBarComponent],
+  imports: [FormsModule, RouterLink, RouterLinkActive, RouterOutlet, AdminStatusBarComponent, AiChatComponent],
   templateUrl: './app-shell.component.html',
   styleUrl: './app-shell.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -70,6 +71,9 @@ export class AppShellComponent {
       : []),
     ...(this.authService.isAdmin
       ? [{ labelKey: 'navigation.status' as const, path: '/status', icon: 'status' as const }]
+      : []),
+    ...(this.authService.isAdmin
+      ? [{ labelKey: 'navigation.ai' as const, path: '/ai', icon: 'ai' as const }]
       : []),
     ...(this.authService.isAdmin
       ? [{ labelKey: 'navigation.configs' as const, path: '/configs', icon: 'configs' as const }]
@@ -253,6 +257,9 @@ export class AppShellComponent {
     }
     if (url.startsWith('/status')) {
       return 'navigation.status';
+    }
+    if (url.startsWith('/ai')) {
+      return 'navigation.ai';
     }
     if (url.startsWith('/system-configs')) {
       return 'navigation.systemConfigs';

@@ -137,7 +137,7 @@ export interface ProcedureExecution {
   readonly templateNameKey: string;
   readonly procedureVersion: number;
   readonly status: ProcedureExecutionStatus;
-  readonly trigger: 'CRON' | 'MANUAL' | 'ALERT' | 'PROCEDURE' | 'PIPE' | 'HOOK';
+  readonly trigger: 'CRON' | 'MANUAL' | 'ALERT' | 'PROCEDURE' | 'PIPE' | 'HOOK' | 'WIZARD';
   readonly rootExecutionId: string;
   readonly parentAlertExecutionId: string | null;
   readonly parentProcedureExecutionId: string | null;

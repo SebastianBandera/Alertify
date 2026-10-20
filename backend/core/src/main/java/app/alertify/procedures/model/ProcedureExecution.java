@@ -7,6 +7,7 @@ import java.util.UUID;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
+import app.alertify.ai.AiProvenance;
 import app.alertify.alerts.model.AlertExecutionWorker;
 import app.alertify.procedures.execution.ProcedureExecutionStatus;
 import app.alertify.procedures.execution.ProcedureExecutionTrigger;
@@ -72,6 +73,9 @@ public class ProcedureExecution {
     @Column(name = "parent_pipe_execution_id", updatable = false)
     private UUID parentPipeExecutionId;
 
+    @Column(name = "wizard_draft_id", updatable = false)
+    private UUID wizardDraftId;
+
     @Column(nullable = false, updatable = false)
     private int depth;
 
@@ -114,6 +118,12 @@ public class ProcedureExecution {
 
     @Column(name = "triggered_by", columnDefinition = "text", updatable = false)
     private String triggeredBy;
+
+    @Column(name = "ai_assisted", nullable = false, updatable = false)
+    private boolean aiAssisted;
+
+    @Column(name = "ai_conversation_id", updatable = false)
+    private Long aiConversationId;
 
     protected ProcedureExecution() {
     }
@@ -191,6 +201,8 @@ public class ProcedureExecution {
     public UUID getParentAlertExecutionId() { return parentAlertExecutionId; }
     public UUID getParentProcedureExecutionId() { return parentProcedureExecutionId; }
     public UUID getParentPipeExecutionId() { return parentPipeExecutionId; }
+    public UUID getWizardDraftId() { return wizardDraftId; }
+    public void recordWizardDraft(UUID id) { requireRunning(); wizardDraftId = Objects.requireNonNull(id); }
     public int getDepth() { return depth; }
     public Instant getStartedAt() { return startedAt; }
     public Instant getWorkStartedAt() { return workStartedAt; }
@@ -205,4 +217,11 @@ public class ProcedureExecution {
     public Integer getWorkerPort() { return workerPort; }
     public UUID getWorkerInstanceId() { return workerInstanceId; }
     public String getTriggeredBy() { return triggeredBy; }
+    public void recordAiProvenance(AiProvenance provenance) {
+        Objects.requireNonNull(provenance);
+        aiAssisted = provenance.assisted();
+        aiConversationId = provenance.conversationId();
+    }
+    public boolean isAiAssisted() { return aiAssisted; }
+    public Long getAiConversationId() { return aiConversationId; }
 }

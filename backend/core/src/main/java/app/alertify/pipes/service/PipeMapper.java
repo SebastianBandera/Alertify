@@ -37,7 +37,8 @@ final class PipeMapper {
         return new PipeExecutionResponse(value.getId(), value.getExecutionId(), value.getPipe().getId(), value.getPipeName(),
                 value.getPipeVersion(), value.getStatus(), value.getOutcome(), value.getTrigger(), value.getRootExecutionId(),
                 value.getParentProcedureExecutionId(), value.getDepth(), value.getStartedAt(), value.getFinishedAt(), duration,
-                value.getTriggeredBy(), value.getErrorCode(), value.getSteps().stream().map(step -> new PipeStepResultResponse(
+                value.getTriggeredBy(), value.isAiAssisted(), value.getAiConversationId(), value.getErrorCode(),
+                value.getSteps().stream().map(step -> new PipeStepResultResponse(
                         step.getStepKey(), step.getPosition(), step.getStepType(), step.getPhase(), step.getResourceId(), step.getResourceName(),
                         step.getStatus(), step.getOutcome(), step.getResourceExecutionId(), step.getStartedAt(),
                         step.getFinishedAt(), step.getErrorCode())).toList());

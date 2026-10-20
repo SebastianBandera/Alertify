@@ -559,7 +559,7 @@ public class ApplicationConfigurationService {
 
     static void verifyVersion(long currentVersion, long requestedVersion, String resourceName) {
         if (currentVersion != requestedVersion) {
-            throw new ConflictException(
+            throw ConflictException.versionConflict(
                     resourceName + " was modified by another request; reload it and try again"
             );
         }

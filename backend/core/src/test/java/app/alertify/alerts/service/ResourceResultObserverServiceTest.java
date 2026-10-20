@@ -33,8 +33,8 @@ class ResourceResultObserverServiceTest {
                 fixture(kind, severity, true);
                 var result = service.observe(9);
                 assertEquals(AlertExecutionStatus.valueOf(severity), result.status());
-                assertEquals(kind, result.summary().path("resourceKind").asText());
-                assertEquals("COMPLETED", result.summary().path("status").asText());
+                assertEquals(kind, result.summary().path("resourceKind").asString());
+                assertEquals("COMPLETED", result.summary().path("status").asString());
             }
         }
     }
@@ -43,7 +43,7 @@ class ResourceResultObserverServiceTest {
     void missingTerminalResultWarnsAndUnknownKindCannotBecomeSql() throws Exception {
         fixture("PIPE", "SUCCESS", false);
         assertEquals(AlertExecutionStatus.WARN, service.observe(9).status());
-        assertEquals("NO_TERMINAL_RESULT", service.observe(9).summary().path("status").asText());
+        assertEquals("NO_TERMINAL_RESULT", service.observe(9).summary().path("status").asString());
         assertThrows(InvalidAlertRequestException.class, () -> service.options("hooks; drop table core.alerts"));
     }
 

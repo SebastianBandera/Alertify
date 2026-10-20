@@ -20,6 +20,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.Comparator;
 import java.util.HexFormat;
@@ -63,6 +64,17 @@ import tools.jackson.databind.node.ObjectNode;
     sourcePath = "app/alertify/alerts/templates/KubernetesWorkloadAlertTemplate.java"
 )
 public final class KubernetesWorkloadAlertTemplate implements AlertEvaluator {
+    private static final String REASON_FIELD = "reason";
+    private static final String NAMESPACE_FIELD = "namespace";
+    private static final String JSON_OUTPUT_ARGUMENT = "-o=json";
+    private static final String CLUSTER_FIELD = "cluster";
+    private static final String METADATA_FIELD = "metadata";
+    private static final String REPLICAS_FIELD = "replicas";
+    private static final String CONTAINER_FIELD = "container";
+    private static final String RESTART_TRACKING_ENABLED_FIELD = "restartTrackingEnabled";
+    private static final String METRICS_FIELD = "metrics";
+    private static final String REASONS_FIELD = "reasons";
+
 
     public enum KubernetesWorkloadKind {
         Deployment,
@@ -203,7 +215,7 @@ public final class KubernetesWorkloadAlertTemplate implements AlertEvaluator {
             executionContext.setState(state(identity, current, true));
             return result(health, restarts, true, null);
         } catch (OperationalException exception) {
-            return AlertResult.warn(message("reason", exception.code(), "namespace", namespace, "kind", kind.name(), "name", name));
+            return AlertResult.warn(message(REASON_FIELD, exception.code(), NAMESPACE_FIELD, namespace, "kind", kind.name(), "name", name));
         }
     }
 
@@ -234,7 +246,7 @@ public final class KubernetesWorkloadAlertTemplate implements AlertEvaluator {
     }
 
     private ConfigIdentity validateKubeconfig(KubectlSession kubectl) throws Exception {
-        CommandResult result = kubectl.run(List.of("config", "view", "--raw", "--minify", "-o=json"));
+        CommandResult result = kubectl.run(List.of("config", "view", "--raw", "--minify", JSON_OUTPUT_ARGUMENT));
         if (!result.success()) {
             if (result.timedOut() || result.outputLimitExceeded())
                 throw new OperationalException(result.reason("kubeconfigQueryFailed"));
@@ -251,11 +263,11 @@ public final class KubernetesWorkloadAlertTemplate implements AlertEvaluator {
         JsonNode selected = contexts.get(0);
         String contextName = requiredText(selected, "name");
         JsonNode contextValue = requiredObject(selected, "context");
-        String clusterReference = requiredText(contextValue, "cluster");
+        String clusterReference = requiredText(contextValue, CLUSTER_FIELD);
         String userReference = optionalText(contextValue, "user");
         JsonNode clusterEntry = namedEntry(clusters, clusterReference, "kubeconfigClusterReferenceInvalid");
         JsonNode userEntry = userReference == null ? null : namedEntry(users, userReference, "kubeconfigUserReferenceInvalid");
-        JsonNode cluster = requiredObject(clusterEntry, "cluster");
+        JsonNode cluster = requiredObject(clusterEntry, CLUSTER_FIELD);
         rejectPath(cluster, "certificate-authority");
         if (userEntry != null) {
             JsonNode user = requiredObject(userEntry, "user");
@@ -290,12 +302,12 @@ public final class KubernetesWorkloadAlertTemplate implements AlertEvaluator {
         clusterValue.remove("extensions");
         ObjectNode sanitizedCluster = sanitized.putArray("clusters").addObject();
         sanitizedCluster.put("name", clusterReference);
-        sanitizedCluster.set("cluster", clusterValue);
+        sanitizedCluster.set(CLUSTER_FIELD, clusterValue);
 
         ObjectNode sanitizedContext = sanitized.putArray("contexts").addObject();
         sanitizedContext.put("name", contextName);
         ObjectNode contextValue = sanitizedContext.putObject("context");
-        contextValue.put("cluster", clusterReference);
+        contextValue.put(CLUSTER_FIELD, clusterReference);
         if (userReference != null)
             contextValue.put("user", userReference);
 
@@ -316,15 +328,15 @@ public final class KubernetesWorkloadAlertTemplate implements AlertEvaluator {
     }
 
     private List<String> workloadArguments() {
-        return List.of("get", resourceName(), name, "--namespace=" + namespace, "-o=json");
+        return List.of("get", resourceName(), name, "--namespace=" + namespace, JSON_OUTPUT_ARGUMENT);
     }
 
     private JsonNode validateWorkloadIdentity(JsonNode workload) {
-        JsonNode metadata = requiredObject(workload, "metadata");
+        JsonNode metadata = requiredObject(workload, METADATA_FIELD);
         if (!"apps/v1".equals(requiredText(workload, "apiVersion"))
                 || !kind.name().equals(requiredText(workload, "kind"))
                 || !name.equals(requiredText(metadata, "name"))
-                || !namespace.equals(requiredText(metadata, "namespace")))
+                || !namespace.equals(requiredText(metadata, NAMESPACE_FIELD)))
             throw new IllegalArgumentException("kubernetesWorkloadIdentityInvalid");
 
         return metadata;
@@ -339,7 +351,7 @@ public final class KubernetesWorkloadAlertTemplate implements AlertEvaluator {
     }
 
     private List<String> listArguments(String resource, String selector) {
-        List<String> arguments = new ArrayList<>(List.of("get", resource, "--namespace=" + namespace, "-o=json"));
+        List<String> arguments = new ArrayList<>(List.of("get", resource, "--namespace=" + namespace, JSON_OUTPUT_ARGUMENT));
         if (!selector.isEmpty())
             arguments.add("--selector=" + selector);
         return List.copyOf(arguments);
@@ -354,13 +366,13 @@ public final class KubernetesWorkloadAlertTemplate implements AlertEvaluator {
         Set<String> uids = new LinkedHashSet<>();
         for (JsonNode replicaSet : requiredArray(list, "items")) {
             if (controlledBy(replicaSet, Set.of(deploymentUid)))
-                uids.add(requiredText(replicaSet.path("metadata"), "uid"));
+                uids.add(requiredText(replicaSet.path(METADATA_FIELD), "uid"));
         }
         return Set.copyOf(uids);
     }
 
     private WorkloadHealth evaluateHealth(JsonNode workload) {
-        JsonNode metadata = requiredObject(workload, "metadata");
+        JsonNode metadata = requiredObject(workload, METADATA_FIELD);
         JsonNode spec = requiredObject(workload, "spec");
         JsonNode status = requiredObject(workload, "status");
         long generation = requiredLong(metadata, "generation");
@@ -381,8 +393,8 @@ public final class KubernetesWorkloadAlertTemplate implements AlertEvaluator {
     }
 
     private static void deploymentHealth(JsonNode spec, JsonNode status, Map<String, Long> metrics, List<String> reasons) {
-        long desired = optionalLong(spec, "replicas", 1);
-        compareMetric(status, "replicas", desired, metrics, reasons, "replicasMismatch");
+        long desired = optionalLong(spec, REPLICAS_FIELD, 1);
+        compareMetric(status, REPLICAS_FIELD, desired, metrics, reasons, "replicasMismatch");
         compareMetric(status, "updatedReplicas", desired, metrics, reasons, "updatedReplicasMismatch");
         compareMetric(status, "readyReplicas", desired, metrics, reasons, "readyReplicasMismatch");
         compareMetric(status, "availableReplicas", desired, metrics, reasons, "availableReplicasMismatch");
@@ -391,8 +403,8 @@ public final class KubernetesWorkloadAlertTemplate implements AlertEvaluator {
     }
 
     private static void statefulSetHealth(JsonNode spec, JsonNode status, Map<String, Long> metrics, List<String> reasons) {
-        long desired = optionalLong(spec, "replicas", 1);
-        compareMetric(status, "replicas", desired, metrics, reasons, "replicasMismatch");
+        long desired = optionalLong(spec, REPLICAS_FIELD, 1);
+        compareMetric(status, REPLICAS_FIELD, desired, metrics, reasons, "replicasMismatch");
         compareMetric(status, "readyReplicas", desired, metrics, reasons, "readyReplicasMismatch");
         compareMetric(status, "updatedReplicas", desired, metrics, reasons, "updatedReplicasMismatch");
         metrics.put("desiredReplicas", desired);
@@ -475,18 +487,18 @@ public final class KubernetesWorkloadAlertTemplate implements AlertEvaluator {
             if (!controlledBy(pod, allowedOwnerUids))
                 continue;
 
-            JsonNode metadata = requiredObject(pod, "metadata");
+            JsonNode metadata = requiredObject(pod, METADATA_FIELD);
             String uid = requiredText(metadata, "uid");
             String podName = requiredText(metadata, "name");
             JsonNode status = requiredObject(pod, "status");
             addCounters(counters, status.get("initContainerStatuses"), uid, podName, "init");
-            addCounters(counters, status.get("containerStatuses"), uid, podName, "container");
+            addCounters(counters, status.get("containerStatuses"), uid, podName, CONTAINER_FIELD);
         }
         return Map.copyOf(counters);
     }
 
     private static boolean controlledBy(JsonNode resource, Set<String> allowedUids) {
-        JsonNode references = resource.path("metadata").get("ownerReferences");
+        JsonNode references = resource.path(METADATA_FIELD).get("ownerReferences");
         if (references == null || !references.isArray())
             return false;
         for (JsonNode reference : references) {
@@ -536,9 +548,9 @@ public final class KubernetesWorkloadAlertTemplate implements AlertEvaluator {
         try {
             JsonNode root = JSON.readTree(state);
             if (!root.isObject() || root.path("version").asInt(-1) != STATE_VERSION
-                    || !root.path("restartTrackingEnabled").asBoolean(false)
+                    || !root.path(RESTART_TRACKING_ENABLED_FIELD).asBoolean(false)
                     || !identity.clusterFingerprint().equals(optionalText(root, "clusterFingerprint"))
-                    || !identity.namespace().equals(optionalText(root, "namespace"))
+                    || !identity.namespace().equals(optionalText(root, NAMESPACE_FIELD))
                     || !identity.kind().equals(optionalText(root, "kind"))
                     || !identity.name().equals(optionalText(root, "name"))
                     || !identity.workloadUid().equals(optionalText(root, "workloadUid")))
@@ -551,7 +563,7 @@ public final class KubernetesWorkloadAlertTemplate implements AlertEvaluator {
                 String key = requiredText(entry, "key");
                 RestartCounter counter = new RestartCounter(
                         requiredText(entry, "podUid"), requiredText(entry, "pod"), requiredText(entry, "type"),
-                        requiredText(entry, "container"), requiredLong(entry, "count")
+                        requiredText(entry, CONTAINER_FIELD), requiredLong(entry, "count")
                 );
                 if (counter.count() < 0 || counters.put(key, counter) != null)
                     return null;
@@ -566,11 +578,11 @@ public final class KubernetesWorkloadAlertTemplate implements AlertEvaluator {
         ObjectNode root = JSON.createObjectNode();
         root.put("version", STATE_VERSION);
         root.put("clusterFingerprint", identity.clusterFingerprint());
-        root.put("namespace", identity.namespace());
+        root.put(NAMESPACE_FIELD, identity.namespace());
         root.put("kind", identity.kind());
         root.put("name", identity.name());
         root.put("workloadUid", identity.workloadUid());
-        root.put("restartTrackingEnabled", restartTrackingEnabled);
+        root.put(RESTART_TRACKING_ENABLED_FIELD, restartTrackingEnabled);
         ArrayNode entries = root.putArray("counters");
         counters.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(entry -> {
             RestartCounter counter = entry.getValue();
@@ -579,7 +591,7 @@ public final class KubernetesWorkloadAlertTemplate implements AlertEvaluator {
             node.put("podUid", counter.podUid());
             node.put("pod", counter.podName());
             node.put("type", counter.type());
-            node.put("container", counter.container());
+            node.put(CONTAINER_FIELD, counter.container());
             node.put("count", counter.count());
         });
         return JSON.writeValueAsString(root);
@@ -587,25 +599,25 @@ public final class KubernetesWorkloadAlertTemplate implements AlertEvaluator {
 
     private AlertResult result(WorkloadHealth health, RestartEvaluation restarts, boolean restartTrackingEnabled, String extraReason) {
         LinkedHashMap<String, Object> status = new LinkedHashMap<>();
-        status.put("namespace", namespace);
+        status.put(NAMESPACE_FIELD, namespace);
         status.put("kind", kind.name());
         status.put("name", name);
-        status.put("metrics", health.metrics());
-        status.put("restartTrackingEnabled", restartTrackingEnabled);
+        status.put(METRICS_FIELD, health.metrics());
+        status.put(RESTART_TRACKING_ENABLED_FIELD, restartTrackingEnabled);
         List<String> reasons = new ArrayList<>(health.reasons());
         if (restartTrackingEnabled && restarts.total() > 0)
             reasons.add("restartCountPresent");
         if (extraReason != null)
             reasons.add(extraReason);
         if (!reasons.isEmpty())
-            status.put("reasons", List.copyOf(reasons));
+            status.put(REASONS_FIELD, List.copyOf(reasons));
         if (restartTrackingEnabled) {
             status.put("restartTotal", restarts.total());
             status.put("restartDelta", restarts.totalDelta());
             status.put("affectedContainerCount", restarts.affected().size());
             if (!restarts.affected().isEmpty()) {
                 status.put("affectedContainers", restarts.affected().stream().limit(MAX_AFFECTED).map(delta -> Map.of(
-                        "pod", delta.pod(), "type", delta.type(), "container", delta.container(),
+                        "pod", delta.pod(), "type", delta.type(), CONTAINER_FIELD, delta.container(),
                         "restartCount", delta.count(), "delta", delta.delta()
                 )).toList());
             }
@@ -614,7 +626,7 @@ public final class KubernetesWorkloadAlertTemplate implements AlertEvaluator {
     }
 
     private AlertResult operationalWarning(CommandResult result, String fallback) {
-        return AlertResult.warn(message("reason", result.reason(fallback), "namespace", namespace, "kind", kind.name(), "name", name));
+        return AlertResult.warn(message(REASON_FIELD, result.reason(fallback), NAMESPACE_FIELD, namespace, "kind", kind.name(), "name", name));
     }
 
     private AlertResult operationalWarning(CommandResult result, String fallback, WorkloadHealth health) {
@@ -623,26 +635,26 @@ public final class KubernetesWorkloadAlertTemplate implements AlertEvaluator {
 
     private AlertResult operationalWarning(String reason, WorkloadHealth health) {
         LinkedHashMap<String, Object> status = new LinkedHashMap<>();
-        status.put("reason", reason);
-        status.put("namespace", namespace);
+        status.put(REASON_FIELD, reason);
+        status.put(NAMESPACE_FIELD, namespace);
         status.put("kind", kind.name());
         status.put("name", name);
-        status.put("metrics", health.metrics());
+        status.put(METRICS_FIELD, health.metrics());
         List<String> reasons = new ArrayList<>(health.reasons());
         reasons.add(reason);
-        status.put("reasons", List.copyOf(reasons));
+        status.put(REASONS_FIELD, List.copyOf(reasons));
         return AlertResult.warn(status);
     }
 
     private AlertResult baselineLimitWarning(WorkloadHealth health, Map<String, RestartCounter> counters) {
         LinkedHashMap<String, Object> status = new LinkedHashMap<>();
-        status.put("namespace", namespace);
+        status.put(NAMESPACE_FIELD, namespace);
         status.put("kind", kind.name());
         status.put("name", name);
-        status.put("metrics", health.metrics());
+        status.put(METRICS_FIELD, health.metrics());
         List<String> reasons = new ArrayList<>(health.reasons());
         reasons.add("restartBaselineLimitExceeded");
-        status.put("reasons", List.copyOf(reasons));
+        status.put(REASONS_FIELD, List.copyOf(reasons));
         status.put("restartBaselineEntries", counters.size());
         status.put("restartTotal", counters.values().stream().mapToLong(RestartCounter::count).sum());
         return AlertResult.warn(status);
@@ -777,6 +789,26 @@ public final class KubernetesWorkloadAlertTemplate implements AlertEvaluator {
     }
 
     record CommandResult(int exitCode, byte[] stdout, String stderrCategory, boolean timedOut, boolean outputLimitExceeded) {
+        @Override
+        public boolean equals(Object other) {
+            return this == other || other instanceof CommandResult that
+                    && exitCode == that.exitCode
+                    && timedOut == that.timedOut
+                    && outputLimitExceeded == that.outputLimitExceeded
+                    && Objects.equals(stderrCategory, that.stderrCategory)
+                    && Arrays.equals(stdout, that.stdout);
+        }
+
+        @Override
+        public int hashCode() {
+            return 31 * Objects.hash(exitCode, stderrCategory, timedOut, outputLimitExceeded) + Arrays.hashCode(stdout);
+        }
+
+        @Override
+        public String toString() {
+            return "CommandResult[exitCode=" + exitCode + ", stdoutLength=" + (stdout == null ? null : stdout.length) + ", stderrCategory=" + stderrCategory + ", timedOut=" + timedOut + ", outputLimitExceeded=" + outputLimitExceeded + "]";
+        }
+
         boolean success() {
             return exitCode == 0 && !timedOut && !outputLimitExceeded;
         }
@@ -793,8 +825,11 @@ public final class KubernetesWorkloadAlertTemplate implements AlertEvaluator {
     static final class ProcessKubectlSession implements KubectlSession {
         private static final Set<PosixFilePermission> DIRECTORY_PERMISSIONS = PosixFilePermissions.fromString("rwx------");
         private static final Set<PosixFilePermission> FILE_PERMISSIONS = PosixFilePermissions.fromString("rw-------");
-        private static final byte[] KUBERC = ("apiVersion: kubectl.config.k8s.io/v1beta1\n"
-                + "kind: Preference\ncredentialPluginPolicy: DenyAll\n").getBytes(StandardCharsets.UTF_8);
+        private static final byte[] KUBERC_CONTENT = """
+                apiVersion: kubectl.config.k8s.io/v1beta1
+                kind: Preference
+                credentialPluginPolicy: DenyAll
+                """.getBytes(StandardCharsets.UTF_8);
 
         private final Path directory;
         private final Path kubeconfig;
@@ -824,7 +859,7 @@ public final class KubernetesWorkloadAlertTemplate implements AlertEvaluator {
             try {
                 Path home = Files.createDirectory(directory.resolve("home"), PosixFilePermissions.asFileAttribute(DIRECTORY_PERMISSIONS));
                 Path kubeconfig = createFile(directory.resolve("kubeconfig"), credentials.kubeconfig().getBytes(StandardCharsets.UTF_8));
-                Path kuberc = createFile(directory.resolve("kuberc"), KUBERC);
+                Path kuberc = createFile(directory.resolve("kuberc"), KUBERC_CONTENT);
                 return new ProcessKubectlSession(directory, kubeconfig, kuberc, home, executable, context, deadlineNanos);
             } catch (IOException | RuntimeException exception) {
                 deleteTree(directory);
