@@ -47,6 +47,7 @@ interface ParameterForm {
 
 interface AlertForm {
   templateId: number | null;
+  wizardDraftId?: string | null;
   name: string;
   description: string;
   cronExpression: string;
@@ -126,7 +127,6 @@ export class AlertsComponent implements OnInit {
   protected readonly activeTab = signal<AlertTab>('alerts');
   protected readonly playwrightWizardOpen = signal(false);
   private readonly wizardApi = inject(PlaywrightWizardApiService);
-  private wizardDraftId: string | null = null;
   protected readonly alerts = signal<readonly Alert[]>([]);
   protected readonly templates = signal<readonly AlertTemplate[]>([]);
   protected readonly tags = signal<readonly AlertTag[]>([]);
@@ -639,7 +639,6 @@ export class AlertsComponent implements OnInit {
   }
 
   protected openCreate(templateId?: number): void {
-    this.wizardDraftId = null;
     this.editingAlert.set(null);
     const template = templateId === undefined
       ? null
@@ -654,8 +653,7 @@ export class AlertsComponent implements OnInit {
     const template = this.templates().find(value => value.templateKey.endsWith('.PlaywrightPageAlertTemplate'));
     if (!template) return;
     this.openCreate(template.id);
-    this.wizardDraftId = prepared.id;
-    this.patchForm({ enabled: false });
+    this.patchForm({ enabled: false, wizardDraftId: prepared.id });
     const values: Record<string, string> = {
       url: prepared.settings.url, steps: prepared.settings.steps,
       chromiumEnabled: String(prepared.settings.browsers.includes('chromium')),
@@ -720,7 +718,7 @@ export class AlertsComponent implements OnInit {
     const draft = this.drafts.read<AlertForm, Alert>('alerts');
     if (!draft || this.saving()) return;
     this.editorViewport.capture(draft.editing ? `alert-${draft.editing.id}` : 'alert-create');
-    this.form.set(draft.form);
+    this.form.set({ ...draft.form, description: draft.form.description ?? '', wizardDraftId: draft.editing ? null : draft.form.wizardDraftId ?? null });
     this.editingAlert.set(draft.editing);
     this.formError.set(null);
     this.editorOpen.set(true);
@@ -729,6 +727,7 @@ export class AlertsComponent implements OnInit {
   protected closeEditor(): void {
     if (!this.saving()) {
       this.drafts.remove('alerts');
+      this.patchForm({ wizardDraftId: null });
       this.editorOpen.set(false);
       this.editorViewport.restore();
     }
@@ -763,12 +762,13 @@ export class AlertsComponent implements OnInit {
   protected selectTemplateId(templateId: number | null): void {
     const template = this.templates().find((item) => item.id === templateId);
     if (!template) {
-      this.form.update((form) => ({ ...form, templateId: null, parameters: {} }));
+      this.form.update((form) => ({ ...form, templateId: null, wizardDraftId: null, parameters: {} }));
       return;
     }
     const current = this.form();
     this.form.set({
       ...this.formForTemplate(template),
+      wizardDraftId: current.templateId === template.id ? current.wizardDraftId ?? null : null,
       name: current.name,
       description: current.description,
       cronExpression: current.cronExpression,
@@ -828,6 +828,7 @@ export class AlertsComponent implements OnInit {
     const form = this.form();
     const template = this.selectedTemplate();
     const editing = this.editingAlert();
+    const wizardDraftId = editing ? null : form.wizardDraftId ?? null;
     const validationErrors: AlertFormErrors = {};
     if (!template)
       validationErrors.template = this.localization.translate('alerts.form.templateRequired');
@@ -891,10 +892,10 @@ export class AlertsComponent implements OnInit {
       };
       if (editing) await this.api.updateAlert(editing.id, request);
       else await this.api.createAlert(request);
-      if (this.wizardDraftId) {
-        try { await this.wizardApi.request('DELETE', { id: this.wizardDraftId }); } catch { /* The alert was saved; retaining its draft is safe. */ }
-        this.wizardDraftId = null;
+      if (wizardDraftId) {
+        try { await this.wizardApi.request('DELETE', { id: wizardDraftId }); } catch { /* The alert was saved; retaining its draft is safe. */ }
       }
+      this.patchForm({ wizardDraftId: null });
       this.drafts.remove('alerts');
       this.editorOpen.set(false);
       await Promise.all([this.loadAlerts(), this.loadTemplates()]);
@@ -1185,6 +1186,7 @@ export class AlertsComponent implements OnInit {
   private emptyForm(): AlertForm {
     return {
       templateId: null,
+      wizardDraftId: null,
       name: '',
       description: '',
       cronExpression: '-',
