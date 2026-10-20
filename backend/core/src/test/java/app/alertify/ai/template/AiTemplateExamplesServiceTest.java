@@ -25,6 +25,8 @@ import app.alertify.alerts.template.TemplateParameterValidation;
 import app.alertify.alerts.template.annotation.AlertParameter;
 import app.alertify.alerts.template.annotation.AlertParameterSource;
 import app.alertify.alerts.template.annotation.AlertTemplate;
+import app.alertify.alerts.templates.PlaywrightPageAlertTemplate;
+import app.alertify.alerts.templates.WebRequestAlertTemplate;
 import app.alertify.procedures.template.annotation.ProcedureParameter;
 import app.alertify.procedures.template.annotation.ProcedureTemplate;
 import app.alertify.worker.contract.DatabaseCredentials;
@@ -69,10 +71,10 @@ class AiTemplateExamplesServiceTest {
                         return literal(parameter.getType(), literal);
                     }).toArray();
                     assertThat(constructor.newInstance(arguments)).isInstanceOf(type);
-                    if (type.getSimpleName().equals("PlaywrightPageAlertTemplate"))
+                    if (type == PlaywrightPageAlertTemplate.class)
                         org.springframework.test.util.ReflectionTestUtils.invokeMethod(type, "parseCommands", parameters.get("steps").textValue());
 
-                    if (type.getSimpleName().equals("WebRequestAlertTemplate")) {
+                    if (type == WebRequestAlertTemplate.class) {
                         for (String field : List.of("headersJson", "headersOverrideJson", "jsonAssertions", "responseBodyRegexes")) {
                             var configured = parameters.get(field);
                             if (configured == null || configured.bindingRequirement() != null)

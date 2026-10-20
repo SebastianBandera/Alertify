@@ -508,6 +508,7 @@ export const EN_TRANSLATIONS = {
   'alerts.wizard.observe': 'Inspect page',
   'alerts.wizard.snapshot': 'ARIA snapshot for AI',
   'alerts.wizard.chat': 'Wizard chat',
+  'alerts.wizard.interactionMode': 'Interaction mode',
   'alerts.wizard.ask': 'Propose and confirm',
   'alerts.wizard.auto': 'Execute and record',
   'alerts.wizard.you': 'You',

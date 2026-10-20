@@ -864,6 +864,21 @@
     "notes": []
   },
   {
+    "templateKey": "app.alertify.procedures.templates.JwtNegativeTestTokensProcedureTemplate",
+    "name": "Negative JWT test variants",
+    "description": "Generate unsigned, invalid-signature and tampered-payload JWT variants.",
+    "text": {},
+    "bindings": {
+      "jwt": {
+        "source": "SECRET",
+        "requirement": "Existing STRING secret containing a signed compact JWT for authorized negative testing."
+      }
+    },
+    "notes": [
+      "The input signature is not verified. Generated tokens are sensitive and must remain redacted."
+    ]
+  },
+  {
     "templateKey": "app.alertify.procedures.templates.TotpProcedureTemplate",
     "name": "Standard TOTP",
     "description": "Generate a six-digit SHA1 code with a 30-second period.",

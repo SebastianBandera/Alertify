@@ -1041,6 +1041,7 @@ export type TranslationKey =
   | 'alerts.wizard.observe'
   | 'alerts.wizard.snapshot'
   | 'alerts.wizard.chat'
+  | 'alerts.wizard.interactionMode'
   | 'alerts.wizard.ask'
   | 'alerts.wizard.auto'
   | 'alerts.wizard.you'

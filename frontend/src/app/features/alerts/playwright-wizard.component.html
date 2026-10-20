@@ -52,7 +52,7 @@
       </section>
 
       <section class="chat-panel" [attr.aria-label]="t('chat')">
-        <div class="panel-heading"><h3>{{ t('chat') }}</h3><select [ngModel]="settings().mode" (ngModelChange)="patch({ mode: $event })" [disabled]="busy() || awaitingApproval()"><option value="ASK">{{ t('ask') }}</option><option value="AUTO">{{ t('auto') }}</option></select></div>
+        <div class="panel-heading"><h3>{{ t('chat') }}</h3><label for="playwright-wizard-mode">{{ t('interactionMode') }}<select id="playwright-wizard-mode" [ngModel]="settings().mode" (ngModelChange)="patch({ mode: $event })" [disabled]="busy() || awaitingApproval()"><option value="ASK">{{ t('ask') }}</option><option value="AUTO">{{ t('auto') }}</option></select></label></div>
         <div class="messages" aria-live="polite">
           @for (entry of state()!.document.messages; track $index) {
             <article [hidden]="entry.role === 'SYSTEM'" [class.user]="entry.role === 'USER'"><strong>{{ t(entry.role === 'USER' ? 'you' : 'assistant') }}</strong><app-ai-chat-message [content]="entry.content" />@if (entry.hasImage) { <small>{{ t('captureSent') }}</small> }</article>

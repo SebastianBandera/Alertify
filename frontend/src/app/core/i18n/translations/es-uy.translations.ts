@@ -508,6 +508,7 @@ export const ES_UY_TRANSLATIONS = {
   'alerts.wizard.observe': 'Inspeccionar página',
   'alerts.wizard.snapshot': 'Snapshot ARIA para IA',
   'alerts.wizard.chat': 'Chat del asistente',
+  'alerts.wizard.interactionMode': 'Modo de interacción',
   'alerts.wizard.ask': 'Proponer y confirmar',
   'alerts.wizard.auto': 'Ejecutar y registrar',
   'alerts.wizard.you': 'Vos',
