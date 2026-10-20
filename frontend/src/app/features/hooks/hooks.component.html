@@ -56,15 +56,15 @@
       <p class="state">{{ dynamic('hooks.empty') }}</p>
     } @else {
       <div class="table-shell">
-        <table>
+        <table appResizableTable="hooks">
           <thead><tr>
-            <th>{{ dynamic('hooks.column.name') }}</th>
-            <th>{{ dynamic('hooks.column.tags') }}</th>
-            <th>{{ dynamic('hooks.column.url') }}</th>
-            <th>{{ dynamic('hooks.column.mode') }}</th>
-            <th>{{ dynamic('hooks.column.targets') }}</th>
-            <th>{{ dynamic('hooks.column.status') }}</th>
-            <th>{{ dynamic('hooks.column.actions') }}</th>
+            <th data-column-id="name">{{ dynamic('hooks.column.name') }}</th>
+            <th data-column-id="tags">{{ dynamic('hooks.column.tags') }}</th>
+            <th data-column-id="url">{{ dynamic('hooks.column.url') }}</th>
+            <th data-column-id="mode">{{ dynamic('hooks.column.mode') }}</th>
+            <th data-column-id="targets">{{ dynamic('hooks.column.targets') }}</th>
+            <th data-column-id="status" data-resize-min-content="hooks.enabled|hooks.disabled">{{ dynamic('hooks.column.status') }}</th>
+            <th data-column-id="actions" data-resize-min-content="actions">{{ dynamic('hooks.column.actions') }}</th>
           </tr></thead>
           <tbody>
             @for (hook of hooks(); track hook.id) {

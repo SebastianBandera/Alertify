@@ -50,16 +50,16 @@
       <p class="state">{{ dynamic('pipes.empty') }}</p>
     } @else {
       <div class="table-shell">
-        <table class="pipes-table">
+        <table class="pipes-table" appResizableTable="pipes">
           <colgroup><col class="pipe-name-column"><col class="pipe-tags-column"><col class="pipe-steps-column"><col class="pipe-concurrent-column"><col class="pipe-status-column"><col class="pipe-updated-column"><col class="pipe-actions-column"></colgroup>
           <thead><tr>
-            <th>{{ dynamic('pipes.column.name') }}</th>
-            <th>{{ dynamic('pipes.column.tags') }}</th>
-            <th>{{ dynamic('pipes.column.steps') }}</th>
-            <th>{{ dynamic('pipes.column.concurrent') }}</th>
-            <th>{{ dynamic('pipes.column.status') }}</th>
-            <th>{{ dynamic('pipes.column.updatedAt') }}</th>
-            <th>{{ dynamic('pipes.column.actions') }}</th>
+            <th data-column-id="name">{{ dynamic('pipes.column.name') }}</th>
+            <th data-column-id="tags">{{ dynamic('pipes.column.tags') }}</th>
+            <th data-column-id="steps">{{ dynamic('pipes.column.steps') }}</th>
+            <th data-column-id="concurrent">{{ dynamic('pipes.column.concurrent') }}</th>
+            <th data-column-id="status" data-resize-min-content="pipes.enabled|pipes.disabled">{{ dynamic('pipes.column.status') }}</th>
+            <th data-column-id="updatedAt">{{ dynamic('pipes.column.updatedAt') }}</th>
+            <th data-column-id="actions" data-resize-min-content="actions">{{ dynamic('pipes.column.actions') }}</th>
           </tr></thead>
           <tbody>
             @for (pipe of pipes(); track pipe.id) {

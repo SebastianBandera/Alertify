@@ -23,6 +23,7 @@ import { LocalizationService } from '../../core/i18n/localization.service';
 import { AdminEventChannelService } from '../../core/realtime/admin-event-channel.service';
 import { EditorDraftService } from '../../shared/editor-drafts/editor-draft.service';
 import { EditorViewportService } from '../../shared/editor-viewport/editor-viewport.service';
+import { ResizableTableDirective } from '../../shared/resizable-table/resizable-table.directive';
 
 type HookTab = 'hooks' | 'history';
 
@@ -73,7 +74,7 @@ function hookTab(value: string | null): HookTab {
 
 @Component({
   selector: 'app-hooks',
-  imports: [DatePipe, FormsModule, RouterLink],
+  imports: [ResizableTableDirective, DatePipe, FormsModule, RouterLink],
   templateUrl: './hooks.component.html',
   styleUrl: './hooks.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,

@@ -23,6 +23,7 @@ import { LocalizationService } from '../../core/i18n/localization.service';
 import { AdminEventChannelService } from '../../core/realtime/admin-event-channel.service';
 import { EditorDraftService } from '../../shared/editor-drafts/editor-draft.service';
 import { EditorViewportService } from '../../shared/editor-viewport/editor-viewport.service';
+import { ResizableTableDirective } from '../../shared/resizable-table/resizable-table.directive';
 import { ExpressionEditorComponent, ExpressionEditorNames } from '../../shared/expression-editor/expression-editor.component';
 
 type PipeTab = 'pipes' | 'history';
@@ -83,7 +84,7 @@ function readStoredPageSize(): number {
 
 @Component({
   selector: 'app-pipes',
-  imports: [DatePipe, FormsModule, ExpressionEditorComponent],
+  imports: [ResizableTableDirective, DatePipe, FormsModule, ExpressionEditorComponent],
   templateUrl: './pipes.component.html',
   styleUrl: './pipes.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,

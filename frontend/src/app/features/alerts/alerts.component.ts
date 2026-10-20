@@ -26,6 +26,7 @@ import { isCompatibleConfigurationValueType, isCompatibleSecretValueType } from 
 import { templateClassName } from '../../core/utils/template-key';
 import { EditorDraftService } from '../../shared/editor-drafts/editor-draft.service';
 import { EditorViewportService } from '../../shared/editor-viewport/editor-viewport.service';
+import { ResizableTableDirective } from '../../shared/resizable-table/resizable-table.directive';
 import { SearchableSelectComponent, SearchableSelectOption } from '../../shared/searchable-select/searchable-select.component';
 import { PlaywrightWizardComponent } from './playwright-wizard.component';
 import { PlaywrightWizardApiService, WizardSettings } from './playwright-wizard-api.service';
@@ -104,7 +105,7 @@ function alertTab(value: string | null): AlertTab {
 
 @Component({
   selector: 'app-alerts',
-  imports: [DatePipe, FormsModule, SearchableSelectComponent, PlaywrightWizardComponent],
+  imports: [ResizableTableDirective, DatePipe, FormsModule, SearchableSelectComponent, PlaywrightWizardComponent],
   templateUrl: './alerts.component.html',
   styleUrl: './alerts.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,

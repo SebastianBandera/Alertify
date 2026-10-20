@@ -25,6 +25,7 @@ import { isCompatibleConfigurationValueType, isCompatibleSecretValueType } from 
 import { templateClassName } from '../../core/utils/template-key';
 import { EditorDraftService } from '../../shared/editor-drafts/editor-draft.service';
 import { EditorViewportService } from '../../shared/editor-viewport/editor-viewport.service';
+import { ResizableTableDirective } from '../../shared/resizable-table/resizable-table.directive';
 import { SearchableSelectComponent, SearchableSelectOption } from '../../shared/searchable-select/searchable-select.component';
 
 type ProcedureTab = 'procedures' | 'templates' | 'wizards' | 'history';
@@ -105,7 +106,7 @@ function procedureTab(value: string | null): ProcedureTab {
 
 @Component({
   selector: 'app-procedures',
-  imports: [DatePipe, FormsModule, SearchableSelectComponent],
+  imports: [ResizableTableDirective, DatePipe, FormsModule, SearchableSelectComponent],
   templateUrl: './procedures.component.html',
   styleUrl: './procedures.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,

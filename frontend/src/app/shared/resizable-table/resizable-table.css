@@ -1,0 +1,91 @@
+/* Global because the directive enhances headers owned by several components. */
+table[appResizableTable] th.resizable-table__heading {
+  position: relative;
+}
+
+table[appResizableTable] .table-column-resize {
+  position: absolute;
+  z-index: 2;
+  inset: 0 0 0 auto;
+  width: 10px;
+  cursor: col-resize;
+  touch-action: none;
+  user-select: none;
+}
+
+table[appResizableTable] .table-column-resize::after {
+  position: absolute;
+  top: 22%;
+  right: 1px;
+  bottom: 22%;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--border);
+  content: '';
+}
+
+table[appResizableTable] .table-column-resize:hover::after,
+table[appResizableTable] .table-column-resize:focus-visible::after,
+table.resizable-table--dragging .table-column-resize:focus::after {
+  background: var(--primary);
+}
+
+table[appResizableTable] .table-column-resize:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+
+table.resizable-table--custom {
+  min-width: 0 !important;
+  max-width: none !important;
+  table-layout: fixed !important;
+}
+
+table.resizable-table--custom th,
+table.resizable-table--custom td {
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+table.resizable-table--custom :is(strong, small, code, .template-cell, .template-name-cell, .template-class-cell, .parameter-summary, .url, .tag, .badge) {
+  min-width: 0 !important;
+  max-width: 100% !important;
+  overflow-wrap: anywhere;
+}
+
+table.resizable-table--custom :is(.tag, .badge, .updated-at span, .updated-at small) {
+  white-space: normal !important;
+}
+
+table.resizable-table--custom :is(.actions, .actions button),
+table.resizable-table-measure :is(.badge, .actions, .actions button) {
+  white-space: nowrap;
+}
+
+table.resizable-table--custom .actions button,
+table.resizable-table-measure .actions button {
+  flex-shrink: 0;
+}
+
+/* Intrinsic measurements use the component's scoped styles, without its column widths. */
+table.resizable-table-measure {
+  position: fixed !important;
+  top: 0;
+  left: -100000px;
+  width: min-content !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  table-layout: auto !important;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+table.resizable-table-measure :is(th, td) {
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  white-space: nowrap !important;
+}

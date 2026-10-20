@@ -83,14 +83,15 @@
       <p class="state">{{ localization.translate('procedures.empty') }}</p>
     } @else {
       <div class="table-shell">
-        <table class="instances-table">
+        <table class="instances-table" appResizableTable="procedures">
           <thead><tr>
-            <th>{{ localization.translate('procedures.column.name') }}</th>
-            <th>{{ localization.translate('procedures.column.template') }}</th>
-            <th>{{ localization.translate('procedures.column.tags') }}</th>
-            <th>{{ localization.translate('procedures.column.cron') }}</th>
-            <th>{{ localization.translate('procedures.column.status') }}</th>
+            <th data-column-id="name">{{ localization.translate('procedures.column.name') }}</th>
+            <th data-column-id="template">{{ localization.translate('procedures.column.template') }}</th>
+            <th data-column-id="tags">{{ localization.translate('procedures.column.tags') }}</th>
+            <th data-column-id="cron">{{ localization.translate('procedures.column.cron') }}</th>
+            <th data-column-id="status" data-resize-min-content="procedures.enabled|procedures.disabled">{{ localization.translate('procedures.column.status') }}</th>
             <th
+              data-column-id="updatedAt"
               class="sortable-column"
               scope="col"
               [attr.aria-sort]="updatedAtSort() === null ? 'none' : updatedAtSort() === 'desc' ? 'descending' : 'ascending'"
@@ -111,7 +112,7 @@
                 ></span>
               </button>
             </th>
-            <th>{{ localization.translate('procedures.column.actions') }}</th>
+            <th data-column-id="actions" data-resize-min-content="actions">{{ localization.translate('procedures.column.actions') }}</th>
           </tr></thead>
           <tbody>
             @for (procedure of procedures(); track procedure.id) {
@@ -217,16 +218,16 @@
       <p class="state">{{ localization.translate('procedures.templates.noMatching') }}</p>
     } @else {
       <div class="table-shell">
-        <table>
+        <table appResizableTable="procedure-templates">
           <thead><tr>
-            <th class="template-name-cell">{{ localization.translate('procedures.templates.column.template') }}</th>
-            <th class="template-class-cell">{{ localization.translate('procedures.templates.column.key') }}</th>
-            <th>{{ localization.translate('procedures.column.capability') }}</th>
-            <th>{{ localization.translate('procedures.column.tags') }}</th>
-            <th>{{ localization.translate('procedures.templates.parameters') }}</th>
-            <th>{{ localization.translate('procedures.templates.instances') }}</th>
-            <th>{{ localization.translate('procedures.templates.result') }}</th>
-            <th>{{ localization.translate('procedures.column.actions') }}</th>
+            <th data-column-id="name" class="template-name-cell">{{ localization.translate('procedures.templates.column.template') }}</th>
+            <th data-column-id="key" class="template-class-cell">{{ localization.translate('procedures.templates.column.key') }}</th>
+            <th data-column-id="capability">{{ localization.translate('procedures.column.capability') }}</th>
+            <th data-column-id="tags">{{ localization.translate('procedures.column.tags') }}</th>
+            <th data-column-id="parameters">{{ localization.translate('procedures.templates.parameters') }}</th>
+            <th data-column-id="instances">{{ localization.translate('procedures.templates.instances') }}</th>
+            <th data-column-id="result">{{ localization.translate('procedures.templates.result') }}</th>
+            <th data-column-id="actions" data-resize-min-content="actions">{{ localization.translate('procedures.column.actions') }}</th>
           </tr></thead>
           <tbody>
             @for (template of pagedTemplates(); track template.id) {
@@ -370,14 +371,14 @@
       <p class="state">{{ localization.translate('procedures.history.empty') }}</p>
     } @else {
       <div class="table-shell">
-        <table>
+        <table appResizableTable="procedure-history">
           <thead><tr>
-            <th>{{ localization.translate('procedures.history.startedFinishedAt') }}</th>
-            <th>{{ localization.translate('procedures.column.name') }}</th>
-            <th>{{ localization.translate('procedures.history.trigger') }}</th>
-            <th>{{ localization.translate('procedures.history.parent') }}</th>
-            <th>{{ localization.translate('procedures.history.status') }}</th>
-            <th>{{ localization.translate('procedures.history.result') }}</th>
+            <th data-column-id="startedFinishedAt">{{ localization.translate('procedures.history.startedFinishedAt') }}</th>
+            <th data-column-id="name">{{ localization.translate('procedures.column.name') }}</th>
+            <th data-column-id="trigger">{{ localization.translate('procedures.history.trigger') }}</th>
+            <th data-column-id="parent">{{ localization.translate('procedures.history.parent') }}</th>
+            <th data-column-id="status" data-resize-min-content="RUNNING|COMPLETED|ERROR">{{ localization.translate('procedures.history.status') }}</th>
+            <th data-column-id="result">{{ localization.translate('procedures.history.result') }}</th>
           </tr></thead>
           <tbody>
             @for (execution of executions(); track execution.executionId) {

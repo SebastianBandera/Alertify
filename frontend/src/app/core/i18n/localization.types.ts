@@ -1,6 +1,9 @@
 export type AppLocale = 'en' | 'es-UY';
 
 export type TranslationKey =
+  | 'table.resize.column'
+  | 'table.resize.help'
+  | 'table.resize.pixels'
   | 'brand.home'
   | 'brand.subtitle'
   | 'navigation.primary'
