@@ -130,6 +130,23 @@ class AlertTemplateCompilerTest {
         );
     }
 
+    @Test
+    void compilesAndExecutesTheJwtNegativeTokensProcedureAsASingleSourceUnit() throws Exception {
+        Path sourcePath = Path.of("../alert-templates/src/main/java/app/alertify/procedures/templates/JwtNegativeTestTokensProcedureTemplate.java");
+        String source = Files.readString(sourcePath, StandardCharsets.UTF_8);
+        String className = "app.alertify.procedures.templates.JwtNegativeTestTokensProcedureTemplate";
+        AlertTemplateCompiler compiler = new AlertTemplateCompiler(properties());
+        compiler.synchronize(className, sha256(source), source, app.alertify.worker.grpc.TemplateKind.TEMPLATE_KIND_PROCEDURE);
+        assertThat(compiler.isProcedureAvailable(className, sha256(source))).isTrue();
+        AlertParameter parameter = AlertParameter.newBuilder().setName("jwt").setJavaType(String.class.getName())
+                .setValue("eyJhbGciOiJSUzI1NiJ9.e30.AQID").build();
+        var instance = compiler.getProcedure(className, sha256(source)).newInstance(java.util.List.of(parameter),
+                null, null, null, null, java.time.Instant.now());
+        var result = instance.evaluator().execute(new app.alertify.procedures.ProcedureExecutionContext(java.time.Instant.EPOCH, java.util.Map.of()));
+        assertThat(result.propertyNames()).containsExactly("unsignedToken", "invalidSignatureToken", "tamperedPayloadToken");
+        assertThat(instance.outputs()).isEmpty();
+    }
+
     private static String sha256(String value) throws Exception {
         return HexFormat.of().formatHex(
                 MessageDigest.getInstance("SHA-256")

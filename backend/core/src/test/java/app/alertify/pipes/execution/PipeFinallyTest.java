@@ -239,6 +239,67 @@ class PipeFinallyTest {
                 .containsEntry("headersOverrideJson", new PipeParameterValue("[\"Authorization: Bearer opaque-token\"]", true)));
     }
 
+    @Test
+    void passesSensitiveJwtThroughTheGeneratorAndChecksEveryVariantAfterFailures() {
+        var persistence = mock(PipeExecutionPersistenceService.class);
+        var procedures = mock(ProcedureExecutionOrchestrator.class);
+        var alerts = mock(AlertExecutionOrchestrator.class);
+        Pipe pipe = mock(Pipe.class);
+        when(pipe.getId()).thenReturn(1L);
+        when(pipe.isEnabled()).thenReturn(true);
+        when(pipe.getFinallyTimeoutMillis()).thenReturn(60_000L);
+        when(persistence.definition(1L)).thenReturn(pipe);
+        PipeStep exchange = step(pipe, "exchange", 0, 11, PipeStepPhase.MAIN);
+        PipeStep mutate = step(pipe, "mutate", 1, 12, PipeStepPhase.MAIN);
+        var jwtParameter = mock(ProcedureTemplateParameterDefinition.class);
+        when(jwtParameter.getParameterKey()).thenReturn("jwt");
+        mutate.addBinding(new PipeStepBinding(mutate, jwtParameter, exchange, "/accessToken", null));
+        var headersParameter = mock(AlertTemplateParameterDefinition.class);
+        when(headersParameter.getParameterKey()).thenReturn("headersOverrideJson");
+        var names = List.of("unsignedToken", "invalidSignatureToken", "tamperedPayloadToken");
+        var steps = new java.util.ArrayList<>(List.of(exchange, mutate));
+        for (int index = 0; index < names.size(); index++) {
+            Alert alert = mock(Alert.class);
+            when(alert.getId()).thenReturn(21L + index);
+            when(alert.getName()).thenReturn(names.get(index));
+            when(alert.isEnabled()).thenReturn(true);
+            PipeStep check = PipeStep.alert(pipe, names.get(index), index + 2, alert, 30_000, List.of("SUCCESS", "WARN", "ERROR"));
+            check.addBinding(new PipeStepBinding(check, headersParameter, mutate, "/" + names.get(index),
+                    "[{{utils.JSON_STRING(Authorization: Bearer {{pipe.VALUE}})}}]"));
+            steps.add(check);
+        }
+        when(pipe.getSteps()).thenReturn(steps);
+        String original = "eyJhbGciOiJSUzI1NiJ9.e30.AQID";
+        var json = JsonMapper.builder().build();
+        var variants = new app.alertify.procedures.templates.JwtNegativeTestTokensProcedureTemplate(original).execute(null);
+        when(procedures.executePipeStep(eq(11L), any(), any(), anyInt(), any(), any(), anyMap(), anyMap()))
+                .thenReturn(new ProcedureExecutionOrchestrator.ProcedurePipeExecution(UUID.randomUUID(),
+                        json.createObjectNode().put("accessToken", original), null, null, List.of(), List.of(), true));
+        when(procedures.executePipeStep(eq(12L), any(), any(), anyInt(), any(), any(), anyMap(), anyMap())).thenAnswer(invocation -> {
+            var inputs = invocation.<Map<String, PipeParameterValue>>getArgument(7);
+            assertThat(inputs.get("jwt").sensitive()).isTrue();
+            assertThat(inputs.get("jwt").value().equals(original)).isTrue();
+            return new ProcedureExecutionOrchestrator.ProcedurePipeExecution(UUID.randomUUID(), variants,
+                    null, null, List.of(), List.of(), true);
+        });
+        when(alerts.executePipe(anyLong(), anyString(), anyBoolean(), any(), anyString(), any(), any(), any(), anyString(), anyMap()))
+                .thenReturn(new AlertExecutionOrchestrator.AlertHookExecution(UUID.randomUUID(), AlertExecutionStatus.WARN, false, false, false))
+                .thenReturn(new AlertExecutionOrchestrator.AlertHookExecution(UUID.randomUUID(), AlertExecutionStatus.ERROR, false, false, false))
+                .thenReturn(new AlertExecutionOrchestrator.AlertHookExecution(UUID.randomUUID(), AlertExecutionStatus.SUCCESS, false, false, false));
+        try (var orchestrator = orchestrator(persistence, procedures, alerts)) {
+            orchestrator.invoke(new PipeInvocationTokenService.Claims(1, UUID.randomUUID(), UUID.randomUUID(), 1, Instant.now().plusSeconds(30)));
+        }
+        var inputs = org.mockito.ArgumentCaptor.forClass(Map.class);
+        verify(alerts, times(3)).executePipe(anyLong(), anyString(), anyBoolean(), any(), anyString(), any(), any(), any(), anyString(), inputs.capture());
+        verify(persistence).finish(any(), eq(PipeExecutionStatus.FAILED), eq(PipeOutcome.ERROR), isNull());
+        for (int index = 0; index < names.size(); index++) {
+            PipeParameterValue value = (PipeParameterValue) inputs.getAllValues().get(index).get("headersOverrideJson");
+            assertThat(value.sensitive()).isTrue();
+            String header = json.readTree(value.value()).get(0).stringValue();
+            assertThat(header.equals("Authorization: Bearer " + variants.path(names.get(index)).stringValue())).isTrue();
+        }
+    }
+
     private static PipeStep step(Pipe pipe, String key, int position, long id, PipeStepPhase phase) {
         Procedure procedure = mock(Procedure.class);
         when(procedure.getId()).thenReturn(id);

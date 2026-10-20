@@ -64,4 +64,27 @@ class ProcedureExecutionPersistenceServiceTest {
     private static Timestamp timestamp(Instant value) {
         return Timestamp.newBuilder().setSeconds(value.getEpochSecond()).setNanos(value.getNano()).build();
     }
+
+    @Test
+    void keepsJwtVariantsAvailableToThePipeButRedactsPersistedResults() {
+        var executions = mock(ProcedureExecutionRepository.class);
+        var procedure = mock(Procedure.class);
+        when(procedure.getId()).thenReturn(3L);
+        when(procedure.getName()).thenReturn("JWT negative tests");
+        UUID id = UUID.randomUUID();
+        Instant now = Instant.now();
+        var execution = ProcedureExecution.running(id, procedure, 1L, ProcedureExecutionTrigger.PIPE, id, null, null, 0, now, "admin");
+        when(executions.findByExecutionId(id)).thenReturn(Optional.of(execution));
+        var mapper = JsonMapper.builder().build();
+        var variants = new app.alertify.procedures.templates.JwtNegativeTestTokensProcedureTemplate("eyJhbGciOiJSUzI1NiJ9.e30.AQID").execute(null);
+        var service = new ProcedureExecutionPersistenceService(mock(ProcedureRepository.class), executions,
+                mock(WritableConfigurationService.class), mock(WritableSecretService.class),
+                mock(ApplicationEventLogger.class), mapper, mock(ProcedureArtifactMetadataRepository.class));
+        var result = ProcedureExecutionResult.newBuilder().setSuccessful(true).setWorkStartedAt(timestamp(now))
+                .setFinishedAt(timestamp(now.plusMillis(1))).setResultJson(mapper.writeValueAsString(variants)).build();
+        var ephemeral = service.complete(id, null, result, true);
+        assertThat(ephemeral.equals(variants)).isTrue();
+        assertThat(execution.isResultRedacted()).isTrue();
+        assertThat(execution.getResultJson()).isNull();
+    }
 }
