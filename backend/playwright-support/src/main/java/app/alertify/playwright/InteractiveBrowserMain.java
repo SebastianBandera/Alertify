@@ -111,7 +111,7 @@ public final class InteractiveBrowserMain implements AutoCloseable {
     void handle(WizardRequest request) throws Exception {
         try {
             JsonNode payload = json.readTree(request.getJson());
-            if (session != null && List.of("OBSERVE", "FIND", "SELECT", "RESOLVE_REF").contains(request.getOperation()))
+            if (session != null && List.of("OBSERVE", "FIND", "SELECT", "RESOLVE_REF", "CHECK_SELECTOR").contains(request.getOperation()))
                 rememberPasswords();
 
             switch (request.getOperation()) {
@@ -122,6 +122,7 @@ public final class InteractiveBrowserMain implements AutoCloseable {
                 }
                 case "OBSERVE" -> result(request, observe(payload));
                 case "FIND" -> result(request, find(payload));
+                case "CHECK_SELECTOR" -> result(request, checkSelector(payload));
                 case "SELECT" -> result(request, select(payload));
                 case "RESOLVE_REF" -> {
                     requireBrowser();
@@ -339,6 +340,40 @@ public final class InteractiveBrowserMain implements AutoCloseable {
             found.add(Map.of("selector", sanitize(selector), "text", sanitize(element.innerText()), "x", box == null ? 0 : box.x, "y", box == null ? 0 : box.y));
         }
         return found;
+    }
+
+    private Map<String, Object> checkSelector(JsonNode payload) {
+        requireBrowser();
+        String selector = payload.path("selector").asString();
+        if (selector.isBlank() || selector.length() > 4000)
+            throw new IllegalArgumentException("Supply a selector of 1-4000 characters");
+
+        Locator all = session.page().locator(selector);
+        Locator visible = all.filter(new Locator.FilterOptions().setVisible(true));
+        int totalCount = all.count();
+        int visibleCount = visible.count();
+        List<JsonNode> matches = new ArrayList<>();
+        for (int index = 0; index < Math.min(visibleCount, 10); index++) {
+            Locator element = visible.nth(index);
+            Object metadata = element.evaluate("""
+                    element => {
+                      const regions = [];
+                      for (let parent = element.parentElement; parent && regions.length < 4; parent = parent.parentElement) {
+                        if (parent.matches('header,main,footer,nav,form,section,[role=navigation],[role=banner],[role=contentinfo]'))
+                          regions.push({tag: parent.tagName.toLowerCase(), id: parent.id, label: parent.getAttribute('aria-label') || ''});
+                      }
+                      return {tag: element.tagName.toLowerCase(), label: (element.getAttribute('aria-label') || element.labels?.[0]?.innerText || element.getAttribute('placeholder') || element.innerText || '').slice(0, 200),
+                        href: element.getAttribute('href') || '', regions};
+                    }
+                    """);
+            var match = (ObjectNode) json.valueToTree(metadata);
+            String verified = BrowserPageInspection.selector(element);
+            if (verified != null) match.put("selector", verified);
+
+            matches.add(filter().sanitize(match));
+        }
+        return Map.of("selector", sanitize(selector), "totalCount", totalCount, "visibleCount", visibleCount, "ambiguous", visibleCount > 1,
+                "matches", matches, "truncated", visibleCount > matches.size(), "completed", completed, "dirty", dirty);
     }
 
     private Map<String, Object> select(JsonNode payload) throws Exception {

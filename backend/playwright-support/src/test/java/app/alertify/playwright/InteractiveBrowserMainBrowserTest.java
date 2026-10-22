@@ -129,7 +129,15 @@ class InteractiveBrowserMainBrowserTest {
             exchange.getResponseHeaders().set("Content-Type", path.equals("/json") ? "application/json" : "text/html; charset=utf-8");
             if (once) exchange.getResponseHeaders().add("Set-Cookie", "fixture=present; Path=/; SameSite=Lax");
 
-            byte[] bytes = HTML.getBytes(StandardCharsets.UTF_8);
+            String html = path.equals("/selector-ambiguity") ? """
+                    <!doctype html><html><body>
+                    <button id=selected onclick="document.querySelector('#count').textContent='1'">Selected control</button><div id=count>0</div>
+                    <header><nav id=anep-menu><a href='/anep/autoridades'>Autoridades</a></nav><nav id=codicen-menu><a href='/codicen/autoridades'>Autoridades</a></nav></header>
+                    <footer><a aria-label='selector-private-canary' href='/anep/autoridades?token=selector-private-canary'>Autoridades</a></footer>
+                    <nav style='display:none'><a href='/anep/autoridades'>Autoridades</a></nav><input type=password value='selector-private-canary'>
+                    </body></html>
+                    """ : HTML;
+            byte[] bytes = html.getBytes(StandardCharsets.UTF_8);
             exchange.sendResponseHeaders(once && count > 1 ? 410 : 200, bytes.length);
             exchange.getResponseBody().write(bytes);
             exchange.close();
@@ -299,6 +307,82 @@ class InteractiveBrowserMainBrowserTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"chromium", "firefox", "webkit"})
+    void generatesConciseSelectorsForSemanticControlsAndRepeatedMenus(String engine) {
+        try (var session = PlaywrightBrowserSession.open(BrowserEngine.valueOf(engine.toUpperCase(java.util.Locale.ROOT)))) {
+            var page = session.page();
+            page.setContent("<header><div><nav><ul><li><button>Institucional</button></li></ul></nav></div></header><footer><button>Contacto</button></footer>");
+            String selector = BrowserPageInspection.selector(page.locator("header button"));
+            assertThat(selector).isEqualTo("button:text-is(\"Institucional\")");
+            page.locator(selector).hover();
+            // Extra wrappers and a different sibling order must not change the selected control.
+            page.evaluate("const button=document.querySelector('header button');const wrapper=document.createElement('div');button.replaceWith(wrapper);wrapper.append(button);wrapper.insertAdjacentHTML('afterbegin','<button>Otro</button>')");
+            assertThat(page.locator(selector).count()).isEqualTo(1);
+            assertThat(page.locator(selector).innerText()).isEqualTo("Institucional");
+
+            page.setContent("<nav id=primary><div><button>Institucional</button></div></nav><nav id=secondary><button>Institucional</button></nav>");
+            selector = BrowserPageInspection.selector(page.locator("#primary button"));
+            assertThat(selector).isEqualTo("#primary button:text-is(\"Institucional\")");
+            assertThat(page.locator(selector).count()).isEqualTo(1);
+            page.locator(selector).hover();
+
+            page.setContent("<button>Institucional</button><button style='display:none'>Institucional</button>");
+            selector = BrowserPageInspection.selector(page.locator("button").first());
+            assertThat(selector).isEqualTo("button:text-is(\"Institucional\")");
+            assertThat(page.locator(selector).filter(new com.microsoft.playwright.Locator.FilterOptions().setVisible(true)).count()).isEqualTo(1);
+
+            page.setContent("<button><span>Institucional</span><span> ANEP</span></button><button>Contacto</button>");
+            selector = BrowserPageInspection.selector(page.locator("button").first());
+            assertThat(selector).isEqualTo("button:has-text(\"Institucional ANEP\")");
+            page.locator(selector).hover();
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"chromium", "firefox", "webkit"})
+    void verifiesSelectorIdentityAndEscapesAttributesAndTextWithoutReadingFieldValues(String engine) {
+        try (var session = PlaywrightBrowserSession.open(BrowserEngine.valueOf(engine.toUpperCase(java.util.Locale.ROOT)))) {
+            var page = session.page();
+            page.setContent("<button id=duplicate data-testid=duplicate>Primero</button><button id=duplicate data-testid=duplicate>Segundo</button>");
+            assertThat(BrowserPageInspection.selector(page.locator("button").nth(1))).isEqualTo("button:text-is(\"Segundo\")");
+
+            page.setContent("<button>Otro</button><button>Institucional &quot;ANEP&quot; \\ Uruguay</button>");
+            String selector = BrowserPageInspection.selector(page.locator("button").nth(1));
+            assertThat(selector).contains(":text-is(");
+            assertThat(page.locator(selector).count()).isEqualTo(1);
+            assertThat(page.locator(selector).innerText()).isEqualTo("Institucional \"ANEP\" \\ Uruguay");
+
+            page.setContent("<input name='user&quot;name' value='private-field-canary'><input type=password value='private-password-canary'><textarea>private-textarea-canary</textarea>");
+            selector = BrowserPageInspection.selector(page.locator("input").first());
+            assertThat(selector).isEqualTo("input[name=\"user\\\"name\"]");
+            assertThat(page.locator(selector).count()).isEqualTo(1);
+            assertThat(BrowserPageInspection.selector(page.locator("input[type=password]"))).doesNotContain("private-", ":text", ":has-text", "value=");
+            assertThat(BrowserPageInspection.selector(page.locator("textarea"))).doesNotContain("private-", ":text", ":has-text");
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"chromium", "firefox", "webkit"})
+    void shortensStructuralFallbackAndUsesSemanticSelectorsForCapturedFrames(String engine) {
+        try (var session = PlaywrightBrowserSession.open(BrowserEngine.valueOf(engine.toUpperCase(java.util.Locale.ROOT)))) {
+            var page = session.page();
+            var inspection = new BrowserPageInspection(page, () -> { });
+            session.navigate(origin + "/html", 10_000);
+            page.setContent("<main><div><button style='width:100px;height:40px'></button></div><div><button style='width:100px;height:40px'></button></div></main>");
+            String selector = BrowserPageInspection.selector(page.locator("button").first());
+            assertThat(selector).doesNotStartWith("body").contains(":nth-of-type(");
+            assertThat(page.locator(selector).count()).isEqualTo(1);
+
+            page.setContent("<header><nav><button style='position:absolute;left:20px;top:100px;width:180px;height:40px'>Institucional</button></nav></header>");
+            inspection.beginFrame(1);
+            inspection.finishFrame(1);
+            assertThat(inspection.select(1, 40, 120)).containsEntry("selector", "button:text-is(\"Institucional\")");
+            page.locator("button").evaluate("element => element.textContent='Contacto'");
+            assertThat(inspection.select(1, 40, 120)).containsEntry("error", "STALE_SELECTION");
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"chromium", "firefox", "webkit"})
     void keepsCapturingDuringAProcedureReplyAndProtectsItsReturnedValue(String engine) throws Exception {
         try (var harness = new Harness()) {
             harness.success("OPEN", settings(engine, "/html", ""));
@@ -357,6 +441,29 @@ class InteractiveBrowserMainBrowserTest {
             assertThat(reply.getType()).isEqualTo("ERROR");
             assertThat(reply.getJson().contains(canary)).as("A page-controlled error code must never expose a protected value").isFalse();
             assertThat(JSON.readTree(reply.getJson()).path("failureCode").asString()).isEqualTo("STALE_SELECTION");
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"chromium", "firefox", "webkit"})
+    void reportsSelectorAmbiguityWithoutChangingSelectionOrExposingProtectedValues(String engine) throws Exception {
+        try (var harness = new Harness()) {
+            harness.success("OPEN", settings(engine, "/selector-ambiguity", ""));
+            harness.success("EXECUTE", settings(engine, "/selector-ambiguity", "QUERY #selected"));
+            var report = harness.success("CHECK_SELECTOR", Map.of("selector", "a:text-is(\"Autoridades\")"));
+            assertThat(report.path("visibleCount").asInt()).isEqualTo(3);
+            assertThat(report.path("totalCount").asInt()).isEqualTo(4);
+            assertThat(report.path("ambiguous").asBoolean()).isTrue();
+            assertThat(report.path("completed").asInt()).isEqualTo(1);
+            assertThat(report.path("dirty").asBoolean()).isFalse();
+            assertThat(report.path("matches").size()).isEqualTo(3);
+            assertThat(report.toString()).contains("anep-menu", "codicen-menu", "footer", "/codicen/autoridades", "[REDACTED]").doesNotContain("selector-private-canary");
+            var unique = harness.success("CHECK_SELECTOR", Map.of("selector", "#anep-menu a"));
+            assertThat(unique.path("visibleCount").asInt()).isEqualTo(1);
+            assertThat(unique.path("ambiguous").asBoolean()).isFalse();
+            var missing = harness.success("CHECK_SELECTOR", Map.of("selector", "#missing"));
+            assertThat(missing.path("visibleCount").asInt()).isZero();
+            harness.success("EXECUTE", settings(engine, "/selector-ambiguity", "QUERY #selected\nUSE\nQUERY #count\nCHECK TEXT 1"));
         }
     }
 
