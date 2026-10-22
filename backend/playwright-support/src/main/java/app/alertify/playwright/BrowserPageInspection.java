@@ -1,8 +1,11 @@
 package app.alertify.playwright;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import com.microsoft.playwright.ElementHandle;
+import com.microsoft.playwright.JSHandle;
 import com.microsoft.playwright.Locator;
 import com.microsoft.playwright.Page;
 
@@ -31,53 +34,134 @@ final class BrowserPageInspection {
         page.evaluate("({key, id}) => window[key]?.finishFrame(id)", Map.of("key", key, "id", Long.toString(frameId)));
     }
 
-    @SuppressWarnings("unchecked")
     Map<String, Object> select(long frameId, double x, double y) {
-        return (Map<String, Object>) page.evaluate("({key, id, x, y}) => window[key]?.select(id, x, y) ?? {error: 'STALE_SELECTION'}", Map.of("key", key, "id", Long.toString(frameId), "x", x, "y", y));
+        Map<String, Object> point = Map.of("key", key, "id", Long.toString(frameId), "x", x, "y", y);
+        JSHandle selection = page.evaluateHandle("({key, id, x, y}) => window[key]?.select(id, x, y) ?? {error: 'STALE_SELECTION'}", point);
+        try {
+            JSHandle error = selection.getProperty("error");
+            try {
+                if (error.jsonValue() instanceof String code)
+                    return Map.of("error", code);
+
+            } finally { error.dispose(); }
+            JSHandle target = selection.getProperty("element");
+            try {
+                ElementHandle element = target.asElement();
+                if (element == null)
+                    return Map.of("error", "NO_SELECTION");
+
+                String selector = selector(page, element);
+                // Resolving candidates crosses browser calls; recheck the captured identity afterwards.
+                boolean unchanged = (boolean) selection.evaluate("(selection, {key, id, x, y}) => window[key]?.select(id, x, y)?.element === selection.element", point);
+                if (!unchanged)
+                    return Map.of("error", "STALE_SELECTION");
+
+                return selector == null ? Map.of("error", "NO_SELECTION") : Map.of("selector", selector);
+            } finally { target.dispose(); }
+        } finally { selection.dispose(); }
     }
 
     static String selector(Locator element) {
-        return (String) element.evaluate(SELECTOR);
+        JSHandle target = element.evaluateHandle("element => element");
+        try { return selector(element.page(), target.asElement()); }
+        finally { target.dispose(); }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static String selector(Page page, ElementHandle element) {
+        if (element == null)
+            return null;
+
+        List<String> candidates = (List<String>) element.evaluate(CANDIDATES);
+        for (String candidate : candidates) {
+            Locator matches = page.locator(candidate).filter(new Locator.FilterOptions().setVisible(true));
+            if (matches.count() == 1 && (boolean) matches.evaluate("(match, target) => match === target", element))
+                return candidate;
+
+        }
+        return null;
     }
 
     /**
-     * Builds a selector that uniquely identifies the supplied element in the current document.
-     * Prefers an ID or data-testid, then falls back to a path from body with sibling indexes.
-     * Shared by direct locator inspection and selection from a captured frame.
+     * Produces candidates in preference order, without reading input values. Playwright validates
+     * visibility, uniqueness and DOM identity, including its own text-selector extensions.
+     * Both observations and captured-frame selections use this same resolution path.
      */
-    private static final String SELECTOR_BODY = """
+    private static final String CANDIDATES = """
+            element => {
             // The document background is not a useful target for the wizard.
-            if (!element || element === document.body || element === document.documentElement) return null;
-            // Verify identity as well as uniqueness: duplicate IDs can otherwise select another element.
+            if (!element || !element.isConnected || element === document.body || element === document.documentElement) return [];
+            const candidates = new Set();
+            const tag = element.tagName.toLowerCase();
+            const attribute = (name, value) => '[' + name + '=' + JSON.stringify(value) + ']';
+            const anchors = node => {
+              const result = [];
+              if (node.id) result.push('#' + CSS.escape(node.id));
+              const testId = node.getAttribute('data-testid');
+              if (testId) result.push(attribute('data-testid', testId));
+              return result;
+            };
+            for (const anchor of anchors(element)) candidates.add(anchor);
+            const semantic = [];
+            const ariaLabel = element.getAttribute('aria-label');
+            if (ariaLabel) semantic.push(tag + attribute('aria-label', ariaLabel));
+            // Text is useful for buttons and links, but field values must never become selectors.
+            if (!element.matches('input,textarea,select,[contenteditable]') && !element.closest('input,textarea,select,[contenteditable]')) {
+              const text = (element.innerText || '').replace(/\\s+/g, ' ').trim();
+              if (text && text.length <= 160) {
+                semantic.push(tag + ':text-is(' + JSON.stringify(text) + ')');
+                semantic.push(tag + ':has-text(' + JSON.stringify(text) + ')');
+              }
+            }
+            for (const name of ['name', 'placeholder', 'title', 'alt', 'href']) {
+              const value = element.getAttribute(name);
+              if (value && value.length <= 300) semantic.push(tag + attribute(name, value));
+            }
+            for (const candidate of semantic) candidates.add(candidate);
+            // Disambiguate repeated labels using nearby stable ancestors before using positions.
+            let ancestor = element.parentElement;
+            let depth = 0;
+            while (ancestor && ancestor !== document.body && depth++ < 8) {
+              const scopes = anchors(ancestor);
+              if (ancestor.matches('header,main,nav,section,article,aside,footer,form')) scopes.push(ancestor.tagName.toLowerCase());
+              for (const scope of scopes) {
+                for (const candidate of semantic) candidates.add(scope + ' ' + candidate);
+                candidates.add(scope + ' ' + tag);
+              }
+              ancestor = ancestor.parentElement;
+            }
+            // Stop the structural fallback as soon as it uniquely identifies this exact node.
             const unique = selector => {
               try { const matches = document.querySelectorAll(selector); return matches.length === 1 && matches[0] === element; }
               catch { return false; }
             };
-            if (element.id) {
-              const selector = '#' + CSS.escape(element.id);
-              if (unique(selector)) return selector;
-            }
-            const testId = element.getAttribute('data-testid');
-            if (testId) {
-              const selector = '[data-testid=' + JSON.stringify(testId) + ']';
-              if (unique(selector)) return selector;
-            }
-            // Build a structural fallback when the page does not provide a unique stable attribute.
             const segments = [];
             let current = element;
             while (current && current !== document.body) {
-              let selector = current.tagName.toLowerCase();
+              const currentTag = current.tagName.toLowerCase();
+              const suffix = segments.length ? ' > ' + segments.join(' > ') : '';
+              for (const anchor of [...anchors(current), currentTag]) {
+                const candidate = anchor + suffix;
+                if (unique(candidate)) {
+                  candidates.add(candidate);
+                  return [...candidates];
+                }
+              }
+              let selector = currentTag;
               const siblings = current.parentElement ? [...current.parentElement.children].filter(e => e.tagName === current.tagName) : [];
               if (siblings.length > 1) selector += ':nth-of-type(' + (siblings.indexOf(current) + 1) + ')';
               segments.unshift(selector);
+              if (unique(segments.join(' > '))) {
+                candidates.add(segments.join(' > '));
+                return [...candidates];
+              }
               current = current.parentElement;
             }
-            if (current !== document.body || !segments.length) return null;
-            const selector = 'body > ' + segments.join(' > ');
-            return unique(selector) ? selector : null;
+            const fallback = 'body > ' + segments.join(' > ');
+            if (segments.length && unique(fallback)) candidates.add(fallback);
+            return [...candidates];
+            }
             """;
-    // Adapt the shared body to the function expected by Locator.evaluate().
-    private static final String SELECTOR = "element => {" + SELECTOR_BODY + "}";
 
     /**
      * Installs inspection state on each new main document before the page's own scripts run.
@@ -91,7 +175,6 @@ final class BrowserPageInspection {
               // Each document owns its state; subframes and repeated installation are skipped.
               if (window !== window.top || window.STATE_KEY) return;
               const frames = new Map();
-              const selectorFor = element => { SELECTOR_BODY };
               // Coordinates use the viewport, matching elementFromPoint() and screenshot clicks.
               const box = element => {
                 const r = element.getBoundingClientRect();
@@ -141,8 +224,7 @@ final class BrowserPageInspection {
                   if (!element || element === document.body || element === document.documentElement) return {error: 'NO_SELECTION'};
                   const record = frame.entries.find(candidate => candidate.element === element);
                   if (!record || !record.stable || !unchanged(record)) return {error: 'STALE_SELECTION'};
-                  const selector = selectorFor(element);
-                  return selector ? {selector} : {error: 'NO_SELECTION'};
+                  return {element};
                 }
               };
               const capture = window.CAPTURE_BINDING;
@@ -150,5 +232,5 @@ final class BrowserPageInspection {
               // Ignore callback rejections when navigation or session shutdown removes the binding.
               setInterval(() => { capture().catch(() => {}); }, 200);
             })();
-            """.replace("SELECTOR_BODY", SELECTOR_BODY);
+            """;
 }
