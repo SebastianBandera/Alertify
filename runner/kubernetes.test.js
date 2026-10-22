@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const http = require('node:http');
-const { parseOptions, renderTemplate, createResources, isSecretEnvironment, redactUrl, normalizedImageReference, importedImageDigests, kubernetesBackendUpstream, verifyLocalPublicApi } = require('./kubernetes');
+const { parseOptions, renderTemplate, createResources, isSecretEnvironment, redactUrl, normalizedImageReference, importedImageDigests, kubernetesPublisherUpstream, verifyLocalPublicApi } = require('./kubernetes');
 
 test('Kubernetes selection rejects skips and cleanup while preserving explicit target', () => {
   assert.throws(() => parseOptions(['--skip-backend']), /does not accept/);
@@ -44,10 +44,12 @@ test('kind image reuse checks normalized references and actual manifest digests'
   assert.equal(actual.has('REF'), false);
 });
 
-test('dynamic Nginx backend resolution uses a full namespace and cluster DNS suffix', () => {
-  assert.equal(kubernetesBackendUpstream('http://backend:8080', 'alertify', 'cluster.local'), 'http://backend.alertify.svc.cluster.local:8080');
-  assert.equal(kubernetesBackendUpstream('http://backend:8080', 'demo', 'internal.example'), 'http://backend.demo.svc.internal.example:8080');
-  assert.equal(kubernetesBackendUpstream('https://backend.example:8443', 'demo', 'cluster.local'), 'https://backend.example:8443');
+test('dynamic Nginx backend and identity resolution uses a full namespace and cluster DNS suffix', () => {
+  for (const service of ['backend', 'identity']) {
+    assert.equal(kubernetesPublisherUpstream(`http://${service}:8080`, 'alertify', 'cluster.local'), `http://${service}.alertify.svc.cluster.local:8080`);
+    assert.equal(kubernetesPublisherUpstream(`http://${service}:8080`, 'demo', 'internal.example'), `http://${service}.demo.svc.internal.example:8080`);
+    assert.equal(kubernetesPublisherUpstream(`https://${service}.example:8443`, 'demo', 'cluster.local'), `https://${service}.example:8443`);
+  }
 });
 
 test('public API readiness preserves the configured host and context and rejects proxy failures', async () => {
@@ -87,7 +89,7 @@ test('resources isolate secrets, persist databases and discover every worker typ
     database: { image: 'database', environment: { POSTGRES_PASSWORD: 'private', POSTGRES_USER: 'postgres' } },
     backend: { image: 'backend', environment: { KEY_ENV_PART: 'private' } },
     identity: { image: 'identity', environment: {} },
-    publisher: { image: 'publisher', environment: {} },
+    publisher: { image: 'publisher', environment: { PUBLISHER_BACKEND_UPSTREAM: 'http://backend:8080', PUBLISHER_IDENTITY_UPSTREAM: 'http://identity:8080' } },
     'worker-standard': { image: 'worker-standard', environment: { WORKER_NAME: 'base' }, deploy: { replicas: 2 } },
     'worker-playwright': { image: 'worker-playwright', environment: { WORKER_NAME: 'base' } },
     'worker-codex': { image: 'worker-codex', environment: { WORKER_NAME: 'codex', AI_WORKER_STATE_KEY: 'private' }, deploy: { replicas: 1 } },
@@ -101,6 +103,8 @@ test('resources isolate secrets, persist databases and discover every worker typ
   assert.deepEqual(backend.volumes.map((volume) => volume.secret.secretName), ['grpc-backend-tls']);
   const publisher = find('Deployment', 'publisher').spec.template.spec;
   assert.deepEqual(publisher.volumes.filter((volume) => volume.secret).map((volume) => volume.secret.secretName), ['publisher-tls']);
+  assert.equal(find('ConfigMap', 'publisher-config').data.PUBLISHER_BACKEND_UPSTREAM, 'http://backend.test.svc.cluster.local:8080');
+  assert.equal(find('ConfigMap', 'publisher-config').data.PUBLISHER_IDENTITY_UPSTREAM, 'http://identity.test.svc.cluster.local:8080');
   assert.match(find('ConfigMap', 'publisher-routing-template').data['default.conf.template'], /resolver 10\.96\.0\.10/);
   assert.equal(find('ConfigMap', 'publisher-routing-template').data['default.conf.template'].includes('resolver 127.0.0.11'), false);
   const worker = find('Deployment', 'worker-standard');

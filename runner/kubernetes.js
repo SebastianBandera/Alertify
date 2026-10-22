@@ -91,9 +91,9 @@ function importedImageDigests(output) {
   return new Map(output.split(/\r?\n/).map((line) => line.trim().split(/\s+/)).filter((columns) => /^sha256:[a-f0-9]{64}$/.test(columns[2] ?? '')).map((columns) => [columns[0], columns[2]]));
 }
 
-function kubernetesBackendUpstream(raw, namespace, domain) {
+function kubernetesPublisherUpstream(raw, namespace, domain) {
   const upstream = new URL(raw);
-  if (upstream.hostname === 'backend') upstream.hostname = `backend.${namespace}.svc.${domain}`;
+  if (['backend', 'identity'].includes(upstream.hostname)) upstream.hostname = `${upstream.hostname}.${namespace}.svc.${domain}`;
   return upstream.toString().replace(/\/$/, '');
 }
 
@@ -153,8 +153,8 @@ function createResources(compose, environment, namespace, templates) {
     const secrets = {};
     const mountedConfiguration = [];
     for (const [key, entry] of Object.entries(service.environment ?? {})) {
-      const mapped = name === 'publisher' && key === 'PUBLISHER_BACKEND_UPSTREAM'
-        ? kubernetesBackendUpstream(String(entry), namespace, value(environment, 'KUBERNETES_CLUSTER_DOMAIN') || 'cluster.local')
+      const mapped = name === 'publisher' && ['PUBLISHER_BACKEND_UPSTREAM', 'PUBLISHER_IDENTITY_UPSTREAM'].includes(key)
+        ? kubernetesPublisherUpstream(String(entry), namespace, value(environment, 'KUBERNETES_CLUSTER_DOMAIN') || 'cluster.local')
         : String(entry ?? '');
       (isSecretEnvironment(key, mapped) ? secrets : publicEnvironment)[key] = mapped;
     }
@@ -486,4 +486,4 @@ async function deploy(environment, plan, options, projectDirectory, certificateH
   }
 }
 
-module.exports = { parseOptions, renderTemplate, affinity, createResources, deploy, isSecretEnvironment, redactUrl, normalizedImageReference, importedImageDigests, kubernetesBackendUpstream, verifyLocalPublicApi };
+module.exports = { parseOptions, renderTemplate, affinity, createResources, deploy, isSecretEnvironment, redactUrl, normalizedImageReference, importedImageDigests, kubernetesPublisherUpstream, verifyLocalPublicApi };

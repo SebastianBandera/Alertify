@@ -8,11 +8,12 @@ server {
 
     ${PUBLISHER_TLS_CONFIGURATION}
 
-    # Resolve the backend through Docker DNS at request time so recreating the
-    # backend container does not leave Nginx using its previous IP address.
+    # Resolve backend and identity at request time so replacing either container
+    # cannot leave Nginx routing requests to an unrelated service at the old IP.
     resolver 127.0.0.11 valid=5s ipv6=off;
     resolver_timeout 2s;
     set $backend_upstream ${PUBLISHER_BACKEND_UPSTREAM};
+    set $identity_upstream ${PUBLISHER_IDENTITY_UPSTREAM};
 
     add_header X-Content-Type-Options "nosniff" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
@@ -37,7 +38,7 @@ server {
     location = ${PUBLISHER_CONTEXT_PATH}/identity { return 308 ${PUBLISHER_CONTEXT_PATH}/identity/; }
 
     location ^~ ${PUBLISHER_CONTEXT_PATH}/identity/ {
-        proxy_pass ${PUBLISHER_IDENTITY_UPSTREAM};
+        proxy_pass $identity_upstream;
         proxy_http_version 1.1;
         proxy_set_header Host $http_host;
         proxy_set_header X-Real-IP $remote_addr;
