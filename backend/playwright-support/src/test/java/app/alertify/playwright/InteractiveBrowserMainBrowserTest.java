@@ -129,7 +129,15 @@ class InteractiveBrowserMainBrowserTest {
             exchange.getResponseHeaders().set("Content-Type", path.equals("/json") ? "application/json" : "text/html; charset=utf-8");
             if (once) exchange.getResponseHeaders().add("Set-Cookie", "fixture=present; Path=/; SameSite=Lax");
 
-            byte[] bytes = HTML.getBytes(StandardCharsets.UTF_8);
+            String html = path.equals("/selector-ambiguity") ? """
+                    <!doctype html><html><body>
+                    <button id=selected onclick="document.querySelector('#count').textContent='1'">Selected control</button><div id=count>0</div>
+                    <header><nav id=anep-menu><a href='/anep/autoridades'>Autoridades</a></nav><nav id=codicen-menu><a href='/codicen/autoridades'>Autoridades</a></nav></header>
+                    <footer><a aria-label='selector-private-canary' href='/anep/autoridades?token=selector-private-canary'>Autoridades</a></footer>
+                    <nav style='display:none'><a href='/anep/autoridades'>Autoridades</a></nav><input type=password value='selector-private-canary'>
+                    </body></html>
+                    """ : HTML;
+            byte[] bytes = html.getBytes(StandardCharsets.UTF_8);
             exchange.sendResponseHeaders(once && count > 1 ? 410 : 200, bytes.length);
             exchange.getResponseBody().write(bytes);
             exchange.close();
@@ -433,6 +441,29 @@ class InteractiveBrowserMainBrowserTest {
             assertThat(reply.getType()).isEqualTo("ERROR");
             assertThat(reply.getJson().contains(canary)).as("A page-controlled error code must never expose a protected value").isFalse();
             assertThat(JSON.readTree(reply.getJson()).path("failureCode").asString()).isEqualTo("STALE_SELECTION");
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"chromium", "firefox", "webkit"})
+    void reportsSelectorAmbiguityWithoutChangingSelectionOrExposingProtectedValues(String engine) throws Exception {
+        try (var harness = new Harness()) {
+            harness.success("OPEN", settings(engine, "/selector-ambiguity", ""));
+            harness.success("EXECUTE", settings(engine, "/selector-ambiguity", "QUERY #selected"));
+            var report = harness.success("CHECK_SELECTOR", Map.of("selector", "a:text-is(\"Autoridades\")"));
+            assertThat(report.path("visibleCount").asInt()).isEqualTo(3);
+            assertThat(report.path("totalCount").asInt()).isEqualTo(4);
+            assertThat(report.path("ambiguous").asBoolean()).isTrue();
+            assertThat(report.path("completed").asInt()).isEqualTo(1);
+            assertThat(report.path("dirty").asBoolean()).isFalse();
+            assertThat(report.path("matches").size()).isEqualTo(3);
+            assertThat(report.toString()).contains("anep-menu", "codicen-menu", "footer", "/codicen/autoridades", "[REDACTED]").doesNotContain("selector-private-canary");
+            var unique = harness.success("CHECK_SELECTOR", Map.of("selector", "#anep-menu a"));
+            assertThat(unique.path("visibleCount").asInt()).isEqualTo(1);
+            assertThat(unique.path("ambiguous").asBoolean()).isFalse();
+            var missing = harness.success("CHECK_SELECTOR", Map.of("selector", "#missing"));
+            assertThat(missing.path("visibleCount").asInt()).isZero();
+            harness.success("EXECUTE", settings(engine, "/selector-ambiguity", "QUERY #selected\nUSE\nQUERY #count\nCHECK TEXT 1"));
         }
     }
 

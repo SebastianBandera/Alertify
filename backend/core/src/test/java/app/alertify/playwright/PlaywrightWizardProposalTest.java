@@ -44,6 +44,8 @@ class PlaywrightWizardProposalTest {
     private final AiWorkerClient.ChatHandle chat = mock(AiWorkerClient.ChatHandle.class);
     private final List<ChatToolResult> replies = new ArrayList<>();
     private final List<WizardRequest> browserRequests = new ArrayList<>();
+    private final List<String> selectorChecks = new ArrayList<>();
+    private JsonNode selectorReport;
     private final PlaywrightWizardService service = new PlaywrightWizardService(store, mock(WorkerStatusService.class), mock(WorkerGrpcChannelFactory.class), mock(AiWorkerClient.class),
             mock(AdminEventPublisher.class), mock(ApplicationConfigurationRepository.class), values, mock(ProcedureExecutionOrchestrator.class), mock(ProcedureInvocationRegistry.class), mock(ProcedureRepository.class), json);
     private WizardDraft draft;
@@ -223,8 +225,57 @@ class PlaywrightWizardProposalTest {
         assertThat(document().has("proposalError")).isFalse();
     }
 
+    @Test
+    void rejectsAnAmbiguousFirstActionBeforeSavingOrExecutingInAskAndAuto() throws Exception {
+        for (String mode : List.of("ASK", "AUTO")) {
+            prepare(mode);
+            selectorReport = json.valueToTree(Map.of("visibleCount", 3, "totalCount", 5, "ambiguous", true, "matches", List.of(
+                    Map.of("label", "Autoridades", "href", "/anep/autoridades"), Map.of("label", "Autoridades", "href", "/codicen/autoridades"))));
+            String original = draft.getDocument();
+            var reply = steps("WAIT_VISIBLE a:text-is(\"Autoridades\") 10s\nQUERY a:text-is(\"Autoridades\")\nUSE");
+            assertThat(reply.getFailed()).isTrue();
+            assertThat(reply.getDiagnosticCode()).isEqualTo("PLAYWRIGHT_SELECTOR_AMBIGUOUS");
+            var receipt = json.readTree(reply.getOutput());
+            assertThat(receipt.path("executed").asBoolean()).isFalse();
+            assertThat(receipt.path("matches").path("visibleCount").asInt()).isEqualTo(3);
+            assertThat(reply.getOutput()).contains("/anep/autoridades", "/codicen/autoridades");
+            assertThat(draft.getDocument()).isEqualTo(original);
+            assertThat(browserRequests).isEmpty();
+            assertThat(selectorChecks).containsExactly("a:text-is(\"Autoridades\")");
+            assertThat(ReflectionTestUtils.getField(session, "restartRequired")).isEqualTo(false);
+        }
+    }
+
+    @Test
+    void checksOnlyTheFirstActionWithoutPredictingTheStateAfterHover() throws Exception {
+        prepare("ASK");
+        var reply = steps("WAIT_VISIBLE #menu 10s\nQUERY #menu\nHOVER\nWAIT_VISIBLE a:text-is(\"Autoridades\") 10s\nQUERY a:text-is(\"Autoridades\")\nUSE");
+        assertThat(reply.getFailed()).isFalse();
+        assertThat(selectorChecks).containsExactly("#menu");
+        assertThat(browserRequests).isEmpty();
+        assertThat(document().path("proposal").asString()).contains("HOVER");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void exposesReadOnlySelectorChecksWithoutLeakingProtectedMatchDetails() throws Exception {
+        prepare("ASK");
+        String canary = "selector-private-canary";
+        ((List<String>) ReflectionTestUtils.getField(session, "sensitive")).add(canary);
+        selectorReport = json.valueToTree(Map.of("visibleCount", 2, "matches", List.of(Map.of("label", canary, "href", "/public?token=" + canary))));
+        var call = ChatToolCall.newBuilder().setCallId(UUID.randomUUID().toString()).setName("browser_check_selector").setArguments("{\"selector\":\"a\"}").build();
+        ReflectionTestUtils.invokeMethod(service, "handleTool", session, call, new CompletableFuture<Void>());
+        var reply = replies.getLast();
+        assertThat(reply.getFailed()).isFalse();
+        assertThat(reply.getOutput()).contains("[REDACTED]").doesNotContain(canary);
+        assertThat(selectorChecks).containsExactly("a");
+        assertThat(browserRequests).isEmpty();
+    }
+
     @SuppressWarnings("unchecked")
     private void prepare(String mode) throws Exception {
+        selectorChecks.clear();
+        selectorReport = json.valueToTree(Map.of("visibleCount", 1, "totalCount", 1, "ambiguous", false));
         var settings = new PlaywrightWizardService.Settings("https://fixture.invalid/", "QUERY #username", "chromium", List.of("chromium"), 10, 5, mode);
         draft = new WizardDraft("admin-subject", json.writeValueAsString(Map.of("settings", settings, "messages", List.of(), "testedRevision", "passing-revision", "lastAction", Map.of("operation", "EXECUTE", "status", "SUCCESS", "result", Map.of("completed", 4)))));
         when(store.load("admin-subject", draft.getId())).thenReturn(draft);
@@ -240,8 +291,14 @@ class PlaywrightWizardProposalTest {
         StreamObserver<WizardRequest> browser = mock(StreamObserver.class);
         doAnswer(invocation -> {
             WizardRequest request = invocation.getArgument(0);
-            browserRequests.add(request);
             var pending = (ConcurrentMap<String, CompletableFuture<WizardEvent>>) ReflectionTestUtils.getField(session, "pending");
+            if (request.getOperation().equals("CHECK_SELECTOR")) {
+                selectorChecks.add(json.readTree(request.getJson()).path("selector").asString());
+                pending.get(request.getRequestId()).complete(WizardEvent.newBuilder().setType("RESULT").setJson(json.writeValueAsString(selectorReport)).build());
+                return null;
+            }
+
+            browserRequests.add(request);
             pending.get(request.getRequestId()).completeExceptionally(new IllegalArgumentException("Synthetic browser action failure"));
             return null;
         }).when(browser).onNext(any());

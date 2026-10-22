@@ -523,6 +523,8 @@ public class PlaywrightWizardService {
                 Use browser_observe for a fresh ARIA AI snapshot (selector=null for the whole page, or a selector to focus on a region), browser_find for exact text and verified selectors when an element is missing from the snapshot, browser_capture for a protected screenshot, browser_resolve_ref to turn a current ARIA ref into a persistent selector, and browser_steps to propose/execute a block.
                 Observations include controls with verified persistent selectors and labels. Prefer those selectors. An accessible name such as Usuario may come from a label element: NEVER infer an aria-label attribute from it. If a control is absent from the verified list, resolve its ARIA ref or find and verify it before proposing a selector. Do not invent DOM attributes.
                 Prefer the concise verified selectors supplied by browser observations, find and ref resolution. These selectors have been checked against the actual target; do not expand them into full DOM paths. Use text, verified attributes or a nearby verified region to distinguish repeated controls, and use structural positions only when no verified semantic selector is available. Never shorten a selector by guessing or by selecting the first of multiple visible matches. Keep the same verified selector in WAIT_VISIBLE and QUERY; simplifying a selector must not change the requested action or its synchronization.
+                Before proposing an action on a currently available element, call browser_check_selector for its selector. This read-only check reports total and visible counts, destinations, regions and verified alternatives without selecting or activating anything. When the user identifies a control by its visible label, FIRST check that exact label across the observed control type, before adding menu, region, href, id or ref qualifiers. For example, check a:text-is("Autoridades") before checking a selector restricted to the Institucional menu, even when browser_find or a resolved ref already supplied a unique scoped selector. A visibleCount above one is ambiguous: ALWAYS explicitly tell the user how many matches exist and distinguish their destinations and regions (for example, an ANEP menu, a CODICEN menu and a footer can all contain Autoridades). This warning is required even when the previously hovered menu makes the intended choice clear. If neither the request nor its context identifies which different destination is intended, ask the user to choose and do not propose a click. If the intent is already clear, explain the ambiguity and verify a more specific selector before proposing it. Never use the first match or a pre-scoped count to hide repeated labels. A zero visible count is not a successful verification. Counts describe only the current page: a hover, navigation, rendering or approval delay can change them. Observe and recheck after a state-changing action; prefer meaningful region and destination qualifiers for repeated labels even if only one is currently visible.
+                PLAYWRIGHT_SELECTOR_AMBIGUOUS rejects a proposed block before any step runs. Explain its match report, clarify the intended target or verify a specific alternative, and only then propose a corrected block. This is not an execution failure, requires no restart and grants no permission to execute anything.
                 Supported DSL: QUERY <Playwright selector>, USE (click), DOUBLE_USE, HOVER, FOCUS, FILL configs.<existing name> or FILL secrets.<existing name>, SELECT <option value>, WAIT <positive duration ms/s>, WAIT_VISIBLE <selector> [duration], WAIT_HIDDEN <selector> [duration], RELOAD, CHECK TEXT <substring>, CHECK COUNT <operator> <integer>, CHECK ENABLED/DISABLED/CHECKED/UNCHECKED, CHECK ATTRIBUTE <name> <value>, CHECK URL <glob>.
                 QUERY selects visible elements; actions and element checks need a preceding QUERY. RELOAD clears the current element. FILL never accepts literal values. No arbitrary JavaScript, new commands, coordinates, temporary refs or invented selectors in saved steps.
                 QUERY is the ONLY command that changes the selected element. WAIT_VISIBLE and WAIT_HIDDEN wait for a condition without selecting their target. After USE navigates, the previous QUERY still points to the old page: wait for and run a fresh QUERY for the expected new content BEFORE CHECK TEXT, COUNT, ATTRIBUTE or element state checks. For example: WAIT_VISIBLE button[type=submit] 10s, QUERY button[type=submit], USE, WAIT_VISIBLE #authenticated 10s, QUERY #authenticated, CHECK TEXT Sesión iniciada (each command on its own line; illustrative selectors must be replaced with verified selectors from the actual page). USE, HOVER and DOUBLE_USE take NO arguments; their target is the preceding QUERY.
@@ -560,6 +562,7 @@ public class PlaywrightWizardService {
                 + ". Explain this state accurately. FAILED means the latest block did not complete; it is not pending approval. Earlier successful blocks do not make this failure a success."));
         builder.addTools(tool("browser_observe", "Read a fresh ARIA AI snapshot, optionally focused on a page region. Use null for the whole page.", Map.of("selector", Map.of("type", List.of("string", "null")))));
         builder.addTools(tool("browser_find", "Find visible elements by exact text and return verified persistent selectors with viewport positions", Map.of("text", Map.of("type", "string"))));
+        builder.addTools(tool("browser_check_selector", "Read-only ambiguity check: count total and visible matches and inspect their destinations, regions and verified alternatives before proposing an action", Map.of("selector", Map.of("type", "string"))));
         builder.addTools(tool("browser_capture", "Get a protected screenshot of the current page", Map.of()));
         builder.addTools(tool("browser_resolve_ref", "Resolve an ARIA ref from the latest snapshot to a durable Playwright selector", Map.of("ref", Map.of("type", "string"))));
         builder.addTools(tool("browser_steps", "Propose or execute an append-only block of supported DSL, respecting the selected ASK/AUTO mode", Map.of("steps", Map.of("type", "string"))));
@@ -627,6 +630,7 @@ public class PlaywrightWizardService {
             switch (call.getName()) {
                 case "browser_observe" -> result.setOutput(session.call("OBSERVE", args).getJson());
                 case "browser_find" -> result.setOutput(session.call("FIND", args).getJson());
+                case "browser_check_selector" -> result.setOutput(session.safe(session.call("CHECK_SELECTOR", args).getJson()));
                 case "browser_capture" -> {
                     WizardEvent capture = session.call("SCREENSHOT", Map.of());
                     result.setOutput("Protected current screenshot").addImages(image(capture));
@@ -643,11 +647,13 @@ public class PlaywrightWizardService {
 
                     String block = args.path("steps").asString();
                     String combined = append(current.steps(), block);
+                    List<PlaywrightPageEngine.Command> commands;
                     try {
                         if (block.isBlank() || combined.length() > 100_000)
                             throw new IllegalArgumentException("Supply a nonempty steps block within the 100000-character script limit");
 
-                        if (PlaywrightPageEngine.parseCommands(combined).size() > 500)
+                        commands = PlaywrightPageEngine.parseCommands(combined);
+                        if (commands.size() > 500)
                             throw new IllegalArgumentException("The script exceeds 500 commands");
 
                     } catch (IllegalArgumentException failure) {
@@ -659,6 +665,7 @@ public class PlaywrightWizardService {
                     ObjectNode candidate = doc.deepCopy();
                     candidate.set("settings", json.valueToTree(current.withSteps(combined)));
                     validateProtectedDraft(session.id, session, candidate, doc);
+                    checkFirstActionSelector(session, commands.subList(PlaywrightPageEngine.parseCommands(current.steps()).size(), commands.size()));
                     doc.remove("proposalError");
 
                     if (current.mode().equals("ASK")) {
@@ -683,6 +690,10 @@ public class PlaywrightWizardService {
             session.errorCode = PlaywrightDraftProtection.CODE;
             result.setFailed(true).setDiagnosticCode(PlaywrightDraftProtection.CODE).setOutput(failure.getMessage());
             publish(session);
+        } catch (SelectorAmbiguityFailure failure) {
+            String receipt = session.safe(json.writeValueAsString(Map.of("diagnosticCode", "PLAYWRIGHT_SELECTOR_AMBIGUOUS", "phase", "VALIDATION", "executed", false, "matches", failure.report,
+                    "error", "The first action target matches multiple visible elements. Warn the user and clarify the intended destination or verify a more specific selector. No step ran and no restart is required.")));
+            result.setFailed(true).setDiagnosticCode("PLAYWRIGHT_SELECTOR_AMBIGUOUS").setOutput(receipt).setOperationMetadataJson(receipt);
         } catch (ProposalValidationFailure failure) {
             int remaining = Math.max(0, MAX_PROPOSAL_VALIDATION_FAILURES - ++session.proposalValidationFailures);
             var receipt = json.valueToTree(Map.of("diagnosticCode", "PLAYWRIGHT_STEPS_INVALID", "phase", "VALIDATION", "status", "FAILED", "executed", false,
@@ -698,6 +709,27 @@ public class PlaywrightWizardService {
         AiWorkerClient.ChatHandle handle = session.chat;
         if (handle != null && !session.closed.get())
             handle.send(ChatClientMessage.newBuilder().setToolResult(result).build());
+    }
+
+    private void checkFirstActionSelector(Session session, List<PlaywrightPageEngine.Command> commands) throws Exception {
+        String selector = null;
+        for (var command : commands) {
+            switch (command.type()) {
+                case QUERY -> selector = command.first();
+                case USE, DOUBLE_USE, HOVER, FOCUS, FILL, FILL_VARIABLE, SELECT -> {
+                    if (selector != null) {
+                        JsonNode report = json.readTree(session.call("CHECK_SELECTOR", Map.of("selector", selector)).getJson());
+                        if (report.path("visibleCount").asInt() > 1)
+                            throw new SelectorAmbiguityFailure(report);
+
+                    }
+                    return;
+                }
+                // Later page states cannot be predicted by a read-only check of the current page.
+                case RELOAD, CALL, WAIT, WAIT_HIDDEN -> { return; }
+                default -> { }
+            }
+        }
     }
 
     private void addMessage(Session session, String role, String content, boolean image) {
@@ -797,6 +829,11 @@ public class PlaywrightWizardService {
     private static final class ProposalValidationFailure extends IllegalArgumentException {
         private final boolean retryable;
         private ProposalValidationFailure(String message, boolean retryable) { super(message); this.retryable = retryable; }
+    }
+
+    private static final class SelectorAmbiguityFailure extends IllegalArgumentException {
+        private final JsonNode report;
+        private SelectorAmbiguityFailure(JsonNode report) { super("The action target is ambiguous"); this.report = report; }
     }
 
     private final class Session implements AutoCloseable {
