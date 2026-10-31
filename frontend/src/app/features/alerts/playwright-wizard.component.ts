@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, computed, inject, output, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, OnInit, afterRenderEffect, computed, inject, output, signal, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AlertApiService } from '../../core/api/alert-api.service';
@@ -6,7 +6,7 @@ import { LocalizationService } from '../../core/i18n/localization.service';
 import { AdminEventChannelService } from '../../core/realtime/admin-event-channel.service';
 import { SearchableSelectComponent, SearchableSelectOption } from '../../shared/searchable-select/searchable-select.component';
 import { AiChatMessageComponent } from '../ai-chat/ai-chat-message.component';
-import { PlaywrightWizardApiService, WizardSettings, WizardState, playwrightBrowserLabel } from './playwright-wizard-api.service';
+import { PlaywrightWizardApiService, WizardSettings, WizardState, normalizeWizardUrl, playwrightBrowserLabel } from './playwright-wizard-api.service';
 import { PlaywrightRemoteViewComponent } from './playwright-remote-view.component';
 
 @Component({
@@ -26,6 +26,7 @@ export class PlaywrightWizardComponent implements OnInit {
   private readonly localization = inject(LocalizationService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly remote = viewChild(PlaywrightRemoteViewComponent);
+  private readonly messagesViewport = viewChild<ElementRef<HTMLElement>>('messagesViewport');
   private readonly clientId = crypto.randomUUID();
   protected readonly state = signal<WizardState | null>(null);
   protected readonly activeBrowser = computed(() => playwrightBrowserLabel(this.state()?.activeEngine));
@@ -38,6 +39,8 @@ export class PlaywrightWizardComponent implements OnInit {
   protected readonly drafts = signal<{ id: string; url: string; updatedAt: string }[]>([]);
   protected readonly error = signal('');
   protected readonly pending = signal(false);
+  protected readonly saving = signal(false);
+  protected urlFocused = false;
   protected readonly message = signal('');
   protected readonly attachment = signal<string | null>(null);
   protected readonly detached = signal(false);
@@ -58,13 +61,15 @@ export class PlaywrightWizardComponent implements OnInit {
   protected readonly settings = signal<WizardSettings>({ url: '', steps: '', engine: 'chromium', browsers: ['chromium'], loadTimeoutSeconds: 10, elementTimeoutSeconds: 5, mode: 'ASK' });
   protected readonly changed = computed(() => {
     const saved = this.state()?.document.settings;
-    const current = this.settings();
-    return !!saved && (current.url !== saved.url || current.steps !== saved.steps || current.engine !== saved.engine
-      || current.loadTimeoutSeconds !== saved.loadTimeoutSeconds || current.elementTimeoutSeconds !== saved.elementTimeoutSeconds
-      || current.mode !== saved.mode || current.browsers.length !== saved.browsers.length
-      || current.browsers.some((browser, index) => browser !== saved.browsers[index]));
+    return !!saved && !sameSettings(this.settings(), saved);
   });
   protected readonly busy = computed(() => this.pending() || !!this.state()?.busy);
+  protected readonly chatMessages = computed(() => this.state()?.document.messages.filter(entry => entry.role !== 'SYSTEM') ?? [], {
+    equal: (previous, next) => previous.length === next.length && previous.every((entry, index) => {
+      const other = next[index];
+      return entry.role === other.role && entry.content === other.content && entry.hasImage === other.hasImage && entry.at === other.at;
+    }),
+  });
   protected readonly awaitingApproval = computed(() => !!this.state()?.document.proposal);
   protected readonly canPrepare = computed(() => !this.changed() && !!this.state()?.document.testedRevision);
   private active = false;
@@ -73,6 +78,17 @@ export class PlaywrightWizardComponent implements OnInit {
   private popupTimer: ReturnType<typeof setInterval> | null = null;
   private destroyed = false;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
+  private saveTask: Promise<void> | null = null;
+  private stateVersion = 0;
+
+  constructor() {
+    afterRenderEffect(() => {
+      const viewport = this.messagesViewport()?.nativeElement;
+      this.chatMessages();
+      this.busy();
+      if (viewport) viewport.scrollTop = viewport.scrollHeight;
+    });
+  }
 
   async ngOnInit(): Promise<void> {
     this.events.on('PLAYWRIGHT_WIZARD_UPDATED').pipe(takeUntilDestroyed(this.destroyRef)).subscribe(value => {
@@ -87,7 +103,7 @@ export class PlaywrightWizardComponent implements OnInit {
       if (event.data.type === 'WIZARD_READY') this.publishPageState();
     };
     window.addEventListener('message', listener);
-    const unload = (): void => { void this.closeBrowser(); };
+    const unload = (): void => { void this.saveBeforeLeaving().finally(() => this.closeBrowser()); };
     window.addEventListener('pagehide', unload);
     this.destroyRef.onDestroy(() => {
       this.destroyed = true;
@@ -106,10 +122,14 @@ export class PlaywrightWizardComponent implements OnInit {
       this.credentialReferences.set(bindings.secrets.filter(value => value.valueType === 'USERNAME_PASSWORD').map(value => 'secrets.' + value.name));
     } catch { /* Existing step references can still be entered by name. */ }
     this.timer = setInterval(() => {
-      if (!this.state()?.open || this.pending()) return;
+      if (!this.state()?.open || this.pending() || this.saving()) return;
+      const id = this.state()!.id;
+      const version = this.stateVersion;
       const active = this.active;
       this.active = false;
-      void this.api.request('HEARTBEAT', this.payload({ active })).then(value => this.update(value)).catch(() => this.error.set(this.t('connectionLost')));
+      void this.api.request('HEARTBEAT', this.payload({ active })).then(value => {
+        if (this.state()?.id === id && this.stateVersion === version && !this.pending() && !this.saving()) this.update(value);
+      }).catch(() => { if (!this.destroyed && this.state()?.id === id && this.stateVersion === version) this.error.set(this.t('connectionLost')); });
     }, 5000);
   }
 
@@ -126,14 +146,22 @@ export class PlaywrightWizardComponent implements OnInit {
     const hadLocalEdits = this.changed();
     const differentDraft = this.state()?.id !== next.id;
     this.state.set(next);
+    this.stateVersion++;
     this.publishPageState();
     if (differentDraft) {
+      this.urlFocused = false;
       this.selectedProcedure.set(null);
       void this.api.request<{ id: number; name: string }[]>('PROCEDURE_CATALOG', { id: next.id }).then(values => this.procedures.set(Array.isArray(values) ? values : [])).catch(() => this.procedures.set([]));
     }
-    if (!hadLocalEdits) this.settings.set(structuredClone(next.document.settings));
+    if (differentDraft || (!hadLocalEdits && !this.saving())) this.syncSettings(next.document.settings);
     if (!next.open) { this.detached.set(false); this.popup?.close(); }
     if (!next.attachmentReady) this.attachment.set(null);
+  }
+
+  private syncSettings(next: WizardSettings): void {
+    const value = structuredClone(next);
+    if (this.urlFocused) value.url = this.settings().url;
+    if (value.url !== this.settings().url || !sameSettings(value, this.settings())) this.settings.set(value);
   }
 
   protected async refreshDrafts(): Promise<void> {
@@ -142,13 +170,17 @@ export class PlaywrightWizardComponent implements OnInit {
   }
 
   protected async create(): Promise<void> {
-    if (this.state()?.open) await this.closeBrowser();
-    await this.perform(async () => { this.state.set(null); this.update(await this.api.request('CREATE')); });
+    await this.perform(async () => { await this.flushSave(); await this.closeBrowser(); this.state.set(null); this.update(await this.api.request('CREATE')); });
   }
 
   protected async restore(id: string): Promise<void> {
-    if (this.state()?.open) await this.closeBrowser();
-    await this.perform(async () => { this.state.set(null); this.update(await this.api.request('GET', { id })); });
+    await this.perform(async () => { await this.flushSave(); await this.closeBrowser(); this.state.set(null); this.update(await this.api.request('GET', { id })); });
+  }
+
+  protected normalizeUrl(): void {
+    this.urlFocused = false;
+    const url = normalizeWizardUrl(this.settings().url);
+    if (url !== this.settings().url) this.patch({ url });
   }
 
   protected patch(patch: Partial<WizardSettings>): void {
@@ -165,19 +197,40 @@ export class PlaywrightWizardComponent implements OnInit {
   }
 
   protected async save(): Promise<void> {
-    await this.perform(async () => {
-      const next = await this.api.request('SAVE', this.payload({ settings: this.settings() }));
-      this.state.set(next);
-      this.settings.set(structuredClone(next.document.settings));
-    });
+    if (this.busy()) return;
+    this.error.set('');
+    try { await this.flushSave(); }
+    catch (error) { if (!this.destroyed) this.error.set(error instanceof Error ? error.message : this.t('requestFailed')); }
+  }
+
+  private flushSave(): Promise<void> {
+    if (this.saveTimer) { clearTimeout(this.saveTimer); this.saveTimer = null; }
+    if (this.saveTask) return this.saveTask;
+    if (!this.state() || !this.changed()) return Promise.resolve();
+    const id = this.state()!.id;
+    this.saving.set(true);
+    this.saveTask = (async () => {
+      let edited: boolean;
+      do {
+        const snapshot = structuredClone(this.settings());
+        const settings = { ...snapshot, url: normalizeWizardUrl(snapshot.url) };
+        const next = await this.api.request('SAVE', { id, clientId: this.clientId, settings });
+        if (this.state()?.id !== id) return;
+        edited = !sameSettings(this.settings(), snapshot);
+        if (!this.destroyed) {
+          this.state.set(next);
+          this.stateVersion++;
+          if (!edited) this.syncSettings(next.document.settings);
+        }
+      } while (edited);
+    })().finally(() => { this.saveTask = null; this.saving.set(false); });
+    return this.saveTask;
   }
 
   protected async command(operation: string, payload: Record<string, unknown> = {}): Promise<void> {
     await this.perform(async () => {
-      if (this.changed()) {
-        const saved = await this.api.request('SAVE', this.payload({ settings: this.settings() }));
-        this.state.set(saved);
-      }
+      this.normalizeUrl();
+      await this.flushSave();
       this.update(await this.api.request(operation, this.payload(payload)));
     });
   }
@@ -239,10 +292,8 @@ export class PlaywrightWizardComponent implements OnInit {
   protected async prepare(bypass = false): Promise<void> {
     if (bypass && !confirm(this.t('bypassConfirm'))) return;
     await this.perform(async () => {
-      if (this.changed()) {
-        const next = await this.api.request('SAVE', this.payload({ settings: this.settings() }));
-        this.state.set(next);
-      }
+      this.normalizeUrl();
+      await this.flushSave();
       const result = await this.api.request<{ id: string; settings: WizardSettings }>('PREPARE', this.payload({ bypass }));
       this.prepared.emit(result);
     });
@@ -253,11 +304,11 @@ export class PlaywrightWizardComponent implements OnInit {
     await this.perform(async () => { await this.api.request('DELETE', this.payload()); this.state.set(null); await this.refreshDrafts(); });
   }
 
-  protected async back(): Promise<void> { await this.saveBeforeLeaving(); await this.closeBrowser(); this.dismissed.emit(); }
+  protected async back(): Promise<void> { await this.perform(async () => { await this.flushSave(); await this.closeBrowser(); this.dismissed.emit(); }); }
 
   private async saveBeforeLeaving(): Promise<void> {
-    if (!this.state() || !this.changed() || this.state()!.busy) return;
-    try { await this.api.request('SAVE', this.payload({ settings: this.settings() })); } catch { /* The saved revision remains recoverable. */ }
+    if (!this.state() || this.state()!.busy) return;
+    try { await this.flushSave(); } catch { /* The saved revision remains recoverable. */ }
   }
 
   private async closeBrowser(): Promise<void> {
@@ -270,8 +321,15 @@ export class PlaywrightWizardComponent implements OnInit {
     if (this.pending()) return;
     this.pending.set(true);
     this.error.set('');
-    try { await action(); }
+    try { if (this.saveTask) await this.saveTask; await action(); }
     catch (error) { if (!this.destroyed) this.error.set(error instanceof Error ? error.message : this.t('requestFailed')); }
     finally { if (!this.destroyed) this.pending.set(false); }
   }
+}
+
+function sameSettings(current: WizardSettings, saved: WizardSettings): boolean {
+  return normalizeWizardUrl(current.url) === normalizeWizardUrl(saved.url) && current.steps === saved.steps && current.engine === saved.engine
+    && current.loadTimeoutSeconds === saved.loadTimeoutSeconds && current.elementTimeoutSeconds === saved.elementTimeoutSeconds
+    && current.mode === saved.mode && current.browsers.length === saved.browsers.length
+    && current.browsers.every((browser, index) => browser === saved.browsers[index]);
 }

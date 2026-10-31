@@ -194,7 +194,7 @@ public class PlaywrightWizardService {
             return view(draft, null);
         }
         session.activity();
-        if (List.of("APPROVE", "EXECUTE", "TEST", "RESET").contains(operation))
+        if (List.of("APPROVE", "EXECUTE", "TEST", "RESET", "REPLAY").contains(operation))
             validateProtectedDraft(id, session, document(draft), null);
 
         switch (operation) {
@@ -203,6 +203,24 @@ public class PlaywrightWizardService {
                 session.call("RESET", settings);
                 session.browserSettings = settings;
                 resetExecutionState(session, "RESET");
+            });
+            case "REPLAY" -> start(session, () -> {
+                session.restartRequired = true;
+                session.progress = null;
+                recordAction(session, "REPLAY", "RUNNING", json.createObjectNode(), "");
+                try {
+                    ObjectNode doc = document(store.load(owner, id));
+                    doc.remove("testedRevision");
+                    store.save(owner, id, session.safeDocument(doc));
+                    Settings settings = readSettings(doc.path("settings"));
+                    session.call("RESET", settings);
+                    session.browserSettings = settings;
+                    resetExecutionState(session, "RESET");
+                } catch (Exception failure) {
+                    recordAction(session, "REPLAY", "FAILED", json.valueToTree(Map.of("completed", 0)), "The browser could not restart. No script steps were replayed.");
+                    throw failure;
+                }
+                runScript(session, "EXECUTE");
             });
             case "EXECUTE", "TEST" -> start(session, () -> runScript(session, operation));
             case "OBSERVE" -> start(session, () -> session.observation = json.readTree(session.call("OBSERVE", Map.of()).getJson()));
@@ -305,7 +323,23 @@ public class PlaywrightWizardService {
         if (settings.loadTimeoutSeconds() < 5 || settings.loadTimeoutSeconds() > 60 || settings.elementTimeoutSeconds() < 1 || settings.elementTimeoutSeconds() > 30)
             throw new IllegalArgumentException("Invalid browser timeouts");
 
-        return settings;
+        String url = normalizeUrl(settings.url());
+        if (url.length() > 4000)
+            throw new IllegalArgumentException("Invalid URL or script length");
+
+        return new Settings(url, settings.steps(), settings.engine(), settings.browsers(), settings.loadTimeoutSeconds(), settings.elementTimeoutSeconds(), settings.mode());
+    }
+
+    static String normalizeUrl(String value) {
+        String url = value.strip();
+        if (url.isEmpty())
+            return "";
+
+        if (url.startsWith("//"))
+            return "https:" + url;
+
+        boolean hostWithPort = url.matches("(?i)^(?:localhost|[^\\s/:?#]+\\.[^\\s/:?#]+|\\[[^\\]]+\\]):\\d+(?:[/?#].*)?$");
+        return !hostWithPort && url.matches("(?i)^[a-z][a-z0-9+.-]*:.*$") ? url : "https://" + url;
     }
 
     private void start(Session session, CheckedAction action) {

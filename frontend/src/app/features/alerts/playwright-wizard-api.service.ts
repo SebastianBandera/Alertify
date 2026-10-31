@@ -44,6 +44,14 @@ export function playwrightBrowserLabel(engine: string | null | undefined): strin
   return ({ chromium: 'Chromium', firefox: 'Firefox', webkit: 'WebKit' } as Record<string, string>)[engine ?? ''] ?? '';
 }
 
+export function normalizeWizardUrl(value: string): string {
+  const url = value.trim();
+  if (!url) return '';
+  if (url.startsWith('//')) return 'https:' + url;
+  const hostWithPort = /^(?:localhost|[^\s/:?#]+\.[^\s/:?#]+|\[[^\]]+\]):\d+(?:[/?#].*)?$/i.test(url);
+  return !hostWithPort && /^[a-z][a-z0-9+.-]*:/i.test(url) ? url : 'https://' + url;
+}
+
 @Injectable({ providedIn: 'root' })
 export class PlaywrightWizardApiService {
   private readonly events = inject(AdminEventChannelService);

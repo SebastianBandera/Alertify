@@ -6,7 +6,7 @@ import { AlertApiService } from '../../core/api/alert-api.service';
 import { LocalizationService } from '../../core/i18n/localization.service';
 import { AdminEventChannelService } from '../../core/realtime/admin-event-channel.service';
 import { PlaywrightRemoteViewComponent } from './playwright-remote-view.component';
-import { PlaywrightWizardApiService, WizardSettings, WizardState } from './playwright-wizard-api.service';
+import { PlaywrightWizardApiService, WizardSettings, WizardState, normalizeWizardUrl } from './playwright-wizard-api.service';
 import { PlaywrightWizardComponent } from './playwright-wizard.component';
 
 @Component({ selector: 'app-playwright-remote-view', template: '' })
@@ -27,6 +27,10 @@ interface WizardHarness {
   insertReference(): void;
   update(next: WizardState): void;
   command(operation: string): Promise<void>;
+  save(): Promise<void>;
+  patch(value: Partial<WizardSettings>): void;
+  readonly saving: WritableSignal<boolean>;
+  readonly error: WritableSignal<string>;
 }
 
 describe('PlaywrightWizardComponent', () => {
@@ -42,8 +46,9 @@ describe('PlaywrightWizardComponent', () => {
       open: true, busy: false, error: '', idleRemainingSeconds: 300, attachmentReady: false,
       selection: null, progress: null, observation: null, tokens: 0, modelRequests: 0,
     };
-    request = vi.fn(async (operation: string) => {
+    request = vi.fn(async (operation: string, payload?: Record<string, unknown>) => {
       if (operation === 'LIST') return [];
+      if (operation === 'SAVE') current.document.settings = structuredClone(payload!['settings'] as WizardSettings);
       if (operation === 'APPROVE' || operation === 'REJECT') {
         const next = structuredClone(current);
         if (operation === 'APPROVE') next.document.settings.steps = next.document.proposal!;
@@ -73,6 +78,217 @@ describe('PlaywrightWizardComponent', () => {
   function button(label: string): HTMLButtonElement {
     return [...fixture.nativeElement.querySelectorAll('button')].find((element: HTMLButtonElement) => element.textContent?.trim() === label)!;
   }
+
+  it('shows activity immediately and keeps it visible until the backend finishes', async () => {
+    let finish!: (value: WizardState) => void;
+    request.mockImplementationOnce(() => new Promise<WizardState>(resolve => { finish = resolve; }));
+    const command = harness.command('OBSERVE');
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.messages .chat-working[role="status"]')?.textContent).toContain('working');
+    const running = { ...structuredClone(current), busy: true };
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    finish(running);
+    await command;
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.messages .chat-working')).not.toBeNull();
+    harness.update({ ...running, busy: false });
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.messages .chat-working')).toBeNull();
+    fixture.destroy();
+  });
+
+  it('clears chat activity when a request fails', async () => {
+    request.mockRejectedValueOnce(new Error('Synthetic operation failure'));
+    await harness.command('OBSERVE');
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.messages .chat-working')).toBeNull();
+    expect(harness.error()).toBe('Synthetic operation failure');
+    fixture.destroy();
+  });
+
+  it('scrolls the conversation after rendering new or updated replies without moving focus', async () => {
+    const viewport = fixture.nativeElement.querySelector('.messages') as HTMLElement;
+    let height = 800;
+    Object.defineProperty(viewport, 'scrollHeight', { get: () => height });
+    const editor = fixture.nativeElement.querySelector('.steps-panel textarea.code') as HTMLTextAreaElement;
+    editor.focus();
+    current.document.messages = [{ role: 'ASSISTANT', content: 'First reply', hasImage: false, at: '2026-10-31T15:00:00Z' }];
+    harness.update(structuredClone(current));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(viewport.scrollTop).toBe(800);
+    expect(viewport.textContent).toContain('First reply');
+    viewport.scrollTop = 20;
+    height = 950;
+    current.document.messages[0].content = 'First reply with additional content';
+    harness.update(structuredClone(current));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(viewport.scrollTop).toBe(950);
+    expect(document.activeElement).toBe(editor);
+    fixture.destroy();
+  });
+
+  it('reveals the working indicator and preserves manual scroll on unchanged or system-only updates', async () => {
+    const viewport = fixture.nativeElement.querySelector('.messages') as HTMLElement;
+    Object.defineProperty(viewport, 'scrollHeight', { get: () => 1000 });
+    current.busy = true;
+    harness.update(structuredClone(current));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(viewport.scrollTop).toBe(1000);
+    viewport.scrollTop = 30;
+    harness.update(structuredClone(current));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(viewport.scrollTop).toBe(30);
+    current.document.messages.push({ role: 'SYSTEM', content: 'Internal execution receipt', hasImage: false, at: '2026-10-31T15:00:00Z' });
+    harness.update(structuredClone(current));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(viewport.scrollTop).toBe(30);
+    expect(viewport.textContent).not.toContain('Internal execution receipt');
+    fixture.destroy();
+  });
+
+  it.each([
+    [' www.anep.edu.uy/path?q=1#section ', 'https://www.anep.edu.uy/path?q=1#section'],
+    ['//www.anep.edu.uy', 'https://www.anep.edu.uy'],
+    ['alertify.dev:8443/path', 'https://alertify.dev:8443/path'],
+    ['localhost:8080/', 'https://localhost:8080/'],
+    ['[::1]:8443/', 'https://[::1]:8443/'],
+    ['http://fixture.test/', 'http://fixture.test/'],
+    ['HTTPS://fixture.test/', 'HTTPS://fixture.test/'],
+    ['ftp://fixture.test/', 'ftp://fixture.test/'],
+    ['javascript:alert(1)', 'javascript:alert(1)'],
+    ['user:password@fixture.test', 'user:password@fixture.test'],
+    ['user@fixture.test', 'https://user@fixture.test'],
+    [' ', ''],
+  ])('normalizes %s consistently with the backend', (input, expected) => {
+    expect(normalizeWizardUrl(input)).toBe(expected);
+    fixture.destroy();
+  });
+
+  it('keeps the focused URL unchanged during save and heartbeat and completes it on blur', async () => {
+    const url = fixture.nativeElement.querySelector('.settings input[type=url]') as HTMLInputElement;
+    url.focus();
+    url.value = 'www.anep.edu.uy';
+    url.dispatchEvent(new Event('input', { bubbles: true }));
+    await harness.save();
+    harness.update(structuredClone(current));
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(url);
+    expect(url.disabled).toBe(false);
+    expect(url.value).toBe('www.anep.edu.uy');
+    expect(current.document.settings.url).toBe('https://www.anep.edu.uy');
+    url.blur();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(url.value).toBe('https://www.anep.edu.uy');
+    fixture.destroy();
+  });
+
+  it('autosaves without losing focus or selection and serializes edits made during a slow save', async () => {
+    const saves: { settings: WizardSettings; finish: (value: WizardState) => void }[] = [];
+    request.mockImplementation(async (operation: string, payload?: Record<string, unknown>) => {
+      if (operation === 'SAVE') return new Promise<WizardState>(finish => saves.push({ settings: structuredClone(payload!['settings'] as WizardSettings), finish }));
+      return structuredClone(current);
+    });
+    const steps = fixture.nativeElement.querySelector('.steps-panel textarea.code') as HTMLTextAreaElement;
+    steps.focus();
+    steps.value = 'QUERY #first';
+    steps.dispatchEvent(new Event('input', { bubbles: true }));
+    steps.setSelectionRange(6, 9);
+    await vi.waitFor(() => expect(saves).toHaveLength(1), { timeout: 2000 });
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(steps);
+    expect(steps.disabled).toBe(false);
+    expect(fixture.nativeElement.querySelector('.messages .chat-working')).toBeNull();
+    expect([steps.selectionStart, steps.selectionEnd]).toEqual([6, 9]);
+    steps.value = 'QUERY #newer';
+    steps.dispatchEvent(new Event('input', { bubbles: true }));
+    steps.setSelectionRange(7, 10);
+    harness.update(structuredClone(current));
+    fixture.detectChanges();
+    const joinedSave = harness.save();
+    expect(saves).toHaveLength(1);
+    current.document.settings = saves[0].settings;
+    saves[0].finish(structuredClone(current));
+    await vi.waitFor(() => expect(saves).toHaveLength(2));
+    fixture.detectChanges();
+    expect(steps.value).toBe('QUERY #newer');
+    expect(document.activeElement).toBe(steps);
+    expect([steps.selectionStart, steps.selectionEnd]).toEqual([7, 10]);
+    current.document.settings = saves[1].settings;
+    saves[1].finish(structuredClone(current));
+    await joinedSave;
+    fixture.detectChanges();
+    expect(current.document.settings.steps).toBe('QUERY #newer');
+    expect(harness.saving()).toBe(false);
+    expect(document.activeElement).toBe(steps);
+    expect([steps.selectionStart, steps.selectionEnd]).toEqual([7, 10]);
+    fixture.destroy();
+  });
+
+  it('waits for an in-flight save and persists newer edits before opening the page', async () => {
+    let finish!: (value: WizardState) => void;
+    let saved!: WizardSettings;
+    request.mockImplementation(async (operation: string, payload?: Record<string, unknown>) => {
+      if (operation === 'SAVE') {
+        const next = structuredClone(payload!['settings'] as WizardSettings);
+        if (!finish) {
+          saved = next;
+          return new Promise<WizardState>(resolve => { finish = resolve; });
+        }
+        current.document.settings = next;
+      }
+      return structuredClone(current);
+    });
+    harness.patch({ url: 'www.anep.edu.uy', steps: 'QUERY #first' });
+    const saving = harness.save();
+    harness.patch({ steps: 'QUERY #newer' });
+    const opening = harness.command('OPEN');
+    expect(request.mock.calls.filter(([operation]) => operation === 'OPEN')).toHaveLength(0);
+    current.document.settings = saved;
+    finish(structuredClone(current));
+    await Promise.all([saving, opening]);
+    expect(request.mock.calls.filter(([operation]) => operation === 'SAVE' || operation === 'OPEN').map(([operation]) => operation)).toEqual(['SAVE', 'SAVE', 'OPEN']);
+    expect(current.document.settings).toMatchObject({ url: 'https://www.anep.edu.uy', steps: 'QUERY #newer' });
+    fixture.destroy();
+  });
+
+  it('retains local edits after a save failure and only retries on a new request', async () => {
+    request.mockRejectedValueOnce(new Error('Synthetic save failure'));
+    harness.settings.set({ ...current.document.settings, steps: 'QUERY #unsaved' });
+    await harness.save();
+    fixture.detectChanges();
+    expect(harness.error()).toBe('Synthetic save failure');
+    expect(harness.settings().steps).toBe('QUERY #unsaved');
+    expect(harness.saving()).toBe(false);
+    expect((fixture.nativeElement.querySelector('.steps-panel textarea.code') as HTMLTextAreaElement).disabled).toBe(false);
+    await harness.save();
+    expect(current.document.settings.steps).toBe('QUERY #unsaved');
+    fixture.destroy();
+  });
+
+  it('ignores a heartbeat response from before a newer save', async () => {
+    let finish!: (value: WizardState) => void;
+    const stale = structuredClone(current);
+    request.mockImplementation(async (operation: string, payload?: Record<string, unknown>) => {
+      if (operation === 'HEARTBEAT') return new Promise<WizardState>(resolve => { finish = resolve; });
+      if (operation === 'SAVE') current.document.settings = structuredClone(payload!['settings'] as WizardSettings);
+      return structuredClone(current);
+    });
+    await vi.waitFor(() => expect(finish).toBeDefined(), { timeout: 6500 });
+    harness.patch({ steps: 'QUERY #newer' });
+    await harness.save();
+    finish(stale);
+    await fixture.whenStable();
+    expect(harness.state()!.document.settings.steps).toBe('QUERY #newer');
+    expect(harness.settings().steps).toBe('QUERY #newer');
+    fixture.destroy();
+  }, 10000);
 
   it('shows the running engine even when a different engine is selected for the next restart', () => {
     current.activeEngine = 'firefox';
@@ -210,6 +426,57 @@ describe('PlaywrightWizardComponent', () => {
     expect(request.mock.calls.some(([operation]) => operation === 'CHAT')).toBe(true);
     expect(fixture.nativeElement.querySelector('.execution-receipt.failed')?.textContent).toContain('more than one element matches');
     expect(button('execute').disabled).toBe(true);
+    fixture.destroy();
+  });
+
+  it('saves corrected steps before replay and prevents duplicate commands while it is pending', async () => {
+    current.restartRequired = true;
+    current.document.lastAction = { operation: 'EXECUTE', status: 'FAILED', at: '2026-10-31T12:00:00Z' };
+    harness.update(structuredClone(current));
+    const corrected = { ...current.document.settings, steps: 'QUERY #corrected\nUSE' };
+    harness.settings.set(corrected);
+    fixture.detectChanges();
+    let finish!: (value: WizardState) => void;
+    request.mockImplementation(async (operation: string, payload?: Record<string, unknown>) => {
+      if (operation === 'SAVE') current.document.settings = structuredClone(payload!['settings'] as WizardSettings);
+      if (operation === 'REPLAY') return new Promise<WizardState>(resolve => { finish = resolve; });
+      return structuredClone(current);
+    });
+    request.mockClear();
+    button('restartAndReplay').click();
+    await vi.waitFor(() => expect(request.mock.calls.map(([operation]) => operation)).toEqual(['SAVE', 'REPLAY']));
+    fixture.detectChanges();
+    expect(current.document.settings.steps).toBe(corrected.steps);
+    expect(button('restart').disabled).toBe(true);
+    expect(button('restartAndReplay').disabled).toBe(true);
+    await harness.command('REPLAY');
+    expect(request.mock.calls.filter(([operation]) => operation === 'REPLAY')).toHaveLength(1);
+    finish(structuredClone(current));
+    await fixture.whenStable();
+    fixture.destroy();
+  });
+
+  it('keeps URL-only restart separate from replay', async () => {
+    current.restartRequired = true;
+    current.document.lastAction = { operation: 'EXECUTE', status: 'FAILED', at: '2026-10-31T12:00:00Z' };
+    harness.update(structuredClone(current));
+    fixture.detectChanges();
+    button('restart').click();
+    await fixture.whenStable();
+    expect(request.mock.calls.filter(([operation]) => operation === 'RESET')).toHaveLength(1);
+    expect(request.mock.calls.some(([operation]) => operation === 'REPLAY' || operation === 'EXECUTE')).toBe(false);
+    fixture.destroy();
+  });
+
+  it('disables both recovery buttons while busy or when the browser is closed', () => {
+    current.restartRequired = true;
+    current.document.lastAction = { operation: 'REPLAY', status: 'FAILED', at: '2026-10-31T12:00:00Z' };
+    for (const next of [{ ...current, busy: true }, { ...current, open: false }]) {
+      harness.update(structuredClone(next));
+      fixture.detectChanges();
+      expect(button('restart').disabled).toBe(true);
+      expect(button('restartAndReplay').disabled).toBe(true);
+    }
     fixture.destroy();
   });
 

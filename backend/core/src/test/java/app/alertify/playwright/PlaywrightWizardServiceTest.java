@@ -29,6 +29,38 @@ class PlaywrightWizardServiceTest {
             mock(ProcedureExecutionOrchestrator.class), mock(ProcedureInvocationRegistry.class), mock(ProcedureRepository.class), json);
 
     @Test
+    void normalizesBareAddressesWithoutRewritingExplicitSchemesOrCredentials() {
+        var cases = Map.ofEntries(
+                Map.entry(" www.anep.edu.uy/path?q=1#section ", "https://www.anep.edu.uy/path?q=1#section"),
+                Map.entry("//www.anep.edu.uy", "https://www.anep.edu.uy"),
+                Map.entry("alertify.dev:8443/path", "https://alertify.dev:8443/path"),
+                Map.entry("localhost:8080/", "https://localhost:8080/"),
+                Map.entry("[::1]:8443/", "https://[::1]:8443/"),
+                Map.entry("http://fixture.test/", "http://fixture.test/"),
+                Map.entry("HTTPS://fixture.test/", "HTTPS://fixture.test/"),
+                Map.entry("ftp://fixture.test/", "ftp://fixture.test/"),
+                Map.entry("javascript:alert(1)", "javascript:alert(1)"),
+                Map.entry("user:password@fixture.test", "user:password@fixture.test"),
+                Map.entry("user@fixture.test", "https://user@fixture.test"),
+                Map.entry(" ", ""));
+        cases.forEach((input, expected) -> assertThat(PlaywrightWizardService.normalizeUrl(input)).isEqualTo(expected));
+    }
+
+    @Test
+    void savesCanonicalUrlsAndPreparesOlderBareDomainDrafts() {
+        var admin = new UsernamePasswordAuthenticationToken("admin-subject", "", List.of(new SimpleGrantedAuthority("ROLE_ADMIN")));
+        var settings = new PlaywrightWizardService.Settings("www.anep.edu.uy", "", "chromium", List.of("chromium"), 10, 5, "ASK");
+        var draft = new WizardDraft("admin-subject", json.writeValueAsString(Map.of("settings", settings, "messages", List.of())));
+        when(store.load("admin-subject", draft.getId())).thenReturn(draft);
+        service.request(admin, json.valueToTree(Map.of("operation", "SAVE", "id", draft.getId(), "clientId", "browser-a", "settings", settings)));
+        var saved = org.mockito.ArgumentCaptor.forClass(String.class);
+        org.mockito.Mockito.verify(store).save(org.mockito.ArgumentMatchers.eq("admin-subject"), org.mockito.ArgumentMatchers.eq(draft.getId()), saved.capture());
+        assertThat(json.readTree(saved.getValue()).path("settings").path("url").asString()).isEqualTo("https://www.anep.edu.uy");
+        var prepared = json.valueToTree(service.request(admin, json.valueToTree(Map.of("operation", "PREPARE", "id", draft.getId(), "clientId", "browser-a", "bypass", true))));
+        assertThat(prepared.path("settings").path("url").asString()).isEqualTo("https://www.anep.edu.uy");
+    }
+
+    @Test
     void continuesInTheActualLastTestedBrowserWithoutChangingTheTestMatrixOrReplaying() {
         var settings = new PlaywrightWizardService.Settings("https://example.com/", "QUERY h1", "chromium", List.of("chromium", "firefox"), 10, 5, "ASK");
         var report = json.valueToTree(Map.of("activeEngine", "firefox", "passed", true));

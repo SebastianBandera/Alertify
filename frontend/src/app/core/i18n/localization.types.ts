@@ -1074,6 +1074,7 @@ export type TranslationKey =
   | 'alerts.wizard.executionFailed'
   | 'alerts.wizard.executionCompleted'
   | 'alerts.wizard.executionRestartRequired'
+  | 'alerts.wizard.restartAndReplay'
   | 'alerts.wizard.reject'
   | 'alerts.wizard.testBrowsers'
   | 'alerts.wizard.test'

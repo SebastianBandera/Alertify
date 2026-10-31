@@ -272,6 +272,98 @@ class PlaywrightWizardProposalTest {
         assertThat(browserRequests).isEmpty();
     }
 
+    @Test
+    void replayWaitsForResetThenExecutesTheSavedScriptAndKeepsProposalsPending() throws Exception {
+        var reset = new CompletableFuture<WizardRequest>();
+        prepareReplay("", reset);
+        var doc = (tools.jackson.databind.node.ObjectNode) document();
+        doc.put("proposal", "QUERY #not-approved\nUSE");
+        draft.update(json.writeValueAsString(doc));
+        requestOperation("REPLAY");
+        WizardRequest resetRequest = reset.get(5, java.util.concurrent.TimeUnit.SECONDS);
+        assertThat(browserRequests).extracting(WizardRequest::getOperation).containsExactly("RESET");
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> requestOperation("REPLAY")).hasMessageContaining("Another operation");
+        completeBrowserRequest(resetRequest, "");
+        awaitOperation();
+        assertThat(browserRequests).extracting(WizardRequest::getOperation).containsExactly("RESET", "EXECUTE");
+        assertThat(json.readTree(browserRequests.getLast().getJson()).path("steps").asString()).isEqualTo("QUERY #username");
+        assertThat(json.readTree(resetRequest.getJson()).path("engine").asString()).isEqualTo("chromium");
+        assertThat(document().path("proposal").asString()).isEqualTo("QUERY #not-approved\nUSE");
+        assertThat(document().path("lastAction").path("status").asString()).isEqualTo("SUCCESS");
+        assertThat(document().path("lastAction").path("result").path("completed").asInt()).isEqualTo(1);
+        assertThat(document().has("testedRevision")).isFalse();
+        assertThat(ReflectionTestUtils.getField(session, "restartRequired")).isEqualTo(false);
+        assertThat(ReflectionTestUtils.getField(session, "closed")).hasToString("false");
+    }
+
+    @Test
+    void replayDoesNotExecuteIfResetFailsAndRetainsTheRestartBarrier() throws Exception {
+        prepareReplay("RESET", null);
+        requestOperation("REPLAY");
+        awaitOperation();
+        assertThat(browserRequests).extracting(WizardRequest::getOperation).containsExactly("RESET");
+        assertThat(document().path("lastAction").path("operation").asString()).isEqualTo("REPLAY");
+        assertThat(document().path("lastAction").path("status").asString()).isEqualTo("FAILED");
+        assertThat(document().path("lastAction").path("result").path("completed").asInt()).isZero();
+        assertThat(document().has("testedRevision")).isFalse();
+        assertThat(ReflectionTestUtils.getField(session, "restartRequired")).isEqualTo(true);
+    }
+
+    @Test
+    void replayStopsAfterAnExecutionFailureAndRequiresAnotherExplicitRestart() throws Exception {
+        prepareReplay("EXECUTE", null);
+        requestOperation("REPLAY");
+        awaitOperation();
+        assertThat(browserRequests).extracting(WizardRequest::getOperation).containsExactly("RESET", "EXECUTE");
+        assertThat(document().path("lastAction").path("operation").asString()).isEqualTo("EXECUTE");
+        assertThat(document().path("lastAction").path("status").asString()).isEqualTo("FAILED");
+        assertThat(ReflectionTestUtils.getField(session, "restartRequired")).isEqualTo(true);
+    }
+
+    @Test
+    void urlOnlyResetDoesNotReplayAnySteps() throws Exception {
+        prepareReplay("", null);
+        requestOperation("RESET");
+        awaitOperation();
+        assertThat(browserRequests).extracting(WizardRequest::getOperation).containsExactly("RESET");
+        assertThat(document().path("lastAction").path("result").path("completed").asInt()).isZero();
+    }
+
+    @SuppressWarnings("unchecked")
+    private void prepareReplay(String failedOperation, CompletableFuture<WizardRequest> reset) throws Exception {
+        prepare("ASK");
+        ((Map<UUID, Object>) ReflectionTestUtils.getField(service, "sessions")).put(draft.getId(), session);
+        ReflectionTestUtils.setField(session, "restartRequired", true);
+        StreamObserver<WizardRequest> browser = mock(StreamObserver.class);
+        doAnswer(invocation -> {
+            WizardRequest request = invocation.getArgument(0);
+            browserRequests.add(request);
+            if (request.getOperation().equals("RESET") && reset != null) reset.complete(request);
+            else completeBrowserRequest(request, failedOperation);
+            return null;
+        }).when(browser).onNext(any());
+        ReflectionTestUtils.setField(session, "requests", browser);
+    }
+
+    @SuppressWarnings("unchecked")
+    private void completeBrowserRequest(WizardRequest request, String failedOperation) {
+        var pending = (ConcurrentMap<String, CompletableFuture<WizardEvent>>) ReflectionTestUtils.getField(session, "pending");
+        var reply = pending.get(request.getRequestId());
+        if (request.getOperation().equals(failedOperation)) reply.completeExceptionally(new IllegalArgumentException("Synthetic browser action failure"));
+        else reply.complete(WizardEvent.newBuilder().setType("RESULT").setJson("{\"completed\":1,\"status\":\"READY\"}").build());
+    }
+
+    private void requestOperation(String operation) {
+        var authentication = new UsernamePasswordAuthenticationToken("admin-subject", "", List.of(new SimpleGrantedAuthority("ROLE_ADMIN")));
+        service.request(authentication, json.valueToTree(Map.of("operation", operation, "id", draft.getId(), "clientId", "browser-a")));
+    }
+
+    private void awaitOperation() {
+        org.junit.jupiter.api.Assertions.assertTimeoutPreemptively(java.time.Duration.ofSeconds(5), () -> {
+            while (((java.util.concurrent.atomic.AtomicBoolean) ReflectionTestUtils.getField(session, "busy")).get()) Thread.sleep(10);
+        });
+    }
+
     @SuppressWarnings("unchecked")
     private void prepare(String mode) throws Exception {
         selectorChecks.clear();
