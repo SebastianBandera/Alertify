@@ -35,7 +35,7 @@ class CodexChatServiceTest {
             CodexChatService.strictSchema(schema);
             var strict = json.readTree(json.writeValueAsString(schema));
             List<String> nullable = file.equals("alert-update-schema.json")
-                    ? List.of("persistentIssues", "smartExecutionEnabled", "smartExecutionIntervalHours", "smartExecutionPolicy")
+                    ? List.of("persistentIssues", "smartExecutionEnabled", "smartExecutionIntervalHours", "smartExecutionPolicy", "smartExecutionIntervalSource", "smartExecutionIntervalConfigurationId")
                     : file.startsWith("pipe") ? List.of("sourceOutputKey", "sourceResultPointer", "valueExpression") : List.of();
             for (String property : nullable) {
                 var value = schemaProperty(strict, property);

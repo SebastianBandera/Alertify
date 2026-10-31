@@ -52,7 +52,8 @@ public final class AlertMapper {
                         .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new)),
                 values.stream().map(AlertMapper::toParameterValue).toList(),
                 alert.getCreatedAt(), alert.getUpdatedAt(), alert.getPersistentIssuesSince(),
-                alert.isSmartExecutionEnabled(), alert.getSmartExecutionIntervalHours(), alert.getSmartExecutionPolicy()
+                alert.isSmartExecutionEnabled(), alert.getSmartExecutionIntervalHours(), alert.getSmartExecutionPolicy(),
+                alert.getSmartExecutionIntervalSource(), alert.getSmartExecutionIntervalConfigurationId()
         );
     }
 

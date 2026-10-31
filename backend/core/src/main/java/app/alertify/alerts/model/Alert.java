@@ -81,6 +81,13 @@ public class Alert {
     @Column(name = "smart_execution_interval_hours")
     private Integer smartExecutionIntervalHours;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "smart_execution_interval_source", nullable = false, length = 16)
+    private SmartExecutionIntervalSource smartExecutionIntervalSource = SmartExecutionIntervalSource.FIXED;
+
+    @Column(name = "smart_execution_interval_configuration_id")
+    private Long smartExecutionIntervalConfigurationId;
+
     @Column(name = "smart_execution_policy", length = 32)
     @Enumerated(EnumType.STRING)
     private SmartExecutionPolicy smartExecutionPolicy;
@@ -214,18 +221,30 @@ public class Alert {
         this.allowConcurrentExecutions = allowConcurrentExecutions;
     }
 
+    public SmartExecutionIntervalSource getSmartExecutionIntervalSource() { return smartExecutionIntervalSource; }
+
+    public Long getSmartExecutionIntervalConfigurationId() { return smartExecutionIntervalConfigurationId; }
+
     public void changeSmartExecution(boolean enabled, Integer intervalHours, SmartExecutionPolicy policy) {
+        changeSmartExecution(enabled, intervalHours, policy, SmartExecutionIntervalSource.FIXED, null);
+    }
+
+    public void changeSmartExecution(boolean enabled, Integer intervalHours, SmartExecutionPolicy policy, SmartExecutionIntervalSource source, Long configurationId) {
         if (!enabled) {
+            smartExecutionIntervalSource = SmartExecutionIntervalSource.FIXED;
+            smartExecutionIntervalConfigurationId = null;
             smartExecutionEnabled = false;
             smartExecutionIntervalHours = null;
             smartExecutionPolicy = null;
             return;
         }
-        if (intervalHours == null || intervalHours < 1)
+        if (source == SmartExecutionIntervalSource.FIXED && (intervalHours == null || intervalHours < 1))
             throw new IllegalArgumentException("smartExecutionIntervalHours must be greater than or equal to 1");
 
         smartExecutionEnabled = true;
-        smartExecutionIntervalHours = intervalHours;
+        smartExecutionIntervalSource = Objects.requireNonNull(source, "source must not be null");
+        smartExecutionIntervalConfigurationId = source == SmartExecutionIntervalSource.CONFIGURATION ? configurationId : null;
+        smartExecutionIntervalHours = source == SmartExecutionIntervalSource.FIXED ? intervalHours : null;
         smartExecutionPolicy = Objects.requireNonNull(policy, "smartExecutionPolicy must not be null");
     }
 

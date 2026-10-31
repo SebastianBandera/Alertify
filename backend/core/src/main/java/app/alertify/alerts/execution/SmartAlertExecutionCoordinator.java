@@ -38,17 +38,19 @@ public class SmartAlertExecutionCoordinator implements AutoCloseable {
     private final CronQuietHoursService quietHoursService;
     private final MaintenanceModeService maintenanceModeService;
     private final SmartExecutionProperties properties;
+    private final SmartExecutionIntervalResolver intervalResolver;
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
     private final AtomicBoolean running = new AtomicBoolean();
     private volatile Clock clock = Clock.systemUTC();
 
-    public SmartAlertExecutionCoordinator(AlertRepository alertRepository, AlertExecutionRepository executionRepository, AlertExecutionOrchestrator orchestrator, CronQuietHoursService quietHoursService, MaintenanceModeService maintenanceModeService, SmartExecutionProperties properties) {
+    public SmartAlertExecutionCoordinator(AlertRepository alertRepository, AlertExecutionRepository executionRepository, AlertExecutionOrchestrator orchestrator, CronQuietHoursService quietHoursService, MaintenanceModeService maintenanceModeService, SmartExecutionProperties properties, SmartExecutionIntervalResolver intervalResolver) {
         this.alertRepository = alertRepository;
         this.executionRepository = executionRepository;
         this.orchestrator = orchestrator;
         this.quietHoursService = quietHoursService;
         this.maintenanceModeService = maintenanceModeService;
         this.properties = properties;
+        this.intervalResolver = intervalResolver;
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -155,7 +157,7 @@ public class SmartAlertExecutionCoordinator implements AutoCloseable {
         if (!alert.isEnabled() || !alert.isSmartExecutionEnabled())
             return false;
 
-        Integer intervalHours = alert.getSmartExecutionIntervalHours();
+        Integer intervalHours = intervalResolver.resolve(alert);
         SmartExecutionPolicy policy = alert.getSmartExecutionPolicy();
         if (intervalHours == null || intervalHours < 1 || policy == null)
             return false;
@@ -167,7 +169,9 @@ public class SmartAlertExecutionCoordinator implements AutoCloseable {
                     .orElse(true);
         }
 
-        if (executionRepository.existsByAlert_IdAndStatusAndFinishedAtGreaterThanEqual(alert.getId(), AlertExecutionStatus.SUCCESS, threshold))
+        // Compare in Java: the maximum supported interval can precede PostgreSQL's timestamp range.
+        if (executionRepository.latestFinishedAtByAlertAndStatus(alert.getId(), AlertExecutionStatus.SUCCESS)
+                .map(finishedAt -> !finishedAt.isBefore(threshold)).orElse(false))
             return false;
 
         if (policy == SmartExecutionPolicy.NORMAL)

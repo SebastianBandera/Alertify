@@ -76,6 +76,8 @@ class AlertDefinitionVersionJpaIntegrationTest {
     private long templateId;
     private long configurationId;
     private long secretId;
+    private JdbcTemplate jdbc;
+    private JpaRepositoryFactory repositories;
 
     @BeforeAll
     void initializeDisposableDatabase() throws Exception {
@@ -83,7 +85,7 @@ class AlertDefinitionVersionJpaIntegrationTest {
         var dataSource = new DriverManagerDataSource(environment.get("ALERTIFY_ALERT_TEST_DATABASE_URL"),
                 environment.getOrDefault("ALERTIFY_ALERT_TEST_DATABASE_USER", "postgres"),
                 environment.getOrDefault("ALERTIFY_ALERT_TEST_DATABASE_PASSWORD", ""));
-        var jdbc = new JdbcTemplate(dataSource);
+        jdbc = new JdbcTemplate(dataSource);
         for (String schema : List.of("core", "audit", "secrets"))
             assertNull(jdbc.queryForObject("SELECT to_regnamespace(?)::text", String.class, schema));
 
@@ -101,7 +103,7 @@ class AlertDefinitionVersionJpaIntegrationTest {
         factory.afterPropertiesSet();
         entityManager = SharedEntityManagerCreator.createSharedEntityManager(factory.getObject());
         transactions = new TransactionTemplate(new JpaTransactionManager(factory.getObject()));
-        var repositories = new JpaRepositoryFactory(entityManager);
+        repositories = new JpaRepositoryFactory(entityManager);
         repositories.addRepositoryProxyPostProcessor((proxy, _) ->
                 proxy.addAdvice(new PersistenceExceptionTranslationInterceptor(new HibernateJpaDialect())));
         var alerts = repositories.getRepository(AlertRepository.class);
@@ -260,6 +262,78 @@ class AlertDefinitionVersionJpaIntegrationTest {
         assertThat(after.parameters().getFirst().textValue()).isEqualTo("QA-VALUE-B");
         assertThat(after.parameters().getFirst().version()).isEqualTo(initial.parameters().getFirst().version() + 1);
         assertThat(after.parameters().getLast()).isEqualTo(initial.parameters().getLast());
+    }
+
+    @Test
+    void smartIntervalsResolveLiveValuesAndPersistOneFailurePerIncidentAcrossResolverRestarts() {
+        Long configId = jdbc.queryForObject("insert into core.configurations(name, value_type, configuration_value) values (?, 'INTEGER', '6'::jsonb) returning id",
+                Long.class, "Smart interval " + UUID.randomUUID());
+        var first = fixture();
+        var second = fixture();
+        var other = fixture();
+        Long otherConfig = jdbc.queryForObject("insert into core.configurations(name, value_type, configuration_value) values (?, 'INTEGER', '2'::jsonb) returning id",
+                Long.class, "Other smart interval " + UUID.randomUUID());
+        for (var initial : List.of(first, second, other)) {
+            Long selected = initial.id().equals(other.id()) ? otherConfig : configId;
+            update(initial.id(), new AlertUpdateRequest(initial.version(), initial.name(), initial.description(), "-", true, false,
+                    List.of(text("message", "fixture")), Set.of(), false, true, null,
+                    app.alertify.alerts.model.SmartExecutionPolicy.ONCE_PER_INTERVAL,
+                    app.alertify.alerts.model.SmartExecutionIntervalSource.CONFIGURATION, selected));
+        }
+        var alerts = repositories.getRepository(AlertRepository.class);
+        var executions = repositories.getRepository(AlertExecutionRepository.class);
+        var dashboard = mock(DashboardEventPublisher.class);
+        var persistence = new app.alertify.alerts.execution.AlertExecutionPersistenceService(alerts, executions,
+                mock(AlertStateRepository.class), mock(ApplicationEventLogger.class), tools.jackson.databind.json.JsonMapper.builder().build(),
+                mock(app.alertify.configuration.service.WritableConfigurationService.class), mock(app.alertify.services.secret.WritableSecretService.class));
+        java.util.function.Supplier<app.alertify.alerts.execution.SmartExecutionIntervalResolver> restart = () ->
+                new app.alertify.alerts.execution.SmartExecutionIntervalResolver(repositories.getRepository(ApplicationConfigurationRepository.class), jdbc, persistence, dashboard);
+        java.util.function.Function<Long, Integer> resolve = id -> transactions.execute(status -> restart.get().resolve(alerts.findById(id).orElseThrow()));
+        assertThat(resolve.apply(first.id())).isEqualTo(6);
+        assertThat(resolve.apply(second.id())).isEqualTo(6);
+        assertThat(resolve.apply(other.id())).isEqualTo(2);
+        var usages = transactions.execute(status -> new app.alertify.configuration.service.ConfigurationUsageService(
+                new org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate(jdbc),
+                repositories.getRepository(ApplicationConfigurationRepository.class)).get(configId));
+        assertThat(usages.direct()).extracting(usage -> usage.id()).containsExactlyInAnyOrder(first.id(), second.id());
+        jdbc.update("update core.configurations set configuration_value = '2'::jsonb where id = ?", configId);
+        assertThat(resolve.apply(first.id())).isEqualTo(2);
+        assertThat(resolve.apply(second.id())).isEqualTo(2);
+        for (String value : List.of("0", "-7")) {
+            jdbc.update("update core.configurations set configuration_value = ?::jsonb where id = ?", value, configId);
+            assertThat(resolve.apply(first.id())).isEqualTo(1);
+        }
+        jdbc.update("update core.configurations set configuration_value = '99999999999999999999999999999'::jsonb where id = ?", configId);
+        assertThat(resolve.apply(first.id())).isEqualTo(Integer.MAX_VALUE);
+        assertThat(executions.latestFinishedAtByAlertAndStatus(first.id(), app.alertify.alerts.execution.AlertExecutionStatus.SUCCESS)).isEmpty();
+        jdbc.update("update core.configurations set value_type = 'STRING', configuration_value = '\"hidden\"'::jsonb where id = ?", configId);
+        assertThat(resolve.apply(first.id())).isNull();
+        assertThat(resolve.apply(first.id())).isNull();
+        assertThat(executions.countByAlert_Id(first.id())).isEqualTo(1);
+        var failed = jdbc.queryForMap("select status, trigger, worker_name, error_message from core.alert_executions where alert_id = ?", first.id());
+        assertThat(failed.get("status")).isEqualTo("ERROR");
+        assertThat(failed.get("trigger")).isEqualTo("SMART");
+        assertThat(failed.get("worker_name")).isNull();
+        assertThat(failed.get("error_message").toString()).contains("INTEGER").doesNotContain("hidden");
+        org.mockito.Mockito.verify(dashboard).alertChangedAfterCommit(first.id());
+        // Rolling back must not consume the incident or leave a history row.
+        jdbc.update("update core.configurations set value_type = 'INTEGER', configuration_value = '6'::jsonb where id = ?", configId);
+        assertThat(resolve.apply(first.id())).isEqualTo(6);
+        jdbc.update("update core.configurations set value_type = 'STRING', configuration_value = '\"invalid\"'::jsonb where id = ?", configId);
+        transactions.executeWithoutResult(status -> {
+            restart.get().resolve(alerts.findById(first.id()).orElseThrow());
+            status.setRollbackOnly();
+        });
+        assertThat(executions.countByAlert_Id(first.id())).isEqualTo(1);
+        assertThat(resolve.apply(first.id())).isNull();
+        assertThat(executions.countByAlert_Id(first.id())).isEqualTo(2);
+        jdbc.update("delete from core.configurations where id = ?", configId);
+        assertThat(read(first.id()).smartExecutionIntervalSource()).isEqualTo(app.alertify.alerts.model.SmartExecutionIntervalSource.CONFIGURATION);
+        assertThat(read(first.id()).smartExecutionIntervalConfigurationId()).isNull();
+        assertThat(resolve.apply(first.id())).isNull();
+        assertThat(resolve.apply(first.id())).isNull();
+        assertThat(executions.countByAlert_Id(first.id())).isEqualTo(3);
+        assertThat(resolve.apply(other.id())).isEqualTo(2);
     }
 
     private AlertResponse fixture() {

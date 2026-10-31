@@ -121,6 +121,19 @@ describe('Alert editor wizard draft ownership', () => {
     localStorage.removeItem(STORAGE_KEY);
   });
 
+  it('sends a configuration interval without converting its missing fixed value to zero', async () => {
+    harness.openEdit({ ...ALERT, smartExecutionEnabled: true, smartExecutionIntervalSource: 'CONFIGURATION', smartExecutionIntervalConfigurationId: 17, smartExecutionPolicy: 'ONCE_PER_INTERVAL' });
+    await harness.save();
+    expect(api.updateAlert).toHaveBeenCalledWith(ALERT.id, expect.objectContaining({
+      smartExecutionIntervalSource: 'CONFIGURATION', smartExecutionIntervalConfigurationId: 17, smartExecutionIntervalHours: null,
+    }));
+    harness.patchForm({ smartExecutionIntervalSource: 'FIXED', smartExecutionIntervalHours: 6 });
+    await harness.save();
+    expect(api.updateAlert).toHaveBeenLastCalledWith(ALERT.id, expect.objectContaining({
+      smartExecutionIntervalSource: 'FIXED', smartExecutionIntervalConfigurationId: null, smartExecutionIntervalHours: 6,
+    }));
+  });
+
   it('preserves the wizard draft when its form is cancelled and another alert is updated', async () => {
     prepare();
     harness.closeEditor();

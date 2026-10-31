@@ -16,6 +16,8 @@ import org.springframework.stereotype.Component;
 import app.alertify.alerts.model.Alert;
 import app.alertify.alerts.model.AlertParameterValue;
 import app.alertify.alerts.model.SmartExecutionPolicy;
+import app.alertify.alerts.model.SmartExecutionIntervalSource;
+import app.alertify.jpa.repository.ApplicationConfigurationRepository;
 import app.alertify.alerts.template.annotation.AlertParameterSource;
 import app.alertify.api.csv.CsvSupport;
 import app.alertify.api.error.InvalidAlertImportException;
@@ -33,17 +35,23 @@ class AlertCsvCodec {
     private static final List<String> HEADER = List.of(
             "name", "description", "templateKey", "cronExpression",
             "enabled", "allowConcurrentExecutions", "smartExecutionEnabled",
-            "smartExecutionIntervalHours", "smartExecutionPolicy", "parameters", "tags"
+            "smartExecutionIntervalHours", "smartExecutionPolicy", "parameters", "tags",
+            "smartExecutionIntervalSource", "smartExecutionIntervalConfiguration"
     );
     private static final int MAX_ROWS = 10_000;
     private static final String PARAMETER_PREFIX = "parameter '";
     private static final Pattern TAG_COLOR = Pattern.compile("^#[0-9A-Fa-f]{6}$");
 
     private final JsonMapper jsonMapper;
+    private final ApplicationConfigurationRepository configurations;
 
-    AlertCsvCodec(JsonMapper jsonMapper) {
+    @org.springframework.beans.factory.annotation.Autowired
+    AlertCsvCodec(JsonMapper jsonMapper, ApplicationConfigurationRepository configurations) {
         this.jsonMapper = jsonMapper;
+        this.configurations = configurations;
     }
+
+    AlertCsvCodec(JsonMapper jsonMapper) { this(jsonMapper, null); }
 
     byte[] write(List<Alert> alerts, Map<Long, List<AlertParameterValue>> valuesByAlertId) {
         StringBuilder csv = new StringBuilder("\uFEFF");
@@ -73,11 +81,18 @@ class AlertCsvCodec {
                             alert.getSmartExecutionIntervalHours() == null ? "" : alert.getSmartExecutionIntervalHours().toString(),
                             alert.getSmartExecutionPolicy() == null ? "" : alert.getSmartExecutionPolicy().name(),
                             writeJson(parameters),
-                            writeJson(tags)
+                            writeJson(tags),
+                            alert.getSmartExecutionIntervalSource().name(),
+                            intervalConfigurationName(alert)
                     )
             );
         }
         return csv.toString().getBytes(StandardCharsets.UTF_8);
+    }
+
+    private String intervalConfigurationName(Alert alert) {
+        Long id = alert.getSmartExecutionIntervalConfigurationId();
+        return id == null ? "" : configurations.findById(id).map(app.alertify.jpa.entity.ApplicationConfiguration::getName).orElse("");
     }
 
     private static ExportParameter exportParameter(AlertParameterValue value) {
@@ -151,7 +166,21 @@ class AlertCsvCodec {
             boolean enabled = parseBoolean(fields.get(4), "enabled", rowNumber);
             boolean allowConcurrentExecutions = parseBoolean(fields.get(5), "allowConcurrentExecutions", rowNumber);
             boolean smartExecutionEnabled = parseBoolean(fields.get(6), "smartExecutionEnabled", rowNumber);
-            Integer smartExecutionIntervalHours = parseSmartInterval(fields.get(7), smartExecutionEnabled, rowNumber);
+            SmartExecutionIntervalSource intervalSource;
+            try {
+                intervalSource = SmartExecutionIntervalSource.valueOf(fields.get(11).trim());
+            } catch (IllegalArgumentException exception) {
+                throw rowError(rowNumber, "smartExecutionIntervalSource must be FIXED or CONFIGURATION");
+            }
+            String intervalConfiguration = fields.get(12).trim();
+            boolean fixed = intervalSource == SmartExecutionIntervalSource.FIXED;
+            if ((!fixed || !smartExecutionEnabled) && !fields.get(7).isBlank())
+                throw rowError(rowNumber, "Fixed hours must be empty for a configuration interval or disabled smart execution");
+
+            if ((fixed || !smartExecutionEnabled) && !intervalConfiguration.isEmpty())
+                throw rowError(rowNumber, "Interval configuration must be empty for a fixed interval or disabled smart execution");
+
+            Integer smartExecutionIntervalHours = parseSmartInterval(fields.get(7), smartExecutionEnabled && fixed, rowNumber);
             SmartExecutionPolicy smartExecutionPolicy = parseSmartPolicy(fields.get(8), smartExecutionEnabled, rowNumber);
             List<ImportParameter> parameters = parseParameters(fields.get(9), rowNumber);
             List<ImportTag> tags = parseTags(fields.get(10), rowNumber);
@@ -159,7 +188,7 @@ class AlertCsvCodec {
                     new ImportRow(
                             rowNumber, name, description, templateKey, cronExpression,
                             enabled, allowConcurrentExecutions, smartExecutionEnabled,
-                            smartExecutionIntervalHours, smartExecutionPolicy, parameters, tags
+                            smartExecutionIntervalHours, smartExecutionPolicy, parameters, tags, intervalSource, intervalConfiguration
                     )
             );
         }
@@ -342,7 +371,9 @@ class AlertCsvCodec {
         Integer smartExecutionIntervalHours,
         SmartExecutionPolicy smartExecutionPolicy,
         List<ImportParameter> parameters,
-        List<ImportTag> tags
+        List<ImportTag> tags,
+        SmartExecutionIntervalSource intervalSource,
+        String intervalConfiguration
     ) {
     }
 

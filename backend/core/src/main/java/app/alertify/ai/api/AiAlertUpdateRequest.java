@@ -7,6 +7,7 @@ import org.springframework.ai.tool.annotation.ToolParam;
 
 import app.alertify.alerts.api.AlertUpdateRequest;
 import app.alertify.alerts.model.SmartExecutionPolicy;
+import app.alertify.alerts.model.SmartExecutionIntervalSource;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -26,12 +27,18 @@ public record AiAlertUpdateRequest(
     @ToolParam(required = false, description = "null preserves issue persistence. Use true to enable or false to disable ONLY when the user explicitly requests that change. Do not use false as a neutral placeholder. The read response exposes persistentIssues and persistentIssuesSince.") Boolean persistentIssues,
     @ToolParam(required = false, description = "null preserves smart execution. Use true or false only when changing this option; it is independent of persistentIssues.") Boolean smartExecutionEnabled,
     @ToolParam(required = false, description = "null preserves the current smart interval when smart execution remains enabled. Supply a positive interval when enabling or changing smart execution; disabling smart execution clears its interval.") @PositiveOrZero Integer smartExecutionIntervalHours,
-    @ToolParam(required = false, description = "null preserves the current smart policy when smart execution remains enabled. Disabling smart execution clears its policy. This option does not change persistentIssues.") SmartExecutionPolicy smartExecutionPolicy
+    @ToolParam(required = false, description = "null preserves the current smart policy when smart execution remains enabled. Disabling smart execution clears its policy. This option does not change persistentIssues.") SmartExecutionPolicy smartExecutionPolicy,
+    @ToolParam(required = false, description = "null preserves interval source. FIXED uses positive smartExecutionIntervalHours. CONFIGURATION reads hours from an INTEGER Config, clamped to 1..2147483647; a missing or incompatible Config records one SMART ERROR per incident.") SmartExecutionIntervalSource smartExecutionIntervalSource,
+    @ToolParam(required = false, description = "Positive INTEGER configuration ID for a CONFIGURATION interval. Omit both source and ID to preserve them. When explicitly selecting CONFIGURATION, supply the ID; null with an explicit source clears the reference. Do not change the Config writable flag.") @Positive Long smartExecutionIntervalConfigurationId
 ) {
+    public AiAlertUpdateRequest(Long version, String name, String description, String cronExpression, boolean enabled, boolean allowConcurrentExecutions, List<AiAlertParameterValue> parameters, Set<Long> tagIds, Boolean persistentIssues, Boolean smartExecutionEnabled, Integer smartExecutionIntervalHours, SmartExecutionPolicy smartExecutionPolicy) {
+        this(version, name, description, cronExpression, enabled, allowConcurrentExecutions, parameters, tagIds, persistentIssues, smartExecutionEnabled, smartExecutionIntervalHours, smartExecutionPolicy, null, null);
+    }
+
 
     public AlertUpdateRequest toRequest() {
         return new AlertUpdateRequest(version, name, description, cronExpression, enabled, allowConcurrentExecutions,
                 parameters.stream().map(AiAlertParameterValue::toRequest).toList(), tagIds, persistentIssues,
-                smartExecutionEnabled, smartExecutionIntervalHours, smartExecutionPolicy);
+                smartExecutionEnabled, smartExecutionIntervalHours, smartExecutionPolicy, smartExecutionIntervalSource, smartExecutionIntervalConfigurationId);
     }
 }

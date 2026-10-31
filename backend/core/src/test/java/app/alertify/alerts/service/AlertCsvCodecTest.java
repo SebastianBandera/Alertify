@@ -30,7 +30,7 @@ class AlertCsvCodecTest {
 
     private static final String TEMPLATE_KEY = "app.alertify.alerts.templates.HttpsCertificateExpiryAlertTemplate";
     private static final String HEADER =
-            "name,description,templateKey,cronExpression,enabled,allowConcurrentExecutions,smartExecutionEnabled,smartExecutionIntervalHours,smartExecutionPolicy,parameters,tags";
+            "name,description,templateKey,cronExpression,enabled,allowConcurrentExecutions,smartExecutionEnabled,smartExecutionIntervalHours,smartExecutionPolicy,parameters,tags,smartExecutionIntervalSource,smartExecutionIntervalConfiguration";
     private final AlertCsvCodec codec = new AlertCsvCodec(JsonMapper.builder().build());
 
     @Test
@@ -41,7 +41,7 @@ class AlertCsvCodecTest {
         String csv = new String(codec.write(List.of(alert), Map.of()), StandardCharsets.UTF_8);
 
         assertThat(csv).startsWith("\uFEFF" + HEADER + "\r\n");
-        assertThat(csv).contains("cert-check,Vencimiento," + TEMPLATE_KEY + ",0 0 8 * * *,true,false,false,,,[],[]");
+        assertThat(csv).contains("cert-check,Vencimiento," + TEMPLATE_KEY + ",0 0 8 * * *,true,false,false,,,[],[],FIXED,");
         assertThat(csv).endsWith("\r\n");
     }
 
@@ -100,6 +100,22 @@ class AlertCsvCodecTest {
     }
 
     @Test
+    void roundTripsConfigurationIntervalByName() {
+        var configurations = org.mockito.Mockito.mock(app.alertify.jpa.repository.ApplicationConfigurationRepository.class);
+        var configuration = new ApplicationConfiguration("SHARED_INTERVAL", null, ConfigurationValueType.INTEGER,
+                tools.jackson.databind.node.IntNode.valueOf(6), Set.of());
+        org.mockito.Mockito.when(configurations.findById(17L)).thenReturn(java.util.Optional.of(configuration));
+        var configuredCodec = new AlertCsvCodec(JsonMapper.builder().build(), configurations);
+        Alert alert = alert(template(), "smart", null, "-", true, false);
+        alert.changeSmartExecution(true, null, SmartExecutionPolicy.ONCE_PER_INTERVAL,
+                app.alertify.alerts.model.SmartExecutionIntervalSource.CONFIGURATION, 17L);
+        var row = configuredCodec.read(configuredCodec.write(List.of(alert), Map.of())).getFirst();
+        assertThat(row.intervalConfiguration()).isEqualTo("SHARED_INTERVAL");
+        assertThat(row.intervalSource()).isEqualTo(app.alertify.alerts.model.SmartExecutionIntervalSource.CONFIGURATION);
+        assertThat(row.smartExecutionIntervalHours()).isNull();
+    }
+
+    @Test
     void roundTripsSmartExecutionSettings() {
         Alert alert = alert(template(), "smart", null, "-", true, false);
         alert.changeSmartExecution(true, 2, SmartExecutionPolicy.ONCE_PER_INTERVAL);
@@ -109,12 +125,14 @@ class AlertCsvCodecTest {
         assertThat(row.smartExecutionEnabled()).isTrue();
         assertThat(row.smartExecutionIntervalHours()).isEqualTo(2);
         assertThat(row.smartExecutionPolicy()).isEqualTo(SmartExecutionPolicy.ONCE_PER_INTERVAL);
+        assertThat(row.intervalSource()).isEqualTo(app.alertify.alerts.model.SmartExecutionIntervalSource.FIXED);
+        assertThat(row.intervalConfiguration()).isEmpty();
     }
 
     @Test
     void readsTagsAndBlankDescriptionAsNull() {
         List<AlertCsvCodec.ImportRow> rows = codec.read(
-                csv("alpha,," + TEMPLATE_KEY + ",0 0 * * * *,true,false,false,,,[],\"[{\"\"name\"\":\"\"prod\"\",\"\"color\"\":\"\"#ff0000\"\"}]\"")
+                csv("alpha,," + TEMPLATE_KEY + ",0 0 * * * *,true,false,false,,,[],\"[{\"\"name\"\":\"\"prod\"\",\"\"color\"\":\"\"#ff0000\"\"}]\",FIXED,")
         );
 
         assertThat(rows.getFirst().description()).isNull();
@@ -146,18 +164,35 @@ class AlertCsvCodecTest {
     }
 
     @Test
-    void rejectsRowWithWrongColumnCount() {
-        assertThatThrownBy(() -> codec.read(csv("alpha,,x,0 0 * * * *,true,false,[]")))
+    void rejectsHeaderWithoutIntervalSourceAndConfiguration() {
+        byte[] content = "name,description,templateKey,cronExpression,enabled,allowConcurrentExecutions,smartExecutionEnabled,smartExecutionIntervalHours,smartExecutionPolicy,parameters,tags\r\n"
+                .getBytes(StandardCharsets.UTF_8);
+
+        assertThatThrownBy(() -> codec.read(content))
                 .isInstanceOf(InvalidAlertImportException.class)
-                .hasMessage("CSV row 2: expected 11 columns");
+                .hasMessage("CSV header must be exactly: " + HEADER);
+    }
+
+    @Test
+    void rejectsRowWithWrongColumnCount() {
+        assertThatThrownBy(() -> codec.read(csv("alpha,,x,0 0 * * * *,true,false,false,,,[],[]")))
+                .isInstanceOf(InvalidAlertImportException.class)
+                .hasMessage("CSV row 2: expected 13 columns");
+    }
+
+    @Test
+    void rejectsMissingIntervalSourceInsteadOfDefaultingToFixed() {
+        assertThatThrownBy(() -> codec.read(csv("alpha,," + TEMPLATE_KEY + ",-,true,false,true,6,ONCE_PER_INTERVAL,[],[], ,")))
+                .isInstanceOf(InvalidAlertImportException.class)
+                .hasMessage("CSV row 2: smartExecutionIntervalSource must be FIXED or CONFIGURATION");
     }
 
     @Test
     void rejectsDuplicateNameIgnoringCase() {
         assertThatThrownBy(() -> codec.read(
                 csv(
-                        "alpha,," + TEMPLATE_KEY + ",0 0 * * * *,true,false,false,,,[],[]",
-                        "ALPHA,," + TEMPLATE_KEY + ",0 0 * * * *,true,false,false,,,[],[]"
+                        "alpha,," + TEMPLATE_KEY + ",0 0 * * * *,true,false,false,,,[],[],FIXED,",
+                        "ALPHA,," + TEMPLATE_KEY + ",0 0 * * * *,true,false,false,,,[],[],FIXED,"
                 )
         ))
                 .isInstanceOf(InvalidAlertImportException.class)
@@ -166,18 +201,18 @@ class AlertCsvCodecTest {
 
     @Test
     void rejectsMissingTemplateKeyAndCron() {
-        assertThatThrownBy(() -> codec.read(csv("alpha,,,0 0 * * * *,true,false,false,,,[],[]")))
+        assertThatThrownBy(() -> codec.read(csv("alpha,,,0 0 * * * *,true,false,false,,,[],[],FIXED,")))
                 .isInstanceOf(InvalidAlertImportException.class)
                 .hasMessage("CSV row 2: templateKey is required");
 
-        assertThatThrownBy(() -> codec.read(csv("alpha,," + TEMPLATE_KEY + ",,true,false,false,,,[],[]")))
+        assertThatThrownBy(() -> codec.read(csv("alpha,," + TEMPLATE_KEY + ",,true,false,false,,,[],[],FIXED,")))
                 .isInstanceOf(InvalidAlertImportException.class)
                 .hasMessage("CSV row 2: cronExpression is required");
     }
 
     @Test
     void rejectsNonBooleanFlags() {
-        assertThatThrownBy(() -> codec.read(csv("alpha,," + TEMPLATE_KEY + ",0 0 * * * *,yes,false,false,,,[],[]")))
+        assertThatThrownBy(() -> codec.read(csv("alpha,," + TEMPLATE_KEY + ",0 0 * * * *,yes,false,false,,,[],[],FIXED,")))
                 .isInstanceOf(InvalidAlertImportException.class)
                 .hasMessage("CSV row 2: enabled must be true or false");
     }
@@ -187,7 +222,7 @@ class AlertCsvCodecTest {
         assertThatThrownBy(() -> codec.read(
                 csv(
                         "alpha,," + TEMPLATE_KEY + ",0 0 * * * *,true,false,false,,,"
-                                + "\"[{\"\"key\"\":\"\"endpoint\"\",\"\"source\"\":\"\"ENV\"\",\"\"value\"\":\"\"x\"\"}]\",[]"
+                                + "\"[{\"\"key\"\":\"\"endpoint\"\",\"\"source\"\":\"\"ENV\"\",\"\"value\"\":\"\"x\"\"}]\",[],FIXED,"
                 )
         ))
                 .isInstanceOf(InvalidAlertImportException.class)
@@ -200,7 +235,7 @@ class AlertCsvCodecTest {
                 csv(
                         "alpha,," + TEMPLATE_KEY + ",0 0 * * * *,true,false,false,,,"
                                 + "\"[{\"\"key\"\":\"\"endpoint\"\",\"\"source\"\":\"\"TEXT\"\",\"\"value\"\":\"\"a\"\"},"
-                                + "{\"\"key\"\":\"\"endpoint\"\",\"\"source\"\":\"\"TEXT\"\",\"\"value\"\":\"\"b\"\"}]\",[]"
+                                + "{\"\"key\"\":\"\"endpoint\"\",\"\"source\"\":\"\"TEXT\"\",\"\"value\"\":\"\"b\"\"}]\",[],FIXED,"
                 )
         ))
                 .isInstanceOf(InvalidAlertImportException.class)
@@ -212,7 +247,7 @@ class AlertCsvCodecTest {
         assertThatThrownBy(() -> codec.read(
                 csv(
                         "alpha,," + TEMPLATE_KEY + ",0 0 * * * *,true,false,false,,,"
-                                + "\"[{\"\"key\"\":\"\"endpoint\"\",\"\"source\"\":\"\"CONFIGURATION\"\",\"\"value\"\":\"\" \"\"}]\",[]"
+                                + "\"[{\"\"key\"\":\"\"endpoint\"\",\"\"source\"\":\"\"CONFIGURATION\"\",\"\"value\"\":\"\" \"\"}]\",[],FIXED,"
                 )
         ))
                 .isInstanceOf(InvalidAlertImportException.class)
@@ -221,11 +256,11 @@ class AlertCsvCodecTest {
 
     @Test
     void rejectsParametersThatAreNotAJsonArray() {
-        assertThatThrownBy(() -> codec.read(csv("alpha,," + TEMPLATE_KEY + ",0 0 * * * *,true,false,false,,,{},[]")))
+        assertThatThrownBy(() -> codec.read(csv("alpha,," + TEMPLATE_KEY + ",0 0 * * * *,true,false,false,,,{},[],FIXED,")))
                 .isInstanceOf(InvalidAlertImportException.class)
                 .hasMessage("CSV row 2: parameters must be a JSON array");
 
-        assertThatThrownBy(() -> codec.read(csv("alpha,," + TEMPLATE_KEY + ",0 0 * * * *,true,false,false,,,nope,[]")))
+        assertThatThrownBy(() -> codec.read(csv("alpha,," + TEMPLATE_KEY + ",0 0 * * * *,true,false,false,,,nope,[],FIXED,")))
                 .isInstanceOf(InvalidAlertImportException.class)
                 .hasMessage("CSV row 2: parameters is not valid JSON");
     }
@@ -235,7 +270,7 @@ class AlertCsvCodecTest {
         assertThatThrownBy(() -> codec.read(
                 csv(
                         "alpha,," + TEMPLATE_KEY + ",0 0 * * * *,true,false,false,,,[],"
-                                + "\"[{\"\"name\"\":\"\"prod\"\",\"\"color\"\":\"\"red\"\"}]\""
+                                + "\"[{\"\"name\"\":\"\"prod\"\",\"\"color\"\":\"\"red\"\"}]\",FIXED,"
                 )
         ))
                 .isInstanceOf(InvalidAlertImportException.class)
@@ -246,7 +281,7 @@ class AlertCsvCodecTest {
     void rejectsMoreRowsThanTheLimit() {
         StringBuilder csv = new StringBuilder(HEADER).append("\r\n");
         for (int index = 0; index < 10_001; index++)
-            csv.append("alert-").append(index).append(",,").append(TEMPLATE_KEY).append(",0 0 * * * *,true,false,false,,,[],[]\r\n");
+            csv.append("alert-").append(index).append(",,").append(TEMPLATE_KEY).append(",0 0 * * * *,true,false,false,,,[],[],FIXED,\r\n");
 
         byte[] content = csv.toString().getBytes(StandardCharsets.UTF_8);
 

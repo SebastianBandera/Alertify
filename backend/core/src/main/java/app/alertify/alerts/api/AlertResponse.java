@@ -7,6 +7,7 @@ import java.util.Set;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import app.alertify.alerts.model.SmartExecutionPolicy;
+import app.alertify.alerts.model.SmartExecutionIntervalSource;
 import app.alertify.configuration.api.TagResponse;
 
 public record AlertResponse(
@@ -28,8 +29,14 @@ public record AlertResponse(
     Instant persistentIssuesSince,
     boolean smartExecutionEnabled,
     Integer smartExecutionIntervalHours,
-    SmartExecutionPolicy smartExecutionPolicy
+    SmartExecutionPolicy smartExecutionPolicy,
+    SmartExecutionIntervalSource smartExecutionIntervalSource,
+    Long smartExecutionIntervalConfigurationId
 ) {
+    public AlertResponse(Long id, long version, Long templateId, String templateKey, String templateNameKey, String name, String description, String cronExpression, boolean enabled, boolean allowConcurrentExecutions, Set<TagResponse> tags, List<AlertParameterValueResponse> parameters, Instant createdAt, Instant updatedAt, Instant persistentIssuesSince, boolean smartExecutionEnabled, Integer smartExecutionIntervalHours, SmartExecutionPolicy smartExecutionPolicy) {
+        this(id, version, templateId, templateKey, templateNameKey, name, description, cronExpression, enabled, allowConcurrentExecutions, tags, parameters, createdAt, updatedAt, persistentIssuesSince, smartExecutionEnabled, smartExecutionIntervalHours, smartExecutionPolicy, SmartExecutionIntervalSource.FIXED, null);
+    }
+
     /** Boolean projection of the persisted option, available to API clients and AI tools. */
     @JsonProperty("persistentIssues")
     public boolean persistentIssues() { return persistentIssuesSince != null; }
