@@ -31,6 +31,7 @@ interface WizardHarness {
   patch(value: Partial<WizardSettings>): void;
   readonly saving: WritableSignal<boolean>;
   readonly error: WritableSignal<string>;
+  goToLine(line: number): void;
 }
 
 describe('PlaywrightWizardComponent', () => {
@@ -78,6 +79,74 @@ describe('PlaywrightWizardComponent', () => {
   function button(label: string): HTMLButtonElement {
     return [...fixture.nativeElement.querySelectorAll('button')].find((element: HTMLButtonElement) => element.textContent?.trim() === label)!;
   }
+
+  it('numbers physical script lines including comments, empty lines and the trailing line without altering the script', async () => {
+    const script = '# comment\r\n\r\nWAIT_VISIBLE h1 10s\r\nQUERY h1\r\n';
+    harness.settings.set({ ...current.document.settings, steps: script });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('.line-numbers pre')?.textContent).toBe('1\n2\n3\n4\n5');
+    const editor = fixture.nativeElement.querySelector('.code-editor textarea') as HTMLTextAreaElement;
+    expect(editor.getAttribute('wrap')).toBe('off');
+    expect(harness.settings().steps).toBe(script);
+    expect(fixture.nativeElement.querySelector('.line-numbers')?.getAttribute('aria-hidden')).toBe('true');
+    fixture.destroy();
+  });
+
+  it('keeps line numbers synchronized with vertical editor scrolling', () => {
+    harness.settings.set({ ...current.document.settings, steps: Array.from({ length: 30 }, () => 'QUERY h1').join('\n') });
+    fixture.detectChanges();
+    const editor = fixture.nativeElement.querySelector('.code-editor textarea') as HTMLTextAreaElement;
+    editor.scrollTop = 240;
+    editor.dispatchEvent(new Event('scroll'));
+    fixture.detectChanges();
+    expect((fixture.nativeElement.querySelector('.line-numbers-content') as HTMLElement).style.transform).toBe('translateY(-240px)');
+    fixture.destroy();
+  });
+
+  it('marks the failed physical line and selects it when the user clicks its receipt button', async () => {
+    current.document.settings.steps = Array.from({ length: 25 }, (_, index) => 'QUERY #line' + (index + 1)).join('\n');
+    current.document.lastAction = { operation: 'EXECUTE', status: 'FAILED', at: '2026-10-31T15:00:00Z', result: { completed: 19, failedLine: 20 } };
+    harness.update(structuredClone(current));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const marker = fixture.nativeElement.querySelector('.failed-line-number') as HTMLElement;
+    expect(marker.textContent?.trim()).toBe('20');
+    expect(marker.style.top).toBe('388px');
+    button('line 20').click();
+    fixture.detectChanges();
+    const editor = fixture.nativeElement.querySelector('.code-editor textarea') as HTMLTextAreaElement;
+    expect(document.activeElement).toBe(editor);
+    expect(editor.value.slice(editor.selectionStart, editor.selectionEnd)).toBe('QUERY #line20');
+    expect(editor.scrollTop).toBeGreaterThan(0);
+    expect(current.document.settings.steps).toBe(harness.settings().steps);
+    fixture.destroy();
+  });
+
+  it('hides a stale or invalid failed-line marker and respects execution locking', async () => {
+    current.document.settings.steps = 'QUERY #one\nQUERY #two';
+    current.document.lastAction = { operation: 'EXECUTE', status: 'FAILED', at: '2026-10-31T15:00:00Z', result: { failedLine: 2 } };
+    harness.update(structuredClone(current));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const editor = fixture.nativeElement.querySelector('.code-editor textarea') as HTMLTextAreaElement;
+    editor.setSelectionRange(0, 0);
+    harness.update({ ...structuredClone(current), busy: true });
+    fixture.detectChanges();
+    expect(button('line 2').disabled).toBe(true);
+    harness.goToLine(2);
+    expect(editor.selectionStart).toBe(0);
+    harness.update(structuredClone(current));
+    harness.patch({ steps: '# added line\nQUERY #one\nQUERY #two' });
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.failed-line-number')).toBeNull();
+    harness.settings.set(structuredClone(current.document.settings));
+    current.document.lastAction.result!.failedLine = 99;
+    harness.update(structuredClone(current));
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.failed-line-number')).toBeNull();
+    fixture.destroy();
+  });
 
   it('shows activity immediately and keeps it visible until the backend finishes', async () => {
     let finish!: (value: WizardState) => void;

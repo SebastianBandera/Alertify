@@ -27,6 +27,7 @@ export class PlaywrightWizardComponent implements OnInit {
   private readonly destroyRef = inject(DestroyRef);
   private readonly remote = viewChild(PlaywrightRemoteViewComponent);
   private readonly messagesViewport = viewChild<ElementRef<HTMLElement>>('messagesViewport');
+  private readonly stepsEditor = viewChild<ElementRef<HTMLTextAreaElement>>('stepsEditor');
   private readonly clientId = crypto.randomUUID();
   protected readonly state = signal<WizardState | null>(null);
   protected readonly activeBrowser = computed(() => playwrightBrowserLabel(this.state()?.activeEngine));
@@ -59,6 +60,16 @@ export class PlaywrightWizardComponent implements OnInit {
   protected readonly referenceOptions = computed<readonly SearchableSelectOption[]>(() => this.references().map((reference, index) => ({ value: index, label: reference, description: this.t(reference.startsWith('configs.') ? 'configurationReference' : 'secretReference') })));
   protected readonly selectedReferenceId = computed(() => { const index = this.references().indexOf(this.selectedReference()); return index < 0 ? null : index; });
   protected readonly settings = signal<WizardSettings>({ url: '', steps: '', engine: 'chromium', browsers: ['chromium'], loadTimeoutSeconds: 10, elementTimeoutSeconds: 5, mode: 'ASK' });
+  protected readonly stepsScrollTop = signal(0);
+  protected readonly stepLineCount = computed(() => this.settings().steps.split(/\r\n?|\n/).length);
+  protected readonly stepLineNumbers = computed(() => Array.from({ length: this.stepLineCount() }, (_, index) => index + 1).join('\n'));
+  protected readonly stepLineNumberWidth = computed(() => 'calc(' + Math.max(3, String(this.stepLineCount()).length) + 'ch + 16px)');
+  protected readonly failedLine = computed(() => {
+    const current = this.state();
+    const action = current?.document.lastAction;
+    const line = action?.result?.failedLine;
+    return action?.status === 'FAILED' && this.settings().steps === current?.document.settings.steps && typeof line === 'number' && Number.isInteger(line) && line > 0 && line <= this.stepLineCount() ? line : null;
+  });
   protected readonly changed = computed(() => {
     const saved = this.state()?.document.settings;
     return !!saved && !sameSettings(this.settings(), saved);
@@ -181,6 +192,21 @@ export class PlaywrightWizardComponent implements OnInit {
     this.urlFocused = false;
     const url = normalizeWizardUrl(this.settings().url);
     if (url !== this.settings().url) this.patch({ url });
+  }
+
+  protected goToLine(line: number): void {
+    const editor = this.stepsEditor()?.nativeElement;
+    if (!editor || this.busy()) return;
+    const lines = editor.value.split('\n');
+    const index = Math.min(lines.length, Math.max(1, line)) - 1;
+    const start = lines.slice(0, index).reduce((offset, value) => offset + value.length + 1, 0);
+    editor.focus();
+    editor.setSelectionRange(start, start + lines[index].length);
+    const style = getComputedStyle(editor);
+    const lineHeight = parseFloat(style.lineHeight) || 20;
+    const paddingTop = parseFloat(style.paddingTop) || 8;
+    editor.scrollTop = Math.max(0, index * lineHeight + paddingTop - (editor.clientHeight - lineHeight) / 2);
+    this.stepsScrollTop.set(editor.scrollTop);
   }
 
   protected patch(patch: Partial<WizardSettings>): void {

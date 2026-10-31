@@ -68,6 +68,7 @@
               <strong>{{ t(action.status === 'FAILED' ? 'executionFailed' : 'executionCompleted') }}</strong>
               @if (action.result?.completed !== undefined) { <p>{{ action.result!.completed }} {{ t('completed') }}</p> }
               @if (action.error) { <p>{{ action.error }}</p> }
+              @if (failedLine(); as line) { <button type="button" [disabled]="busy()" (click)="goToLine(line)">{{ t('line') }} {{ line }}</button> }
               @if (state()!.restartRequired) { <p>{{ t('executionRestartRequired') }}</p><div class="actions"><button type="button" [disabled]="busy() || !state()!.open" (click)="command('RESET')">{{ t('restart') }}</button><button type="button" [disabled]="busy() || !state()!.open" (click)="command('REPLAY')">{{ t('restartAndReplay') }}</button></div> }
             </div>
           }
@@ -84,7 +85,10 @@
 
     <section class="steps-panel">
       <div class="panel-heading"><h3>{{ t('steps') }}</h3><span>{{ t('redaction') }}</span></div>
-      <textarea class="code" rows="10" [ngModel]="settings().steps" (ngModelChange)="patch({ steps: $event })" [disabled]="busy()" [attr.aria-label]="t('steps')" spellcheck="false"></textarea>
+      <div class="code-editor">
+        <div class="line-numbers" aria-hidden="true" [style.width]="stepLineNumberWidth()"><div class="line-numbers-content" [style.transform]="'translateY(' + -stepsScrollTop() + 'px)'"><pre>{{ stepLineNumbers() }}</pre>@if (failedLine(); as line) { <span class="failed-line-number" [style.top.px]="8 + (line - 1) * 20">{{ line }}</span> }</div></div>
+        <textarea #stepsEditor class="code" rows="10" wrap="off" [ngModel]="settings().steps" (ngModelChange)="patch({ steps: $event })" (scroll)="stepsScrollTop.set(stepsEditor.scrollTop)" [disabled]="busy()" [attr.aria-label]="t('steps')" spellcheck="false"></textarea>
+      </div>
       @if (state()!.document.validationError; as validationError) { <p class="error" role="alert">{{ validationError }}</p> }
       <div class="steps-execution"><button type="button" [disabled]="busy() || !state()!.open || !!state()!.restartRequired" (click)="command('EXECUTE')">{{ t('execute') }}</button></div>
       <p class="edit-help"><strong>{{ t('editHelpTitle') }}</strong><span>{{ t('editHelp') }}</span></p>
