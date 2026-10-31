@@ -414,10 +414,10 @@
 
   @if (activeTab() === 'wizards') {
     @if (playwrightWizardOpen()) {
-      <app-playwright-wizard (prepared)="preparePlaywrightAlert($event)" (dismissed)="playwrightWizardOpen.set(false)" />
+      <app-playwright-wizard [initialDraftId]="playwrightInitialDraft()" (prepared)="preparePlaywrightAlert($event)" (returned)="returnFromPlaywright($event)" (dismissed)="playwrightWizardOpen.set(false)" />
     } @else {
       <div class="wizard-grid">
-      <button type="button" class="wizard-card" (click)="playwrightWizardOpen.set(true)">
+      <button type="button" class="wizard-card" (click)="openPlaywrightWizard()">
         <strong>{{ localization.translate('alerts.wizards.playwrightPage.title') }}</strong>
         <code>PlaywrightPageAlertTemplate</code>
         <p>{{ localization.translate('alerts.wizards.playwrightPage.description') }}</p>
@@ -562,6 +562,7 @@
             @if (formFieldErrors().template; as templateError) {
               <small class="field-error" id="alert-template-error" role="alert">{{ templateError }}</small>
             }
+            @if (canEditPlaywrightPlan()) { <button class="button button--secondary" type="button" (click)="editPlaywrightPlan()" [disabled]="saving()">{{ localization.translateDynamic('alerts.form.editPlaywrightPlan') }}</button> }
           </div>
           <label>
             <span>{{ localization.translate('alerts.form.name') }}</span>

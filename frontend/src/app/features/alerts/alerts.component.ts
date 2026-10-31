@@ -29,7 +29,7 @@ import { EditorViewportService } from '../../shared/editor-viewport/editor-viewp
 import { ResizableTableDirective } from '../../shared/resizable-table/resizable-table.directive';
 import { SearchableSelectComponent, SearchableSelectOption } from '../../shared/searchable-select/searchable-select.component';
 import { PlaywrightWizardComponent } from './playwright-wizard.component';
-import { PlaywrightWizardApiService, WizardSettings } from './playwright-wizard-api.service';
+import { PlaywrightWizardApiService, PreparedWizard, WizardSettings, WizardSourceAlert, WizardState } from './playwright-wizard-api.service';
 
 type AlertTab = 'alerts' | 'templates' | 'wizards' | 'history';
 type AlertFormField = 'template' | 'name' | 'cron' | 'smartInterval';
@@ -48,6 +48,7 @@ interface ParameterForm {
 interface AlertForm {
   templateId: number | null;
   wizardDraftId?: string | null;
+  wizardSourceAlertId?: number | null;
   name: string;
   description: string;
   cronExpression: string;
@@ -126,6 +127,9 @@ export class AlertsComponent implements OnInit {
 
   protected readonly activeTab = signal<AlertTab>('alerts');
   protected readonly playwrightWizardOpen = signal(false);
+  protected readonly playwrightInitialDraft = signal<string | null>(null);
+  private readonly playwrightOrigin = signal<WizardSourceAlert | null>(null);
+  protected readonly canEditPlaywrightPlan = computed(() => this.editingAlert()?.templateKey === 'app.alertify.alerts.templates.PlaywrightPageAlertTemplate');
   private readonly wizardApi = inject(PlaywrightWizardApiService);
   protected readonly alerts = signal<readonly Alert[]>([]);
   protected readonly templates = signal<readonly AlertTemplate[]>([]);
@@ -649,11 +653,58 @@ export class AlertsComponent implements OnInit {
     this.editorOpen.set(true);
   }
 
-  protected preparePlaywrightAlert(prepared: { id: string; settings: WizardSettings }): void {
+  protected openPlaywrightWizard(): void {
+    this.playwrightInitialDraft.set(null);
+    this.playwrightOrigin.set(null);
+    this.playwrightWizardOpen.set(true);
+  }
+
+  protected async editPlaywrightPlan(): Promise<void> {
+    const alert = this.editingAlert();
+    if (!alert || !this.canEditPlaywrightPlan() || this.saving()) return;
+    this.saving.set(true);
+    this.formError.set(null);
+    try {
+      const draft = await this.wizardApi.request('CREATE_FROM_ALERT', { alertId: alert.id, version: alert.version, form: structuredClone(this.form()) });
+      this.playwrightInitialDraft.set(draft.id);
+      this.playwrightOrigin.set(draft.document.sourceAlert ?? null);
+      this.editorOpen.set(false);
+      this.selectTab('wizards');
+      this.playwrightWizardOpen.set(true);
+    } catch (error) { this.formError.set(this.errorMessage(error)); }
+    finally { this.saving.set(false); }
+  }
+
+  private async restorePlaywrightEditor(source: WizardSourceAlert): Promise<void> {
+    const alert = this.editingAlert()?.id === source.id ? this.editingAlert()! : await this.api.getAlert(source.id);
+    this.editingAlert.set({ ...alert, version: source.version });
+    this.form.set(structuredClone(source.form) as unknown as AlertForm);
+    this.formError.set(null);
+    this.formFieldErrors.set({});
+    this.playwrightWizardOpen.set(false);
+    this.playwrightInitialDraft.set(null);
+    this.selectTab('alerts');
+    this.editorOpen.set(true);
+  }
+
+  protected async returnFromPlaywright(state: WizardState | null): Promise<void> {
+    const source = state ? state.document.sourceAlert : this.playwrightOrigin();
+    if (!source) return;
+    try { await this.restorePlaywrightEditor(source); }
+    catch (error) { this.error.set(this.errorMessage(error)); }
+  }
+
+  protected async preparePlaywrightAlert(prepared: PreparedWizard): Promise<void> {
     const template = this.templates().find(value => value.templateKey.endsWith('.PlaywrightPageAlertTemplate'));
     if (!template) return;
-    this.openCreate(template.id);
-    this.patchForm({ enabled: false, wizardDraftId: prepared.id });
+    if (prepared.sourceAlert) {
+      try { await this.restorePlaywrightEditor(prepared.sourceAlert); }
+      catch (error) { this.error.set(this.errorMessage(error)); return; }
+      this.patchForm({ wizardDraftId: prepared.id, wizardSourceAlertId: prepared.sourceAlert.id });
+    } else {
+      this.openCreate(template.id);
+      this.patchForm({ enabled: false, wizardDraftId: prepared.id });
+    }
     const values: Record<string, string> = {
       url: prepared.settings.url, steps: prepared.settings.steps,
       chromiumEnabled: String(prepared.settings.browsers.includes('chromium')),
@@ -663,6 +714,7 @@ export class AlertsComponent implements OnInit {
       elementTimeoutSeconds: String(prepared.settings.elementTimeoutSeconds),
     };
     for (const [key, value] of Object.entries(values)) {
+      if (prepared.parameterBindings?.[key]) continue;
       const parameter = template.parameters.find(item => item.key === key);
       this.patchParameter(key, { configured: true, source: parameter?.options.includes(value) ? 'OPTION' : 'TEXT', textValue: value });
     }
@@ -718,7 +770,7 @@ export class AlertsComponent implements OnInit {
     const draft = this.drafts.read<AlertForm, Alert>('alerts');
     if (!draft || this.saving()) return;
     this.editorViewport.capture(draft.editing ? `alert-${draft.editing.id}` : 'alert-create');
-    this.form.set({ ...draft.form, description: draft.form.description ?? '', wizardDraftId: draft.editing ? null : draft.form.wizardDraftId ?? null });
+    this.form.set({ ...draft.form, description: draft.form.description ?? '', wizardDraftId: !draft.editing || draft.form.wizardSourceAlertId === draft.editing.id ? draft.form.wizardDraftId ?? null : null });
     this.editingAlert.set(draft.editing);
     this.formError.set(null);
     this.editorOpen.set(true);
@@ -828,7 +880,7 @@ export class AlertsComponent implements OnInit {
     const form = this.form();
     const template = this.selectedTemplate();
     const editing = this.editingAlert();
-    const wizardDraftId = editing ? null : form.wizardDraftId ?? null;
+    const wizardDraftId = !editing || form.wizardSourceAlertId === editing.id ? form.wizardDraftId ?? null : null;
     const validationErrors: AlertFormErrors = {};
     if (!template)
       validationErrors.template = this.localization.translate('alerts.form.templateRequired');

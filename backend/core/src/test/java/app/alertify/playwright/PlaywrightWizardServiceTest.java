@@ -26,7 +26,7 @@ class PlaywrightWizardServiceTest {
     private final PlaywrightWizardService service = new PlaywrightWizardService(
             store, mock(WorkerStatusService.class), mock(WorkerGrpcChannelFactory.class), mock(AiWorkerClient.class),
             mock(AdminEventPublisher.class), mock(ApplicationConfigurationRepository.class), valuePreparation,
-            mock(ProcedureExecutionOrchestrator.class), mock(ProcedureInvocationRegistry.class), mock(ProcedureRepository.class), json);
+            mock(ProcedureExecutionOrchestrator.class), mock(ProcedureInvocationRegistry.class), mock(ProcedureRepository.class), mock(WizardAlertPlanService.class), json);
 
     @Test
     void normalizesBareAddressesWithoutRewritingExplicitSchemesOrCredentials() {

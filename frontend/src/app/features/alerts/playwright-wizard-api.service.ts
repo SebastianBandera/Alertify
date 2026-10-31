@@ -11,10 +11,16 @@ export interface WizardSettings {
   mode: 'ASK' | 'AUTO';
 }
 
+export interface WizardBinding { source: 'CONFIGURATION' | 'SECRET' | 'PROCEDURE'; id: number; name: string; version: number; }
+export interface WizardSourceAlert { id: number; version: number; form: Record<string, unknown>; }
+export interface PreparedWizard { id: string; settings: WizardSettings; sourceAlert?: WizardSourceAlert; parameterBindings?: Record<string, WizardBinding>; }
+
 export interface WizardState {
   id: string;
   document: {
     settings: WizardSettings;
+    sourceAlert?: WizardSourceAlert;
+    parameterBindings?: Record<string, WizardBinding>;
     allowedProcedureIds?: number[];
     messages: { role: string; content: string; hasImage: boolean; at: string }[];
     proposal?: string;
@@ -38,6 +44,7 @@ export interface WizardState {
   observation: { snapshot: string } | null;
   tokens: number;
   modelRequests: number;
+  parameterConfirmation?: { token: string; procedures: { parameter: string; name: string }[] };
 }
 
 export function playwrightBrowserLabel(engine: string | null | undefined): string {

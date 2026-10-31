@@ -586,4 +586,34 @@ describe('PlaywrightWizardComponent', () => {
     expect(button('execute').disabled).toBe(true);
     fixture.destroy();
   });
+
+  it('shows linked parameters as read-only and does not replace them when patched', async () => {
+    current.document.parameterBindings = { url: { source: 'SECRET', id: 9, name: 'Private URL', version: 0 }, steps: { source: 'CONFIGURATION', id: 8, name: 'Shared plan', version: 2 } };
+    current.document.settings.url = '';
+    current.document.settings.steps = '';
+    harness.update(structuredClone(current));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect((fixture.nativeElement.querySelector('.settings input[type=url]') as HTMLInputElement).disabled).toBe(true);
+    expect(fixture.nativeElement.querySelector('.code-editor')).toBeNull();
+    expect(fixture.nativeElement.textContent).toContain('Shared plan');
+    harness.patch({ url: 'https://replacement.invalid/', steps: 'QUERY #replacement' });
+    expect(harness.settings().url).toBe('');
+    expect(harness.settings().steps).toBe('');
+    fixture.destroy();
+  });
+
+  it('requests explicit confirmation for parameter procedures and sends the server token only after acceptance', async () => {
+    const confirmation = { ...structuredClone(current), parameterConfirmation: { token: 'single-use-token', procedures: [{ parameter: 'url', name: 'URL provider' }] } };
+    const ask = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);
+    request.mockResolvedValueOnce(confirmation);
+    await harness.command('OPEN');
+    expect(request.mock.calls.filter(([operation]) => operation === 'OPEN')).toHaveLength(1);
+    request.mockResolvedValueOnce(confirmation).mockResolvedValueOnce(structuredClone(current));
+    await harness.command('OPEN');
+    expect(ask).toHaveBeenCalledWith(expect.stringContaining('URL provider (url)'));
+    expect(request).toHaveBeenLastCalledWith('OPEN', expect.objectContaining({ parameterConfirmationToken: 'single-use-token' }));
+    ask.mockRestore();
+    fixture.destroy();
+  });
 });
