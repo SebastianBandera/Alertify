@@ -1,6 +1,6 @@
 import { inject, Injectable } from '@angular/core';
 
-import { ApiRequestError, BinaryLimits, PageResponse, TagMatchMode, TagWriteRequest } from './configuration-api.service';
+import { ApiRequestError, BinaryLimits, PageResponse, SortDirection, TagMatchMode, TagWriteRequest } from './configuration-api.service';
 import { AuthService } from '../auth/auth.service';
 import { RUNTIME_CONFIG } from '../config/runtime-config';
 
@@ -163,8 +163,8 @@ export class SecretApiService {
   private readonly authService = inject(AuthService);
   private readonly apiBaseUrl = inject(RUNTIME_CONFIG).apiBaseUrl;
 
-  async listSecrets(search: string, valueType: SecretValueType | '', tagIds: readonly number[], tagMatchMode: TagMatchMode, pageNumber: number, pageSize: number): Promise<PageResponse<ApplicationSecret>> {
-    const params = new URLSearchParams({ page: String(pageNumber), size: String(pageSize), sort: 'name,asc' });
+  async listSecrets(search: string, valueType: SecretValueType | '', tagIds: readonly number[], tagMatchMode: TagMatchMode, pageNumber: number, pageSize: number, updatedAtSort: SortDirection | null = null): Promise<PageResponse<ApplicationSecret>> {
+    const params = new URLSearchParams({ page: String(pageNumber), size: String(pageSize), sort: updatedAtSort === null ? 'name,asc' : `updatedAt,${updatedAtSort}` });
     if (search.trim()) params.set('name', `~*${search.trim()}*`);
     if (valueType) params.set('type', valueType);
     tagIds.forEach((tagId) => params.append('tagId', String(tagId)));

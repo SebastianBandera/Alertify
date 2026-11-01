@@ -2,6 +2,16 @@
   display: block;
 }
 
+th.sortable-column { padding: 0; }
+.sort-header { width: 100%; min-height: 42px; display: flex; align-items: center; gap: 7px; padding: 14px; border: 0; background: transparent; color: inherit; cursor: pointer; font: inherit; font-weight: inherit; letter-spacing: inherit; text-align: left; text-transform: inherit; }
+.sort-header:hover { background: #f2f4f7; color: var(--primary-strong); }
+.sort-header:focus-visible { position: relative; z-index: 1; outline: 2px solid var(--primary); outline-offset: -2px; }
+.sort-indicator { width: 12px; flex: 0 0 12px; color: #98a2b3; font-size: 13px; line-height: 1; text-align: center; }
+.sort-indicator::before { content: "\2195"; }
+.sort-indicator--desc, .sort-indicator--asc { color: var(--primary-strong); }
+.sort-indicator--desc::before { content: "\2193"; }
+.sort-indicator--asc::before { content: "\2191"; }
+
 .configs {
   overflow: hidden;
   border: 1px solid var(--border);

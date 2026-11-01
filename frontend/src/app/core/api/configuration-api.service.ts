@@ -150,11 +150,12 @@ export class ConfigurationApiService {
     tagMatchMode: TagMatchMode,
     pageNumber: number,
     pageSize: number,
+    updatedAtSort: SortDirection | null = null,
   ): Promise<PageResponse<ApplicationConfiguration>> {
     const params = new URLSearchParams({
       page: String(pageNumber),
       size: String(pageSize),
-      sort: 'name,asc',
+      sort: updatedAtSort === null ? 'name,asc' : `updatedAt,${updatedAtSort}`,
     });
     if (search.trim()) params.set('name', `~*${search.trim()}*`);
     if (valueSearch.trim()) params.set('valueContains', valueSearch.trim());

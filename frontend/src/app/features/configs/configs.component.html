@@ -146,7 +146,18 @@
             <th>{{ localization.translate('configs.column.type') }}</th>
             <th>{{ localization.translate('configs.column.value') }}</th>
             <th>{{ localization.translate('configs.column.tags') }}</th>
-            <th class="updated-column">{{ localization.translate('configs.column.updatedAt') }}</th>
+            <th class="updated-column sortable-column" scope="col" [attr.aria-sort]="updatedAtSort() === null ? 'none' : updatedAtSort() === 'desc' ? 'descending' : 'ascending'">
+              <button
+                class="sort-header"
+                type="button"
+                [title]="localization.translate(updatedAtSort() === null ? 'table.sort.updatedAtNewest' : updatedAtSort() === 'desc' ? 'table.sort.updatedAtOldest' : 'table.sort.updatedAtClear')"
+                [attr.aria-label]="localization.translate(updatedAtSort() === null ? 'table.sort.updatedAtNewest' : updatedAtSort() === 'desc' ? 'table.sort.updatedAtOldest' : 'table.sort.updatedAtClear')"
+                (click)="toggleUpdatedAtSort()"
+              >
+                {{ localization.translate('configs.column.updatedAt') }}
+                <span class="sort-indicator" [class.sort-indicator--desc]="updatedAtSort() === 'desc'" [class.sort-indicator--asc]="updatedAtSort() === 'asc'" aria-hidden="true"></span>
+              </button>
+            </th>
             <th class="uses-column">{{ localization.translate('configs.column.usages') }}</th>
             <th class="actions-column">{{ localization.translate('configs.column.actions') }}</th>
           </tr>
