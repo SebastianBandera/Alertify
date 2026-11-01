@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.api.MergeCommand.FastForwardMode;
 import org.eclipse.jgit.lib.PersonIdent;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.junit.jupiter.api.Test;
@@ -291,6 +292,89 @@ class GitBranchFlowAlertTemplateTest {
         List<Map<String, Object>> commits = (List<Map<String, Object>>) outside.get(0).get("commits");
         assertEquals("hotfix straight to main", commits.get(0).get("message"));
         assertTrue(context.getState().contains("commitsOutsideFlow=1"));
+    }
+
+    @Test
+    void ignoresPromotionMergeCommitsOutsideFlow() throws Exception {
+        try (Git git = Git.init().setInitialBranch("develop").setDirectory(remote.toFile()).call()) {
+            commit(git, "app.txt", "v1", "initial", daysAgo(30));
+            git.branchCreate().setName("preprod").call();
+            git.branchCreate().setName("main").call();
+            commit(git, "app.txt", "v2", "feature", daysAgo(1));
+            git.checkout().setName("preprod").call();
+            git.merge().setFastForward(FastForwardMode.NO_FF).include(git.getRepository().resolve("develop")).call();
+            git.checkout().setName("main").call();
+            git.merge().setFastForward(FastForwardMode.NO_FF).include(git.getRepository().resolve("preprod")).call();
+            assertEquals(2, git.log().setMaxCount(1).call().iterator().next().getParentCount());
+        }
+        AlertExecutionContext context = new AlertExecutionContext();
+
+        AlertResult result = template().evaluate(context);
+
+        assertEquals(AlertExecutionStatus.SUCCESS, result.status());
+        assertEquals(List.of(), result.statusMessage().get("warnings"));
+        for (Map<String, Object> entry : outsideFlow(result)) {
+            assertEquals(0, entry.get("count"));
+            assertEquals(List.of(), entry.get("commits"));
+        }
+        assertTrue(context.getState().contains("commitsOutsideFlow=0"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = { false, true })
+    void detectsNonMergeCommitsBehindAMergeOutsideFlow(boolean directHotfix) throws Exception {
+        RevCommit feature;
+        RevCommit hotfix = null;
+        try (Git git = Git.init().setInitialBranch("develop").setDirectory(remote.toFile()).call()) {
+            commit(git, "app.txt", "v1", "initial", daysAgo(30));
+            git.branchCreate().setName("preprod").call();
+            git.branchCreate().setName("main").call();
+            git.checkout().setCreateBranch(true).setName("feature").call();
+            feature = commit(git, "feature.txt", "feature", "outside feature", daysAgo(1));
+            git.checkout().setName("main").call();
+            git.merge().setFastForward(FastForwardMode.NO_FF).include(feature).call();
+            assertEquals(2, git.log().setMaxCount(1).call().iterator().next().getParentCount());
+            if (directHotfix)
+                hotfix = commit(git, "hotfix.txt", "patch", "direct hotfix", daysAgo(1));
+
+        }
+        AlertExecutionContext context = new AlertExecutionContext();
+
+        AlertResult result = template().evaluate(context);
+
+        assertEquals(AlertExecutionStatus.WARN, result.status());
+        assertEquals(List.of("commits_outside_flow"), result.statusMessage().get("warnings"));
+        int expectedCount = directHotfix ? 2 : 1;
+        for (Map<String, Object> entry : outsideFlow(result)) {
+            assertEquals(expectedCount, entry.get("count"));
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> commits = (List<Map<String, Object>>) entry.get("commits");
+            List<Object> shas = commits.stream().map(commit -> commit.get("sha")).toList();
+            assertEquals(expectedCount, shas.size());
+            assertTrue(shas.contains(feature.getName()));
+            if (directHotfix)
+                assertTrue(shas.contains(hotfix.getName()));
+
+        }
+        assertTrue(context.getState().contains("commitsOutsideFlow=" + expectedCount * 2));
+    }
+
+    @Test
+    void stillCountsMergeCommitsPendingPromotion() throws Exception {
+        try (Git git = Git.init().setInitialBranch("develop").setDirectory(remote.toFile()).call()) {
+            commit(git, "app.txt", "v1", "initial", daysAgo(30));
+            git.branchCreate().setName("preprod").call();
+            git.branchCreate().setName("main").call();
+            commit(git, "app.txt", "v2", "feature", daysAgo(1));
+            git.checkout().setName("preprod").call();
+            git.merge().setFastForward(FastForwardMode.NO_FF).include(git.getRepository().resolve("develop")).call();
+        }
+
+        AlertResult result = template().evaluate(new AlertExecutionContext());
+
+        assertEquals(AlertExecutionStatus.SUCCESS, result.status());
+        assertEquals(2, transitions(result).get(1).get("pendingCommits"));
+        assertEquals(false, transitions(result).get(1).get("delayed"));
     }
 
     @Test
