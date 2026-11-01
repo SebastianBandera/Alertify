@@ -1,3 +1,7 @@
+@if (descriptionTooltip(); as tooltip) {
+  <div #descriptionTooltipElement id="dashboard-description-tooltip" class="description-tooltip" role="tooltip">{{ tooltip.text }}</div>
+}
+
 <ng-template #cardTemplate let-card>
   <div
     [class]="cardClasses(card)"
@@ -8,6 +12,11 @@
     tabindex="0"
     [attr.aria-label]="openLabel(card)"
     aria-haspopup="menu"
+    [attr.aria-describedby]="descriptionTooltip()?.alertId === card.alert.id ? 'dashboard-description-tooltip' : null"
+    (pointerenter)="scheduleDescriptionTooltip($event, card)"
+    (pointerleave)="hideDescriptionTooltip()"
+    (pointerdown)="hideDescriptionTooltip()"
+    (keydown.escape)="hideDescriptionTooltip()"
     (click)="openCard(card)"
     (contextmenu)="openCardMenu($event, card)"
     (keydown.enter)="openCardFromKeyboard($event, card)"

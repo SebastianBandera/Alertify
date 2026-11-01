@@ -206,6 +206,9 @@ export class DashboardComponent {
     return Array.from({ length: Math.max(0, pending) }, (_, index) => index);
   });
   protected readonly selectedCard = signal<DashboardAlertCard | null>(null);
+  protected readonly descriptionTooltip = signal<{ alertId: number; text: string; x: number; y: number } | null>(null);
+  private readonly descriptionTooltipElement = viewChild<ElementRef<HTMLElement>>('descriptionTooltipElement');
+  private descriptionTooltipTimer: number | null = null;
   private readonly detailDialog = viewChild<ElementRef<HTMLElement>>('detailDialog');
   protected readonly cardMenu = signal<CardMenu | null>(null);
   /* The live tile behind the open menu; the menu closes by itself if the alert goes away. */
@@ -221,9 +224,15 @@ export class DashboardComponent {
   private requestedAlertId: number | null = null;
 
   constructor() {
+    const hideTooltip = () => this.hideDescriptionTooltip();
+    window.addEventListener('scroll', hideTooltip, true);
+    window.addEventListener('resize', hideTooltip);
     this.destroyRef.onDestroy(() => {
+      window.removeEventListener('scroll', hideTooltip, true);
+      window.removeEventListener('resize', hideTooltip);
       this.highlightTimers.forEach((timer) => clearTimeout(timer));
       this.clearNoticeTimer();
+      this.hideDescriptionTooltip();
     });
     this.live.changes$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((change) => this.animateChange(change));
     /* A notification click lands here with ?alert=<id>: open that tile as soon as it is available. */
@@ -258,6 +267,14 @@ export class DashboardComponent {
     this.destroyRef.onDestroy(() => resizeObserver.disconnect());
     /* Once rendered, the menu is kept inside the viewport and takes the focus for keyboard use. */
     afterRenderEffect(() => {
+      const tooltip = this.descriptionTooltip();
+      const element = this.descriptionTooltipElement()?.nativeElement;
+      if (!tooltip || !element) return;
+      const { width, height } = element.getBoundingClientRect();
+      element.style.left = `${Math.max(8, Math.min(tooltip.x + 12, window.innerWidth - width - 8))}px`;
+      element.style.top = `${Math.max(8, Math.min(tooltip.y + 16, window.innerHeight - height - 8))}px`;
+    });
+    afterRenderEffect(() => {
       const menu = this.cardMenu();
       const element = this.cardMenuElement()?.nativeElement;
       if (!menu || !element) return;
@@ -290,7 +307,26 @@ export class DashboardComponent {
   }
 
   protected openCard(card: DashboardAlertCard): void {
+    this.hideDescriptionTooltip();
     this.selectedCard.set(card);
+  }
+
+  protected scheduleDescriptionTooltip(event: PointerEvent, card: DashboardAlertCard): void {
+    this.hideDescriptionTooltip();
+    const text = card.alert.description?.trim();
+    if (!text || event.pointerType === 'touch' || this.selectedCard() || this.cardMenu()) return;
+    const target = event.currentTarget as HTMLElement;
+    const { clientX: x, clientY: y } = event;
+    this.descriptionTooltipTimer = window.setTimeout(() => {
+      this.descriptionTooltipTimer = null;
+      if (target.isConnected && target.matches(':hover')) this.descriptionTooltip.set({ alertId: card.alert.id, text, x, y });
+    }, 1_000);
+  }
+
+  protected hideDescriptionTooltip(): void {
+    if (this.descriptionTooltipTimer !== null) window.clearTimeout(this.descriptionTooltipTimer);
+    this.descriptionTooltipTimer = null;
+    this.descriptionTooltip.set(null);
   }
 
   protected openCardFromKeyboard(event: Event, card: DashboardAlertCard): void {
@@ -304,6 +340,7 @@ export class DashboardComponent {
 
   /* Secondary click, the context-menu key or Shift+F10; the keyboard ones report no pointer position. */
   protected openCardMenu(event: MouseEvent, card: DashboardAlertCard): void {
+    this.hideDescriptionTooltip();
     const trigger = event.currentTarget;
     if (!(trigger instanceof HTMLElement)) return;
     event.preventDefault();
