@@ -1,5 +1,43 @@
 [
   {
+    "templateKey": "app.alertify.alerts.templates.ElasticsearchEventCountAlertTemplate",
+    "name": "Excess error events",
+    "description": "Warn when more than 20 error events occur in five minutes.",
+    "text": {
+      "url": "https://elasticsearch.example.test",
+      "indices": "logs-payments-*",
+      "queryJson": "{\"term\":{\"log.level\":\"ERROR\"}}",
+      "threshold": "20"
+    },
+    "bindings": {
+      "headersJson": {
+        "source": "SECRET",
+        "requirement": "Existing text Secret containing a JSON array of Name: value headers granting read access to the target indices. Omit this binding for anonymous access."
+      }
+    },
+    "notes": [
+      "Query DSL clause only, without a query wrapper. The template adds the time range on @timestamp. Elasticsearch 7.x, 8.x and 9.x are the compatibility targets; use DSL supported by your server."
+    ]
+  },
+  {
+    "templateKey": "app.alertify.alerts.templates.ElasticsearchEventCountAlertTemplate",
+    "name": "Missing heartbeat",
+    "description": "Warn when no heartbeat events are found in ten minutes, allowing sixty seconds for ingestion.",
+    "text": {
+      "url": "https://elasticsearch.example.test",
+      "indices": "events-payments-*",
+      "queryJson": "{\"term\":{\"event.action\":\"heartbeat\"}}",
+      "windowMinutes": "10",
+      "evaluationDelaySeconds": "60",
+      "thresholdType": "warn_if_equal",
+      "threshold": "0"
+    },
+    "bindings": {},
+    "notes": [
+      "This example assumes anonymous read access. Otherwise bind headersJson to an existing Secret. Missing indices and failed or partial queries produce an operational warning, never a zero count."
+    ]
+  },
+  {
     "templateKey": "app.alertify.alerts.templates.DatabaseConnectionAlertTemplate",
     "name": "Database connectivity",
     "description": "Open and close a connection using the configured database secret.",

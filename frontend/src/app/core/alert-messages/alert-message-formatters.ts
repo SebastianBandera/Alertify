@@ -65,6 +65,23 @@ function endpoint(context: AlertMessageContext): string | null {
  * templates or replace one of these without editing this file.
  */
 export const ALERT_MESSAGE_FORMATTERS: AlertMessageFormatters = {
+  [`${TEMPLATES}ElasticsearchEventCountAlertTemplate`]: (context) => {
+    const message = context.message;
+    const reason = failure(context);
+    if (reason !== null) return { summary: reason, identity: reason };
+    const condition = context.translate(`alertMessage.thresholdType.${message['thresholdType']}`, {
+      threshold: context.formatNumber(message['threshold']),
+    });
+    const summary = join(
+      context.translate('alertMessage.elasticsearchEventCount.count', { count: context.formatNumber(message['count']) }),
+      condition === null ? null : context.translate('alertMessage.sqlThreshold.condition', { condition }),
+      context.translate('alertMessage.elasticsearchEventCount.window', {
+        from: context.formatDate(message['windowFrom']), to: context.formatDate(message['windowTo']),
+      }),
+    );
+    return { summary, identity: `elasticsearchEventCount:${context.status}:${String(message['thresholdType'])}:${String(message['threshold'])}` };
+  },
+
   [`${TEMPLATES}SqlThresholdAlertTemplate`]: (context) => {
     const message = context.message;
     const condition = context.translate(`alertMessage.thresholdType.${message['thresholdType']}`, {

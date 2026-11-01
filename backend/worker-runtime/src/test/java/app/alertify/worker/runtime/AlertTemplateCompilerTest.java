@@ -131,6 +131,18 @@ class AlertTemplateCompilerTest {
     }
 
     @Test
+    void compilesTheElasticsearchEventCountTemplateAsTheSingleWorkerSourceUnit() throws Exception {
+        Path sourcePath = Path.of("../alert-templates/src/main/java/app/alertify/alerts/templates/ElasticsearchEventCountAlertTemplate.java");
+        String source = Files.readString(sourcePath, StandardCharsets.UTF_8);
+        String className = "app.alertify.alerts.templates.ElasticsearchEventCountAlertTemplate";
+        AlertTemplateCompiler compiler = new AlertTemplateCompiler(properties());
+
+        compiler.synchronize(className, sha256(source), source);
+
+        assertThat(compiler.isAvailable(className, sha256(source))).isTrue();
+    }
+
+    @Test
     void compilesAndExecutesTheJwtNegativeTokensProcedureAsASingleSourceUnit() throws Exception {
         Path sourcePath = Path.of("../alert-templates/src/main/java/app/alertify/procedures/templates/JwtNegativeTestTokensProcedureTemplate.java");
         String source = Files.readString(sourcePath, StandardCharsets.UTF_8);
