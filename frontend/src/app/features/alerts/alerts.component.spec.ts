@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
-import { EMPTY, of } from 'rxjs';
+import { Subject, of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { Alert, AlertApiService, AlertTemplate, AlertTemplateParameter } from '../../core/api/alert-api.service';
@@ -29,6 +29,7 @@ type Harness = {
   editPlaywrightPlan: AlertsComponent['editPlaywrightPlan'];
   returnFromPlaywright: AlertsComponent['returnFromPlaywright'];
   canEditPlaywrightPlan: AlertsComponent['canEditPlaywrightPlan'];
+  smartIntervalConfigurations: AlertsComponent['smartIntervalConfigurations'];
 };
 
 const DRAFT_ID = '557dd642-443e-407c-9ac7-7599e2d05375';
@@ -62,6 +63,7 @@ describe('Alert editor wizard draft ownership', () => {
   let fixture: ComponentFixture<AlertsComponent>;
   let harness: Harness;
   let drafts: EditorDraftService;
+  let resourceChanges: Subject<{ targets: readonly string[] }>;
   const page = { content: [], page: { number: 0, totalPages: 0, totalElements: 0 } };
   const api = {
     listAlerts: vi.fn(), listTemplates: vi.fn(), listTags: vi.fn(), bindingOptions: vi.fn(), listExecutions: vi.fn(),
@@ -81,7 +83,7 @@ describe('Alert editor wizard draft ownership', () => {
         { provide: LocalizationService, useValue: { locale: signal('en'), translate: (key: string) => key, translateDynamic: (key: string) => key } },
         { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap }, queryParamMap: of(queryParamMap) } },
         { provide: Router, useValue: { navigate: vi.fn().mockResolvedValue(true) } },
-        { provide: AdminEventChannelService, useValue: { on: () => EMPTY } },
+        { provide: AdminEventChannelService, useValue: { on: () => resourceChanges } },
       ],
     }).overrideComponent(AlertsComponent, {
       set: { template: '', providers: [{ provide: EditorViewportService, useValue: viewport }] },
@@ -105,6 +107,7 @@ describe('Alert editor wizard draft ownership', () => {
   beforeEach(async () => {
     localStorage.removeItem(STORAGE_KEY);
     vi.resetAllMocks();
+    resourceChanges = new Subject();
     api.listAlerts.mockResolvedValue(page);
     api.listTemplates.mockResolvedValue([TEMPLATE, OTHER_TEMPLATE]);
     api.listTags.mockResolvedValue([]);
@@ -132,6 +135,31 @@ describe('Alert editor wizard draft ownership', () => {
     expect(api.updateAlert).toHaveBeenLastCalledWith(ALERT.id, expect.objectContaining({
       smartExecutionIntervalSource: 'FIXED', smartExecutionIntervalConfigurationId: null, smartExecutionIntervalHours: 6,
     }));
+  });
+
+  it.each(['CONFIGURATIONS', 'ALERTS', 'ALL'])('refreshes the selected smart interval Config after an AI %s change without overwriting the editor', async (target) => {
+    const alert = { ...ALERT, smartExecutionEnabled: true, smartExecutionIntervalSource: 'CONFIGURATION' as const, smartExecutionIntervalConfigurationId: 199, smartExecutionPolicy: 'ONCE_PER_INTERVAL' as const };
+    harness.openEdit(alert);
+    harness.patchForm({ name: 'Unsaved edit' });
+    expect(harness.smartIntervalConfigurations()).toEqual([]);
+    api.bindingOptions.mockResolvedValue({
+      configurations: [{ id: 199, name: 'Shared smart interval', enabled: true, valueType: 'INTEGER', writable: false }],
+      secrets: [], procedures: [],
+    });
+    const calls = api.bindingOptions.mock.calls.length;
+
+    resourceChanges.next({ targets: [target] });
+    await fixture.whenStable();
+
+    expect(api.bindingOptions).toHaveBeenCalledTimes(calls + 1);
+    expect(harness.smartIntervalConfigurations()).toEqual([{ value: 199, label: 'Shared smart interval' }]);
+    expect(harness.form()).toMatchObject({ name: 'Unsaved edit', smartExecutionIntervalConfigurationId: 199 });
+
+    api.bindingOptions.mockResolvedValue({ configurations: [], secrets: [], procedures: [] });
+    resourceChanges.next({ targets: [target] });
+    await fixture.whenStable();
+    expect(harness.smartIntervalConfigurations()).toEqual([]);
+    expect(harness.form().smartExecutionIntervalConfigurationId).toBe(199);
   });
 
   it('preserves the wizard draft when its form is cancelled and another alert is updated', async () => {

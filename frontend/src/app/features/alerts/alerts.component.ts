@@ -300,6 +300,8 @@ export class AlertsComponent implements OnInit {
     this.events.on('AI_RESOURCES_INVALIDATED').pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event) => {
       if (event.targets.includes('ALL') || event.targets.includes('ALERTS'))
         void this.refreshAfterAiChange();
+      else if (event.targets.includes('CONFIGURATIONS') || event.targets.includes('PROCEDURES'))
+        void this.loadBindings();
     });
     const requestedTab = this.route.snapshot.queryParamMap.get('tab');
     const requestedExecutionId = this.route.snapshot.queryParamMap.get('executionId');
@@ -345,7 +347,7 @@ export class AlertsComponent implements OnInit {
   }
 
   private async refreshAfterAiChange(): Promise<void> {
-    const requests = [this.loadTemplates(), this.loadTags()];
+    const requests = [this.loadTemplates(), this.loadTags(), this.loadBindings()];
     if (this.activeTab() === 'alerts') requests.push(this.loadAlerts());
     if (this.activeTab() === 'history') requests.push(this.loadHistory());
     await Promise.all(requests);
