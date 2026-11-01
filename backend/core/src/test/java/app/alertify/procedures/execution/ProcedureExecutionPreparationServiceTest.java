@@ -126,4 +126,30 @@ class ProcedureExecutionPreparationServiceTest {
                 new WorkerGrpcProperties("worker", 9090, null, null,
                         new WorkerGrpcProperties.Execution(null, sourceRoot)), binaryBindingService);
     }
+
+    @Test
+    void defaultsTheTotpMarginForAnExistingProcedureWithoutAStoredValue() throws Exception {
+        ProcedureTemplateDefinition template = ProcedureTemplateDefinition.from(
+                app.alertify.procedures.templates.TotpProcedureTemplate.class);
+        ReflectionTestUtils.setField(template, "id", 2L);
+        ProcedureTemplateParameterDefinition definition = new ProcedureTemplateParameterDefinition(
+                template, "minimumValiditySeconds", "label", "description", Integer.class.getName(),
+                List.of(), true, "3", false, 5, true, List.of(AlertParameterSource.TEXT), List.of(), List.of());
+        ReflectionTestUtils.setField(definition, "id", 3L);
+        app.alertify.procedures.model.Procedure owner = new app.alertify.procedures.model.Procedure(
+                template, "Existing TOTP", null, "-", true, true, Set.of());
+        ReflectionTestUtils.setField(owner, "id", 7L);
+        Path source = sourceRoot.resolve(template.getSourcePath());
+        Files.createDirectories(source.getParent());
+        Files.writeString(source, "source", StandardCharsets.UTF_8);
+        when(procedureRepository.findById(7L)).thenReturn(Optional.of(owner));
+        when(parameterValueRepository.findAllByOwnerIdOrdered(7L)).thenReturn(List.of());
+        when(definitionRepository.findAllByTemplate_IdOrderByParameterOrderAscIdAsc(2L)).thenReturn(List.of(definition));
+
+        assertThat(service().prepare(7L, false).parameters()).singleElement().satisfies(parameter -> {
+            assertThat(parameter.name()).isEqualTo("minimumValiditySeconds");
+            assertThat(parameter.value()).isEqualTo("3");
+            assertThat(parameter.nullValue()).isFalse();
+        });
+    }
 }

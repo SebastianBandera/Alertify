@@ -1428,6 +1428,8 @@ export const EN_TRANSLATIONS = {
   'procedures.template.totp.digitsDescription': 'Number of digits in the generated code.',
   'procedures.template.totp.periodSeconds': 'Period',
   'procedures.template.totp.periodSecondsDescription': 'Validity window in seconds.',
+  'procedures.template.totp.minimumValiditySeconds': 'Minimum remaining validity (seconds)',
+  'procedures.template.totp.minimumValiditySecondsDescription': 'If the PIN has less time remaining, waits for the next period and generates a new one. Default: 3 seconds. Set to 0 to disable waiting. Must be a nonnegative integer smaller than the period.',
   'procedures.template.httpAccessTokenExchange.name': 'HTTP access token exchange',
   'procedures.template.jwtNegativeTestTokens.name': 'JWT negative test tokens',
   'procedures.template.jwtNegativeTestTokens.description': 'Generates three sensitive JWT variants for rejection tests: alg:none with an empty signature, an altered signature, and an altered payload with the original signature. Returns /unsignedToken, /invalidSignatureToken and /tamperedPayloadToken. Does not verify the input signature.',

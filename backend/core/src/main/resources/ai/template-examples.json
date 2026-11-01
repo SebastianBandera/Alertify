@@ -890,7 +890,8 @@
       }
     },
     "notes": [
-      "The algorithm, digit count and period must match the enrolled account. The generated code is sensitive."
+      "The algorithm, digit count and period must match the enrolled account. The generated code is sensitive.",
+      "minimumValiditySeconds defaults to 3: when less time remains, waits for the next period. Set it to 0 to disable waiting; otherwise use a nonnegative integer smaller than periodSeconds."
     ]
   },
   {

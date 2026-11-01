@@ -1,6 +1,8 @@
 package app.alertify.procedures.templates;
 
 import java.nio.ByteBuffer;
+import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Locale;
 
@@ -73,17 +75,33 @@ public final class TotpProcedureTemplate implements ProcedureEvaluator {
     )
     private final Integer periodSeconds;
 
-    public TotpProcedureTemplate(String secret, String algorithm, Integer digits, Integer periodSeconds) {
+    @ProcedureParameter(
+        labelKey = "procedures.template.totp.minimumValiditySeconds",
+        descriptionKey = "procedures.template.totp.minimumValiditySecondsDescription",
+        defaultValue = "3",
+        order = 5
+    )
+    private final Integer minimumValiditySeconds;
+
+    public TotpProcedureTemplate(String secret, String algorithm, Integer digits, Integer periodSeconds, Integer minimumValiditySeconds) {
         this.secret = secret;
         this.algorithm = algorithm;
         this.digits = digits;
         this.periodSeconds = periodSeconds;
+        this.minimumValiditySeconds = minimumValiditySeconds;
     }
 
     @Override
     public JsonNode execute(ProcedureExecutionContext context) throws Exception {
+        return execute(context, Clock.systemUTC(), Thread::sleep);
+    }
+
+    JsonNode execute(ProcedureExecutionContext context, Clock clock, Sleeper sleeper) throws Exception {
         if (periodSeconds == null || periodSeconds <= 0)
             throw new IllegalArgumentException("periodSeconds must be positive");
+
+        if (minimumValiditySeconds == null || minimumValiditySeconds < 0 || minimumValiditySeconds >= periodSeconds)
+            throw new IllegalArgumentException("minimumValiditySeconds must be nonnegative and less than periodSeconds");
 
         if (digits == null || digits != 6 && digits != 8)
             throw new IllegalArgumentException("digits must be 6 or 8");
@@ -93,11 +111,23 @@ public final class TotpProcedureTemplate implements ProcedureEvaluator {
                 && !normalizedAlgorithm.equals("SHA512"))
             throw new IllegalArgumentException("algorithm must be SHA1, SHA256, or SHA512");
 
-        Instant now = context.now();
-        long periodStart = Math.floorDiv(now.getEpochSecond(), periodSeconds) * (long) periodSeconds;
-        long counter = Math.floorDiv(now.getEpochSecond(), periodSeconds);
         Mac mac = Mac.getInstance("Hmac" + normalizedAlgorithm);
         mac.init(new SecretKeySpec(base32(secret), "Hmac" + normalizedAlgorithm));
+        Instant now = minimumValiditySeconds == 0 ? context.now() : clock.instant();
+        if (minimumValiditySeconds > 0) {
+            Duration minimumValidity = Duration.ofSeconds(minimumValiditySeconds);
+            while (true) {
+                long start = Math.floorDiv(now.getEpochSecond(), periodSeconds) * (long) periodSeconds;
+                Duration remaining = Duration.between(now, Instant.ofEpochSecond(start + periodSeconds));
+                if (remaining.compareTo(minimumValidity) >= 0)
+                    break;
+
+                sleeper.sleep(remaining);
+                now = clock.instant();
+            }
+        }
+        long periodStart = Math.floorDiv(now.getEpochSecond(), periodSeconds) * (long) periodSeconds;
+        long counter = Math.floorDiv(now.getEpochSecond(), periodSeconds);
         byte[] hash = mac.doFinal(ByteBuffer.allocate(Long.BYTES).putLong(counter).array());
         int offset = hash[hash.length - 1] & 0x0f;
         int binary = (hash[offset] & 0x7f) << 24
@@ -113,6 +143,11 @@ public final class TotpProcedureTemplate implements ProcedureEvaluator {
                 .put("code", code)
                 .put("validFrom", Instant.ofEpochSecond(periodStart).toString())
                 .put("validUntil", Instant.ofEpochSecond(periodStart + periodSeconds).toString());
+    }
+
+    @FunctionalInterface
+    interface Sleeper {
+        void sleep(Duration duration) throws InterruptedException;
     }
 
     private static byte[] base32(String value) {

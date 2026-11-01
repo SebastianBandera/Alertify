@@ -766,6 +766,8 @@ export type TranslationKey =
   | 'procedures.template.totp.digitsDescription'
   | 'procedures.template.totp.periodSeconds'
   | 'procedures.template.totp.periodSecondsDescription'
+  | 'procedures.template.totp.minimumValiditySeconds'
+  | 'procedures.template.totp.minimumValiditySecondsDescription'
   | 'procedures.template.httpAccessTokenExchange.name'
   | 'procedures.template.jwtNegativeTestTokens.name'
   | 'procedures.template.jwtNegativeTestTokens.description'

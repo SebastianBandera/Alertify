@@ -1408,6 +1408,8 @@ export const ES_UY_TRANSLATIONS = {
   'procedures.template.totp.digitsDescription': 'Cantidad de dígitos del código generado.',
   'procedures.template.totp.periodSeconds': 'Período',
   'procedures.template.totp.periodSecondsDescription': 'Ventana de validez en segundos.',
+  'procedures.template.totp.minimumValiditySeconds': 'Vigencia mínima restante (segundos)',
+  'procedures.template.totp.minimumValiditySecondsDescription': 'Si al PIN le queda menos de este tiempo, espera al próximo período y genera uno nuevo. Predeterminado: 3 segundos. Con 0 no espera. Debe ser un entero no negativo menor que el período.',
   'procedures.template.httpAccessTokenExchange.name': 'Intercambio HTTP de access token',
   'procedures.template.jwtNegativeTestTokens.name': 'Tokens JWT para pruebas negativas',
   'procedures.template.jwtNegativeTestTokens.description': 'Genera tres variantes sensibles de JWT para comprobar su rechazo: alg:none con firma vacía, firma alterada y payload alterado con la firma original. Devuelve /unsignedToken, /invalidSignatureToken y /tamperedPayloadToken. No verifica la firma de entrada.',
