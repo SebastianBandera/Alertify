@@ -51,7 +51,7 @@ class AlertAiToolsTest {
         tools = new AlertAiTools(alerts, dashboardCards, mock(AlertCatalogService.class), mock(AlertCsvService.class),
                 executions, mock(AlertExecutionClosureService.class),
                 mock(AlertTagService.class), mock(ResourceResultObserverService.class), mock(AiTemplateSourceService.class), executor,
-                mock(AiToolSupport.class));
+                mock(AiToolSupport.class), mock(app.alertify.ai.patch.AiPatchService.class));
     }
 
     @Test

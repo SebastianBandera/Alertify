@@ -41,7 +41,7 @@ class ProcedureAiToolsTest {
     void initializeTools() {
         tools = new ProcedureAiTools(procedures, mock(ProcedureCatalogService.class), mock(ProcedureCsvService.class),
                 mock(ProcedureExecutionQueryService.class), mock(ProcedureTagService.class), mock(AiTemplateSourceService.class),
-                executor, mock(AiToolSupport.class));
+                executor, mock(AiToolSupport.class), mock(app.alertify.ai.patch.AiPatchService.class));
         when(executor.execute(eq("alertify_procedure_search"), org.mockito.ArgumentMatchers.<Supplier<AiPage<ProcedureResponse>>>any()))
                 .thenAnswer(invocation -> ((Supplier<?>) invocation.getArgument(1)).get());
         when(procedures.search(any(), any(), any(), anyBoolean(), any(Pageable.class))).thenReturn(Page.empty());

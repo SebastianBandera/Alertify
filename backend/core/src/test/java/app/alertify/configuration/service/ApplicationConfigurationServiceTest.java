@@ -200,4 +200,17 @@ class ApplicationConfigurationServiceTest {
             lookupService, cacheInvalidator, csvCodec, expressionService, eventLogger, binaryRepository, binaryPayloadService
         );
     }
+
+    @Test
+    void freshVerificationReadsPersistenceWithoutConsultingTheCache() {
+        var configuration = new ApplicationConfiguration("fresh", "keep", ConfigurationValueType.INTEGER, IntNode.valueOf(60), Set.of(), false);
+        ReflectionTestUtils.setField(configuration, "id", 10L);
+        when(configurationRepository.findById(10L)).thenReturn(Optional.of(configuration));
+
+        var response = service().getFresh(10L);
+
+        assertThat(response.value().intValue()).isEqualTo(60);
+        assertThat(response.writable()).isFalse();
+        verify(lookupService, never()).getById(any());
+    }
 }

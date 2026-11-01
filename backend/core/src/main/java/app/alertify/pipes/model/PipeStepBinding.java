@@ -91,6 +91,20 @@ public class PipeStepBinding {
     }
 
     public Long getId() { return id; }
+    public void copyDefinitionFrom(PipeStepBinding value, PipeStep source) {
+        targetProcedureParameter = value.targetProcedureParameter;
+        targetAlertParameter = value.targetAlertParameter;
+        sourceStep = Objects.requireNonNull(source);
+        sourceOutput = value.sourceOutput;
+        sourceResultPointer = value.sourceResultPointer;
+        valueExpression = value.valueExpression;
+    }
+
+    public void attachTo(PipeStep target, PipeStep source) {
+        targetStep = Objects.requireNonNull(target);
+        sourceStep = Objects.requireNonNull(source);
+    }
+
     public PipeStep getTargetStep() { return targetStep; }
     public ProcedureTemplateParameterDefinition getTargetParameter() { return targetProcedureParameter; }
     public ProcedureTemplateParameterDefinition getTargetProcedureParameter() { return targetProcedureParameter; }

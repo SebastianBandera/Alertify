@@ -11,6 +11,17 @@ import app.alertify.jpa.specification.InvalidFilterException;
 class AiToolFailureTest {
 
     @Test
+    void reportsSanitizedPatchDiagnosticsWithoutCopyingWrapperMessages() {
+        var failure = AiToolFailure.classify("alertify_system_configuration_patch",
+                new IllegalStateException("PRIVATE-OUTER", new app.alertify.ai.patch.AiPatchException("Invalid PATCH operation 1. Allowed roots: /value.")));
+        assertThat(failure.code()).isEqualTo("TOOL_PATCH_INVALID");
+        assertThat(failure.message()).contains("operation 1", "/value").doesNotContain("PRIVATE");
+        var verification = AiToolFailure.classify("alertify_configuration_patch", new app.alertify.ai.patch.AiPatchException.Verification());
+        assertThat(verification.code()).isEqualTo("TOOL_PATCH_VERIFICATION_FAILED");
+        assertThat(verification.message()).contains("rolled back", "No partial changes");
+    }
+
+    @Test
     void classifiesOnlyVersionConflictsAndNeverCopiesPrivateMessages() {
         assertThat(AiToolFailure.classify("alertify_alert_template_get", new IllegalStateException("PRIVATE",
                 new app.alertify.api.error.TemplateSelectionException())).code()).isEqualTo("TOOL_TEMPLATE_SELECTION_INVALID");

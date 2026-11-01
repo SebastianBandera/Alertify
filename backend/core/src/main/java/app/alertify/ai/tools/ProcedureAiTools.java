@@ -14,6 +14,7 @@ import app.alertify.ai.AiRefreshTarget;
 import app.alertify.ai.AlertifyTool;
 import app.alertify.ai.AiToolExecutor;
 import app.alertify.ai.AiToolSupport;
+import app.alertify.ai.patch.AiPatchService;
 import app.alertify.ai.api.AiFilter;
 import app.alertify.ai.api.AiPage;
 import app.alertify.ai.api.AiPageRequest;
@@ -45,6 +46,7 @@ import jakarta.validation.Valid;
 @PreAuthorize(AuthorizationPolicies.ADMIN)
 public class ProcedureAiTools {
 
+    private final AiPatchService patches;
     private final ProcedureManagementService procedures;
     private final ProcedureCatalogService catalog;
     private final ProcedureCsvService csv;
@@ -56,7 +58,8 @@ public class ProcedureAiTools {
 
     public ProcedureAiTools(ProcedureManagementService procedures, ProcedureCatalogService catalog,
             ProcedureCsvService csv, ProcedureExecutionQueryService executions, ProcedureTagService tags,
-            AiTemplateSourceService templateSources, AiToolExecutor tools, AiToolSupport support) {
+            AiTemplateSourceService templateSources, AiToolExecutor tools, AiToolSupport support, AiPatchService patches) {
+        this.patches = patches;
         this.procedures = procedures;
         this.catalog = catalog;
         this.csv = csv;
@@ -66,6 +69,26 @@ public class ProcedureAiTools {
         this.tools = tools;
         this.support = support;
     }
+
+    @AlertifyTool(name = "alertify_procedure_patch", description = "Preferred tool for partial procedure edits. Read the current definition/version first; send only requested changes. Editable root fields: name, description, cronExpression, enabled, allowConcurrentExecutions, parameters, tagIds. tagIds is the sorted list of tag IDs from the read response. Atomic operations validate the complete result and verify persistence. The coordinator automatically rereads after commit. Before editing existing elements test parameterKey for parameters, key for steps, both type and resourceId for targets, targetParameterKey for bindings. Full update is only for explicitly requested full replacement.", readOnly = false, refreshTargets = AiRefreshTarget.PROCEDURES)
+    public ProcedureResponse patch(long id, @Valid app.alertify.ai.api.AiPatchRequest request) {
+        return tools.execute("alertify_procedure_patch", () -> {
+            return patches.patch(id, request, app.alertify.procedures.model.Procedure.class,
+                    app.alertify.procedures.api.ProcedureUpdateRequest.class, () -> procedures.get(id), complete -> procedures.update(id, complete));
+        });
+    }
+
+    @AlertifyTool(name = "alertify_procedure_tag_patch", description = "Preferred partial edit of a PROCEDURE tag by tag ID and version. Editable fields: name and color. Omitted fields and associations remain unchanged. Server verifies persistence; coordinator automatically rereads.", readOnly = false, refreshTargets = AiRefreshTarget.PROCEDURES)
+    public TagResponse tagPatch(long id, @Valid app.alertify.ai.api.AiPatchRequest request) {
+        return tools.execute("alertify_procedure_tag_patch", () -> patches.patch(id, request, app.alertify.jpa.entity.Tag.class,
+                TagUpdateRequest.class, () -> tags.get(id), complete -> tags.update(id, complete)));
+    }
+
+    @AlertifyTool(name = "alertify_procedure_tag_get", description = "Get one tag scoped to PROCEDURE by its tag ID and current version. Reads tag metadata, not a resource definition.", readOnly = true)
+    public TagResponse tagGet(long id) { return tools.execute("alertify_procedure_tag_get", () -> tags.get(id)); }
+
+    @AlertifyTool(name = "alertify_procedure_get", description = "Read one complete procedure definition by ID, including its optimistic version and parameter bindings.", readOnly = true)
+    public ProcedureResponse get(long id) { return tools.execute("alertify_procedure_get", () -> procedures.get(id)); }
 
     @AlertifyTool(name = "alertify_procedure_search", description = "Search procedure definitions. Omit templateId or use 0 for no template filter. Pagination defaults to page 0, size 20, updatedAt DESC. An empty tagIds list means no tag filter, not resources without tags; inspect the returned tags and every page for that request.", readOnly = true)
     public AiPage<ProcedureResponse> search(@ToolParam(description = "Optional case-insensitive name fragment", required = false) String name, @ToolParam(description = "Optional positive template ID; omit or use 0 for every template", required = false) Long templateId, @ToolParam(description = "Optional procedure tag IDs; empty means no tag filter", required = false) List<Long> tagIds, @ToolParam(description = "Require every tag instead of any tag; defaults to false", required = false) Boolean requireAllTags, @ToolParam(description = "Optional bounded pagination; defaults to page 0, size 20, updatedAt DESC", required = false) @Valid AiPageRequest page) {
@@ -108,7 +131,7 @@ public class ProcedureAiTools {
         return tools.execute("alertify_procedure_create", () -> procedures.create(request.toRequest()));
     }
 
-    @AlertifyTool(name = "alertify_procedure_update", description = "Update a procedure using its current optimistic version; first read its complete current definition and the selected template's parameters. Parameters is a complete replacement list: replace the requested entry by parameterKey exactly once, preserve all other parameters and fields, and never append a duplicate. Omitted parameters may reset to defaults or be removed. Match the requested source to its active text value or positive existing compatible reference ID. Use null for inactive fields; legacy null or 0 reference placeholders are ignored only for unselected sources. After success, read the definition again and compare the requested and preserved fields before reporting verified completion.", readOnly = false, refreshTargets = AiRefreshTarget.PROCEDURES)
+    @AlertifyTool(name = "alertify_procedure_update", description = "Full replacement: prefer alertify_procedure_patch for partial edits. Update a procedure using its current optimistic version; first read its complete current definition and the selected template's parameters. Parameters is a complete replacement list: replace the requested entry by parameterKey exactly once, preserve all other parameters and fields, and never append a duplicate. Omitted parameters may reset to defaults or be removed. Match the requested source to its active text value or positive existing compatible reference ID. Use null for inactive fields; legacy null or 0 reference placeholders are ignored only for unselected sources. After success, read the definition again and compare the requested and preserved fields before reporting verified completion.", readOnly = false, refreshTargets = AiRefreshTarget.PROCEDURES)
     public ProcedureResponse update(long id, @Valid AiProcedureUpdateRequest request) {
         return tools.execute("alertify_procedure_update", () -> procedures.update(id, request.toRequest()));
     }
@@ -145,7 +168,7 @@ public class ProcedureAiTools {
         return tools.execute("alertify_procedure_tag_create", () -> tags.create(request));
     }
 
-    @AlertifyTool(name = "alertify_procedure_tag_update", description = "Update a procedure tag using its current version", readOnly = false, refreshTargets = AiRefreshTarget.PROCEDURES)
+    @AlertifyTool(name = "alertify_procedure_tag_update", description = "Full replacement: prefer alertify_procedure_tag_patch for partial edits. Update a procedure tag using its current version", readOnly = false, refreshTargets = AiRefreshTarget.PROCEDURES)
     public TagResponse tagUpdate(long id, @Valid TagUpdateRequest request) {
         return tools.execute("alertify_procedure_tag_update", () -> tags.update(id, request));
     }

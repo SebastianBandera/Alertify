@@ -16,6 +16,7 @@ import app.alertify.ai.AiRefreshTarget;
 import app.alertify.ai.AlertifyTool;
 import app.alertify.ai.AiToolExecutor;
 import app.alertify.ai.AiToolSupport;
+import app.alertify.ai.patch.AiPatchService;
 import app.alertify.ai.api.AiAlertStateResponse;
 import app.alertify.ai.api.AiAlertCreateRequest;
 import app.alertify.ai.api.AiAlertUpdateRequest;
@@ -52,6 +53,7 @@ import jakarta.validation.Valid;
 @PreAuthorize(AuthorizationPolicies.ADMIN)
 public class AlertAiTools {
 
+    private final AiPatchService patches;
     private final AlertManagementService alerts;
     private final DashboardCardService dashboardCards;
     private final AlertCatalogService catalog;
@@ -67,7 +69,8 @@ public class AlertAiTools {
     public AlertAiTools(AlertManagementService alerts, DashboardCardService dashboardCards, AlertCatalogService catalog, AlertCsvService csv,
             AlertExecutionQueryService executions, AlertExecutionClosureService closures, AlertTagService tags,
             ResourceResultObserverService observers, AiTemplateSourceService templateSources, AiToolExecutor tools,
-            AiToolSupport support) {
+            AiToolSupport support, AiPatchService patches) {
+        this.patches = patches;
         this.alerts = alerts;
         this.dashboardCards = dashboardCards;
         this.catalog = catalog;
@@ -93,6 +96,23 @@ public class AlertAiTools {
 
     @AlertifyTool(name = "alertify_alert_get", description = "Get one Alertify alert definition by numeric ID", readOnly = true)
     public AlertResponse get(long id) { return tools.execute("alertify_alert_get", () -> alerts.get(id)); }
+
+    @AlertifyTool(name = "alertify_alert_patch", description = "Preferred tool for partial alert edits. Read the current definition/version first; send only requested changes. Editable root fields: name, description, cronExpression, enabled, allowConcurrentExecutions, parameters, tagIds, persistentIssues and smartExecution* fields. tagIds is the sorted list of tag IDs from the read response. Atomic operations validate the complete result and verify persistence. The coordinator automatically rereads after commit. Before editing existing elements test parameterKey for parameters, key for steps, both type and resourceId for targets, targetParameterKey for bindings. Full update is only for explicitly requested full replacement.", readOnly = false, refreshTargets = { AiRefreshTarget.ALERTS, AiRefreshTarget.DASHBOARD })
+    public AlertResponse patch(long id, @Valid app.alertify.ai.api.AiPatchRequest request) {
+        return tools.execute("alertify_alert_patch", () -> {
+            return patches.patch(id, request, app.alertify.alerts.model.Alert.class,
+                    app.alertify.alerts.api.AlertUpdateRequest.class, () -> alerts.get(id), complete -> alerts.update(id, complete));
+        });
+    }
+
+    @AlertifyTool(name = "alertify_alert_tag_patch", description = "Preferred partial edit of a ALERT tag by tag ID and version. Editable fields: name and color. Omitted fields and associations remain unchanged. Server verifies persistence; coordinator automatically rereads.", readOnly = false, refreshTargets = { AiRefreshTarget.ALERTS, AiRefreshTarget.DASHBOARD })
+    public TagResponse tagPatch(long id, @Valid app.alertify.ai.api.AiPatchRequest request) {
+        return tools.execute("alertify_alert_tag_patch", () -> patches.patch(id, request, app.alertify.jpa.entity.Tag.class,
+                TagUpdateRequest.class, () -> tags.get(id), complete -> tags.update(id, complete)));
+    }
+
+    @AlertifyTool(name = "alertify_alert_tag_get", description = "Get one tag scoped to ALERT by its tag ID and current version. Reads tag metadata, not a resource definition.", readOnly = true)
+    public TagResponse tagGet(long id) { return tools.execute("alertify_alert_tag_get", () -> tags.get(id)); }
 
     @AlertifyTool(name = "alertify_alert_templates", description = "List available alert templates and their parameter schemas. Each result includes the fully qualified templateKey accepted by alertify_template_details for the complete reference and by alertify_alert_template_source for source only. bindingAllowed=false prohibits resource-reference bindings, not literal TEXT values: a literal remains valid when allowedSources includes TEXT and its value is one of options. Empty allowedSecretValueTypes or allowedConfigurationValueTypes means no additional declared value-type restriction, not a prohibited source. Non-empty lists further restrict compatible types. Always check bindingAllowed, allowedSources, Java-type compatibility and required writability; binary and structured type requirements still apply.", readOnly = true)
     public List<AlertTemplateResponse> templates() { return tools.execute("alertify_alert_templates", catalog::templates); }
@@ -131,7 +151,7 @@ public class AlertAiTools {
         return tools.execute("alertify_alert_create", () -> alerts.create(request.toRequest()));
     }
 
-    @AlertifyTool(name = "alertify_alert_update", description = "Update an alert; first read the complete current alert and preserve every unchanged field. The request must contain its current optimistic version. Parameters is a complete replacement list: replace the requested entry by parameterKey exactly once, preserve all other parameters and never append a duplicate. Omitted parameters may reset to defaults or be removed. Match the requested source to its active text value or positive existing compatible reference ID; use null for inactive fields, with legacy null or 0 placeholders ignored only for unselected references. Set persistentIssues to null unless the user explicitly requested a change to issue persistence; smart execution, enabled and parameter bindings do not authorize changing that option. After success, read the alert again and compare the requested and preserved fields before reporting verified completion.", readOnly = false, refreshTargets = { AiRefreshTarget.ALERTS, AiRefreshTarget.DASHBOARD })
+    @AlertifyTool(name = "alertify_alert_update", description = "Full replacement: prefer alertify_alert_patch for partial edits. Update an alert; first read the complete current alert and preserve every unchanged field. The request must contain its current optimistic version. Parameters is a complete replacement list: replace the requested entry by parameterKey exactly once, preserve all other parameters and never append a duplicate. Omitted parameters may reset to defaults or be removed. Match the requested source to its active text value or positive existing compatible reference ID; use null for inactive fields, with legacy null or 0 placeholders ignored only for unselected references. Set persistentIssues to null unless the user explicitly requested a change to issue persistence; smart execution, enabled and parameter bindings do not authorize changing that option. After success, read the alert again and compare the requested and preserved fields before reporting verified completion.", readOnly = false, refreshTargets = { AiRefreshTarget.ALERTS, AiRefreshTarget.DASHBOARD })
     public AlertResponse update(long id, @Valid AiAlertUpdateRequest request) {
         return tools.execute("alertify_alert_update", () -> alerts.update(id, request.toRequest()));
     }
@@ -191,7 +211,7 @@ public class AlertAiTools {
         return tools.execute("alertify_alert_tag_create", () -> tags.create(request));
     }
 
-    @AlertifyTool(name = "alertify_alert_tag_update", description = "Update an alert tag using its current version", readOnly = false, refreshTargets = { AiRefreshTarget.ALERTS, AiRefreshTarget.DASHBOARD })
+    @AlertifyTool(name = "alertify_alert_tag_update", description = "Full replacement: prefer alertify_alert_tag_patch for partial edits. Update an alert tag using its current version", readOnly = false, refreshTargets = { AiRefreshTarget.ALERTS, AiRefreshTarget.DASHBOARD })
     public TagResponse tagUpdate(long id, @Valid TagUpdateRequest request) {
         return tools.execute("alertify_alert_tag_update", () -> tags.update(id, request));
     }

@@ -11,7 +11,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 /** Audit metadata for model context. Raw arguments, results and review reasons are never serialized. */
 final class AiChatOperationHistory {
-    private static final Pattern RESOURCE_TOOL = Pattern.compile("alertify_(configuration|alert|procedure|pipe|hook)(_tag)?_(create|update|delete|get|search)");
+    private static final Pattern RESOURCE_TOOL = Pattern.compile("alertify_(system_configuration|configuration|alert|procedure|pipe|hook)(_tag)?_(create|update|patch|delete|get|search)");
 
     private AiChatOperationHistory() {
     }
@@ -28,7 +28,9 @@ final class AiChatOperationHistory {
             AiTurn turn = invocation.getTurn();
             operations.add(new Operation(invocation.getId(), turn.getId(), turn.getCreatedAt(), turn.getFinishedAt(), turn.getStatus(),
                     invocation.getToolName(), invocation.getStatus(), invocation.getDiagnosticCode(), invocation.isReadOnly(), invocation.getCreatedAt(), invocation.getFinishedAt(),
-                    resource == null ? null : resource.family(), resource == null ? null : resource.id(), readObservation, reads, "NOT_RECORDED"));
+                    resource == null ? null : resource.family(), resource == null ? null : resource.id(), readObservation, reads,
+                    invocation.getToolName().endsWith("_patch") && "SUCCEEDED".equals(invocation.getStatus()) ? "SERVER_VERIFIED" : "NOT_RECORDED",
+                    sourcePatchId(invocation)));
         }
         Long beforeId = truncated && !selected.isEmpty() ? selected.getFirst().getId() : null;
         return new Snapshot(currentTurnId, "UTC", truncated, beforeId, operations);
@@ -41,7 +43,7 @@ final class AiChatOperationHistory {
 
     private static List<ReadEvidence> subsequentReads(JsonMapper json, List<AiToolInvocation> selected, AiToolInvocation write, Resource resource) {
         if (write.isReadOnly() || !"SUCCEEDED".equals(write.getStatus()) || write.getFinishedAt() == null || resource == null
-                || resource.id() == null || !("create".equals(resource.action()) || "update".equals(resource.action())))
+                || resource.id() == null || !("create".equals(resource.action()) || "update".equals(resource.action()) || "patch".equals(resource.action())))
             return List.of();
 
         List<ReadEvidence> reads = new ArrayList<>();
@@ -113,6 +115,17 @@ final class AiChatOperationHistory {
         return value.isIntegralNumber() && value.canConvertToLong() && value.longValue() > 0 ? value.longValue() : null;
     }
 
+    private static Long sourcePatchId(AiToolInvocation invocation) {
+        if (!"INTERNAL".equals(invocation.getKind()) || !invocation.getCallId().startsWith("patch-read:"))
+            return null;
+
+        try {
+            return Long.valueOf(invocation.getCallId().substring("patch-read:".length()));
+        } catch (NumberFormatException exception) {
+            return null;
+        }
+    }
+
     record Resource(String family, String action, Long id) {
     }
 
@@ -121,7 +134,7 @@ final class AiChatOperationHistory {
 
     record Operation(Long invocationId, Long turnId, Instant turnStartedAt, Instant turnFinishedAt, String turnStatus,
             String toolName, String status, String diagnosticCode, boolean readOnly, Instant proposedAt, Instant finishedAt,
-            String resourceFamily, Long resourceId, String postWriteReadObservation, List<ReadEvidence> subsequentReads, String fieldComparison) {
+            String resourceFamily, Long resourceId, String postWriteReadObservation, List<ReadEvidence> subsequentReads, String fieldComparison, Long sourcePatchInvocationId) {
     }
 
     record ReadEvidence(Long invocationId, String toolName, Instant finishedAt) {

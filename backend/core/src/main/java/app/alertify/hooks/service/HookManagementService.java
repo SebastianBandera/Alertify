@@ -145,6 +145,52 @@ public class HookManagementService {
     }
 
     @Transactional
+    public HookResponse updatePartial(Long id, HookUpdateRequest request) {
+        Hook hook = find(id);
+        if (hook.getVersion() != request.version())
+            throw ConflictException.versionConflict("Hook was modified by another request; reload it and try again");
+
+        String name = required(request.name());
+        ensureNameAvailable(name, id);
+        if (request.enabled() && request.targets().isEmpty())
+            throw invalid("An enabled hook requires at least one target");
+
+        Limits limits = limits(request.maxConcurrentInvocations(), request.rateLimitCount(), request.rateLimitWindow());
+        List<HookTarget> candidates = targets(hook, request.targets());
+        List<HookTarget> selected = new ArrayList<>();
+        for (int i = 0; i < hook.getTargets().size(); i++)
+            hook.getTargets().get(i).moveTemporarily(1_000_000 + i);
+
+        hookRepository.flush();
+        for (HookTarget candidate : candidates) {
+            HookTarget current = hook.getTargets().stream().filter(value -> sameResource(value, candidate)).findFirst().orElse(null);
+            if (current == null) {
+                selected.add(candidate);
+            } else {
+                current.copyDefinitionFrom(candidate);
+                selected.add(current);
+            }
+        }
+        hook.update(name, optional(request.description()), request.enabled(), request.mode(), secret(request.tokenSecretId()), request.maxConcurrentInvocations(), limits.count(), limits.windowSeconds());
+        hook.replaceTags(resolveTags(request.tagIds()));
+        hook.synchronizeTargets(selected);
+        hookRepository.flush();
+        eventLogger.successAfterCommit("HOOK_UPDATED", data(hook));
+        return mapper.toResponse(hook);
+    }
+
+    private static boolean sameResource(HookTarget left, HookTarget right) {
+        if (left.getTargetType() != right.getTargetType())
+            return false;
+
+        return switch (left.getTargetType()) {
+            case ALERT -> left.getAlert().getId().equals(right.getAlert().getId());
+            case PROCEDURE -> left.getProcedure().getId().equals(right.getProcedure().getId());
+            case PIPE -> left.getPipe().getId().equals(right.getPipe().getId());
+        };
+    }
+
+    @Transactional
     public HookResponse rotate(Long id, long version) {
         Hook hook = find(id);
         if (hook.getVersion() != version)
