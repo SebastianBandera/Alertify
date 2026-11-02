@@ -88,6 +88,9 @@ public class HookTagService {
         eventLogger.successAfterCommit("HOOK_TAG_DELETED", Map.of(TAG_ID, id, "name", tag.getName()));
     }
 
+    @Transactional(readOnly = true)
+    public TagResponse get(Long id) { return response(find(id)); }
+
     private Tag find(Long id) { return tags.findByIdAndScope(id, SCOPE).orElseThrow(() -> new ResourceNotFoundException("Hook tag " + id + " was not found")); }
 
     private void ensureAvailable(String name, Long id) {

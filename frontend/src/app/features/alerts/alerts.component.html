@@ -414,10 +414,10 @@
 
   @if (activeTab() === 'wizards') {
     @if (playwrightWizardOpen()) {
-      <app-playwright-wizard (prepared)="preparePlaywrightAlert($event)" (dismissed)="playwrightWizardOpen.set(false)" />
+      <app-playwright-wizard [initialDraftId]="playwrightInitialDraft()" (prepared)="preparePlaywrightAlert($event)" (returned)="returnFromPlaywright($event)" (dismissed)="playwrightWizardOpen.set(false)" />
     } @else {
       <div class="wizard-grid">
-      <button type="button" class="wizard-card" (click)="playwrightWizardOpen.set(true)">
+      <button type="button" class="wizard-card" (click)="openPlaywrightWizard()">
         <strong>{{ localization.translate('alerts.wizards.playwrightPage.title') }}</strong>
         <code>PlaywrightPageAlertTemplate</code>
         <p>{{ localization.translate('alerts.wizards.playwrightPage.description') }}</p>
@@ -562,6 +562,7 @@
             @if (formFieldErrors().template; as templateError) {
               <small class="field-error" id="alert-template-error" role="alert">{{ templateError }}</small>
             }
+            @if (canEditPlaywrightPlan()) { <button class="button button--secondary" type="button" (click)="editPlaywrightPlan()" [disabled]="saving()">{{ localization.translateDynamic('alerts.form.editPlaywrightPlan') }}</button> }
           </div>
           <label>
             <span>{{ localization.translate('alerts.form.name') }}</span>
@@ -634,20 +635,38 @@
               <div class="smart-execution__fields">
                 <label>
                   <span>{{ localization.translate('alerts.form.smartInterval') }}</span>
-                  <input
-                    id="alert-smart-interval"
-                    type="number"
-                    min="1"
-                    step="1"
-                    [ngModel]="form().smartExecutionIntervalHours"
-                    (ngModelChange)="patchForm({ smartExecutionIntervalHours: $event })"
-                    [attr.aria-invalid]="formFieldErrors().smartInterval ? true : null"
-                    [attr.aria-describedby]="formFieldErrors().smartInterval ? 'alert-smart-interval-help alert-smart-interval-error' : 'alert-smart-interval-help'"
-                    [class.field-invalid]="formFieldErrors().smartInterval"
-                    name="smartExecutionIntervalHours"
-                    required
-                  >
-                  <small id="alert-smart-interval-help">{{ localization.translate('alerts.form.smartIntervalHelp') }}</small>
+                  <select [ngModel]="form().smartExecutionIntervalSource" (ngModelChange)="patchForm({ smartExecutionIntervalSource: $event })" name="smartExecutionIntervalSource">
+                    <option value="FIXED">{{ localization.translate('alerts.form.smartIntervalFixed') }}</option>
+                    <option value="CONFIGURATION">{{ localization.translate('alerts.form.smartIntervalConfig') }}</option>
+                  </select>
+                  @if (form().smartExecutionIntervalSource === 'CONFIGURATION') {
+                    <app-searchable-select
+                      [options]="smartIntervalConfigurations()"
+                      [value]="form().smartExecutionIntervalConfigurationId"
+                      (valueChange)="patchForm({ smartExecutionIntervalConfigurationId: $event })"
+                      [placeholder]="localization.translate('alerts.form.smartIntervalMissing')"
+                      [ariaLabel]="localization.translate('alerts.form.smartIntervalConfig')"
+                      [emptyLabel]="localization.translate('alerts.form.smartIntervalMissing')"
+                      [clearLabel]="localization.translate('alerts.form.selectConfiguration')"
+                    />
+                    <small>{{ localization.translate('alerts.form.smartIntervalConfigHelp') }}</small>
+                  } @else {
+                    <input
+                      id="alert-smart-interval"
+                      type="number"
+                      min="1"
+                      max="2147483647"
+                      step="1"
+                      [ngModel]="form().smartExecutionIntervalHours"
+                      (ngModelChange)="patchForm({ smartExecutionIntervalHours: $event })"
+                      [attr.aria-invalid]="formFieldErrors().smartInterval ? true : null"
+                      [attr.aria-describedby]="formFieldErrors().smartInterval ? 'alert-smart-interval-help alert-smart-interval-error' : 'alert-smart-interval-help'"
+                      [class.field-invalid]="formFieldErrors().smartInterval"
+                      name="smartExecutionIntervalHours"
+                      required
+                    >
+                    <small id="alert-smart-interval-help">{{ localization.translate('alerts.form.smartIntervalHelp') }}</small>
+                  }
                   @if (formFieldErrors().smartInterval; as smartIntervalError) {
                     <small class="field-error" id="alert-smart-interval-error" role="alert">{{ smartIntervalError }}</small>
                   }

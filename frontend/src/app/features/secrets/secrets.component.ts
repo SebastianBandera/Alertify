@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
-import { ApiRequestError, TagMatchMode } from '../../core/api/configuration-api.service';
+import { ApiRequestError, SortDirection, TagMatchMode } from '../../core/api/configuration-api.service';
 import {
   ApplicationSecret,
   DATABASE_ENGINES,
@@ -99,6 +99,7 @@ interface TagForm {
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100, 250, 500, 1000] as const;
 const PAGE_SIZE_STORAGE_KEY = 'alertify.secrets.page-size';
+const UPDATED_AT_SORT_STORAGE_KEY = 'alertify.secrets.updated-at-sort';
 const DEFAULT_MAXIMUM_BINARY_BYTES = 100 * 1024 * 1024;
 
 function readStoredPageSize(): number {
@@ -107,6 +108,24 @@ function readStoredPageSize(): number {
     return PAGE_SIZE_OPTIONS.some((pageSize) => pageSize === storedValue) ? storedValue : 10;
   } catch {
     return 10;
+  }
+}
+
+function readStoredUpdatedAtSort(): SortDirection | null {
+  try {
+    const storedValue = localStorage.getItem(UPDATED_AT_SORT_STORAGE_KEY);
+    return storedValue === 'asc' || storedValue === 'desc' ? storedValue : null;
+  } catch {
+    return null;
+  }
+}
+
+function persistUpdatedAtSort(sort: SortDirection | null): void {
+  try {
+    if (sort === null) localStorage.removeItem(UPDATED_AT_SORT_STORAGE_KEY);
+    else localStorage.setItem(UPDATED_AT_SORT_STORAGE_KEY, sort);
+  } catch {
+    // The sort still applies to this page when browser storage is unavailable.
   }
 }
 
@@ -150,6 +169,7 @@ export class SecretsComponent implements OnInit {
   protected readonly tagMatchMode = signal<TagMatchMode>('OR');
   protected readonly pageIndex = signal(0);
   protected readonly pageSize = signal(readStoredPageSize());
+  protected readonly updatedAtSort = signal<SortDirection | null>(readStoredUpdatedAtSort());
   protected readonly totalElements = signal(0);
   protected readonly totalPages = signal(0);
   protected readonly usageSecret = signal<ApplicationSecret | null>(null);
@@ -202,7 +222,7 @@ export class SecretsComponent implements OnInit {
     this.loading.set(true);
     this.error.set(null);
     try {
-      const result = await this.api.listSecrets(this.appliedSearchTerm(), this.selectedValueType(), this.selectedTagIds(), this.tagMatchMode(), this.pageIndex(), this.pageSize());
+      const result = await this.api.listSecrets(this.appliedSearchTerm(), this.selectedValueType(), this.selectedTagIds(), this.tagMatchMode(), this.pageIndex(), this.pageSize(), this.updatedAtSort());
       this.secrets.set(result.content);
       this.pageIndex.set(result.page.number);
       this.totalElements.set(result.page.totalElements);
@@ -220,6 +240,15 @@ export class SecretsComponent implements OnInit {
     } catch (error) {
       this.error.set(this.errorMessage(error));
     }
+  }
+
+  protected toggleUpdatedAtSort(): void {
+    const current = this.updatedAtSort();
+    const next = current === null ? 'desc' : current === 'desc' ? 'asc' : null;
+    this.updatedAtSort.set(next);
+    persistUpdatedAtSort(next);
+    this.pageIndex.set(0);
+    void this.loadSecrets();
   }
 
   protected applySearch(): void {

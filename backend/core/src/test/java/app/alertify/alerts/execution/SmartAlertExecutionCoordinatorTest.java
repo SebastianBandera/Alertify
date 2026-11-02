@@ -38,6 +38,7 @@ class SmartAlertExecutionCoordinatorTest {
     @Mock private AlertExecutionOrchestrator orchestrator;
     @Mock private CronQuietHoursService quietHoursService;
     @Mock private MaintenanceModeService maintenanceModeService;
+    @Mock private SmartExecutionIntervalResolver intervalResolver;
     @Mock private Alert alert;
     @Mock private AlertTemplateDefinition template;
     @Mock private AlertExecution latest;
@@ -48,7 +49,7 @@ class SmartAlertExecutionCoordinatorTest {
     void setUp() {
         coordinator = new SmartAlertExecutionCoordinator(
                 alertRepository, executionRepository, orchestrator, quietHoursService, maintenanceModeService,
-                new SmartExecutionProperties(Duration.ofMinutes(10), Duration.ofMinutes(10))
+                new SmartExecutionProperties(Duration.ofMinutes(10), Duration.ofMinutes(10)), intervalResolver
         );
         coordinator.setClockForTesting(Clock.fixed(NOW, ZoneOffset.UTC));
     }
@@ -56,6 +57,16 @@ class SmartAlertExecutionCoordinatorTest {
     @AfterEach
     void close() {
         coordinator.close();
+    }
+
+    @Test
+    void invalidIntervalNeverDispatchesToAWorkerOrReadsExecutionHistory() {
+        org.mockito.Mockito.lenient().when(alertRepository.findAllByEnabledTrueAndSmartExecutionEnabledTrue()).thenReturn(List.of(alert));
+        when(alert.isEnabled()).thenReturn(true);
+        when(alert.isSmartExecutionEnabled()).thenReturn(true);
+        when(intervalResolver.resolve(alert)).thenReturn(null);
+        coordinator.runCycle();
+        verifyNoInteractions(orchestrator, executionRepository);
     }
 
     @Test
@@ -141,9 +152,7 @@ class SmartAlertExecutionCoordinatorTest {
     @Test
     void recentSuccessSuppressesEveryPolicy() {
         smartAlert(SmartExecutionPolicy.ON_ERROR_OR_WARN);
-        when(executionRepository.existsByAlert_IdAndStatusAndFinishedAtGreaterThanEqual(
-                7L, AlertExecutionStatus.SUCCESS, NOW.minus(Duration.ofHours(2))
-        )).thenReturn(true);
+        when(executionRepository.latestFinishedAtByAlertAndStatus(7L, AlertExecutionStatus.SUCCESS)).thenReturn(Optional.of(NOW));
 
         coordinator.runCycle();
 
@@ -178,7 +187,7 @@ class SmartAlertExecutionCoordinatorTest {
         org.mockito.Mockito.lenient().when(alert.getName()).thenReturn("Sample");
         org.mockito.Mockito.lenient().when(alert.isEnabled()).thenReturn(true);
         org.mockito.Mockito.lenient().when(alert.isSmartExecutionEnabled()).thenReturn(true);
-        org.mockito.Mockito.lenient().when(alert.getSmartExecutionIntervalHours()).thenReturn(2);
+        org.mockito.Mockito.lenient().when(intervalResolver.resolve(alert)).thenReturn(2);
         org.mockito.Mockito.lenient().when(alert.getSmartExecutionPolicy()).thenReturn(policy);
         org.mockito.Mockito.lenient().when(alert.getTemplate()).thenReturn(template);
         org.mockito.Mockito.lenient().when(template.getRequiredCapability()).thenReturn(WorkerCapability.STANDARD);

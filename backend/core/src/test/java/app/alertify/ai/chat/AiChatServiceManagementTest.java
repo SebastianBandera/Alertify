@@ -59,7 +59,7 @@ class AiChatServiceManagementTest {
         verify(handle).send(message.capture());
         assertThat(message.getValue().getStart().getMode()).isEqualTo(mode);
         assertThat(message.getValue().getStart().getInstructions()).contains(
-                "write tool returned success in this turn", "After each successful create or update",
+                "write tool returned success in this turn", "After each successful create or full update",
                 "After a successful delete", "resource-not-found result is expected",
                 "Permission errors, connection errors", "distinguish execution from verification",
                 "inspect all result pages", "approval card is the user's confirmation",
@@ -79,7 +79,7 @@ class AiChatServiceManagementTest {
                 "turn failure does not undo successful writes", "only the remaining authorized steps",
                 "writable=false still allows authorized administrative changes", "Preserve writable unless",
                 "keep enforcing the current mode, approval policy and version checks",
-                "configuration_update with the requested stringValue and writable=false",
+                "configuration_patch replacing only /value",
                 "Do not refuse the administrative edit or enable writable just to perform it",
                 "USER_APPROVED plus phase=EXECUTION", "TOOL_VERSION_CONFLICT",
                 "Outcome metadata refreshes a bounded audit", "prefix uses ~QA-PREFIX*",
@@ -239,7 +239,7 @@ class AiChatServiceManagementTest {
         eventLogger = mock(ApplicationEventLogger.class);
         service = new AiChatService(mock(AiWorkerClient.class), mock(AiToolCatalog.class), mock(AiChatPersistence.class),
                 conversations, turns, messages, invocations, mock(AiLocalizationSourceService.class), events, eventLogger,
-                JsonMapper.builder().findAndAddModules().build(), mock(AiConversationHistory.class), mock(app.alertify.ai.memory.AiMemoryService.class));
+                JsonMapper.builder().findAndAddModules().build(), mock(AiConversationHistory.class), mock(app.alertify.ai.memory.AiMemoryService.class), mock(AiPatchReadback.class));
     }
 
     @Test

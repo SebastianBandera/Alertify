@@ -200,7 +200,7 @@ class AiChatReasoningEffortTest {
             when(localization.resolveLocale(any())).thenReturn("en");
             service = new AiChatService(worker, mock(AiToolCatalog.class), persistence, mock(AiConversationRepository.class), mock(AiTurnRepository.class),
                     mock(AiMessageRepository.class), mock(AiToolInvocationRepository.class), localization, mock(AdminEventPublisher.class),
-                    mock(ApplicationEventLogger.class), JsonMapper.builder().findAndAddModules().build(), mock(AiConversationHistory.class), mock(app.alertify.ai.memory.AiMemoryService.class));
+                    mock(ApplicationEventLogger.class), JsonMapper.builder().findAndAddModules().build(), mock(AiConversationHistory.class), mock(app.alertify.ai.memory.AiMemoryService.class), mock(AiPatchReadback.class));
         }
 
         private void setMaximum(String maximum) {

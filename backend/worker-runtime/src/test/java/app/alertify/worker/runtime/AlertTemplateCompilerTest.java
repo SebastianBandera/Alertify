@@ -131,6 +131,18 @@ class AlertTemplateCompilerTest {
     }
 
     @Test
+    void compilesTheElasticsearchEventCountTemplateAsTheSingleWorkerSourceUnit() throws Exception {
+        Path sourcePath = Path.of("../alert-templates/src/main/java/app/alertify/alerts/templates/ElasticsearchEventCountAlertTemplate.java");
+        String source = Files.readString(sourcePath, StandardCharsets.UTF_8);
+        String className = "app.alertify.alerts.templates.ElasticsearchEventCountAlertTemplate";
+        AlertTemplateCompiler compiler = new AlertTemplateCompiler(properties());
+
+        compiler.synchronize(className, sha256(source), source);
+
+        assertThat(compiler.isAvailable(className, sha256(source))).isTrue();
+    }
+
+    @Test
     void compilesAndExecutesTheJwtNegativeTokensProcedureAsASingleSourceUnit() throws Exception {
         Path sourcePath = Path.of("../alert-templates/src/main/java/app/alertify/procedures/templates/JwtNegativeTestTokensProcedureTemplate.java");
         String source = Files.readString(sourcePath, StandardCharsets.UTF_8);
@@ -152,5 +164,27 @@ class AlertTemplateCompilerTest {
                 MessageDigest.getInstance("SHA-256")
                         .digest(value.getBytes(StandardCharsets.UTF_8))
         );
+    }
+
+    @Test
+    void compilesAndExecutesTheTotpProcedureAsASingleSourceUnit() throws Exception {
+        Path sourcePath = Path.of("../alert-templates/src/main/java/app/alertify/procedures/templates/TotpProcedureTemplate.java");
+        String source = Files.readString(sourcePath, StandardCharsets.UTF_8);
+        String className = "app.alertify.procedures.templates.TotpProcedureTemplate";
+        AlertTemplateCompiler compiler = new AlertTemplateCompiler(properties());
+        compiler.synchronize(className, sha256(source), source, app.alertify.worker.grpc.TemplateKind.TEMPLATE_KIND_PROCEDURE);
+        var parameters = java.util.List.of(
+                AlertParameter.newBuilder().setName("secret").setJavaType(String.class.getName()).setValue("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ").build(),
+                AlertParameter.newBuilder().setName("algorithm").setJavaType(String.class.getName()).setValue("SHA1").build(),
+                AlertParameter.newBuilder().setName("digits").setJavaType(Integer.class.getName()).setValue("8").build(),
+                AlertParameter.newBuilder().setName("periodSeconds").setJavaType(Integer.class.getName()).setValue("30").build(),
+                AlertParameter.newBuilder().setName("minimumValiditySeconds").setJavaType(Integer.class.getName()).setValue("1").build());
+        var instance = compiler.getProcedure(className, sha256(source)).newInstance(parameters,
+                null, null, null, null, java.time.Instant.now());
+
+        var result = instance.evaluator().execute(new app.alertify.procedures.ProcedureExecutionContext(java.time.Instant.EPOCH, java.util.Map.of()));
+
+        assertThat(result.path("code").stringValue()).matches("[0-9]{8}");
+        assertThat(java.time.Instant.parse(result.path("validUntil").stringValue())).isAfter(java.time.Instant.now());
     }
 }

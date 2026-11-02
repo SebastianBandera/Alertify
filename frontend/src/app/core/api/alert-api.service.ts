@@ -89,6 +89,8 @@ export interface Alert {
   readonly allowConcurrentExecutions: boolean;
   readonly smartExecutionEnabled: boolean;
   readonly smartExecutionIntervalHours: number | null;
+  readonly smartExecutionIntervalSource?: 'FIXED' | 'CONFIGURATION';
+  readonly smartExecutionIntervalConfigurationId?: number | null;
   readonly smartExecutionPolicy: SmartExecutionPolicy | null;
   readonly tags: readonly AlertTag[];
   readonly parameters: readonly AlertParameterValue[];
@@ -117,6 +119,8 @@ export interface AlertWriteRequest {
   readonly allowConcurrentExecutions: boolean;
   readonly smartExecutionEnabled: boolean;
   readonly smartExecutionIntervalHours: number | null;
+  readonly smartExecutionIntervalSource?: 'FIXED' | 'CONFIGURATION';
+  readonly smartExecutionIntervalConfigurationId?: number | null;
   readonly smartExecutionPolicy: SmartExecutionPolicy | null;
   readonly persistentIssues: boolean;
   readonly tagIds: readonly number[];

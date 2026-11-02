@@ -103,6 +103,13 @@ public class Pipe {
     }
 
     public void clearSteps() { steps.clear(); }
+    public void synchronizeSteps(List<PipeStep> values) {
+        steps.removeIf(step -> !values.contains(step));
+        for (PipeStep step : values)
+            if (!steps.contains(step))
+                steps.add(step);
+    }
+
     public void replaceTags(Set<Tag> values) {
         tags.clear();
         if (values != null)

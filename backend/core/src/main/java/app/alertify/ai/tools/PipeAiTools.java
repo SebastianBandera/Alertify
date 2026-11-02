@@ -11,6 +11,7 @@ import org.springframework.validation.annotation.Validated;
 import app.alertify.ai.AiRefreshTarget;
 import app.alertify.ai.AiToolExecutor;
 import app.alertify.ai.AiToolSupport;
+import app.alertify.ai.patch.AiPatchService;
 import app.alertify.ai.AlertifyTool;
 import app.alertify.ai.api.AiFilter;
 import app.alertify.ai.api.AiPage;
@@ -38,6 +39,7 @@ import jakarta.validation.Valid;
 @PreAuthorize(AuthorizationPolicies.ADMIN)
 public class PipeAiTools {
 
+    private final AiPatchService patches;
     private final PipeManagementService pipes;
     private final PipeCsvService csv;
     private final PipeExecutionQueryService executions;
@@ -46,13 +48,28 @@ public class PipeAiTools {
     private final AiToolSupport support;
 
     public PipeAiTools(PipeManagementService pipes, PipeCsvService csv, PipeExecutionQueryService executions,
-            PipeTagService tags, AiToolExecutor tools, AiToolSupport support) {
+            PipeTagService tags, AiToolExecutor tools, AiToolSupport support, AiPatchService patches) {
+        this.patches = patches;
         this.pipes = pipes;
         this.csv = csv;
         this.executions = executions;
         this.tags = tags;
         this.tools = tools;
         this.support = support;
+    }
+
+    @AlertifyTool(name = "alertify_pipe_patch", description = "Preferred tool for partial pipe edits. Read the current definition/version first; send only requested changes. Editable root fields: name, description, enabled, allowConcurrentExecutions, finallyTimeout (ISO duration), steps and tagIds. Step fields: key, type, phase, resourceId, timeout, continueOn, bindings; binding fields: targetParameterKey, sourceStepKey, sourceOutputKey, sourceResultPointer, valueExpression. tagIds is the sorted list of tag IDs from the read response. Atomic operations validate the complete result and verify persistence. The coordinator automatically rereads after commit. Before editing existing elements test parameterKey for parameters, key for steps, both type and resourceId for targets, targetParameterKey for bindings. Full update is only for explicitly requested full replacement.", readOnly = false, refreshTargets = AiRefreshTarget.PIPES)
+    public PipeResponse patch(long id, @Valid app.alertify.ai.api.AiPatchRequest request) {
+        return tools.execute("alertify_pipe_patch", () -> {
+            return patches.patch(id, request, app.alertify.pipes.model.Pipe.class,
+                    app.alertify.pipes.api.PipeUpdateRequest.class, () -> pipes.get(id), complete -> pipes.updatePartial(id, complete));
+        });
+    }
+
+    @AlertifyTool(name = "alertify_pipe_tag_patch", description = "Preferred partial edit of a PIPE tag by tag ID and version. Editable fields: name and color. Omitted fields and associations remain unchanged. Server verifies persistence; coordinator automatically rereads.", readOnly = false, refreshTargets = AiRefreshTarget.PIPES)
+    public TagResponse tagPatch(long id, @Valid app.alertify.ai.api.AiPatchRequest request) {
+        return tools.execute("alertify_pipe_tag_patch", () -> patches.patch(id, request, app.alertify.jpa.entity.Tag.class,
+                TagUpdateRequest.class, () -> tags.get(id), complete -> tags.update(id, complete)));
     }
 
     @AlertifyTool(name = "alertify_pipe_search", description = "Search pipe definitions with bounded pagination", readOnly = true)
@@ -76,7 +93,7 @@ public class PipeAiTools {
         return tools.execute("alertify_pipe_create", () -> pipes.create(request.toRequest()));
     }
 
-    @AlertifyTool(name = "alertify_pipe_update", description = "Update a pipe using its current optimistic version. Read its complete definition first and preserve every unchanged step and binding. Each binding selects either an artifact sourceOutputKey or a JSON sourceResultPointer, never both; use null for the unselected source. Changing a valueExpression does not authorize changing another binding's source.", readOnly = false, refreshTargets = AiRefreshTarget.PIPES)
+    @AlertifyTool(name = "alertify_pipe_update", description = "Full replacement: prefer alertify_pipe_patch for partial edits. Update a pipe using its current optimistic version. Read its complete definition first and preserve every unchanged step and binding. Each binding selects either an artifact sourceOutputKey or a JSON sourceResultPointer, never both; use null for the unselected source. Changing a valueExpression does not authorize changing another binding's source.", readOnly = false, refreshTargets = AiRefreshTarget.PIPES)
     public PipeResponse update(long id, @Valid AiPipeUpdateRequest request) {
         return tools.execute("alertify_pipe_update", () -> pipes.update(id, request.toRequest()));
     }
@@ -120,7 +137,7 @@ public class PipeAiTools {
         return tools.execute("alertify_pipe_tag_create", () -> tags.create(request));
     }
 
-    @AlertifyTool(name = "alertify_pipe_tag_update", description = "Update a pipe tag using its current version", readOnly = false, refreshTargets = AiRefreshTarget.PIPES)
+    @AlertifyTool(name = "alertify_pipe_tag_update", description = "Full replacement: prefer alertify_pipe_tag_patch for partial edits. Update a pipe tag using its current version", readOnly = false, refreshTargets = AiRefreshTarget.PIPES)
     public TagResponse tagUpdate(long id, @Valid TagUpdateRequest request) {
         return tools.execute("alertify_pipe_tag_update", () -> tags.update(id, request));
     }

@@ -165,6 +165,60 @@ public class PipeManagementService {
         return PipeMapper.response(pipe);
     }
 
+    /** Partial-edit persistence preserves step and binding identities. Candidates are validated before mutation. */
+    @Transactional
+    public PipeResponse updatePartial(long id, PipeUpdateRequest request) {
+        Pipe pipe = find(id);
+        if (pipe.getVersion() != request.version())
+            throw ConflictException.versionConflict("Pipe was modified by another request; reload it and try again");
+
+        String name = required(request.name());
+        ensureNameAvailable(name, id);
+        validateHasSteps(request.enabled(), request.steps());
+        List<PipeStep> candidates = steps(pipe, request.steps());
+        validateComplete(request.enabled(), candidates);
+        Map<String, PipeStep> existing = new LinkedHashMap<>();
+        pipe.getSteps().forEach(step -> existing.put(step.getStepKey(), step));
+        Map<String, PipeStep> selected = new LinkedHashMap<>();
+        candidates.forEach(step -> selected.put(step.getStepKey(), existing.getOrDefault(step.getStepKey(), step)));
+        for (int i = 0; i < pipe.getSteps().size(); i++)
+            pipe.getSteps().get(i).moveTemporarily(1_000_000 + i);
+
+        pipeRepository.flush();
+        // Remove obsolete bindings first, before deleting a step that they reference.
+        for (PipeStep old : pipe.getSteps()) {
+            PipeStep candidate = candidates.stream().filter(step -> step.getStepKey().equals(old.getStepKey())).findFirst().orElse(null);
+            old.synchronizeBindings(candidate == null ? List.of() : old.getBindings().stream()
+                    .filter(binding -> candidate.getBindings().stream().anyMatch(value -> value.getTargetParameterKey().equals(binding.getTargetParameterKey()))).toList());
+        }
+        pipeRepository.flush();
+        for (PipeStep candidate : candidates) {
+            PipeStep target = selected.get(candidate.getStepKey());
+            List<PipeStepBinding> bindings = new ArrayList<>();
+            for (PipeStepBinding binding : candidate.getBindings()) {
+                PipeStepBinding current = target == candidate ? null : target.getBindings().stream()
+                        .filter(value -> value.getTargetParameterKey().equals(binding.getTargetParameterKey())).findFirst().orElse(null);
+                PipeStep source = selected.get(binding.getSourceStep().getStepKey());
+                if (current == null) {
+                    binding.attachTo(target, source);
+                    bindings.add(binding);
+                } else {
+                    current.copyDefinitionFrom(binding, source);
+                    bindings.add(current);
+                }
+            }
+            target.copyDefinitionFrom(candidate);
+            target.synchronizeBindings(bindings);
+        }
+        pipe.update(name, optional(request.description()), request.enabled(), request.allowConcurrentExecutions());
+        pipe.setFinallyTimeoutMillis(finallyTimeout(request.finallyTimeout()));
+        pipe.replaceTags(resolveTags(request.tagIds()));
+        pipe.synchronizeSteps(new ArrayList<>(selected.values()));
+        pipeRepository.flush();
+        eventLogger.successAfterCommit("PIPE_UPDATED", data(pipe));
+        return PipeMapper.response(pipe);
+    }
+
     @Transactional(readOnly = true)
     public UUID run(long id) {
         find(id);

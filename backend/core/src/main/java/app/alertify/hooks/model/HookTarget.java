@@ -123,4 +123,11 @@ public class HookTarget {
     public long getBusyWaitTimeoutMillis() { return busyWaitTimeoutMillis; }
 
     public void moveTemporarily(int value) { position = value; }
+    public void copyDefinitionFrom(HookTarget value) {
+        position = value.position;
+        continueOn.clear();
+        continueOn.addAll(value.continueOn);
+        busyWaitTimeoutMillis = value.busyWaitTimeoutMillis;
+    }
+
 }

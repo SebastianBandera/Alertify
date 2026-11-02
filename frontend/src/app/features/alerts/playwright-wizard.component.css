@@ -25,6 +25,10 @@ button.primary { border-color: var(--primary); background: var(--primary); color
 .messages article { margin-bottom: 10px; padding: 10px 12px; border-radius: 9px; background: #f2f4f7; font-size: 13px; }
 .messages article.user { background: #f4f3ff; }
 .messages article > strong { display: block; margin-bottom: 5px; font-size: 11px; color: var(--text-muted); }
+.chat-working { display: flex; align-items: center; gap: 8px; padding: 10px 12px; color: #5925dc; font-size: 12px; }
+.chat-spinner { width: 14px; height: 14px; flex-shrink: 0; border: 2px solid #d9d6fe; border-top-color: #5925dc; border-radius: 50%; animation: chat-spin .8s linear infinite; }
+@keyframes chat-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .chat-spinner { animation: none; } }
 .placeholder { padding: 30px 10px; color: var(--text-muted); font-size: 13px; }
 .error, .warning, .working { margin: 12px 0; padding: 12px; border-radius: 8px; font-size: 13px; }
 .error { color: #b42318; background: #fef3f2; }
@@ -32,6 +36,13 @@ button.primary { border-color: var(--primary); background: var(--primary); color
 .working { color: #5925dc; background: #f4f3ff; }
 .capacity { color: var(--text-muted); font-size: 12px; }
 .code, pre, code { font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+.code-editor { display: flex; min-width: 0; overflow: hidden; border: 1px solid #d0d5dd; border-radius: 8px; background: white; }
+.code-editor:focus-within { border-color: var(--primary); }
+.code-editor textarea.code { display: block; flex: 1 1 0; min-width: 0; margin: 0; border: 0; border-radius: 0; line-height: 20px; padding: 8px 10px; tab-size: 4; white-space: pre; }
+.line-numbers { position: relative; flex-shrink: 0; overflow: hidden; border-right: 1px solid var(--border); background: #f2f4f7; color: var(--text-muted); font-family: ui-monospace, Consolas, monospace; font-size: 12px; line-height: 20px; text-align: right; user-select: none; }
+.line-numbers-content { position: absolute; inset: 0 0 auto; }
+.line-numbers pre { max-height: none; margin: 0; padding: 8px; overflow: visible; font: inherit; white-space: pre; }
+.failed-line-number { position: absolute; right: 0; left: 0; height: 20px; padding: 0 8px; background: #fef3f2; color: #b42318; font-weight: 700; }
 pre { max-height: 350px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
 .selection { display: grid; gap: 5px; margin-top: 12px; padding: 10px; border-radius: 8px; background: #f4f3ff; font-size: 12px; }
 .selection code { overflow-wrap: anywhere; }

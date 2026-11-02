@@ -13,21 +13,26 @@
       } @empty { <p>{{ t('noDrafts') }}</p> }
     </div>
   } @else {
+    @if (state()!.document.sourceAlert) { <p class="edit-help">{{ t('editingExisting') }}</p> }
+    @if (parameterBindings().length) { <section class="edit-help"><strong>{{ t('linkedParameters') }}</strong><p>{{ t('linkedParametersHelp') }}</p>@for (binding of parameterBindings(); track binding.parameter) { <p><code>{{ binding.parameter }}</code>: {{ binding.source }} · {{ binding.name }}</p> }</section> }
     <div class="settings">
-      <label class="url"><span>{{ t('url') }}</span><input type="url" [ngModel]="settings().url" (ngModelChange)="patch({ url: $event })" [disabled]="busy()" placeholder="https://example.com/" required></label>
+      <label class="url"><span>{{ t('url') }}</span><input type="url" [ngModel]="settings().url" (ngModelChange)="patch({ url: $event })" (focus)="urlFocused = true" (blur)="normalizeUrl()" [disabled]="busy() || linked('url')" placeholder="https://example.com/" required></label>
       <label><span>{{ t('browser') }}</span><select [ngModel]="settings().engine" (ngModelChange)="patch({ engine: $event })" [disabled]="busy()"><option value="chromium">Chromium</option><option value="firefox">Firefox</option><option value="webkit">WebKit</option></select></label>
-      <label><span>{{ t('loadTimeout') }}</span><input type="number" min="5" max="60" [ngModel]="settings().loadTimeoutSeconds" (ngModelChange)="patch({ loadTimeoutSeconds: $event })" [disabled]="busy()"></label>
-      <label><span>{{ t('elementTimeout') }}</span><input type="number" min="1" max="30" [ngModel]="settings().elementTimeoutSeconds" (ngModelChange)="patch({ elementTimeoutSeconds: $event })" [disabled]="busy()"></label>
+      <label><span>{{ t('loadTimeout') }}</span><input type="number" min="5" max="60" [ngModel]="linked('loadTimeoutSeconds') ? null : settings().loadTimeoutSeconds" (ngModelChange)="patch({ loadTimeoutSeconds: $event })" [disabled]="busy() || linked('loadTimeoutSeconds')"></label>
+      <label><span>{{ t('elementTimeout') }}</span><input type="number" min="1" max="30" [ngModel]="linked('elementTimeoutSeconds') ? null : settings().elementTimeoutSeconds" (ngModelChange)="patch({ elementTimeoutSeconds: $event })" [disabled]="busy() || linked('elementTimeoutSeconds')"></label>
     </div>
     <div class="actions">
       @if (!state()!.open) {
-        <button type="button" class="primary" [disabled]="busy() || !settings().url.trim()" (click)="command('OPEN')">{{ t('open') }}</button>
+        <button type="button" class="primary" [disabled]="busy() || (!settings().url.trim() && !linked('url'))" (click)="command('OPEN')">{{ t('open') }}</button>
       } @else {
         <button type="button" [disabled]="busy()" (click)="command('RESET')">{{ t('restart') }}</button>
+      }
+      <button type="button" class="primary" [disabled]="busy() || !state()!.open || !settings().browsers.length" (click)="command('TEST')">{{ t('test') }}</button>
+      @if (state()!.open) {
         <button type="button" (click)="command('CANCEL')">{{ t('stop') }}</button>
         <span class="capacity">{{ t('capacity') }}</span>
       }
-      <button type="button" [disabled]="busy() || !changed()" (click)="save()">{{ t('save') }}</button>
+      <button type="button" [disabled]="busy() || saving() || !changed()" (click)="save()">{{ t('save') }}</button>
       <button type="button" [disabled]="busy()" (click)="remove()">{{ t('delete') }}</button>
     </div>
     @if (stateError()) { <p class="error" role="alert">{{ stateError() }}</p> }
@@ -53,10 +58,11 @@
 
       <section class="chat-panel" [attr.aria-label]="t('chat')">
         <div class="panel-heading"><h3>{{ t('chat') }}</h3><label for="playwright-wizard-mode">{{ t('interactionMode') }}<select id="playwright-wizard-mode" [ngModel]="settings().mode" (ngModelChange)="patch({ mode: $event })" [disabled]="busy() || awaitingApproval()"><option value="ASK">{{ t('ask') }}</option><option value="AUTO">{{ t('auto') }}</option></select></label></div>
-        <div class="messages" aria-live="polite">
-          @for (entry of state()!.document.messages; track $index) {
-            <article [hidden]="entry.role === 'SYSTEM'" [class.user]="entry.role === 'USER'"><strong>{{ t(entry.role === 'USER' ? 'you' : 'assistant') }}</strong><app-ai-chat-message [content]="entry.content" />@if (entry.hasImage) { <small>{{ t('captureSent') }}</small> }</article>
-          } @empty { <p class="placeholder">{{ t('chatHelp') }}</p> }
+        <div #messagesViewport class="messages" aria-live="polite">
+          @for (entry of chatMessages(); track $index) {
+            <article [class.user]="entry.role === 'USER'"><strong>{{ t(entry.role === 'USER' ? 'you' : 'assistant') }}</strong><app-ai-chat-message [content]="entry.content" />@if (entry.hasImage) { <small>{{ t('captureSent') }}</small> }</article>
+          } @empty { @if (!busy()) { <p class="placeholder">{{ t('chatHelp') }}</p> } }
+          @if (busy()) { <div class="chat-working" role="status"><span class="chat-spinner" aria-hidden="true"></span><span>{{ t('working') }}</span></div> }
         </div>
         @if (state()!.document.proposalError; as failure) {
           <section class="proposal-error" role="alert"><strong>{{ t('proposalFailed') }}</strong><p>{{ failure.error }}</p><p>{{ t('proposalFailedHelp') }}</p></section>
@@ -67,7 +73,8 @@
               <strong>{{ t(action.status === 'FAILED' ? 'executionFailed' : 'executionCompleted') }}</strong>
               @if (action.result?.completed !== undefined) { <p>{{ action.result!.completed }} {{ t('completed') }}</p> }
               @if (action.error) { <p>{{ action.error }}</p> }
-              @if (state()!.restartRequired) { <p>{{ t('executionRestartRequired') }}</p><button type="button" [disabled]="busy() || !state()!.open" (click)="command('RESET')">{{ t('restart') }}</button> }
+              @if (failedLine(); as line) { <button type="button" [disabled]="busy()" (click)="goToLine(line)">{{ t('line') }} {{ line }}</button> }
+              @if (state()!.restartRequired) { <p>{{ t('executionRestartRequired') }}</p><div class="actions"><button type="button" [disabled]="busy() || !state()!.open" (click)="command('RESET')">{{ t('restart') }}</button><button type="button" [disabled]="busy() || !state()!.open" (click)="command('REPLAY')">{{ t('restartAndReplay') }}</button></div> }
             </div>
           }
         }
@@ -83,7 +90,10 @@
 
     <section class="steps-panel">
       <div class="panel-heading"><h3>{{ t('steps') }}</h3><span>{{ t('redaction') }}</span></div>
-      <textarea class="code" rows="10" [ngModel]="settings().steps" (ngModelChange)="patch({ steps: $event })" [disabled]="busy()" [attr.aria-label]="t('steps')" spellcheck="false"></textarea>
+      @if (linked('steps')) { <p class="edit-help">{{ t('linkedScriptHelp') }}</p> } @else { <div class="code-editor">
+        <div class="line-numbers" aria-hidden="true" [style.width]="stepLineNumberWidth()"><div class="line-numbers-content" [style.transform]="'translateY(' + -stepsScrollTop() + 'px)'"><pre>{{ stepLineNumbers() }}</pre>@if (failedLine(); as line) { <span class="failed-line-number" [style.top.px]="8 + (line - 1) * 20">{{ line }}</span> }</div></div>
+        <textarea #stepsEditor class="code" rows="10" wrap="off" [ngModel]="settings().steps" (ngModelChange)="patch({ steps: $event })" (scroll)="stepsScrollTop.set(stepsEditor.scrollTop)" [disabled]="busy()" [attr.aria-label]="t('steps')" spellcheck="false"></textarea>
+      </div> }
       @if (state()!.document.validationError; as validationError) { <p class="error" role="alert">{{ validationError }}</p> }
       <div class="steps-execution"><button type="button" [disabled]="busy() || !state()!.open || !!state()!.restartRequired" (click)="command('EXECUTE')">{{ t('execute') }}</button></div>
       <p class="edit-help"><strong>{{ t('editHelpTitle') }}</strong><span>{{ t('editHelp') }}</span></p>
@@ -120,7 +130,7 @@
     </section>
     <footer>
       <fieldset><legend>{{ t('testBrowsers') }}</legend>@for (browser of ['chromium', 'firefox', 'webkit']; track browser) { <label class="check"><input type="checkbox" [checked]="settings().browsers.includes(browser)" [disabled]="busy()" (change)="toggleBrowser(browser, $any($event.target).checked)">{{ browser }}</label> }</fieldset>
-      <div class="actions"><button type="button" class="primary" [disabled]="busy() || !state()!.open || !settings().browsers.length" (click)="command('TEST')">{{ t('test') }}</button><button type="button" class="primary" [disabled]="busy() || !canPrepare()" (click)="prepare()">{{ t('prepare') }}</button><button type="button" [disabled]="busy()" (click)="prepare(true)">{{ t('bypass') }}</button></div>
+      <div class="actions"><button type="button" class="primary" [disabled]="busy() || !state()!.open || !settings().browsers.length" (click)="command('TEST')">{{ t('test') }}</button><button type="button" class="primary" [disabled]="busy() || !canPrepare()" (click)="prepare()">{{ t(state()!.document.sourceAlert ? 'applyExisting' : 'prepare') }}</button><button type="button" [disabled]="busy()" (click)="prepare(true)">{{ t(state()!.document.sourceAlert ? 'applyExistingBypass' : 'bypass') }}</button></div>
       @if (state()!.document.testReport; as report) {
         <div class="test-report" [class.passed]="report.passed && canPrepare()" role="status"><strong>{{ t(canPrepare() ? 'testPassed' : 'testRequired') }}</strong>@for (result of report.browsers; track result.browser) { <p>{{ result.browser }}: {{ result.passed ? 'SUCCESS' : 'FAIL' }} · {{ result.completed }} {{ t('completed') }} @if (result.error) { · {{ result.error }} }</p> }</div>
       }

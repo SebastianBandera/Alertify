@@ -95,6 +95,9 @@ public class ProcedureTagService {
         eventLogger.successAfterCommit("PROCEDURE_TAG_DELETED", Map.of(TAG_ID, id, "name", tag.getName()));
     }
 
+    @Transactional(readOnly = true)
+    public TagResponse get(Long id) { return response(find(id)); }
+
     private Tag find(Long id) {
         return tags.findByIdAndScope(id, SCOPE).orElseThrow(() -> new ResourceNotFoundException("Procedure tag " + id + " was not found"));
     }

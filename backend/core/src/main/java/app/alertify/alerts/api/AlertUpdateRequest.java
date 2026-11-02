@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Set;
 
 import app.alertify.alerts.model.SmartExecutionPolicy;
+import app.alertify.alerts.model.SmartExecutionIntervalSource;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -25,8 +26,14 @@ public record AlertUpdateRequest(
     Boolean persistentIssues,
     Boolean smartExecutionEnabled,
     @Positive Integer smartExecutionIntervalHours,
-    SmartExecutionPolicy smartExecutionPolicy
+    SmartExecutionPolicy smartExecutionPolicy,
+    SmartExecutionIntervalSource smartExecutionIntervalSource,
+    @jakarta.validation.constraints.Positive Long smartExecutionIntervalConfigurationId
 ) {
+    public AlertUpdateRequest(Long version, String name, String description, String cronExpression, boolean enabled, boolean allowConcurrentExecutions, List<AlertParameterValueRequest> parameters, Set<Long> tagIds, Boolean persistentIssues, Boolean smartExecutionEnabled, Integer smartExecutionIntervalHours, SmartExecutionPolicy smartExecutionPolicy) {
+        this(version, name, description, cronExpression, enabled, allowConcurrentExecutions, parameters, tagIds, persistentIssues, smartExecutionEnabled, smartExecutionIntervalHours, smartExecutionPolicy, null, null);
+    }
+
     public AlertUpdateRequest(Long version, String name, String description, String cronExpression,
             boolean enabled, List<AlertParameterValueRequest> parameters, Set<Long> tagIds) {
         this(version, name, description, cronExpression, enabled, false, parameters, tagIds, null, null, null, null);

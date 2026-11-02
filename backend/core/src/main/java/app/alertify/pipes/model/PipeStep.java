@@ -120,6 +120,26 @@ public class PipeStep {
     public void setPhase(PipeStepPhase value) { phase = Objects.requireNonNull(value); }
     public void addBinding(PipeStepBinding value) { bindings.add(Objects.requireNonNull(value)); }
     public void clearBindings() { bindings.clear(); }
+    public void copyDefinitionFrom(PipeStep value) {
+        if (this == value)
+            return;
+
+        stepKey = value.stepKey;
+        position = value.position;
+        stepType = value.stepType;
+        phase = value.phase;
+        alert = value.alert;
+        procedure = value.procedure;
+        timeoutMillis = value.timeoutMillis;
+        continueOn.clear();
+        continueOn.addAll(value.continueOn);
+    }
+
+    public void synchronizeBindings(List<PipeStepBinding> values) {
+        bindings.removeIf(binding -> !values.contains(binding));
+        bindings.addAll(values);
+    }
+
     public void moveTemporarily(int value) { position = value; }
     public Long getId() { return id; }
     public Pipe getPipe() { return pipe; }

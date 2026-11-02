@@ -41,6 +41,10 @@ public class ConfigurationUsageService {
                 from configuration_paths p join core.configurations c on c.id = p.configuration_id
                 where p.configuration_id <> p.root_id
                 union all
+                select p.root_id, 'ALERT', a.id, a.name, a.enabled, p.configuration_id = p.root_id
+                from configuration_paths p
+                join core.alerts a on a.smart_execution_interval_configuration_id = p.configuration_id
+                union all
                 select p.root_id, 'SECRET', s.id, s.name, null::boolean, false
                 from secret_paths p join secrets.secrets s on s.id = p.secret_id
                 union all

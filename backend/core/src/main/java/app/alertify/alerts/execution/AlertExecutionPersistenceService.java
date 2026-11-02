@@ -161,6 +161,16 @@ public class AlertExecutionPersistenceService {
         logResult(execution);
     }
 
+    /** The caller owns the incident lock and transaction, so history and deduplication commit together. */
+    @Transactional
+    public void persistSmartIntervalFailure(long alertId, String reason) {
+        Instant now = Instant.now();
+        AlertExecution execution = AlertExecution.error(UUID.randomUUID(), alert(alertId), null, now, now, now,
+                "SMART_INTERVAL_CONFIGURATION_INVALID", reason, null, AlertExecutionTrigger.SMART, null);
+        executionRepository.save(execution);
+        logResult(execution);
+    }
+
     private void logResult(AlertExecution execution) {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("executionId", execution.getExecutionId());

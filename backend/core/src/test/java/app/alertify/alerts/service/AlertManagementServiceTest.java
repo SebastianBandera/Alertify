@@ -222,6 +222,35 @@ class AlertManagementServiceTest {
     }
 
     @Test
+    void aiUpdatesPreserveConfigurationIntervalsWhenTheirSourceAndReferenceAreOmitted() {
+        Alert alert = alert("smart-config");
+        alert.changeSmartExecution(true, null, SmartExecutionPolicy.NORMAL,
+                app.alertify.alerts.model.SmartExecutionIntervalSource.CONFIGURATION, 17L);
+        when(alertRepository.findById(5L)).thenReturn(Optional.of(alert));
+        var request = new AiAlertUpdateRequest(0L, alert.getName(), "Changed description", "-", true, false,
+                List.of(), Set.of(), null, null, null, SmartExecutionPolicy.ON_ERROR);
+        AlertResponse response = service().update(5L, request.toRequest());
+        assertThat(response.smartExecutionIntervalSource()).isEqualTo(app.alertify.alerts.model.SmartExecutionIntervalSource.CONFIGURATION);
+        assertThat(response.smartExecutionIntervalConfigurationId()).isEqualTo(17L);
+        assertThat(response.smartExecutionIntervalHours()).isNull();
+        assertThat(response.smartExecutionPolicy()).isEqualTo(SmartExecutionPolicy.ON_ERROR);
+    }
+
+    @Test
+    void explicitlySelectingAnEmptyConfigurationClearsItsPreviousReference() {
+        Alert alert = alert("smart-config");
+        alert.changeSmartExecution(true, null, SmartExecutionPolicy.NORMAL,
+                app.alertify.alerts.model.SmartExecutionIntervalSource.CONFIGURATION, 17L);
+        when(alertRepository.findById(5L)).thenReturn(Optional.of(alert));
+        var request = new AlertUpdateRequest(0L, alert.getName(), null, "-", true, false,
+                List.of(), Set.of(), null, true, null, SmartExecutionPolicy.NORMAL,
+                app.alertify.alerts.model.SmartExecutionIntervalSource.CONFIGURATION, null);
+        AlertResponse response = service().update(5L, request);
+        assertThat(response.smartExecutionIntervalSource()).isEqualTo(app.alertify.alerts.model.SmartExecutionIntervalSource.CONFIGURATION);
+        assertThat(response.smartExecutionIntervalConfigurationId()).isNull();
+    }
+
+    @Test
     void preservesAnExistingSmartPolicyWhenAnUpdateOmitsSmartFields() {
         Alert alert = alert("smart");
         alert.changeSmartExecution(true, 23, SmartExecutionPolicy.NORMAL);

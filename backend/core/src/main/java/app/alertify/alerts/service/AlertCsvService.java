@@ -140,6 +140,15 @@ public class AlertCsvService {
             for (AlertCsvCodec.ImportParameter parameter : row.parameters())
                 parameters.add(toParameterRequest(row, parameter, configurationsByName, secretsByName, proceduresByName));
 
+            Long intervalConfigurationId = null;
+            if (!row.intervalConfiguration().isEmpty()) {
+                ApplicationConfiguration configuration = configurationsByName.get(row.intervalConfiguration().toLowerCase(Locale.ROOT));
+                if (configuration == null)
+                    throw rowError(row, "Interval configuration was not found");
+
+                intervalConfigurationId = configuration.getId();
+            }
+
             String alertKey = row.name().toLowerCase(Locale.ROOT);
             Alert alert = alertsByName.get(alertKey);
             if (alert == null) {
@@ -147,7 +156,7 @@ public class AlertCsvService {
                         new AlertCreateRequest(
                                 template.getId(), row.name(), row.description(), row.cronExpression(),
                                 row.enabled(), row.allowConcurrentExecutions(), parameters, tagIds, null,
-                                row.smartExecutionEnabled(), row.smartExecutionIntervalHours(), row.smartExecutionPolicy()
+                                row.smartExecutionEnabled(), row.smartExecutionIntervalHours(), row.smartExecutionPolicy(), row.intervalSource(), intervalConfigurationId
                         )
                 );
                 created++;
@@ -162,7 +171,7 @@ public class AlertCsvService {
                 );
             }
 
-            if (isUnchanged(alert, row, tagIds, parameters)) {
+            if (isUnchanged(alert, row, tagIds, parameters, intervalConfigurationId)) {
                 unchanged++;
                 continue;
             }
@@ -172,7 +181,7 @@ public class AlertCsvService {
                     new AlertUpdateRequest(
                             alert.getVersion(), row.name(), row.description(), row.cronExpression(),
                             row.enabled(), row.allowConcurrentExecutions(), parameters, tagIds, null,
-                            row.smartExecutionEnabled(), row.smartExecutionIntervalHours(), row.smartExecutionPolicy()
+                            row.smartExecutionEnabled(), row.smartExecutionIntervalHours(), row.smartExecutionPolicy(), row.intervalSource(), intervalConfigurationId
                     )
             );
             updated++;
@@ -222,7 +231,7 @@ public class AlertCsvService {
      * Skips alerts whose CSV row matches the stored definition so the import
      * neither bumps their version nor reschedules them.
      */
-    private boolean isUnchanged(Alert alert, AlertCsvCodec.ImportRow row, Set<Long> tagIds, List<AlertParameterValueRequest> parameters) {
+    private boolean isUnchanged(Alert alert, AlertCsvCodec.ImportRow row, Set<Long> tagIds, List<AlertParameterValueRequest> parameters, Long intervalConfigurationId) {
         if (!alert.getName().equals(row.name())
                 || !Objects.equals(alert.getDescription(), row.description())
                 || !alert.getCronExpression().equals(row.cronExpression())
@@ -232,7 +241,9 @@ public class AlertCsvService {
         }
         if (alert.isSmartExecutionEnabled() != row.smartExecutionEnabled()
                 || !Objects.equals(alert.getSmartExecutionIntervalHours(), row.smartExecutionIntervalHours())
-                || alert.getSmartExecutionPolicy() != row.smartExecutionPolicy()) {
+                || alert.getSmartExecutionPolicy() != row.smartExecutionPolicy()
+                || alert.getSmartExecutionIntervalSource() != row.intervalSource()
+                || !Objects.equals(alert.getSmartExecutionIntervalConfigurationId(), intervalConfigurationId)) {
             return false;
         }
 

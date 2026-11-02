@@ -29,7 +29,8 @@ public interface AlertExecutionRepository extends JpaRepository<AlertExecution, 
 
     long countByAlert_Id(Long alertId);
 
-    boolean existsByAlert_IdAndStatusAndFinishedAtGreaterThanEqual(Long alertId, AlertExecutionStatus status, Instant finishedAt);
+    @Query("select max(execution.finishedAt) from AlertExecution execution where execution.alert.id = :alertId and execution.status = :status")
+    Optional<Instant> latestFinishedAtByAlertAndStatus(@Param("alertId") Long alertId, @Param("status") AlertExecutionStatus status);
 
     Optional<AlertExecution> findFirstByAlert_IdAndFinishedAtIsNotNullOrderByFinishedAtDescIdDesc(Long alertId);
 

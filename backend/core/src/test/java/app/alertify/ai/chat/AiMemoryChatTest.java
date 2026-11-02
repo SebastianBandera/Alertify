@@ -232,7 +232,7 @@ class AiMemoryChatTest {
         when(worker.chat(consumer.capture(), any(), any())).thenReturn(handle);
         var service = new AiChatService(worker, catalog, persistence, mock(AiConversationRepository.class), mock(AiTurnRepository.class),
                 mock(AiMessageRepository.class), mock(AiToolInvocationRepository.class), localization, mock(AdminEventPublisher.class),
-                logger, JSON, mock(AiConversationHistory.class), memories);
+                logger, JSON, mock(AiConversationHistory.class), memories, mock(AiPatchReadback.class));
         service.submit(authentication, new AiChatService.SubmitRequest(null, "fix a reusable problem", mode, policy, "en"));
         return new Fixture(service, worker, persistence, memories, authentication, consumer.getValue(), handle);
     }

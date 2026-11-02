@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
-import { EMPTY, of } from 'rxjs';
+import { Subject, of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { Alert, AlertApiService, AlertTemplate, AlertTemplateParameter } from '../../core/api/alert-api.service';
@@ -26,6 +26,10 @@ type Harness = {
   restoreDraft: AlertsComponent['restoreDraft'];
   closeEditor: AlertsComponent['closeEditor'];
   save: AlertsComponent['save'];
+  editPlaywrightPlan: AlertsComponent['editPlaywrightPlan'];
+  returnFromPlaywright: AlertsComponent['returnFromPlaywright'];
+  canEditPlaywrightPlan: AlertsComponent['canEditPlaywrightPlan'];
+  smartIntervalConfigurations: AlertsComponent['smartIntervalConfigurations'];
 };
 
 const DRAFT_ID = '557dd642-443e-407c-9ac7-7599e2d05375';
@@ -59,10 +63,11 @@ describe('Alert editor wizard draft ownership', () => {
   let fixture: ComponentFixture<AlertsComponent>;
   let harness: Harness;
   let drafts: EditorDraftService;
+  let resourceChanges: Subject<{ targets: readonly string[] }>;
   const page = { content: [], page: { number: 0, totalPages: 0, totalElements: 0 } };
   const api = {
     listAlerts: vi.fn(), listTemplates: vi.fn(), listTags: vi.fn(), bindingOptions: vi.fn(), listExecutions: vi.fn(),
-    createAlert: vi.fn(), updateAlert: vi.fn(),
+    createAlert: vi.fn(), updateAlert: vi.fn(), getAlert: vi.fn(),
   };
   const wizardRequest = vi.fn();
   const viewport = { capture: vi.fn(), restore: vi.fn() };
@@ -78,7 +83,7 @@ describe('Alert editor wizard draft ownership', () => {
         { provide: LocalizationService, useValue: { locale: signal('en'), translate: (key: string) => key, translateDynamic: (key: string) => key } },
         { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap }, queryParamMap: of(queryParamMap) } },
         { provide: Router, useValue: { navigate: vi.fn().mockResolvedValue(true) } },
-        { provide: AdminEventChannelService, useValue: { on: () => EMPTY } },
+        { provide: AdminEventChannelService, useValue: { on: () => resourceChanges } },
       ],
     }).overrideComponent(AlertsComponent, {
       set: { template: '', providers: [{ provide: EditorViewportService, useValue: viewport }] },
@@ -102,6 +107,7 @@ describe('Alert editor wizard draft ownership', () => {
   beforeEach(async () => {
     localStorage.removeItem(STORAGE_KEY);
     vi.resetAllMocks();
+    resourceChanges = new Subject();
     api.listAlerts.mockResolvedValue(page);
     api.listTemplates.mockResolvedValue([TEMPLATE, OTHER_TEMPLATE]);
     api.listTags.mockResolvedValue([]);
@@ -116,6 +122,44 @@ describe('Alert editor wizard draft ownership', () => {
   afterEach(() => {
     fixture.destroy();
     localStorage.removeItem(STORAGE_KEY);
+  });
+
+  it('sends a configuration interval without converting its missing fixed value to zero', async () => {
+    harness.openEdit({ ...ALERT, smartExecutionEnabled: true, smartExecutionIntervalSource: 'CONFIGURATION', smartExecutionIntervalConfigurationId: 17, smartExecutionPolicy: 'ONCE_PER_INTERVAL' });
+    await harness.save();
+    expect(api.updateAlert).toHaveBeenCalledWith(ALERT.id, expect.objectContaining({
+      smartExecutionIntervalSource: 'CONFIGURATION', smartExecutionIntervalConfigurationId: 17, smartExecutionIntervalHours: null,
+    }));
+    harness.patchForm({ smartExecutionIntervalSource: 'FIXED', smartExecutionIntervalHours: 6 });
+    await harness.save();
+    expect(api.updateAlert).toHaveBeenLastCalledWith(ALERT.id, expect.objectContaining({
+      smartExecutionIntervalSource: 'FIXED', smartExecutionIntervalConfigurationId: null, smartExecutionIntervalHours: 6,
+    }));
+  });
+
+  it.each(['CONFIGURATIONS', 'ALERTS', 'ALL'])('refreshes the selected smart interval Config after an AI %s change without overwriting the editor', async (target) => {
+    const alert = { ...ALERT, smartExecutionEnabled: true, smartExecutionIntervalSource: 'CONFIGURATION' as const, smartExecutionIntervalConfigurationId: 199, smartExecutionPolicy: 'ONCE_PER_INTERVAL' as const };
+    harness.openEdit(alert);
+    harness.patchForm({ name: 'Unsaved edit' });
+    expect(harness.smartIntervalConfigurations()).toEqual([]);
+    api.bindingOptions.mockResolvedValue({
+      configurations: [{ id: 199, name: 'Shared smart interval', enabled: true, valueType: 'INTEGER', writable: false }],
+      secrets: [], procedures: [],
+    });
+    const calls = api.bindingOptions.mock.calls.length;
+
+    resourceChanges.next({ targets: [target] });
+    await fixture.whenStable();
+
+    expect(api.bindingOptions).toHaveBeenCalledTimes(calls + 1);
+    expect(harness.smartIntervalConfigurations()).toEqual([{ value: 199, label: 'Shared smart interval' }]);
+    expect(harness.form()).toMatchObject({ name: 'Unsaved edit', smartExecutionIntervalConfigurationId: 199 });
+
+    api.bindingOptions.mockResolvedValue({ configurations: [], secrets: [], procedures: [] });
+    resourceChanges.next({ targets: [target] });
+    await fixture.whenStable();
+    expect(harness.smartIntervalConfigurations()).toEqual([]);
+    expect(harness.form().smartExecutionIntervalConfigurationId).toBe(199);
   });
 
   it('preserves the wizard draft when its form is cancelled and another alert is updated', async () => {
@@ -248,6 +292,75 @@ describe('Alert editor wizard draft ownership', () => {
     completeCreation();
     await saving;
 
+    expect(wizardRequest).toHaveBeenCalledExactlyOnceWith('DELETE', { id: DRAFT_ID });
+  });
+
+  function existing() {
+    prepare();
+    const parameters = structuredClone(harness.form().parameters);
+    const alert = { ...ALERT, templateId: TEMPLATE.id, templateKey: TEMPLATE.templateKey, name: 'Existing Playwright', enabled: true };
+    harness.openEdit(alert);
+    harness.form.update(value => ({ ...value, parameters }));
+    harness.patchForm({ name: 'Unsaved name', description: 'Preserve this', cronExpression: '0 * * * * *', enabled: true, tagIds: [7] });
+    return alert;
+  }
+
+  it('offers the action only for an existing Playwright alert and imports the current unsaved form', async () => {
+    harness.openEdit(ALERT);
+    expect(harness.canEditPlaywrightPlan()).toBe(false);
+    harness.openCreate(TEMPLATE.id);
+    expect(harness.canEditPlaywrightPlan()).toBe(false);
+    const alert = existing();
+    expect(harness.canEditPlaywrightPlan()).toBe(true);
+    const form = structuredClone(harness.form());
+    wizardRequest.mockResolvedValue({ id: DRAFT_ID, document: { sourceAlert: { id: alert.id, version: alert.version, form } } });
+    await harness.editPlaywrightPlan();
+    expect(wizardRequest).toHaveBeenCalledExactlyOnceWith('CREATE_FROM_ALERT', { alertId: alert.id, version: alert.version, form });
+    expect(harness.editorOpen()).toBe(false);
+    expect(api.updateAlert).not.toHaveBeenCalled();
+  });
+
+  it('returns without applying changes and keeps the original pending form and the assistant draft', async () => {
+    const alert = existing();
+    const form = structuredClone(harness.form());
+    wizardRequest.mockResolvedValue({ id: DRAFT_ID, document: { sourceAlert: { id: alert.id, version: alert.version, form } } });
+    await harness.editPlaywrightPlan();
+    await harness.returnFromPlaywright(null);
+    expect(harness.editorOpen()).toBe(true);
+    expect(harness.form()).toEqual(form);
+    expect(api.updateAlert).not.toHaveBeenCalled();
+    expect(wizardRequest.mock.calls.some(([operation]) => operation === 'DELETE')).toBe(false);
+  });
+
+  it('applies only direct plan fields, preserves bindings and metadata, and updates the same alert on Save', async () => {
+    const alert = existing();
+    harness.form.update(value => ({ ...value, parameters: { ...value.parameters, url: { ...value.parameters['url'], source: 'SECRET', textValue: '', secretId: 9 } } }));
+    const form = structuredClone(harness.form());
+    await harness.preparePlaywrightAlert({ id: DRAFT_ID, sourceAlert: { id: alert.id, version: alert.version, form: form as unknown as Record<string, unknown> }, parameterBindings: { url: { source: 'SECRET', id: 9, name: 'Private URL', version: 0 } }, settings: { ...SETTINGS, url: '', steps: 'QUERY #edited', browsers: ['firefox'] } });
+    expect(harness.form()).toMatchObject({ name: 'Unsaved name', description: 'Preserve this', enabled: true, cronExpression: '0 * * * * *', tagIds: [7], parameters: { url: { source: 'SECRET', secretId: 9 }, steps: { textValue: 'QUERY #edited' }, firefoxEnabled: { textValue: 'true' } } });
+    expect(api.updateAlert).not.toHaveBeenCalled();
+    api.updateAlert.mockRejectedValueOnce(new Error('Version conflict'));
+    await harness.save();
+    expect(harness.editorOpen()).toBe(true);
+    expect(harness.form().wizardDraftId).toBe(DRAFT_ID);
+    expect(wizardRequest).not.toHaveBeenCalled();
+    await harness.save();
+    expect(api.createAlert).not.toHaveBeenCalled();
+    expect(api.updateAlert).toHaveBeenLastCalledWith(alert.id, expect.objectContaining({ version: alert.version, enabled: true, parameters: expect.arrayContaining([expect.objectContaining({ parameterKey: 'url', source: 'SECRET', secretId: 9, textValue: null })]) }));
+    expect(wizardRequest).toHaveBeenCalledExactlyOnceWith('DELETE', { id: DRAFT_ID });
+  });
+
+  it('restores an imported draft after recreation and keeps its original optimistic version', async () => {
+    const alert = existing();
+    const form = structuredClone(harness.form());
+    fixture.destroy();
+    await createFixture();
+    api.getAlert.mockResolvedValue({ ...alert, version: 20 });
+    await harness.preparePlaywrightAlert({ id: DRAFT_ID, settings: SETTINGS, sourceAlert: { id: alert.id, version: alert.version, form: form as unknown as Record<string, unknown> } });
+    harness.minimizeDraft();
+    harness.restoreDraft();
+    await harness.save();
+    expect(api.updateAlert).toHaveBeenCalledWith(alert.id, expect.objectContaining({ version: alert.version }));
     expect(wizardRequest).toHaveBeenCalledExactlyOnceWith('DELETE', { id: DRAFT_ID });
   });
 });

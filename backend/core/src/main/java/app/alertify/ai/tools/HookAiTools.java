@@ -9,6 +9,7 @@ import org.springframework.validation.annotation.Validated;
 import app.alertify.ai.AiRefreshTarget;
 import app.alertify.ai.AiToolExecutor;
 import app.alertify.ai.AiToolSupport;
+import app.alertify.ai.patch.AiPatchService;
 import app.alertify.ai.AlertifyTool;
 import app.alertify.ai.api.AiFilter;
 import app.alertify.ai.api.AiHookCreateRequest;
@@ -36,6 +37,7 @@ import jakarta.validation.Valid;
 @PreAuthorize(AuthorizationPolicies.ADMIN)
 public class HookAiTools {
 
+    private final AiPatchService patches;
     private final HookManagementService hooks;
     private final HookInvocationPersistenceService invocations;
     private final HookCsvService csv;
@@ -44,7 +46,8 @@ public class HookAiTools {
     private final AiToolSupport support;
 
     public HookAiTools(HookManagementService hooks, HookInvocationPersistenceService invocations, HookCsvService csv,
-            HookTagService tags, AiToolExecutor tools, AiToolSupport support) {
+            HookTagService tags, AiToolExecutor tools, AiToolSupport support, AiPatchService patches) {
+        this.patches = patches;
         this.hooks = hooks;
         this.invocations = invocations;
         this.csv = csv;
@@ -74,7 +77,25 @@ public class HookAiTools {
         return tools.execute("alertify_hook_create", () -> hooks.create(request.toRequest()));
     }
 
-    @AlertifyTool(name = "alertify_hook_update", description = "Update a hook using its current optimistic version; token rotation is unavailable", readOnly = false, refreshTargets = AiRefreshTarget.HOOKS)
+    @AlertifyTool(name = "alertify_hook_patch", description = "Preferred tool for partial hook edits. Read the current definition/version first; send only requested changes. Editable root fields: name, description, enabled, mode, tokenSecretId, maxConcurrentInvocations, rateLimitCount, rateLimitWindow (ISO duration), targets and tagIds. Target fields: type, resourceId, continueOn, busyWaitTimeout. tagIds is the sorted list of tag IDs from the read response. Atomic operations validate the complete result and verify persistence. The coordinator automatically rereads after commit. Before editing existing elements test parameterKey for parameters, key for steps, both type and resourceId for targets, targetParameterKey for bindings. Full update is only for explicitly requested full replacement.", readOnly = false, refreshTargets = AiRefreshTarget.HOOKS)
+    public HookResponse patch(long id, @Valid app.alertify.ai.api.AiPatchRequest request) {
+        return tools.execute("alertify_hook_patch", () -> {
+            return patches.patch(id, request, app.alertify.hooks.model.Hook.class,
+                    app.alertify.hooks.api.HookUpdateRequest.class, () -> hooks.get(id), complete -> hooks.updatePartial(id, complete));
+        });
+    }
+
+    @AlertifyTool(name = "alertify_hook_tag_patch", description = "Preferred partial edit of a HOOK tag by tag ID and version. Editable fields: name and color. Omitted fields and associations remain unchanged. Server verifies persistence; coordinator automatically rereads.", readOnly = false, refreshTargets = AiRefreshTarget.HOOKS)
+    public TagResponse tagPatch(long id, @Valid app.alertify.ai.api.AiPatchRequest request) {
+        return tools.execute("alertify_hook_tag_patch", () -> patches.patch(id, request, app.alertify.jpa.entity.Tag.class,
+                TagUpdateRequest.class, () -> tags.get(id), complete -> tags.update(id, complete)));
+    }
+
+    @AlertifyTool(name = "alertify_hook_tag_get", description = "Get one tag scoped to HOOK by its tag ID and current version. Reads tag metadata, not a resource definition.", readOnly = true)
+    public TagResponse tagGet(long id) { return tools.execute("alertify_hook_tag_get", () -> tags.get(id)); }
+
+
+    @AlertifyTool(name = "alertify_hook_update", description = "Full replacement: prefer alertify_hook_patch for partial edits. Update a hook using its current optimistic version; token rotation is unavailable", readOnly = false, refreshTargets = AiRefreshTarget.HOOKS)
     public HookResponse update(long id, @Valid AiHookUpdateRequest request) {
         return tools.execute("alertify_hook_update", () -> hooks.update(id, request.toRequest()));
     }
@@ -110,7 +131,7 @@ public class HookAiTools {
         return tools.execute("alertify_hook_tag_create", () -> tags.create(request));
     }
 
-    @AlertifyTool(name = "alertify_hook_tag_update", description = "Update a hook tag using its current version", readOnly = false, refreshTargets = AiRefreshTarget.HOOKS)
+    @AlertifyTool(name = "alertify_hook_tag_update", description = "Full replacement: prefer alertify_hook_tag_patch for partial edits. Update a hook tag using its current version", readOnly = false, refreshTargets = AiRefreshTarget.HOOKS)
     public TagResponse tagUpdate(long id, @Valid TagUpdateRequest request) {
         return tools.execute("alertify_hook_tag_update", () -> tags.update(id, request));
     }

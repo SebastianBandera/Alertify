@@ -9,6 +9,7 @@ const tcp: AlertChartDefinition = { labelKey: 'chart.connection', unit: 'ms', ex
 
 /** Template-specific result contracts match their bundled message formatters. */
 export const ALERT_CHART_EXTRACTORS: AlertChartExtractors = {
+  [`${TEMPLATES}ElasticsearchEventCountAlertTemplate`]: { labelKey: 'chart.events', extract: ({ result }) => finite(result['count']) },
   [`${TEMPLATES}SqlThresholdAlertTemplate`]: { labelKey: 'chart.value', extract: ({ result }) => finite(result['value']) },
   [`${TEMPLATES}SqlWatchAlertTemplate`]: { labelKey: 'chart.rows', extract: ({ result }) => finite(result['rows']) },
   [`${TEMPLATES}HttpsCertificateExpiryAlertTemplate`]: { labelKey: 'chart.daysRemaining', unit: 'd', extract: ({ result }) => finite(result['daysRemaining']) },

@@ -368,6 +368,14 @@ public class ApplicationConfigurationService {
         return response;
     }
 
+    /** Persistence verification must not observe a cache entry pending after-commit invalidation. */
+    @Transactional(readOnly = true)
+    public ConfigurationResponse getFresh(Long id) {
+        ConfigurationResponse response = ConfigurationMapper.toResponse(find(id));
+        eventLogger.success("CONFIGURATION_VIEWED", Map.of(CONFIGURATION_ID, response.id(), "name", response.name(), VERSION, response.version()));
+        return response;
+    }
+
     @Transactional
     public ConfigurationResponse create(ConfigurationCreateRequest request) {
         if (request.valueType() == ConfigurationValueType.BINARY) throw new InvalidConfigurationValueException("BINARY values require multipart file upload");

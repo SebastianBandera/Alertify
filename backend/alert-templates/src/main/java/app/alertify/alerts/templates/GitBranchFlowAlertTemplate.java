@@ -312,12 +312,14 @@ public final class GitBranchFlowAlertTemplate implements AlertEvaluator {
         return merge;
     }
 
-    /** Commits on the last branch that any earlier branch of the flow does not contain. */
+    /** Non-merge commits on the last branch that any earlier branch of the flow does not contain. */
     private List<Map<String, Object>> describeCommitsOutsideFlow(Repository repo, List<RevCommit> heads) throws IOException {
         RevCommit target = heads.get(heads.size() - 1);
         List<Map<String, Object>> result = new ArrayList<>();
         for (int index = 0; index < heads.size() - 1; index++) {
-            List<RevCommit> missing = commitsOnlyIn(repo, target, heads.get(index));
+            List<RevCommit> missing = commitsOnlyIn(repo, target, heads.get(index)).stream()
+                .filter(commit -> commit.getParentCount() <= 1)
+                .toList();
             Map<String, Object> entry = new LinkedHashMap<>();
             entry.put("missingFrom", branchFlow.get(index));
             entry.put("count", missing.size());

@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Objects;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
@@ -35,6 +36,7 @@ import app.alertify.alerts.model.AlertState;
 import app.alertify.alerts.model.AlertTemplateDefinition;
 import app.alertify.alerts.model.AlertTemplateParameterDefinition;
 import app.alertify.alerts.model.SmartExecutionPolicy;
+import app.alertify.alerts.model.SmartExecutionIntervalSource;
 import app.alertify.alerts.template.TemplateParameterRules;
 import app.alertify.alerts.template.TemplateParameterValidation;
 import app.alertify.alerts.template.annotation.AlertParameterSource;
@@ -173,7 +175,7 @@ public class AlertManagementService {
                 ? template.isPersistentIssuesDefault()
                 : request.persistentIssues();
         newAlert.changePersistentIssues(persistentIssues, Instant.now());
-        changeSmartExecution(newAlert, request.smartExecutionEnabled(), request.smartExecutionIntervalHours(), request.smartExecutionPolicy(), false);
+        changeSmartExecution(newAlert, request.smartExecutionEnabled(), request.smartExecutionIntervalHours(), request.smartExecutionPolicy(), request.smartExecutionIntervalSource(), request.smartExecutionIntervalConfigurationId(), false);
         Alert alert = alertRepository.saveAndFlush(newAlert);
         List<AlertParameterValue> values = synchronizeParameters(alert, request.parameters(), List.of());
         eventLogger.successAfterCommit("ALERT_CREATED", Map.of(ALERT_ID, alert.getId(), "name", alert.getName(), "templateId", template.getId(), ALLOW_CONCURRENT_EXECUTIONS, alert.isConcurrentExecutionAllowed(), PERSISTENT_ISSUES, alert.getPersistentIssuesSince() != null));
@@ -200,7 +202,7 @@ public class AlertManagementService {
         /* Omitted by clients that do not know the option: leave it as it is. */
         if (request.persistentIssues() != null)
             alert.changePersistentIssues(request.persistentIssues(), Instant.now());
-        changeSmartExecution(alert, request.smartExecutionEnabled(), request.smartExecutionIntervalHours(), request.smartExecutionPolicy(), true);
+        changeSmartExecution(alert, request.smartExecutionEnabled(), request.smartExecutionIntervalHours(), request.smartExecutionPolicy(), request.smartExecutionIntervalSource(), request.smartExecutionIntervalConfigurationId(), true);
         alert.replaceTags(resolveAlertTags(request.tagIds()));
 
         List<AlertParameterValue> existing = parameterValueRepository.findAllByAlertIdOrdered(id);
@@ -478,8 +480,8 @@ public class AlertManagementService {
         return value == null || value.isBlank() ? null : value.trim();
     }
 
-    private static void changeSmartExecution(Alert alert, Boolean requestedEnabled, Integer requestedHours, SmartExecutionPolicy requestedPolicy, boolean preserveWhenOmitted) {
-        if (preserveWhenOmitted && requestedEnabled == null && requestedHours == null && requestedPolicy == null)
+    private void changeSmartExecution(Alert alert, Boolean requestedEnabled, Integer requestedHours, SmartExecutionPolicy requestedPolicy, SmartExecutionIntervalSource requestedSource, Long requestedConfigurationId, boolean preserveWhenOmitted) {
+        if (preserveWhenOmitted && requestedEnabled == null && requestedHours == null && requestedPolicy == null && requestedSource == null && requestedConfigurationId == null)
             return;
 
         boolean enabled = requestedEnabled == null ? alert.isSmartExecutionEnabled() : requestedEnabled;
@@ -492,10 +494,24 @@ public class AlertManagementService {
         SmartExecutionPolicy policy = requestedPolicy == null ? alert.getSmartExecutionPolicy() : requestedPolicy;
         if (policy == null)
             policy = SmartExecutionPolicy.ONCE_PER_INTERVAL;
-        if (hours == null || hours < 1)
+
+        SmartExecutionIntervalSource source = requestedSource == null
+                ? (requestedConfigurationId != null ? SmartExecutionIntervalSource.CONFIGURATION : alert.getSmartExecutionIntervalSource())
+                : requestedSource;
+        Long configurationId = requestedConfigurationId != null ? requestedConfigurationId
+                : requestedSource != null ? null : alert.getSmartExecutionIntervalConfigurationId();
+        boolean referenceChanged = alert.getSmartExecutionIntervalSource() != source
+                || !Objects.equals(configurationId, alert.getSmartExecutionIntervalConfigurationId());
+        if (source == SmartExecutionIntervalSource.CONFIGURATION && configurationId != null && referenceChanged) {
+            ApplicationConfiguration configuration = configurationRepository.findById(configurationId).orElseThrow(() -> invalid("Interval configuration was not found"));
+            if (configuration.getValueType() != app.alertify.jpa.entity.ConfigurationValueType.INTEGER)
+                throw invalid("Interval configuration must be INTEGER");
+
+        }
+        if (source == SmartExecutionIntervalSource.FIXED && (hours == null || hours < 1))
             throw invalid("smartExecutionIntervalHours must be greater than or equal to 1 when smart execution is enabled");
 
-        alert.changeSmartExecution(true, hours, policy);
+        alert.changeSmartExecution(true, hours, policy, source, configurationId);
     }
 
     private static void ensureVersion(Alert alert, long requestedVersion) {

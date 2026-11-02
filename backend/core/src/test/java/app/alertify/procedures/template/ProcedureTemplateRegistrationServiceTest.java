@@ -77,13 +77,15 @@ class ProcedureTemplateRegistrationServiceTest {
                         CopyFileToNfsProcedureTemplate.class.getName());
 
         ArgumentCaptor<ProcedureTemplateParameterDefinition> parameters = ArgumentCaptor.captor();
-        verify(parameterRepository, org.mockito.Mockito.times(61)).save(parameters.capture());
+        verify(parameterRepository, org.mockito.Mockito.times(62)).save(parameters.capture());
         List<ProcedureTemplateParameterDefinition> totpParameters = parameters.getAllValues().stream()
                 .filter(value -> value.getTemplate() == totp).toList();
         assertThat(totpParameters.getFirst().getParameterKey()).isEqualTo("secret");
         assertThat(totpParameters.getFirst().getAllowedSources())
                 .containsExactly(AlertParameterSource.SECRET);
         assertThat(totpParameters.get(1).getOptions()).containsExactly("SHA1", "SHA256", "SHA512");
+        assertThat(totpParameters.getLast().getParameterKey()).isEqualTo("minimumValiditySeconds");
+        assertThat(totpParameters.getLast().getDefaultValue()).isEqualTo("3");
 
         ProcedureTemplateDefinition tokenExchange = template.getAllValues().stream()
                 .filter(value -> value.getTemplateKey().equals(HttpAccessTokenExchangeProcedureTemplate.class.getName()))

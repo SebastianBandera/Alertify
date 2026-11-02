@@ -151,6 +151,25 @@ class InteractiveBrowserMainBrowserTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"chromium", "firefox", "webkit"})
+    void protectsResolvedParametersBeforeTheFirstObservationOrCapture(String engine) throws Exception {
+        try (var harness = new Harness()) {
+            var payload = settings(engine, "/html", "");
+            payload.set("protectedValues", JSON.valueToTree(List.of("Public content")));
+            harness.success("OPEN", payload);
+            String observation = JSON.writeValueAsString(harness.success("OBSERVE", Map.of()));
+            assertThat(observation).doesNotContain("Public content").contains("[REDACTED]");
+            var capture = harness.request("SCREENSHOT", Map.of());
+            assertThat(capture.getType()).isEqualTo("IMAGE");
+            var image = ImageIO.read(new ByteArrayInputStream(capture.getImage().toByteArray()));
+            int color = image.getRGB(30, 260);
+            assertThat((color >> 16) & 255).isGreaterThan(220);
+            assertThat((color >> 8) & 255).isLessThan(60);
+            assertThat(color & 255).isGreaterThan(220);
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"chromium", "firefox", "webkit"})
     void protectsUnknownPasswordValuesWithoutChangingTheField(String engine) throws Exception {
         try (var harness = new Harness()) {
             harness.success("OPEN", settings(engine, "/html", ""));

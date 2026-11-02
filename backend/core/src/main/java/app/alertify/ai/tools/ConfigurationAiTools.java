@@ -12,6 +12,7 @@ import tools.jackson.databind.json.JsonMapper;
 import app.alertify.ai.AiRefreshTarget;
 import app.alertify.ai.AiToolExecutor;
 import app.alertify.ai.AiToolSupport;
+import app.alertify.ai.patch.AiPatchService;
 import app.alertify.ai.AlertifyTool;
 import app.alertify.ai.api.AiConfigurationCreateRequest;
 import app.alertify.ai.api.AiConfigurationExpressionEvaluationRequest;
@@ -47,6 +48,7 @@ import jakarta.validation.Valid;
 @PreAuthorize(AuthorizationPolicies.ADMIN)
 public class ConfigurationAiTools {
 
+    private final AiPatchService patches;
     private final ApplicationConfigurationService configurations;
     private final ConfigurationExpressionService expressions;
     private final ConfigurationUsageService usages;
@@ -60,7 +62,8 @@ public class ConfigurationAiTools {
     public ConfigurationAiTools(ApplicationConfigurationService configurations,
             ConfigurationExpressionService expressions, ConfigurationUsageService usages,
             ConfigurationTagService tags, ApplicationSecretService secrets,
-            SystemConfigurationService systemConfigurations, AiToolExecutor tools, AiToolSupport support, JsonMapper json) {
+            SystemConfigurationService systemConfigurations, AiToolExecutor tools, AiToolSupport support, JsonMapper json, AiPatchService patches) {
+        this.patches = patches;
         this.configurations = configurations;
         this.expressions = expressions;
         this.usages = usages;
@@ -83,7 +86,34 @@ public class ConfigurationAiTools {
 
     @AlertifyTool(name = "alertify_configuration_get", description = "Get one application configuration; binary content is never returned. writable controls whether resource executions may persist changed values, not permission for administrative editing. writable=false still allows authorized administrative edits.", readOnly = true)
     public ConfigurationResponse get(long id) {
-        return tools.execute("alertify_configuration_get", () -> withUsageCount(configurations.get(id)));
+        return tools.execute("alertify_configuration_get", () -> withUsageCount(configurations.getFresh(id)));
+    }
+    
+    @AlertifyTool(name = "alertify_configuration_patch", description = "Preferred tool for partial configuration edits. Read the current definition/version first; send only requested changes. Editable root fields: name, description, valueType, value (native JSON), tagIds and writable. value supports nested JSON paths; preserve writable unless explicitly requested. tagIds is the sorted list of tag IDs from the read response. Atomic operations validate the complete result and verify persistence. The coordinator automatically rereads after commit. Before editing existing elements test parameterKey for parameters, key for steps, both type and resourceId for targets, targetParameterKey for bindings. Full update is only for explicitly requested full replacement.", readOnly = false, refreshTargets = AiRefreshTarget.CONFIGURATIONS)
+    public ConfigurationResponse patch(long id, @Valid app.alertify.ai.api.AiPatchRequest request) {
+        return tools.execute("alertify_configuration_patch", () -> {
+            requireNonBinary(configurations.getFresh(id).valueType());
+            return patches.patch(id, request, app.alertify.jpa.entity.ApplicationConfiguration.class,
+                    app.alertify.configuration.api.ConfigurationUpdateRequest.class, () -> configurations.getFresh(id), complete -> configurations.update(id, complete));
+        });
+    }
+
+    @AlertifyTool(name = "alertify_configuration_tag_patch", description = "Preferred partial edit of a CONFIGURATION tag by tag ID and version. Editable fields: name and color. Omitted fields and associations remain unchanged. Server verifies persistence; coordinator automatically rereads.", readOnly = false, refreshTargets = AiRefreshTarget.CONFIGURATIONS)
+    public TagResponse tagPatch(long id, @Valid app.alertify.ai.api.AiPatchRequest request) {
+        return tools.execute("alertify_configuration_tag_patch", () -> patches.patch(id, request, app.alertify.jpa.entity.Tag.class,
+                TagUpdateRequest.class, () -> tags.get(id), complete -> tags.update(id, complete)));
+    }
+    
+    @AlertifyTool(name = "alertify_system_configuration_patch", description = "Preferred partial edit of a visible functional system configuration by ID and version. Editable document is {value: currentValue}. Only /value and its descendants are editable. For DASHBOARD_HISTORY_WINDOW use /value/days, never /days; paths do not start inside the embedded JSON value. Hidden keys, binary data and credential rotations remain unavailable. Server validates the complete value and verifies persistence; coordinator automatically rereads.", readOnly = false, refreshTargets = AiRefreshTarget.SYSTEM)
+    public SystemConfigurationResponse systemConfigurationPatch(long id, @Valid app.alertify.ai.api.AiPatchRequest request) {
+        return tools.execute("alertify_system_configuration_patch", () -> {
+            if (systemConfigurations.get(id).valueHidden())
+                throw new IllegalArgumentException("AI tools cannot modify hidden system configurations");
+
+            return patches.patch(id, request, app.alertify.jpa.entity.SystemConfiguration.class,
+                    app.alertify.systemconfiguration.api.SystemConfigurationUpdateRequest.class,
+                    () -> systemConfigurations.get(id), complete -> systemConfigurations.update(id, complete));
+        });
     }
 
     @AlertifyTool(name = "alertify_configuration_usages", description = "List resources that reference an application configuration", readOnly = true)
@@ -109,7 +139,7 @@ public class ConfigurationAiTools {
         });
     }
 
-    @AlertifyTool(name = "alertify_configuration_update", description = "Update a non-binary application configuration using its current version. writable controls whether resource executions may persist changed values, not permission for administrative editing. writable=false still allows authorized edits to value, description, name and tags. Preserve writable unless the user asks to change it; do not enable it to perform an administrative edit. valueType selects the only interpreted value field: STRING stringValue, EXPRESSION expressionValue, INTEGER integerValue, DECIMAL decimalValue, BOOLEAN booleanValue, DATE dateValue (yyyy-MM-dd), TIME timeValue (HH:mm), DATE_TIME dateTimeValue (ISO-8601 with offset), or JSON jsonValue (serialized JSON). The strict schema includes every value field; use neutral placeholders for fields not selected by valueType because Alertify ignores them.", readOnly = false, refreshTargets = AiRefreshTarget.CONFIGURATIONS)
+    @AlertifyTool(name = "alertify_configuration_update", description = "Full replacement: prefer alertify_configuration_patch for partial edits. Update a non-binary application configuration using its current version. writable controls whether resource executions may persist changed values, not permission for administrative editing. writable=false still allows authorized edits to value, description, name and tags. Preserve writable unless the user asks to change it; do not enable it to perform an administrative edit. valueType selects the only interpreted value field: STRING stringValue, EXPRESSION expressionValue, INTEGER integerValue, DECIMAL decimalValue, BOOLEAN booleanValue, DATE dateValue (yyyy-MM-dd), TIME timeValue (HH:mm), DATE_TIME dateTimeValue (ISO-8601 with offset), or JSON jsonValue (serialized JSON). The strict schema includes every value field; use neutral placeholders for fields not selected by valueType because Alertify ignores them.", readOnly = false, refreshTargets = AiRefreshTarget.CONFIGURATIONS)
     public ConfigurationResponse update(long id, @Valid AiConfigurationUpdateRequest request) {
         return tools.execute("alertify_configuration_update", () -> {
             requireNonBinary(configurations.get(id).valueType());
@@ -152,7 +182,7 @@ public class ConfigurationAiTools {
         return tools.execute("alertify_configuration_tag_create", () -> tags.create(request));
     }
 
-    @AlertifyTool(name = "alertify_configuration_tag_update", description = "Update a configuration tag using its current version", readOnly = false, refreshTargets = AiRefreshTarget.CONFIGURATIONS)
+    @AlertifyTool(name = "alertify_configuration_tag_update", description = "Full replacement: prefer alertify_configuration_tag_patch for partial edits. Update a configuration tag using its current version", readOnly = false, refreshTargets = AiRefreshTarget.CONFIGURATIONS)
     public TagResponse tagUpdate(long id, @Valid TagUpdateRequest request) {
         return tools.execute("alertify_configuration_tag_update", () -> tags.update(id, request));
     }

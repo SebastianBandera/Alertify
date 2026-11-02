@@ -148,6 +148,13 @@ public class Hook {
     }
 
     public void clearTargets() { targets.clear(); }
+    public void synchronizeTargets(List<HookTarget> values) {
+        targets.removeIf(target -> !values.contains(target));
+        for (HookTarget target : values)
+            if (!targets.contains(target))
+                targets.add(target);
+    }
+
 
     public void replaceTags(Set<Tag> values) {
         tags.clear();

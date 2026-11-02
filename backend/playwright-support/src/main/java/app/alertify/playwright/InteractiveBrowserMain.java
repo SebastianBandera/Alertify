@@ -111,6 +111,8 @@ public final class InteractiveBrowserMain implements AutoCloseable {
     void handle(WizardRequest request) throws Exception {
         try {
             JsonNode payload = json.readTree(request.getJson());
+            for (JsonNode value : payload.path("protectedValues")) if (value.isString()) remember(value.asString());
+
             if (session != null && List.of("OBSERVE", "FIND", "SELECT", "RESOLVE_REF", "CHECK_SELECTOR").contains(request.getOperation()))
                 rememberPasswords();
 

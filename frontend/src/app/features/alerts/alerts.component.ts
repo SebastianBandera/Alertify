@@ -29,7 +29,7 @@ import { EditorViewportService } from '../../shared/editor-viewport/editor-viewp
 import { ResizableTableDirective } from '../../shared/resizable-table/resizable-table.directive';
 import { SearchableSelectComponent, SearchableSelectOption } from '../../shared/searchable-select/searchable-select.component';
 import { PlaywrightWizardComponent } from './playwright-wizard.component';
-import { PlaywrightWizardApiService, WizardSettings } from './playwright-wizard-api.service';
+import { PlaywrightWizardApiService, PreparedWizard, WizardSettings, WizardSourceAlert, WizardState } from './playwright-wizard-api.service';
 
 type AlertTab = 'alerts' | 'templates' | 'wizards' | 'history';
 type AlertFormField = 'template' | 'name' | 'cron' | 'smartInterval';
@@ -48,6 +48,7 @@ interface ParameterForm {
 interface AlertForm {
   templateId: number | null;
   wizardDraftId?: string | null;
+  wizardSourceAlertId?: number | null;
   name: string;
   description: string;
   cronExpression: string;
@@ -55,6 +56,8 @@ interface AlertForm {
   allowConcurrentExecutions: boolean;
   smartExecutionEnabled: boolean;
   smartExecutionIntervalHours: number | null;
+  smartExecutionIntervalSource: 'FIXED' | 'CONFIGURATION';
+  smartExecutionIntervalConfigurationId: number | null;
   smartExecutionPolicy: SmartExecutionPolicy;
   persistentIssues: boolean;
   tagIds: number[];
@@ -126,6 +129,9 @@ export class AlertsComponent implements OnInit {
 
   protected readonly activeTab = signal<AlertTab>('alerts');
   protected readonly playwrightWizardOpen = signal(false);
+  protected readonly playwrightInitialDraft = signal<string | null>(null);
+  private readonly playwrightOrigin = signal<WizardSourceAlert | null>(null);
+  protected readonly canEditPlaywrightPlan = computed(() => this.editingAlert()?.templateKey === 'app.alertify.alerts.templates.PlaywrightPageAlertTemplate');
   private readonly wizardApi = inject(PlaywrightWizardApiService);
   protected readonly alerts = signal<readonly Alert[]>([]);
   protected readonly templates = signal<readonly AlertTemplate[]>([]);
@@ -294,6 +300,8 @@ export class AlertsComponent implements OnInit {
     this.events.on('AI_RESOURCES_INVALIDATED').pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event) => {
       if (event.targets.includes('ALL') || event.targets.includes('ALERTS'))
         void this.refreshAfterAiChange();
+      else if (event.targets.includes('CONFIGURATIONS') || event.targets.includes('PROCEDURES'))
+        void this.loadBindings();
     });
     const requestedTab = this.route.snapshot.queryParamMap.get('tab');
     const requestedExecutionId = this.route.snapshot.queryParamMap.get('executionId');
@@ -339,7 +347,7 @@ export class AlertsComponent implements OnInit {
   }
 
   private async refreshAfterAiChange(): Promise<void> {
-    const requests = [this.loadTemplates(), this.loadTags()];
+    const requests = [this.loadTemplates(), this.loadTags(), this.loadBindings()];
     if (this.activeTab() === 'alerts') requests.push(this.loadAlerts());
     if (this.activeTab() === 'history') requests.push(this.loadHistory());
     await Promise.all(requests);
@@ -649,11 +657,58 @@ export class AlertsComponent implements OnInit {
     this.editorOpen.set(true);
   }
 
-  protected preparePlaywrightAlert(prepared: { id: string; settings: WizardSettings }): void {
+  protected openPlaywrightWizard(): void {
+    this.playwrightInitialDraft.set(null);
+    this.playwrightOrigin.set(null);
+    this.playwrightWizardOpen.set(true);
+  }
+
+  protected async editPlaywrightPlan(): Promise<void> {
+    const alert = this.editingAlert();
+    if (!alert || !this.canEditPlaywrightPlan() || this.saving()) return;
+    this.saving.set(true);
+    this.formError.set(null);
+    try {
+      const draft = await this.wizardApi.request('CREATE_FROM_ALERT', { alertId: alert.id, version: alert.version, form: structuredClone(this.form()) });
+      this.playwrightInitialDraft.set(draft.id);
+      this.playwrightOrigin.set(draft.document.sourceAlert ?? null);
+      this.editorOpen.set(false);
+      this.selectTab('wizards');
+      this.playwrightWizardOpen.set(true);
+    } catch (error) { this.formError.set(this.errorMessage(error)); }
+    finally { this.saving.set(false); }
+  }
+
+  private async restorePlaywrightEditor(source: WizardSourceAlert): Promise<void> {
+    const alert = this.editingAlert()?.id === source.id ? this.editingAlert()! : await this.api.getAlert(source.id);
+    this.editingAlert.set({ ...alert, version: source.version });
+    this.form.set(structuredClone(source.form) as unknown as AlertForm);
+    this.formError.set(null);
+    this.formFieldErrors.set({});
+    this.playwrightWizardOpen.set(false);
+    this.playwrightInitialDraft.set(null);
+    this.selectTab('alerts');
+    this.editorOpen.set(true);
+  }
+
+  protected async returnFromPlaywright(state: WizardState | null): Promise<void> {
+    const source = state ? state.document.sourceAlert : this.playwrightOrigin();
+    if (!source) return;
+    try { await this.restorePlaywrightEditor(source); }
+    catch (error) { this.error.set(this.errorMessage(error)); }
+  }
+
+  protected async preparePlaywrightAlert(prepared: PreparedWizard): Promise<void> {
     const template = this.templates().find(value => value.templateKey.endsWith('.PlaywrightPageAlertTemplate'));
     if (!template) return;
-    this.openCreate(template.id);
-    this.patchForm({ enabled: false, wizardDraftId: prepared.id });
+    if (prepared.sourceAlert) {
+      try { await this.restorePlaywrightEditor(prepared.sourceAlert); }
+      catch (error) { this.error.set(this.errorMessage(error)); return; }
+      this.patchForm({ wizardDraftId: prepared.id, wizardSourceAlertId: prepared.sourceAlert.id });
+    } else {
+      this.openCreate(template.id);
+      this.patchForm({ enabled: false, wizardDraftId: prepared.id });
+    }
     const values: Record<string, string> = {
       url: prepared.settings.url, steps: prepared.settings.steps,
       chromiumEnabled: String(prepared.settings.browsers.includes('chromium')),
@@ -663,6 +718,7 @@ export class AlertsComponent implements OnInit {
       elementTimeoutSeconds: String(prepared.settings.elementTimeoutSeconds),
     };
     for (const [key, value] of Object.entries(values)) {
+      if (prepared.parameterBindings?.[key]) continue;
       const parameter = template.parameters.find(item => item.key === key);
       this.patchParameter(key, { configured: true, source: parameter?.options.includes(value) ? 'OPTION' : 'TEXT', textValue: value });
     }
@@ -697,6 +753,8 @@ export class AlertsComponent implements OnInit {
       allowConcurrentExecutions: alert.allowConcurrentExecutions,
       smartExecutionEnabled: alert.smartExecutionEnabled,
       smartExecutionIntervalHours: alert.smartExecutionIntervalHours,
+      smartExecutionIntervalSource: alert.smartExecutionIntervalSource ?? 'FIXED',
+      smartExecutionIntervalConfigurationId: alert.smartExecutionIntervalConfigurationId ?? null,
       smartExecutionPolicy: alert.smartExecutionPolicy ?? 'ONCE_PER_INTERVAL',
       persistentIssues: alert.persistentIssuesSince !== null,
       tagIds: alert.tags.map((tag) => tag.id),
@@ -718,7 +776,7 @@ export class AlertsComponent implements OnInit {
     const draft = this.drafts.read<AlertForm, Alert>('alerts');
     if (!draft || this.saving()) return;
     this.editorViewport.capture(draft.editing ? `alert-${draft.editing.id}` : 'alert-create');
-    this.form.set({ ...draft.form, description: draft.form.description ?? '', wizardDraftId: draft.editing ? null : draft.form.wizardDraftId ?? null });
+    this.form.set({ ...draft.form, smartExecutionIntervalSource: draft.form.smartExecutionIntervalSource ?? 'FIXED', smartExecutionIntervalConfigurationId: draft.form.smartExecutionIntervalConfigurationId ?? null, description: draft.form.description ?? '', wizardDraftId: !draft.editing || draft.form.wizardSourceAlertId === draft.editing.id ? draft.form.wizardDraftId ?? null : null });
     this.editingAlert.set(draft.editing);
     this.formError.set(null);
     this.editorOpen.set(true);
@@ -776,6 +834,8 @@ export class AlertsComponent implements OnInit {
       allowConcurrentExecutions: current.allowConcurrentExecutions,
       smartExecutionEnabled: current.smartExecutionEnabled,
       smartExecutionIntervalHours: current.smartExecutionIntervalHours,
+      smartExecutionIntervalSource: current.smartExecutionIntervalSource ?? 'FIXED',
+      smartExecutionIntervalConfigurationId: current.smartExecutionIntervalConfigurationId ?? null,
       smartExecutionPolicy: current.smartExecutionPolicy,
       tagIds: current.tagIds,
     });
@@ -786,7 +846,7 @@ export class AlertsComponent implements OnInit {
     this.form.update((form) => ({ ...form, ...patch }));
     if (patch.name !== undefined) this.clearFieldError('name');
     if (patch.cronExpression !== undefined) this.clearFieldError('cron');
-    if (patch.smartExecutionIntervalHours !== undefined || patch.smartExecutionEnabled === false)
+    if (patch.smartExecutionIntervalHours !== undefined || patch.smartExecutionIntervalSource !== undefined || patch.smartExecutionIntervalConfigurationId !== undefined || patch.smartExecutionEnabled === false)
       this.clearFieldError('smartInterval');
   }
 
@@ -828,16 +888,16 @@ export class AlertsComponent implements OnInit {
     const form = this.form();
     const template = this.selectedTemplate();
     const editing = this.editingAlert();
-    const wizardDraftId = editing ? null : form.wizardDraftId ?? null;
+    const wizardDraftId = !editing || form.wizardSourceAlertId === editing.id ? form.wizardDraftId ?? null : null;
     const validationErrors: AlertFormErrors = {};
     if (!template)
       validationErrors.template = this.localization.translate('alerts.form.templateRequired');
     if (!form.name.trim())
       validationErrors.name = this.localization.translate('alerts.form.nameRequired');
-    if (form.smartExecutionEnabled
+    if (form.smartExecutionEnabled && form.smartExecutionIntervalSource === 'FIXED'
         && (form.smartExecutionIntervalHours === null
           || !Number.isInteger(Number(form.smartExecutionIntervalHours))
-          || Number(form.smartExecutionIntervalHours) < 1)) {
+          || Number(form.smartExecutionIntervalHours) < 1 || Number(form.smartExecutionIntervalHours) > 2147483647)) {
       validationErrors.smartInterval = this.localization.translate('alerts.form.smartIntervalRequired');
     }
     if (Object.keys(validationErrors).length) {
@@ -884,7 +944,9 @@ export class AlertsComponent implements OnInit {
         enabled: form.enabled,
         allowConcurrentExecutions: form.allowConcurrentExecutions,
         smartExecutionEnabled: form.smartExecutionEnabled,
-        smartExecutionIntervalHours: form.smartExecutionEnabled ? Number(form.smartExecutionIntervalHours) : null,
+        smartExecutionIntervalHours: form.smartExecutionEnabled && form.smartExecutionIntervalSource === 'FIXED' ? Number(form.smartExecutionIntervalHours) : null,
+        smartExecutionIntervalSource: form.smartExecutionIntervalSource,
+        smartExecutionIntervalConfigurationId: form.smartExecutionEnabled && form.smartExecutionIntervalSource === 'CONFIGURATION' ? form.smartExecutionIntervalConfigurationId : null,
         smartExecutionPolicy: form.smartExecutionEnabled ? form.smartExecutionPolicy : null,
         persistentIssues: form.persistentIssues,
         tagIds: form.tagIds,
@@ -1194,6 +1256,8 @@ export class AlertsComponent implements OnInit {
       allowConcurrentExecutions: false,
       smartExecutionEnabled: false,
       smartExecutionIntervalHours: null,
+      smartExecutionIntervalSource: 'FIXED',
+      smartExecutionIntervalConfigurationId: null,
       smartExecutionPolicy: 'ONCE_PER_INTERVAL',
       persistentIssues: false,
       tagIds: [],
@@ -1277,7 +1341,16 @@ export class AlertsComponent implements OnInit {
     }
   }
 
+  protected smartIntervalConfigurations(): readonly SearchableSelectOption[] {
+    return this.bindings().configurations.filter((option) => option.valueType === 'INTEGER')
+      .map((option) => ({ value: option.id, label: option.name }));
+  }
+
   protected smartExecutionTooltip(alert: Alert): string {
+    if (alert.smartExecutionIntervalSource === 'CONFIGURATION') {
+      const configuration = this.bindings().configurations.find((option) => option.id === alert.smartExecutionIntervalConfigurationId);
+      return this.localization.translate('alerts.form.smartIntervalConfig') + ': ' + (configuration?.name ?? this.localization.translate('alerts.form.smartIntervalMissing'));
+    }
     if (alert.smartExecutionIntervalHours === null || alert.smartExecutionPolicy === null)
       return this.localization.translate('alerts.form.smartExecution');
 

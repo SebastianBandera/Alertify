@@ -9,6 +9,12 @@ record AiToolFailure(String code, String message) {
     static AiToolFailure classify(String toolName, RuntimeException exception) {
         Throwable cause = exception;
         for (int depth = 0; cause != null && depth < 16; depth++, cause = cause.getCause()) {
+            if (cause instanceof app.alertify.ai.patch.AiPatchException.Verification)
+                return new AiToolFailure("TOOL_PATCH_VERIFICATION_FAILED", cause.getMessage());
+
+            if (cause instanceof app.alertify.ai.patch.AiPatchException)
+                return new AiToolFailure("TOOL_PATCH_INVALID", cause.getMessage());
+
             if (cause instanceof app.alertify.ai.memory.AiMemoryAccess.Unavailable unavailable)
                 return new AiToolFailure(unavailable.code(), unavailable.getMessage());
 

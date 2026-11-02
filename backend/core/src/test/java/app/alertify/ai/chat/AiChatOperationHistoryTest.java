@@ -167,6 +167,23 @@ class AiChatOperationHistoryTest {
         return AiChatOperationHistory.summarize(json, 21L, operations, 40);
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = { "alert", "procedure", "configuration", "pipe", "hook", "alert_tag", "procedure_tag",
+            "configuration_tag", "pipe_tag", "hook_tag", "system_configuration" })
+    void recordsServerVerificationAndLinksTheAutomaticPatchRead(String family) {
+        var patch = operation(1, 20, "alertify_" + family + "_patch", false, "SUCCEEDED", 1, "{\"id\":25}", "{\"id\":25,\"version\":2}");
+        var read = operation(2, 20, "alertify_" + family + "_get", true, "SUCCEEDED", 3, "{\"id\":25}", "{\"id\":25,\"version\":2}");
+        when(read.getKind()).thenReturn("INTERNAL");
+        when(read.getCallId()).thenReturn("patch-read:1");
+
+        var result = summarize(List.of(read, patch));
+
+        assertThat(result.operations().getFirst().fieldComparison()).isEqualTo("SERVER_VERIFIED");
+        assertThat(result.operations().getFirst().postWriteReadObservation()).isEqualTo("MATCHING_SUCCESSFUL_READ");
+        assertThat(result.operations().getLast().sourcePatchInvocationId()).isEqualTo(1L);
+        assertThat(result.operations().getLast().fieldComparison()).isEqualTo("NOT_RECORDED");
+    }
+
     private AiToolInvocation operation(long id, long turnId, String tool, boolean readOnly, String status, int seconds, String arguments, String result) {
         AiTurn turn = mock(AiTurn.class);
         when(turn.getId()).thenReturn(turnId);

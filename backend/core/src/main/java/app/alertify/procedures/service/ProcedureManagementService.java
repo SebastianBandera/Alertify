@@ -143,6 +143,12 @@ public class ProcedureManagementService {
         return result;
     }
 
+    @Transactional(readOnly = true)
+    public ProcedureResponse get(Long id) {
+        Procedure procedure = procedureRepository.findById(id).orElseThrow(() -> notFound(PROCEDURE, id));
+        return ProcedureMapper.toProcedure(procedure, parameterValueRepository.findAllByOwnerIdOrdered(id));
+    }
+
     @Transactional
     public ProcedureResponse create(ProcedureCreateRequest request) {
         String name = required(request.name(), "name");

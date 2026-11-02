@@ -108,6 +108,9 @@ public class AlertTagService {
         eventLogger.successAfterCommit("ALERT_TAG_DELETED", Map.of(TAG_ID, id, "name", tag.getName()));
     }
 
+    @Transactional(readOnly = true)
+    public TagResponse get(Long id) { return toResponse(find(id)); }
+
     private Tag find(Long id) {
         return tagRepository.findByIdAndScope(id, SCOPE)
                 .orElseThrow(() -> new ResourceNotFoundException("Alert tag " + id + " was not found"));
