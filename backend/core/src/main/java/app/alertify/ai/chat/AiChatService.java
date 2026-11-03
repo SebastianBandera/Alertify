@@ -133,7 +133,7 @@ public class AiChatService {
         AiChatPersistence.StartedTurn started = persistence.start(subject, username, request.conversationId(),
                 request.message().strip(), mode, approval, settings.getModel(), effort);
         List<AiToolDescriptor> permitted = catalog.descriptorsFor(authentication, EnumSet.allOf(AiToolGroup.class));
-        ActiveTurn active = new ActiveTurn(started.conversationId(), started.turnId(), subject, authentication, locale, mode, approval,
+        ActiveTurn active = new ActiveTurn(started.conversationId(), started.turnId(), subject, authentication, request.message().strip(), locale, mode, approval,
                 settings, effort, permitted.stream().collect(Collectors.toUnmodifiableMap(AiToolDescriptor::name, value -> value)));
         activeTurns.put(active.turnId, active);
         try {
@@ -406,9 +406,10 @@ public class AiChatService {
             var request = ReviewToolCallRequest.newBuilder()
                     .setModel(reviewerModel(active.settings)).setReasoningEffort(reviewerEffort(active.settings))
                     .setConversationId(active.conversationId).setTurnId(active.turnId)
-                    .setUserRequest(latestUserMessage(active.conversationId)).setToolName(descriptor.name())
+                    .setUserRequest(active.userRequest).setToolName(descriptor.name())
                     .setToolDescription(descriptor.description()).setArguments(arguments)
                     .setToolHistoryJson(reviewHistoryJson(active, invocation.getId()))
+                    .setConversationHistoryJson(reviewConversationJson(active, invocation))
                     .setDestructiveHint(descriptor.destructiveHint()).setIdempotentHint(descriptor.idempotentHint())
                     .setOpenWorldHint(descriptor.openWorldHint()).build();
             app.alertify.worker.ai.grpc.ReviewToolCallResponse review;
@@ -906,12 +907,12 @@ public class AiChatService {
                 .setReadOnly(true).setIdempotentHint(true).build();
     }
 
-    private String latestUserMessage(Long conversationId) {
-        List<AiMessage> history = persistence.history(conversationId);
-        for (int index = history.size() - 1; index >= 0; index--)
-            if ("USER".equals(history.get(index).getRole()))
-                return history.get(index).getContent();
-        return "";
+    private String reviewConversationJson(ActiveTurn active, AiToolInvocation invocation) {
+        try {
+            return AiChatReviewConversation.encode(json, persistence.reviewContext(active.subject, active.conversationId, active.turnId, invocation.getCreatedAt()));
+        } catch (RuntimeException exception) {
+            return AiChatReviewConversation.UNAVAILABLE;
+        }
     }
 
     private ToolInvocationResponse invocation(AiToolInvocation value) {
@@ -1042,6 +1043,7 @@ public class AiChatService {
         private final Long turnId;
         private final String subject;
         private final Authentication authentication;
+        private final String userRequest;
         private final String locale;
         private final String mode;
         private final String approvalPolicy;
@@ -1062,12 +1064,13 @@ public class AiChatService {
             }
         }
 
-        private ActiveTurn(Long conversationId, Long turnId, String subject, Authentication authentication, String locale, String mode,
+        private ActiveTurn(Long conversationId, Long turnId, String subject, Authentication authentication, String userRequest, String locale, String mode,
                 String approvalPolicy, AiSettings settings, String effort, Map<String, AiToolDescriptor> descriptors) {
             this.conversationId = conversationId;
             this.turnId = turnId;
             this.subject = subject;
             this.authentication = authentication;
+            this.userRequest = userRequest;
             this.locale = locale;
             this.mode = mode;
             this.approvalPolicy = approvalPolicy;

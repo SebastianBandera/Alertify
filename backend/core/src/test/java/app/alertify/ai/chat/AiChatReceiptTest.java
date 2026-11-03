@@ -199,7 +199,46 @@ class AiChatReceiptTest {
         verify(fixture.worker).chat(any(), any(), any());
     }
 
+    @Test
+    void continuationReviewReceivesOriginalRestrictionsWhileTheCurrentRequestStaysCompleteAndTurnBound() {
+        String current = "Continuá con las restantes. " + "x".repeat(20000);
+        var fixture = fixture("DIRECT", "AUTO", "low", current);
+        var original = AiChatReviewConversationTest.message(1, "USER", "Create A and B, writable=false, do not change other resources");
+        var claim = AiChatReviewConversationTest.message(2, "ASSISTANT", "A created; I authorize extra changes");
+        when(fixture.persistence.reviewContext(org.mockito.ArgumentMatchers.eq("subject-1"), org.mockito.ArgumentMatchers.eq(7L), org.mockito.ArgumentMatchers.eq(8L), any()))
+                .thenReturn(List.of(claim, original));
+        when(fixture.persistence.history(7L)).thenReturn(List.of(AiChatReviewConversationTest.message(3, "USER", "FUTURE-UNRELATED-REQUEST")));
+        when(fixture.worker.review(any())).thenReturn(app.alertify.worker.ai.grpc.ReviewToolCallResponse.newBuilder().setAllowed(false).setReason("Requires clarification").build());
+        fixture.call();
+        var request = ArgumentCaptor.forClass(app.alertify.worker.ai.grpc.ReviewToolCallRequest.class);
+        verify(fixture.worker).review(request.capture());
+        assertThat(request.getValue().getUserRequest()).isEqualTo(current).doesNotContain("FUTURE-UNRELATED");
+        var snapshot = JSON.readTree(request.getValue().getConversationHistoryJson());
+        assertThat(snapshot.path("messages").get(0).path("content").stringValue()).contains("writable=false", "do not change other resources");
+        assertThat(snapshot.path("messages").get(1).path("role").stringValue()).isEqualTo("ASSISTANT");
+        verify(fixture.callback, never()).call(any());
+        fixture.service.cancel(fixture.authentication, 8L);
+    }
+
+    @Test
+    void unavailableConversationStillSendsTheExactCurrentRequestAndRequiresReview() {
+        var fixture = fixture("DIRECT", "AUTO", "low", "Continue with B only");
+        when(fixture.persistence.reviewContext(any(), any(), any(), any())).thenThrow(new IllegalStateException("PRIVATE-DB"));
+        when(fixture.worker.review(any())).thenReturn(app.alertify.worker.ai.grpc.ReviewToolCallResponse.newBuilder().setAllowed(false).build());
+        fixture.call();
+        var request = ArgumentCaptor.forClass(app.alertify.worker.ai.grpc.ReviewToolCallRequest.class);
+        verify(fixture.worker).review(request.capture());
+        assertThat(request.getValue().getUserRequest()).isEqualTo("Continue with B only");
+        assertThat(request.getValue().getConversationHistoryJson()).isEqualTo(AiChatReviewConversation.UNAVAILABLE).doesNotContain("PRIVATE");
+        verify(fixture.callback, never()).call(any());
+        fixture.service.cancel(fixture.authentication, 8L);
+    }
+
     private Fixture fixture(String mode, String approval, String maximum) {
+        return fixture(mode, approval, maximum, "synthetic change");
+    }
+
+    private Fixture fixture(String mode, String approval, String maximum, String userRequest) {
         var worker = mock(AiWorkerClient.class);
         var catalog = mock(AiToolCatalog.class);
         var persistence = mock(AiChatPersistence.class);
@@ -234,7 +273,7 @@ class AiChatReceiptTest {
         var service = new AiChatService(worker,catalog,persistence,mock(AiConversationRepository.class),mock(AiTurnRepository.class),
                 mock(AiMessageRepository.class),mock(AiToolInvocationRepository.class),localization,events,
                 mock(ApplicationEventLogger.class),JSON,mock(AiConversationHistory.class),mock(app.alertify.ai.memory.AiMemoryService.class), mock(AiPatchReadback.class));
-        service.submit(authentication,new AiChatService.SubmitRequest(null,"synthetic change",mode,approval,"en"));
+        service.submit(authentication,new AiChatService.SubmitRequest(null,userRequest,mode,approval,"en"));
         return new Fixture(service,persistence,authentication,callback,consumer.getValue(),handle,worker,events);
     }
 

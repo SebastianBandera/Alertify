@@ -53,6 +53,11 @@ class AiChatPersistence {
     }
 
     @Transactional(readOnly = true)
+    List<AiMessage> reviewContext(String subject, Long conversationId, Long throughTurnId, Instant throughCreatedAt) {
+        return messages.findReviewContext(subject, conversationId, throughTurnId, throughCreatedAt, PageRequest.of(0, AiChatReviewConversation.MAX_MESSAGES + 1));
+    }
+
+    @Transactional(readOnly = true)
     List<AiToolInvocation> operationHistory(Long conversationId, Long throughTurnId, long beforeId, int limit) {
         return invocations.findOperationHistory(conversationId, throughTurnId, beforeId, PageRequest.of(0, limit + 1));
     }

@@ -14,6 +14,16 @@ public interface AiMessageRepository extends JpaRepository<AiMessage, Long> {
     @EntityGraph(attributePaths = "turn")
     List<AiMessage> findAllByConversation_IdOrderById(Long conversationId);
 
+    @Query("""
+            select m from AiMessage m join m.conversation c left join fetch m.turn t
+            where c.id = :conversationId and c.userSubject = :subject
+              and (t.id is null or t.id <= :throughTurnId)
+              and (m.role <> 'USER' or t.id is null or t.id <> :throughTurnId)
+              and m.createdAt <= :throughCreatedAt and m.role in ('USER', 'ASSISTANT', 'SYSTEM')
+            order by m.id desc
+            """)
+    List<AiMessage> findReviewContext(@Param("subject") String subject, @Param("conversationId") Long conversationId, @Param("throughTurnId") Long throughTurnId, @Param("throughCreatedAt") Instant throughCreatedAt, Pageable page);
+
     @EntityGraph(attributePaths = "conversation")
     @Query("""
             select m from AiMessage m where m.conversation.userSubject = :subject
