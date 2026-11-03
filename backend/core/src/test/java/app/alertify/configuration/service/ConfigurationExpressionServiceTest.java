@@ -45,6 +45,26 @@ class ConfigurationExpressionServiceTest {
     }
 
     @Test
+    void emptySuggestionsDoNotPreventComposingNewConfigurations() {
+        when(configurationRepository.findAllNames()).thenReturn(List.of());
+        assertThat(service.suggestions().configurations()).isEmpty();
+
+        ApplicationConfiguration base = configuration("kk base URL develop", "https://identity.example.test/realms/develop/");
+        when(configurationRepository.findByNameIgnoreCase("kk base URL develop")).thenReturn(Optional.of(base));
+        String expression = "{{configs.kk base URL develop}}protocol/openid-connect/token";
+        var response = service.evaluate(new ConfigurationExpressionEvaluationRequest(null, "token URL develop", expression));
+
+        assertThat(response.value()).isEqualTo("https://identity.example.test/realms/develop/protocol/openid-connect/token");
+
+        ApplicationConfiguration tokenUrl = configuration("token URL develop", expression);
+        when(tokenUrl.getValueType()).thenReturn(ConfigurationValueType.EXPRESSION);
+        when(configurationRepository.findByNameIgnoreCase("token URL develop")).thenReturn(Optional.of(tokenUrl));
+
+        assertThat(service.evaluate(new ConfigurationExpressionEvaluationRequest(null, "derived URL", "{{configs.token URL develop}}")).value())
+                .isEqualTo(response.value());
+    }
+
+    @Test
     void evaluatesUtilityFunctionsOverNestedReferences() {
         ApplicationConfiguration user = configuration("API_USER", "user");
         when(configurationRepository.findByNameIgnoreCase("API_USER")).thenReturn(Optional.of(user));

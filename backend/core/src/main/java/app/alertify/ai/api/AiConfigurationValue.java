@@ -3,6 +3,8 @@ package app.alertify.ai.api;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 
+import org.springframework.ai.tool.annotation.ToolParam;
+
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.BigIntegerNode;
@@ -15,7 +17,7 @@ import app.alertify.jpa.entity.ConfigurationValueType;
 /** Strict-schema representation of every non-binary application configuration value. */
 public record AiConfigurationValue(
     String stringValue,
-    String expressionValue,
+    @ToolParam(description = "Used only for valueType=EXPRESSION. " + AiConfigurationExpressionDocumentation.LANGUAGE + AiConfigurationExpressionDocumentation.WRITE_GUIDANCE) String expressionValue,
     BigInteger integerValue,
     BigDecimal decimalValue,
     Boolean booleanValue,
