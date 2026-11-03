@@ -111,6 +111,52 @@
             <small>{{ messageAuthor(item.message.role) }}</small>
             <app-ai-chat-message [content]="item.message.content" />
           </article>
+        } @else if (item.kind === 'tools') {
+          <details class="ai-chat__tools">
+            <summary>{{ toolGroupSummary(item.tools) }}</summary>
+            @for (tool of item.tools; track tool.id) {
+              <details class="ai-chat__tool">
+                <summary><code>{{ tool.toolName }}</code> <span>{{ toolStatus(tool.status) }}</span></summary>
+                <dl>
+                  <dt>{{ localization.translateDynamic('ai.chat.tools.approval') }}</dt><dd>{{ toolApprovalDecision(tool) }}</dd>
+                  @if (tool.approvalActorType) {
+                    <dt>{{ localization.translateDynamic('ai.chat.tools.decisionBy') }}</dt>
+                    <dd>{{ localization.translateDynamic('ai.chat.tools.actor.' + tool.approvalActorType) }}: {{ tool.approvalActor }}</dd>
+                  }
+                  @if (tool.approvalDecidedAt) {
+                    <dt>{{ localization.translateDynamic('ai.chat.tools.decidedAt') }}</dt><dd>{{ dateTime(tool.approvalDecidedAt) }}</dd>
+                  }
+                  <dt>{{ localization.translateDynamic('ai.chat.tools.createdAt') }}</dt><dd>{{ dateTime(tool.createdAt) }}</dd>
+                  @if (tool.finishedAt) {
+                    <dt>{{ localization.translateDynamic('ai.chat.tools.finishedAt') }}</dt><dd>{{ dateTime(tool.finishedAt) }}</dd>
+                  }
+                </dl>
+                <strong>{{ localization.translateDynamic('ai.chat.tools.arguments') }}</strong>
+                <pre>{{ toolContent(tool.arguments) }}</pre>
+                @if (tool.result !== null) {
+                  <strong>{{ localization.translateDynamic('ai.chat.tools.result') }}</strong>
+                  <pre>{{ toolContent(tool.result) }}</pre>
+                }
+                @if (tool.reviewReason) {
+                  <strong>{{ localization.translateDynamic('ai.chat.tools.reviewReason') }}</strong>
+                  <pre>{{ tool.reviewReason }}</pre>
+                }
+                @if (tool.diagnosticCode) {
+                  <p>{{ localization.translateDynamic('ai.chat.failure.code') }}: <code>{{ tool.diagnosticCode }}</code></p>
+                }
+              </details>
+            }
+          </details>
+        } @else if (item.kind === 'approval') {
+          <article class="ai-chat__approval">
+            <strong>{{ localization.translateDynamic('ai.chat.approvalRequired') }}</strong>
+            <code>{{ item.tool.toolName }}</code>
+            <pre>{{ toolContent(item.tool.arguments) }}</pre>
+            <div>
+              <button type="button" [disabled]="busy() || !chatAvailable()" (click)="approve(item.tool)">{{ localization.translateDynamic('ai.chat.approve') }}</button>
+              <button type="button" [disabled]="busy() || !chatAvailable()" (click)="reject(item.tool)">{{ localization.translateDynamic('ai.chat.reject') }}</button>
+            </div>
+          </article>
         } @else {
           <article class="ai-chat__turn-failure" role="alert">
             <strong>{{ localization.translateDynamic('ai.chat.failure.title') }}</strong>
@@ -122,18 +168,6 @@
         }
       } @empty {
         <p class="ai-chat__empty">{{ localization.translateDynamic('ai.chat.empty') }}</p>
-      }
-
-      @for (tool of pendingTools(); track tool.id) {
-        <article class="ai-chat__approval">
-          <strong>{{ localization.translateDynamic('ai.chat.approvalRequired') }}</strong>
-          <code>{{ tool.toolName }}</code>
-          <pre>{{ tool.arguments }}</pre>
-          <div>
-            <button type="button" [disabled]="busy() || !chatAvailable()" (click)="approve(tool)">{{ localization.translateDynamic('ai.chat.approve') }}</button>
-            <button type="button" [disabled]="busy() || !chatAvailable()" (click)="reject(tool)">{{ localization.translateDynamic('ai.chat.reject') }}</button>
-          </div>
-        </article>
       }
 
       @if (modelWorking()) {

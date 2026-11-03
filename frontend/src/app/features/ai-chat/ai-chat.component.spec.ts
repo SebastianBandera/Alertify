@@ -8,6 +8,7 @@ import {
   AiChatMessage,
   AiChatTurn,
   AiConversationDetail,
+  AiToolInvocation,
 } from '../../core/api/ai-chat-api.service';
 import { AiModuleApiService, AiModuleState } from '../../core/api/ai-module-api.service';
 import { AuthService } from '../../core/auth/auth.service';
@@ -56,6 +57,63 @@ describe('AiChatComponent', () => {
       ],
     }).compileComponents();
     component = TestBed.createComponent(AiChatComponent).componentInstance as unknown as ComponentHarness;
+  });
+
+  it('keeps native disclosures open across refreshes and renders tool content as literal text', async () => {
+    const fixture = TestBed.createComponent(AiChatComponent);
+    fixture.componentRef.setInput('popout', true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const harness = fixture.componentInstance as unknown as ComponentHarness;
+    const invocation = { ...tool(1, 'RUNNING'), arguments: '<img src=x onerror="alert(1)">', result: 'x'.repeat(40000),
+      approvalDecision: 'REJECTED', approvalActorType: 'AUTOMATIC_REVIEWER', approvalActor: 'review-model',
+      approvalDecidedAt: '2026-10-11T10:00:01Z', reviewReason: 'Outside requested scope' };
+    const detail = { ...conversation(1, 'ACTIVE'), turns: [{ ...turn(7, 'RUNNING'), tools: [invocation] }] };
+    harness.selected.set(detail);
+    fixture.detectChanges();
+    const group = fixture.nativeElement.querySelector('.ai-chat__tools') as HTMLDetailsElement;
+    const entry = group.querySelector('.ai-chat__tool') as HTMLDetailsElement;
+    expect(group.open).toBe(false);
+    expect(entry.open).toBe(false);
+    group.querySelector('summary')!.click();
+    entry.querySelector('summary')!.click();
+    expect(group.open).toBe(true);
+    expect(entry.open).toBe(true);
+    expect(entry.querySelector('img')).toBeNull();
+    expect(entry.textContent).toContain(invocation.arguments);
+    expect(entry.textContent).toContain(invocation.result);
+    expect(entry.textContent).toContain('review-model');
+    expect(entry.textContent).toContain('Outside requested scope');
+    expect(entry.textContent).toContain('REJECTED');
+    harness.selected.set({ ...detail, turns: [{ ...turn(7, 'COMPLETED'), tools: [{ ...invocation, status: 'SUCCEEDED' }, tool(2, 'SUCCEEDED')] }] });
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.ai-chat__tools')).toBe(group);
+    expect(group.open).toBe(true);
+    expect(entry.open).toBe(true);
+    expect(group.querySelectorAll('.ai-chat__tool')).toHaveLength(2);
+    group.querySelector('summary')!.click();
+    expect(group.open).toBe(false);
+    fixture.destroy();
+  });
+
+  it('keeps approval controls outside disclosures and moves rejected tools into history', async () => {
+    const fixture = TestBed.createComponent(AiChatComponent);
+    fixture.componentRef.setInput('popout', true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const harness = fixture.componentInstance as unknown as ComponentHarness;
+    const detail = { ...conversation(1, 'ACTIVE'), turns: [{ ...turn(7, 'WAITING_APPROVAL'), tools: [tool(1, 'PENDING_APPROVAL')] }] };
+    harness.selected.set(detail);
+    fixture.detectChanges();
+    const approval = fixture.nativeElement.querySelector('.ai-chat__approval') as HTMLElement;
+    expect(approval.closest('details')).toBeNull();
+    expect(approval.querySelectorAll('button')).toHaveLength(2);
+    expect(fixture.nativeElement.querySelector('.ai-chat__tools')).toBeNull();
+    harness.selected.set({ ...detail, turns: [{ ...turn(7, 'CANCELLED'), tools: [tool(1, 'REJECTED')] }] });
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.ai-chat__approval')).toBeNull();
+    expect(fixture.nativeElement.querySelectorAll('.ai-chat__tool')).toHaveLength(1);
+    fixture.destroy();
   });
 
   function setMaximum(maximum: string): void {
@@ -294,6 +352,43 @@ describe('AiChatComponent', () => {
 });
 
 describe('buildAiChatTimeline', () => {
+  it('interleaves precise timestamps and groups only adjacent tools from the same turn', () => {
+    const messages: AiChatMessage[] = [
+      { id: 1, turnId: 7, role: 'USER', content: 'request', createdAt: '2026-10-11T10:00:00Z' },
+      { id: 2, turnId: 7, role: 'ASSISTANT', content: 'progress', createdAt: '2026-10-11T10:00:01.000200Z' },
+    ];
+    const first = { ...turn(7, 'FAILED'), tools: [
+      tool(1, 'SUCCEEDED', '2026-10-11T10:00:01.000100Z'),
+      tool(2, 'FAILED', '2026-10-11T10:00:01.000150Z'),
+      tool(3, 'REJECTED', '2026-10-11T10:00:01.000300Z'),
+    ] };
+    const next = { ...turn(8, 'COMPLETED'), tools: [tool(4, 'SUCCEEDED', '2026-10-11T10:00:03Z')] };
+    const timeline = buildAiChatTimeline(messages, [first, next]);
+    expect(timeline.map((item) => item.kind)).toEqual(['message', 'tools', 'message', 'tools', 'failure', 'tools']);
+    expect(timeline[1]).toMatchObject({ key: 'tools-1', tools: [{ id: 1 }, { id: 2 }] });
+    expect(timeline[3]).toMatchObject({ tools: [{ id: 3 }] });
+  });
+
+  it('shows pending approvals once, then merges resolved invocations into their sequence', () => {
+    const tools = [tool(1, 'SUCCEEDED'), tool(2, 'PENDING_APPROVAL'), tool(3, 'RUNNING')];
+    const timeline = buildAiChatTimeline([], [{ ...turn(7, 'WAITING_APPROVAL'), tools }]);
+    expect(timeline.map((item) => item.kind)).toEqual(['tools', 'approval', 'tools']);
+    expect(timeline[1]).toMatchObject({ tool: { id: 2 } });
+    const resolved = buildAiChatTimeline([], [{ ...turn(7, 'COMPLETED'), tools: tools.map((item) => ({ ...item, status: 'SUCCEEDED' })) }]);
+    expect(resolved).toHaveLength(1);
+    expect(resolved[0]).toMatchObject({ key: 'tools-1', tools: [{ id: 1 }, { id: 2 }, { id: 3 }] });
+  });
+
+  it('orders identical timestamps deterministically without merging turns', () => {
+    const message: AiChatMessage = { id: 1, turnId: 7, role: 'USER', content: 'request', createdAt: '2026-10-11T10:00:01Z' };
+    const timeline = buildAiChatTimeline([message], [
+      { ...turn(7, 'COMPLETED'), tools: [tool(2, 'CANCELLED'), tool(1, 'INTERRUPTED')] },
+      { ...turn(8, 'COMPLETED'), tools: [tool(3, 'REJECTED')] },
+    ]);
+    expect(timeline.map((item) => item.key)).toEqual(['message-1', 'tools-1', 'tools-3']);
+    expect(timeline[1]).toMatchObject({ tools: [{ id: 1 }, { id: 2 }] });
+  });
+
   it('places a persisted failure after the last message from its turn', () => {
     const messages: readonly AiChatMessage[] = [
       { id: 1, turnId: 7, role: 'USER', content: 'request', createdAt: '2026-10-11T10:00:00Z' },
@@ -315,6 +410,15 @@ describe('buildAiChatTimeline', () => {
     ]);
   });
 });
+
+function tool(id: number, status: string, createdAt = '2026-10-11T10:00:01Z'): AiToolInvocation {
+  return {
+    id, callId: `call-${id}`, generation: 1, toolName: `test_tool_${id}`, kind: 'DOMAIN', declared: true, allowed: true,
+    arguments: '{"id":1}', result: '{"ok":true}', status, readOnly: true, destructiveHint: false,
+    idempotentHint: true, openWorldHint: false, refreshTargets: [], reviewReason: null, diagnosticCode: null,
+    createdAt, finishedAt: null,
+  };
+}
 
 function deferred<T>(): { readonly promise: Promise<T>; resolve(value: T): void } {
   let resolve!: (value: T) => void;

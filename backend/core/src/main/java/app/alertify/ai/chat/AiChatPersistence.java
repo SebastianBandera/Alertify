@@ -58,6 +58,11 @@ class AiChatPersistence {
     }
 
     @Transactional(readOnly = true)
+    List<AiToolInvocation> reviewHistory(Long conversationId, Long throughTurnId, Long beforeInvocationId) {
+        return invocations.findReviewHistory(conversationId, throughTurnId, beforeInvocationId, PageRequest.of(0, AiChatReviewHistory.MAX_ENTRIES + 1));
+    }
+
+    @Transactional(readOnly = true)
     List<AiToolInvocation> restorationHistory(Long conversationId, Long throughTurnId, String query, int limit) {
         return invocations.findRestorationHistory(conversationId, throughTurnId, query.toLowerCase(Locale.ROOT), PageRequest.of(0, limit));
     }
@@ -81,8 +86,9 @@ class AiChatPersistence {
     }
 
     @Transactional
-    void toolRunning(Long invocationId, String reason) {
+    void toolApproved(Long invocationId, String reason, String actorType, String actor, String subject) {
         AiToolInvocation invocation = invocations.findById(invocationId).orElseThrow();
+        invocation.approvalDecision("APPROVED", actorType, actor, subject);
         invocation.running(reason);
         invocation.getTurn().running();
     }
@@ -95,6 +101,19 @@ class AiChatPersistence {
     @Transactional
     void toolFailed(Long invocationId, String output, String code) {
         invocations.findById(invocationId).orElseThrow().fail(output, code);
+    }
+
+    @Transactional
+    void toolReviewRejected(Long invocationId, String reason, String model) {
+        invocations.findById(invocationId).orElseThrow().approvalDecision("REJECTED", "AUTOMATIC_REVIEWER", model, null);
+        toolRejected(invocationId, reason, "REVIEW_REJECTED");
+    }
+
+    @Transactional
+    void toolReviewFailed(Long invocationId, String output, String model) {
+        AiToolInvocation invocation = invocations.findById(invocationId).orElseThrow();
+        invocation.approvalDecision("FAILED", "AUTOMATIC_REVIEWER", model, null);
+        invocation.fail(output, "REVIEW_FAILED");
     }
 
     @Transactional
@@ -111,10 +130,11 @@ class AiChatPersistence {
     }
 
     @Transactional
-    void rejectedByUser(Long invocationId, String content) {
+    void rejectedByUser(Long invocationId, String content, String username, String subject) {
         AiToolInvocation invocation = invocations.findById(invocationId).orElseThrow();
         AiTurn turn = invocation.getTurn();
         AiConversation conversation = turn.getConversation();
+        invocation.approvalDecision("REJECTED", "USER", username, subject);
         invocation.reject("Rejected by the user", "USER_REJECTED");
         invocations.findAllByTurn_IdAndStatusIn(turn.getId(), ACTIVE_TOOL_STATUSES)
                 .forEach(active -> active.cancel("TURN_CANCELLED"));

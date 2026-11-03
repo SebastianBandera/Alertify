@@ -94,6 +94,32 @@ class AiChatOperationHistoryJpaIntegrationTest {
     }
 
     @Test
+    void reviewHistoryIncludesAllKindsAndPriorTurnsButExcludesTheProposalFutureTurnsAndOtherChats() {
+        long[] ids = transactions.execute(status -> {
+            var own = conversation("review-owner");
+            var first = turn(own);
+            var creation = invocation(first, "DOMAIN");
+            creation.succeed("{\"id\":202}");
+            var currentTurn = turn(own);
+            var internal = invocation(currentTurn, "INTERNAL");
+            internal.succeed("loaded");
+            var rejected = invocation(currentTurn, "DOMAIN");
+            rejected.reject("safe reason", "REVIEW_REJECTED");
+            invocation(turn(own), "DOMAIN").succeed("future turn");
+            invocation(turn(conversation("review-other")), "DOMAIN").succeed("other chat");
+            var proposal = invocation(currentTurn, "DOMAIN");
+            invocation(currentTurn, "DOMAIN").succeed("after proposal");
+            entityManager.flush();
+            return new long[] { own.getId(), currentTurn.getId(), proposal.getId(), creation.getId(), internal.getId(), rejected.getId() };
+        });
+        var selected = transactions.execute(status -> invocations.findReviewHistory(ids[0], ids[1], ids[2], PageRequest.of(0, 41)));
+        assertThat(selected).extracting(AiToolInvocation::getId).containsExactly(ids[5], ids[4], ids[3]);
+        assertThat(selected.getFirst().getTurn().getId()).isEqualTo(ids[1]);
+        var page = transactions.execute(status -> invocations.findReviewHistory(ids[0], ids[1], ids[2], PageRequest.of(0, 1)));
+        assertThat(page).hasSize(1);
+    }
+
+    @Test
     void messageHistoryFetchesTurnDatesAndRetainsMessagesWithoutATurn() {
         Long conversationId = transactions.execute(status -> {
             var conversation = conversation("message dates");

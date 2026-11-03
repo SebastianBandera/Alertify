@@ -15,6 +15,37 @@ import org.springframework.data.domain.PageRequest;
 class AiChatPersistenceTest {
 
     @Test
+    void automaticRejectionPersistsDecisionIdentityDateAndReasonTogether() {
+        var invocations = mock(AiToolInvocationRepository.class);
+        var turn = mock(AiTurn.class);
+        var invocation = new AiToolInvocation(turn, 1, "call", "write", "{}", "DOMAIN", true, true, false, false, false, false, "", false);
+        when(invocations.findById(1L)).thenReturn(Optional.of(invocation));
+        var persistence = new AiChatPersistence(mock(AiConversationRepository.class), mock(AiTurnRepository.class), mock(AiMessageRepository.class), invocations);
+        persistence.toolReviewRejected(1L, "Outside scope", "review-model");
+        assertThat(invocation.getStatus()).isEqualTo("REJECTED");
+        assertThat(invocation.getApprovalDecision()).isEqualTo("REJECTED");
+        assertThat(invocation.getApprovalActorType()).isEqualTo("AUTOMATIC_REVIEWER");
+        assertThat(invocation.getApprovalActor()).isEqualTo("review-model");
+        assertThat(invocation.getApprovalDecidedAt()).isNotNull();
+        assertThat(invocation.getReviewReason()).isEqualTo("Outside scope");
+    }
+
+    @Test
+    void approvalPersistsAuthenticatedUserAndRemainsDistinctFromExecutionFailure() {
+        var invocations = mock(AiToolInvocationRepository.class);
+        var turn = mock(AiTurn.class);
+        var invocation = new AiToolInvocation(turn, 1, "call", "write", "{}", "DOMAIN", true, true, false, false, false, false, "", true);
+        when(invocations.findById(1L)).thenReturn(Optional.of(invocation));
+        var persistence = new AiChatPersistence(mock(AiConversationRepository.class), mock(AiTurnRepository.class), mock(AiMessageRepository.class), invocations);
+        persistence.toolApproved(1L, "Approved by the user", "USER", "tester", "subject-1");
+        persistence.toolFailed(1L, "safe failure", "TEST_FAILURE");
+        assertThat(invocation.getStatus()).isEqualTo("FAILED");
+        assertThat(invocation.getApprovalDecision()).isEqualTo("APPROVED");
+        assertThat(invocation.getApprovalActor()).isEqualTo("tester");
+        assertThat(invocation.getApprovalActorSubject()).isEqualTo("subject-1");
+    }
+
+    @Test
     void rejectingAnApprovalPersistsTheSystemMessageAndCancelsTheTurnAtomically() {
         AiConversationRepository conversations = mock(AiConversationRepository.class);
         AiTurnRepository turns = mock(AiTurnRepository.class);
@@ -31,9 +62,10 @@ class AiChatPersistenceTest {
                 .thenReturn(List.of());
         AiChatPersistence persistence = new AiChatPersistence(conversations, turns, messages, invocations);
 
-        persistence.rejectedByUser(12L, "El usuario rechazó la acción solicitada **alertify_configuration_create**.");
+        persistence.rejectedByUser(12L, "El usuario rechazó la acción solicitada **alertify_configuration_create**.", "tester", "subject-1");
 
         verify(invocation).reject("Rejected by the user", "USER_REJECTED");
+        verify(invocation).approvalDecision("REJECTED", "USER", "tester", "subject-1");
         verify(turn).rejected();
         verify(turn).cancel();
         verify(conversation).touch();
