@@ -2024,6 +2024,8 @@ export type TranslationKey =
   | 'ai.chat.context.short'
   | 'ai.chat.context.title'
   | 'ai.chat.context.used'
+  | 'ai.chat.context.free'
+  | 'ai.chat.context.occupied'
   | 'ai.chat.context.unavailable'
   | 'ai.chat.weekly.short'
   | 'ai.chat.weekly.title'

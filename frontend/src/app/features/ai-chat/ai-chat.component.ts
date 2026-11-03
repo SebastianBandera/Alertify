@@ -125,10 +125,15 @@ export class AiChatComponent implements OnInit {
     if (capacity <= 0) return this.emptyMeter(this.localization.translateDynamic('ai.chat.context.unavailable'));
 
     const remaining = this.clampPercent(100 - used * 100 / capacity);
-    const tooltip = `${this.localization.translateDynamic('ai.chat.context.title')}: ${this.percent(remaining)} `
-      + `${this.localization.translateDynamic('ai.chat.remaining')}\n`
-      + `${this.localization.translateDynamic('ai.chat.context.used')}: ${this.exactNumber(used)} / ${this.exactNumber(capacity)}`;
-    return { available: true, remaining, label: this.percent(remaining), tooltip };
+    const freeLabel = `${this.percent(remaining)} ${this.localization.translateDynamic('ai.chat.context.free')}`;
+    const occupiedLabel = `${this.percent(100 - remaining)} ${this.localization.translateDynamic('ai.chat.context.occupied')}`;
+    const tooltip = [
+      `${this.localization.translateDynamic('ai.chat.context.title')}: ${this.exactNumber(capacity)} tokens`,
+      `${freeLabel}: ${this.exactNumber(Math.max(0, capacity - used))} tokens`,
+      `${occupiedLabel}: ${this.exactNumber(used)} tokens`,
+      this.localization.translateDynamic('ai.chat.context.used'),
+    ].join('\n');
+    return { available: true, remaining, label: freeLabel, tooltip };
   });
   protected readonly weeklyMeter = computed(() => {
     const quota = this.selected()?.turns.at(-1)?.usage.quota;
