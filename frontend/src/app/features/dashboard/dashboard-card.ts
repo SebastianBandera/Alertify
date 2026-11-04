@@ -32,6 +32,19 @@ export interface DashboardAlertCard {
   readonly persistentIssues: DashboardIssueTimes | null;
 }
 
+/** Pins the detail to a Pipe step, without attaching a newer execution's streak or previous issue. */
+export function cardForExecution(card: DashboardAlertCard, execution: AlertExecution): DashboardAlertCard {
+  const latest = card.lastExecution?.executionId === execution.executionId;
+  return {
+    ...card,
+    lastExecution: execution,
+    runningSince: null,
+    previousIssue: latest ? card.previousIssue : null,
+    history: latest ? card.history : null,
+    persistentIssues: null,
+  };
+}
+
 /** When an alert with persistent issues last finished a WARN and an ERROR (the same for every user). */
 export interface DashboardIssueTimes {
   readonly lastWarnAt: string | null;

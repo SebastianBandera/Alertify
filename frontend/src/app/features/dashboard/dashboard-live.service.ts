@@ -184,6 +184,7 @@ export class DashboardLiveService {
    * silenced from its card menu.
    */
   private notify(card: DashboardAlertCard): void {
+    if (card.alert.executionMode === 'PIPE') return;
     if (this.mute.isMuted(card.alert.id)) return;
     if (!hasVisibleTag(card, readStoredViewSettings().hiddenTagIds)) return;
     const boardVisible = this.document.visibilityState === 'visible' && this.document.hasFocus() && this.router.url.startsWith('/dashboard');

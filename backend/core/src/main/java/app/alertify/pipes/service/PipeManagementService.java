@@ -20,6 +20,7 @@ import app.alertify.alerts.model.Alert;
 import app.alertify.api.error.ConflictException;
 import app.alertify.api.error.InvalidPipeRequestException;
 import app.alertify.api.error.ResourceNotFoundException;
+import app.alertify.dashboard.DashboardPipeEventPublisher;
 import app.alertify.jpa.repository.AlertRepository;
 import app.alertify.jpa.repository.AlertTemplateParameterDefinitionRepository;
 import app.alertify.jpa.repository.HookRepository;
@@ -54,6 +55,7 @@ import tools.jackson.core.JsonPointer;
 
 @Service
 public class PipeManagementService {
+    private final DashboardPipeEventPublisher dashboard;
     private final PipeRepository pipeRepository;
     private final PipeExecutionRepository executionRepository;
     private final AlertRepository alertRepository;
@@ -68,7 +70,7 @@ public class PipeManagementService {
     private final ApplicationEventLogger eventLogger;
     private final PipeBindingExpressionService bindingExpressions;
 
-    public PipeManagementService(PipeRepository pipeRepository, PipeExecutionRepository executionRepository, AlertRepository alertRepository, AlertTemplateParameterDefinitionRepository alertParameterRepository, ProcedureRepository procedureRepository, ProcedureTemplateParameterDefinitionRepository parameterRepository, ProcedureTemplateOutputDefinitionRepository outputRepository, HookRepository hookRepository, ProcedureParameterValueRepository procedureParameterRepository, TagRepository tagRepository, PipeExecutionOrchestrator orchestrator, ApplicationEventLogger eventLogger, PipeBindingExpressionService bindingExpressions) {
+    public PipeManagementService(PipeRepository pipeRepository, PipeExecutionRepository executionRepository, AlertRepository alertRepository, AlertTemplateParameterDefinitionRepository alertParameterRepository, ProcedureRepository procedureRepository, ProcedureTemplateParameterDefinitionRepository parameterRepository, ProcedureTemplateOutputDefinitionRepository outputRepository, HookRepository hookRepository, ProcedureParameterValueRepository procedureParameterRepository, TagRepository tagRepository, PipeExecutionOrchestrator orchestrator, ApplicationEventLogger eventLogger, PipeBindingExpressionService bindingExpressions, DashboardPipeEventPublisher dashboard) {
         this.pipeRepository = pipeRepository;
         this.executionRepository = executionRepository;
         this.alertRepository = alertRepository;
@@ -82,6 +84,7 @@ public class PipeManagementService {
         this.orchestrator = orchestrator;
         this.eventLogger = eventLogger;
         this.bindingExpressions = bindingExpressions;
+        this.dashboard = dashboard;
     }
 
     @Transactional(readOnly = true)
@@ -136,6 +139,7 @@ public class PipeManagementService {
         pipe.replaceSteps(steps);
         pipeRepository.flush();
         eventLogger.successAfterCommit("PIPE_CREATED", data(pipe));
+        dashboard.changedAfterCommit(pipe.getId());
         return PipeMapper.response(pipe);
     }
 
@@ -162,6 +166,7 @@ public class PipeManagementService {
         pipe.replaceSteps(steps);
         pipeRepository.flush();
         eventLogger.successAfterCommit("PIPE_UPDATED", data(pipe));
+        dashboard.changedAfterCommit(pipe.getId());
         return PipeMapper.response(pipe);
     }
 
@@ -216,6 +221,7 @@ public class PipeManagementService {
         pipe.synchronizeSteps(new ArrayList<>(selected.values()));
         pipeRepository.flush();
         eventLogger.successAfterCommit("PIPE_UPDATED", data(pipe));
+        dashboard.changedAfterCommit(pipe.getId());
         return PipeMapper.response(pipe);
     }
 
@@ -249,6 +255,7 @@ public class PipeManagementService {
         executionRepository.deleteAll(executionRepository.findAllByPipe_Id(id, Pageable.unpaged()).getContent());
         clearBindings(pipe);
         pipeRepository.delete(pipe);
+        dashboard.removedAfterCommit(id);
         eventLogger.successAfterCommit("PIPE_DELETED", data(pipe));
     }
 

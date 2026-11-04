@@ -222,7 +222,7 @@
       </article>
     }
 
-    @if (!loading() && visibleCards().length === 0 && skeletons().length === 0) {
+    @if (!loading() && visibleCards().length === 0 && skeletons().length === 0 && !hasPipes()) {
       <section class="dashboard__empty">
         <span class="dashboard__empty-icon" aria-hidden="true">
           <span></span><span></span><span></span><span></span>
@@ -236,6 +236,7 @@
       </section>
     }
   </section>
+  <app-dashboard-pipes [settings]="settings()" [search]="searchText()" (alertDetail)="openPipeAlert($event)" />
 </article>
 
 @if (menuCard(); as card) {
@@ -392,7 +393,7 @@
         </section>
 
         <section class="detail-section">
-          <h3>{{ localization.translate('dashboard.detail.lastExecution') }}</h3>
+          <h3>{{ localization.translate(selectedPipeAlert() ? 'dashboard.pipe.alertExecution' : 'dashboard.detail.lastExecution') }}</h3>
           @if (card.lastExecution; as execution) {
             <dl class="detail-list">
               <dt>{{ localization.translate('dashboard.detail.trigger') }}</dt>
@@ -428,7 +429,7 @@
           }
         </section>
 
-        @if (mute.stateComparison(card.alert.id); as comparison) {
+        @if (!selectedPipeAlert() && mute.stateComparison(card.alert.id); as comparison) {
           <section class="detail-section state-comparison">
             <h3>{{ localization.translate('dashboard.detail.stateComparison') }}</h3>
             <p class="state-comparison__hint">{{ localization.translate('dashboard.detail.stateComparisonHint') }}</p>
@@ -447,7 +448,7 @@
           </section>
         }
 
-        @if (card.lastExecution) {
+        @if (card.lastExecution && pipeAlertIsLatest()) {
           <section class="detail-section">
             <h3>{{ localization.translate('dashboard.detail.previousIssue') }}</h3>
             @if (card.previousIssue; as issue) {

@@ -329,7 +329,7 @@ class AiPatchJpaIntegrationTest {
         return new PipeManagementService(repo(PipeRepository.class), mock(PipeExecutionRepository.class), repo(AlertRepository.class),
                 repo(AlertTemplateParameterDefinitionRepository.class), repo(ProcedureRepository.class), repo(ProcedureTemplateParameterDefinitionRepository.class),
                 repo(ProcedureTemplateOutputDefinitionRepository.class), mock(HookRepository.class), repo(ProcedureParameterValueRepository.class),
-                repo(TagRepository.class), mock(PipeExecutionOrchestrator.class), mock(ApplicationEventLogger.class), mock(PipeBindingExpressionService.class));
+                repo(TagRepository.class), mock(PipeExecutionOrchestrator.class), mock(ApplicationEventLogger.class), mock(PipeBindingExpressionService.class), mock(app.alertify.dashboard.DashboardPipeEventPublisher.class));
     }
 
     private HookManagementService hooks() {

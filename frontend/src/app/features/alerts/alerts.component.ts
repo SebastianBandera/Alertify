@@ -54,6 +54,7 @@ interface AlertForm {
   cronExpression: string;
   enabled: boolean;
   allowConcurrentExecutions: boolean;
+  executionMode: 'STANDALONE' | 'PIPE';
   smartExecutionEnabled: boolean;
   smartExecutionIntervalHours: number | null;
   smartExecutionIntervalSource: 'FIXED' | 'CONFIGURATION';
@@ -751,6 +752,7 @@ export class AlertsComponent implements OnInit {
       cronExpression: alert.cronExpression,
       enabled: alert.enabled,
       allowConcurrentExecutions: alert.allowConcurrentExecutions,
+      executionMode: alert.executionMode ?? 'STANDALONE',
       smartExecutionEnabled: alert.smartExecutionEnabled,
       smartExecutionIntervalHours: alert.smartExecutionIntervalHours,
       smartExecutionIntervalSource: alert.smartExecutionIntervalSource ?? 'FIXED',
@@ -832,6 +834,7 @@ export class AlertsComponent implements OnInit {
       cronExpression: current.cronExpression,
       enabled: current.enabled,
       allowConcurrentExecutions: current.allowConcurrentExecutions,
+      executionMode: current.executionMode,
       smartExecutionEnabled: current.smartExecutionEnabled,
       smartExecutionIntervalHours: current.smartExecutionIntervalHours,
       smartExecutionIntervalSource: current.smartExecutionIntervalSource ?? 'FIXED',
@@ -943,6 +946,7 @@ export class AlertsComponent implements OnInit {
         cronExpression,
         enabled: form.enabled,
         allowConcurrentExecutions: form.allowConcurrentExecutions,
+        executionMode: form.executionMode,
         smartExecutionEnabled: form.smartExecutionEnabled,
         smartExecutionIntervalHours: form.smartExecutionEnabled && form.smartExecutionIntervalSource === 'FIXED' ? Number(form.smartExecutionIntervalHours) : null,
         smartExecutionIntervalSource: form.smartExecutionIntervalSource,
@@ -1254,6 +1258,7 @@ export class AlertsComponent implements OnInit {
       cronExpression: '-',
       enabled: true,
       allowConcurrentExecutions: false,
+      executionMode: 'STANDALONE',
       smartExecutionEnabled: false,
       smartExecutionIntervalHours: null,
       smartExecutionIntervalSource: 'FIXED',

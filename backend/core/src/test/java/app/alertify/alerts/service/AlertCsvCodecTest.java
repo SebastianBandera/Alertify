@@ -34,13 +34,29 @@ class AlertCsvCodecTest {
     private final AlertCsvCodec codec = new AlertCsvCodec(JsonMapper.builder().build());
 
     @Test
+    void preservesCompatibilityWithCsvThatDoesNotSpecifyTheMode() {
+        var rows = codec.read(csv("legacy,," + TEMPLATE_KEY + ",-,true,false,false,,,[],[],FIXED,"));
+        assertThat(rows.getFirst().executionMode()).isNull();
+    }
+
+    @Test
+    void roundTripsPipeModeAndRejectsUnknownModes() {
+        Alert alert = alert(template(), "pipe-only", null, "-", true, false);
+        alert.changeExecutionMode(app.alertify.alerts.model.ExecutionMode.PIPE);
+        byte[] csv = codec.write(List.of(alert), Map.of());
+        assertThat(codec.read(csv).getFirst().executionMode()).isEqualTo(app.alertify.alerts.model.ExecutionMode.PIPE);
+        String invalid = new String(csv, StandardCharsets.UTF_8).replace(",PIPE\r\n", ",INVALID\r\n");
+        assertThatThrownBy(() -> codec.read(invalid.getBytes(StandardCharsets.UTF_8))).isInstanceOf(InvalidAlertImportException.class);
+    }
+
+    @Test
     void writesBomHeaderAndOneRowPerAlert() {
         AlertTemplateDefinition template = template();
         Alert alert = alert(template, "cert-check", "Vencimiento", "0 0 8 * * *", true, false);
 
         String csv = new String(codec.write(List.of(alert), Map.of()), StandardCharsets.UTF_8);
 
-        assertThat(csv).startsWith("\uFEFF" + HEADER + "\r\n");
+        assertThat(csv).startsWith("\uFEFF" + HEADER + ",executionMode\r\n");
         assertThat(csv).contains("cert-check,Vencimiento," + TEMPLATE_KEY + ",0 0 8 * * *,true,false,false,,,[],[],FIXED,");
         assertThat(csv).endsWith("\r\n");
     }
@@ -170,7 +186,7 @@ class AlertCsvCodecTest {
 
         assertThatThrownBy(() -> codec.read(content))
                 .isInstanceOf(InvalidAlertImportException.class)
-                .hasMessage("CSV header must be exactly: " + HEADER);
+                .hasMessage("CSV header must be exactly: " + HEADER + ",executionMode");
     }
 
     @Test

@@ -2,6 +2,7 @@ import { DOCUMENT } from '@angular/common';
 import { DestroyRef, inject, Injectable, signal } from '@angular/core';
 import { filter, map, Observable, Subject } from 'rxjs';
 
+import { DashboardPipeCard } from '../../features/dashboard/pipes/dashboard-pipe';
 import { DashboardAlertCard } from '../../features/dashboard/dashboard-card';
 import { SystemStatusSummary } from '../api/system-status-api.service';
 import { AuthService } from '../auth/auth.service';
@@ -16,6 +17,8 @@ export type AdminEventConnectionState = 'idle' | 'connecting' | 'connected' | 'r
 
 interface AdminEventPayloads {
   readonly SYSTEM_STATUS: SystemStatusSummary;
+  readonly DASHBOARD_PIPE: DashboardPipeCard;
+  readonly DASHBOARD_PIPE_REMOVED: { readonly pipeId: number };
   readonly DASHBOARD_ALERT: DashboardAlertCard;
   readonly DASHBOARD_ALERT_REMOVED: { readonly alertId: number };
   readonly AI_CHAT_UPDATED: { readonly conversationId: number; readonly turnId: number | null; readonly status: string; readonly detail: unknown };
@@ -26,7 +29,7 @@ interface AdminEventPayloads {
 export type AdminEventName = keyof AdminEventPayloads;
 
 const EVENT_NAMES: ReadonlySet<string> = new Set<AdminEventName>([
-  'SYSTEM_STATUS', 'DASHBOARD_ALERT', 'DASHBOARD_ALERT_REMOVED', 'AI_CHAT_UPDATED', 'AI_RESOURCES_INVALIDATED', 'PLAYWRIGHT_WIZARD_UPDATED',
+  'SYSTEM_STATUS', 'DASHBOARD_ALERT', 'DASHBOARD_ALERT_REMOVED', 'DASHBOARD_PIPE', 'DASHBOARD_PIPE_REMOVED', 'AI_CHAT_UPDATED', 'AI_RESOURCES_INVALIDATED', 'PLAYWRIGHT_WIZARD_UPDATED',
 ]);
 
 function isEventName(value: unknown): value is AdminEventName {

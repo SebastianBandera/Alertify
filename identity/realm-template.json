@@ -9,7 +9,10 @@
   "duplicateEmailsAllowed": false,
   "bruteForceProtected": true,
   "internationalizationEnabled": true,
-  "supportedLocales": ["es", "en"],
+  "supportedLocales": [
+    "es",
+    "en"
+  ],
   "defaultLocale": "es",
   "roles": {
     "client": {
@@ -24,7 +27,9 @@
           "composite": true,
           "composites": {
             "client": {
-              "${OIDC_BACKEND_AUDIENCE}": ["DASHBOARD"]
+              "${OIDC_BACKEND_AUDIENCE}": [
+                "DASHBOARD"
+              ]
             }
           }
         },
@@ -34,7 +39,21 @@
           "composite": true,
           "composites": {
             "client": {
-              "${OIDC_BACKEND_AUDIENCE}": ["DASHBOARD"]
+              "${OIDC_BACKEND_AUDIENCE}": [
+                "DASHBOARD"
+              ]
+            }
+          }
+        },
+        {
+          "name": "DASHBOARD_PIPE_RUN",
+          "description": "Can view the dashboard and run enabled Pipes on demand; independent of DASHBOARD_RUN",
+          "composite": true,
+          "composites": {
+            "client": {
+              "${OIDC_BACKEND_AUDIENCE}": [
+                "DASHBOARD"
+              ]
             }
           }
         }
@@ -62,8 +81,12 @@
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": false,
-      "redirectUris": ["${APP_PUBLIC_URL}/*"],
-      "webOrigins": ["${APP_PUBLIC_URL}"],
+      "redirectUris": [
+        "${APP_PUBLIC_URL}/*"
+      ],
+      "webOrigins": [
+        "${APP_PUBLIC_URL}"
+      ],
       "attributes": {
         "pkce.code.challenge.method": "S256",
         "post.logout.redirect.uris": "${APP_PUBLIC_URL}/*"
@@ -100,8 +123,12 @@
       ],
       "requiredActions": [],
       "clientRoles": {
-        "${OIDC_BACKEND_AUDIENCE}": ["ADMIN"],
-        "account": ["view-profile"]
+        "${OIDC_BACKEND_AUDIENCE}": [
+          "ADMIN"
+        ],
+        "account": [
+          "view-profile"
+        ]
       }
     },
     {
@@ -120,8 +147,12 @@
       ],
       "requiredActions": [],
       "clientRoles": {
-        "${OIDC_BACKEND_AUDIENCE}": ["DASHBOARD_RUN"],
-        "account": ["view-profile"]
+        "${OIDC_BACKEND_AUDIENCE}": [
+          "DASHBOARD_RUN"
+        ],
+        "account": [
+          "view-profile"
+        ]
       }
     }
   ]

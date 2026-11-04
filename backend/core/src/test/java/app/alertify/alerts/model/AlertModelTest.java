@@ -19,6 +19,17 @@ import app.alertify.worker.contract.WorkerCapability;
 
 class AlertModelTest {
 
+    @Test
+    void pipePresentationDoesNotChangeSchedulingAndOmissionPreservesTheMode() {
+        Alert alert = new Alert(template(), "Presentation", null, "0 */5 * * * *", true);
+        assertThat(alert.getExecutionMode()).isEqualTo(ExecutionMode.STANDALONE);
+        alert.changeExecutionMode(ExecutionMode.PIPE);
+        alert.changeExecutionMode(null);
+        assertThat(alert.getExecutionMode()).isEqualTo(ExecutionMode.PIPE);
+        assertThat(alert.getCronExpression()).isEqualTo("0 */5 * * * *");
+        assertThat(alert.isEnabled()).isTrue();
+    }
+
     private static final String TEMPLATE_KEY = SampleAlertTemplate.class.getName();
     private static final List<AlertParameterSource> DEFAULT_ALLOWED_SOURCES =
         List.of(AlertParameterSource.TEXT, AlertParameterSource.CONFIGURATION, AlertParameterSource.SECRET);

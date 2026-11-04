@@ -167,6 +167,8 @@ export class PipeApiService {
     return this.request(`/api/pipes?${params}`);
   }
 
+  get(id: number): Promise<Pipe> { return this.request('/api/pipes/' + id); }
+
   options(): Promise<PipeOptions> { return this.request('/api/pipes/options'); }
 
   async listTags(): Promise<readonly PipeTag[]> {

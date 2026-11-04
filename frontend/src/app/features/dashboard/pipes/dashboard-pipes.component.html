@@ -1,0 +1,103 @@
+<section class="pipe-section" [attr.aria-label]="t('title')" [attr.aria-busy]="live.loading()">
+  @if (notice()) { <div class="dashboard__notice" role="status">{{ notice() }}</div> }
+  @if (live.error()) { <p role="status">{{ t('loadFailed') }}</p> }
+  @for (card of visible(); track card.id) {
+    <article class="pipe-card" [class.pipe-card--short]="card.steps.length <= 2" [class.pipe-card--muted]="!!live.muted()[card.id]" [attr.data-pipe-id]="card.id">
+      <header class="pipe-header">
+        <div class="pipe-title">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="8" width="5" height="8" rx="1"/><rect x="9" y="8" width="5" height="8" rx="1"/><rect x="17" y="8" width="5" height="8" rx="1"/><path d="M6 12h3m5 0h3"/></svg>
+          <span class="pipe-kind">PIPE</span><h2 [title]="card.name">{{ card.name }}</h2>
+          <span [class]="card.execution?.status === 'RUNNING' ? 'running' : 'badge badge--' + state(card)">{{ status(card) }}</span>
+          @if (!card.enabled) { <span class="pipe-disabled">{{ t('disabled') }}</span> }
+        </div>
+        <div class="pipe-header-actions">
+          <small>{{ counts(card) }}</small>
+          <button type="button" class="pipe-kebab" aria-haspopup="menu" [attr.aria-expanded]="menu()?.id === card.id" [attr.aria-label]="t('options') + ' ' + card.name" (click)="openMenu($event, card)">⋮</button>
+        </div>
+        @if (card.tags.length || (card.execution && card.execution.pipeVersion !== card.version) || live.muted()[card.id]) {
+          <div class="pipe-extra">
+            @for (tag of card.tags; track tag.id) { <span class="tag" [style.--tag-color]="tag.color">{{ tag.name }}</span> }
+            @if (card.execution && card.execution.pipeVersion !== card.version) { <span>{{ t('olderDefinition') }} · v{{ card.execution.pipeVersion }}</span> }
+            @if (live.muted()[card.id]; as mute) { <span>{{ t(mute.kind) }}</span> }
+          </div>
+        }
+      </header>
+      <div #track class="pipe-track" [attr.data-pipe-id]="card.id" tabindex="0" [attr.aria-label]="t('stepsRegion') + ' ' + card.name" (scroll)="range(card, track)">
+        @for (step of card.steps; track step.result.key; let index = $index) {
+          @if (index > 0 && step.result.phase !== 'FINALLY') { <span class="pipe-arrow" aria-hidden="true">→</span> }
+          <div class="pipe-step-slot" [class.pipe-step-slot--finally]="step.result.phase === 'FINALLY'">
+            <div [class]="stepClasses(step)" [attr.data-step-key]="step.result.key" role="button" tabindex="0" [attr.title]="step.result.type === 'ALERT' && step.alertExecution ? t('alertDetail') : t('detail')" [attr.aria-label]="step.result.resourceName + ' · ' + stepStatus(card, step)" (click)="openStep(card, step, $event)" (keydown.enter)="openStep(card, step, $event)" (keydown.space)="$event.preventDefault(); openStep(card, step, $event)">
+              @if (settings().minified) {
+                <h2 class="scroll-strip">{{ step.result.resourceName }}</h2><span class="alert-card__time">{{ stepStatus(card, step) }} · {{ duration(step) }}</span>
+              } @else {
+                <div class="alert-card__top"><span [class]="step.result.status === 'RUNNING' ? 'running' : 'badge'">{{ stepStatus(card, step) }}</span><span class="alert-card__time">{{ step.result.phase === 'FINALLY' ? t('closing') : t('step') + ' ' + (index + 1) }}</span></div>
+                <div class="alert-card__title"><h2 class="scroll-strip" [title]="step.result.resourceName">{{ step.result.resourceName }}</h2><small>{{ t(step.result.type) }}</small></div>
+                <p class="alert-card__message alert-card__message--formatted" [class.alert-card__message--empty]="!message(step)">{{ message(step) || stepStatus(card, step) }}</p>
+                <footer class="alert-card__meta"><span>{{ step.result.phase === 'FINALLY' ? t('closing') : t('main') }}</span><span class="alert-card__meta-item">{{ duration(step) }}</span></footer>
+              }
+            </div>
+          </div>
+        } @empty { <p>{{ t('emptySteps') }}</p> }
+      </div>
+      @if (ranges()[card.id]; as range) {
+        @if (range.max > 1) {
+          <input class="pipe-scrollbar" type="range" min="0" [max]="range.max" [value]="range.left" [style.--thumb-width]="(track.clientWidth / track.scrollWidth * 100) + '%'" [attr.aria-label]="t('scroll')" (input)="seek(track, $event)" />
+          <footer class="pipe-overflow"><span>{{ t('scroll') }}</span><div><span>{{ t('step') }} {{ range.first }}–{{ range.last }} / {{ card.steps.length }}</span><button type="button" [disabled]="range.left <= 1" [attr.aria-label]="t('previous')" (click)="scroll(track, -1)">←</button><button type="button" [disabled]="range.left >= range.max - 1" [attr.aria-label]="t('next')" (click)="scroll(track, 1)">→</button></div></footer>
+        }
+      }
+    </article>
+  }
+</section>
+
+@if (menu(); as position) {
+  @if (menuCard(); as card) {
+    <div class="card-menu-backdrop" (mousedown)="closeMenu(true)" (contextmenu)="$event.preventDefault(); closeMenu(true)"></div>
+    <div class="card-menu pipe-menu" role="menu" [style.left.px]="position.x" [style.top.px]="position.y" [attr.aria-label]="t('options') + ' ' + card.name" (keydown.escape)="closeMenu(true)" (keydown.tab)="closeMenu()" (keydown.arrowdown)="moveMenu($event, 1)" (keydown.arrowup)="moveMenu($event, -1)">
+      <p class="card-menu__title">{{ card.name }}</p>
+      <button type="button" role="menuitem" class="card-menu__item" (click)="openDetail(card)">{{ t('detail') }}</button>
+      <hr class="card-menu__separator" />
+      @if (live.muted()[card.id]) { <button type="button" role="menuitem" class="card-menu__item" (click)="mute(card, null)">{{ t('restore') }}</button> }
+      <button type="button" role="menuitem" class="card-menu__item" (click)="mute(card, 'ignored')">{{ localization.translate('dashboard.menu.ignore') }}</button>
+      @if ((state(card) === 'error' || state(card) === 'warn') && card.execution?.status !== 'RUNNING') {
+        <button type="button" role="menuitem" class="card-menu__item" (click)="mute(card, 'silenced')">{{ localization.translate('dashboard.menu.silence') }}</button>
+        <button type="button" role="menuitem" class="card-menu__item" (click)="mute(card, 'state')">{{ localization.translate('dashboard.menu.ignoreState') }}</button>
+      }
+      @if (canRun(card) || auth.isAdmin) { <hr class="card-menu__separator" /> }
+      @if (canRun(card)) { <button type="button" role="menuitem" class="card-menu__item" [disabled]="busy() !== null" (click)="run(card)">{{ t('run') }}</button> }
+      @if (auth.isAdmin) {
+        <button type="button" role="menuitem" class="card-menu__item" (click)="navigate(card, false)">{{ localization.translate('dashboard.menu.history') }}</button>
+        <button type="button" role="menuitem" class="card-menu__item" (click)="navigate(card, true)">{{ localization.translate('dashboard.menu.definition') }}</button>
+      }
+    </div>
+  }
+}
+
+@if (selected(); as card) {
+  <div class="modal-backdrop" (mousedown)="closeDetail()">
+    <section class="modal pipe-dialog" role="dialog" aria-modal="true" tabindex="-1" [attr.aria-label]="card.name" (mousedown)="$event.stopPropagation()" (keydown)="trap($event)">
+      <header><div class="modal__heading"><h2>{{ card.name }}</h2><div class="modal__status"><span [class]="card.execution?.status === 'RUNNING' ? 'running' : 'badge badge--' + state(card)">{{ status(card) }}</span><span>{{ t('executionSummary') }}</span></div></div><button type="button" class="close" [attr.aria-label]="t('close')" (click)="closeDetail()">×</button></header>
+      <div class="modal__body">
+        @if (card.description) { <p class="detail-description">{{ card.description }}</p> }
+        @if (card.execution; as execution) {
+          <section class="detail-section"><h3>{{ t('executionSummary') }}</h3><dl class="detail-list"><dt>{{ t('trigger') }}</dt><dd>{{ execution.trigger }}@if (execution.triggeredBy) { · {{ execution.triggeredBy }} }</dd><dt>{{ t('start') }}</dt><dd>{{ execution.startedAt | date:'medium' }}</dd><dt>{{ t('finish') }}</dt><dd>{{ execution.finishedAt ? (execution.finishedAt | date:'medium') : t('RUNNING') }}</dd><dt>{{ t('duration') }}</dt><dd>{{ millis(execution.durationMillis) }}</dd><dt>{{ t('version') }}</dt><dd>{{ execution.pipeVersion }}@if (execution.pipeVersion !== card.version) { · {{ t('olderDefinition') }} }</dd></dl>@if (execution.errorCode) { <pre class="detail-message detail-message--error">{{ execution.errorCode }}</pre> }</section>
+        } @else { <p class="detail-empty">{{ t('NONE') }}</p> }
+        <section class="detail-section"><h3>{{ t('stepsRegion') }}</h3><div class="pipe-detail-steps">
+          @for (step of card.steps; track step.result.key; let index = $index) {
+            <div class="pipe-detail-step"><button type="button" class="pipe-detail-toggle" [attr.aria-expanded]="expanded() === step.result.key" (click)="expand(card, step)"><span class="pipe-number">{{ index + 1 }}</span><span class="pipe-resource"><strong>{{ step.result.resourceName }}</strong><small>{{ t(step.result.type) }} · {{ step.result.phase === 'FINALLY' ? t('closing') : t('main') }}</small></span><span class="badge">{{ stepStatus(card, step) }}</span><span class="pipe-duration">{{ duration(step) }}</span><span aria-hidden="true">{{ expanded() === step.result.key ? '⌄' : '›' }}</span></button>
+              @if (expanded() === step.result.key) {
+                <div class="pipe-step-detail"><p>{{ message(step) || stepStatus(card, step) }}</p>
+                  @if (!step.result.resourceExecutionId) { <p>{{ t('noChildExecution') }}</p> }
+                  @if (step.alertExecution; as result) { <pre class="detail-message">{{ result.statusMessage | json }}</pre><button type="button" class="button button--secondary" (click)="openStep(card, step, $event)">{{ t('alertDetail') }}</button> }
+                  @if (detailLoading()) { <p role="status">{{ t('loading') }}</p> }
+                  @if (stepDetail(); as detail) { @if (detail.resultRedacted) { <p>{{ t('redacted') }}</p> } @else if (detail.result !== null) { <pre class="detail-message">{{ detail.result | json }}</pre> } @if (detail.errorType) { <code>{{ detail.errorType }}</code> } }
+                </div>
+              }
+            </div>
+          }
+        </div></section>
+        @if (card.execution; as execution) { <details class="pipe-technical"><summary>{{ t('technical') }}</summary><code>{{ execution.executionId }}</code></details> }
+      </div>
+      <footer class="modal__footer"><button type="button" class="button button--secondary" (click)="closeDetail()">{{ t('close') }}</button></footer>
+    </section>
+  </div>
+}

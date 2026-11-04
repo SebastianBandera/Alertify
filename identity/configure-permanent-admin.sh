@@ -117,6 +117,19 @@ fi
   --set "attributes.\"pkce.code.challenge.method\"=\"S256\"" \
   --set "attributes.\"post.logout.redirect.uris\"=\"${app_public_url}/*\""
 
+# Reconcile the new optional dashboard permission in retained realms as well as new ones.
+: "${OIDC_BACKEND_AUDIENCE:?OIDC_BACKEND_AUDIENCE is required}"
+api_client_id=$(/opt/keycloak/bin/kcadm.sh get clients --config "$kcadm_config" -r "$OIDC_REALM" --query "clientId=$OIDC_BACKEND_AUDIENCE" --fields id --format csv --noquotes | tail -n 1)
+if [[ -z "$api_client_id" ]]; then
+  echo "Could not find the backend client for dashboard roles." >&2
+  exit 1
+fi
+if ! /opt/keycloak/bin/kcadm.sh get "clients/$api_client_id/roles/DASHBOARD_PIPE_RUN" --config "$kcadm_config" -r "$OIDC_REALM" >/dev/null 2>&1; then
+  /opt/keycloak/bin/kcadm.sh create "clients/$api_client_id/roles" --config "$kcadm_config" -r "$OIDC_REALM" -s name=DASHBOARD_PIPE_RUN -s composite=true >/dev/null
+fi
+dashboard_role=$(/opt/keycloak/bin/kcadm.sh get "clients/$api_client_id/roles/DASHBOARD" --config "$kcadm_config" -r "$OIDC_REALM")
+printf '[%s]' "$dashboard_role" | /opt/keycloak/bin/kcadm.sh create "clients/$api_client_id/roles/DASHBOARD_PIPE_RUN/composites" --config "$kcadm_config" -r "$OIDC_REALM" -f - >/dev/null
+
 bootstrap_admin_id=$(
   /opt/keycloak/bin/kcadm.sh get users \
     --config "$kcadm_config" \
