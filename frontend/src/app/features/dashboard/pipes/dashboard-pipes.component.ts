@@ -15,6 +15,8 @@ import { DashboardPipeLiveService } from './dashboard-pipe-live.service';
 interface StepDetail { readonly result: unknown; readonly resultRedacted: boolean; readonly errorType: string | null; }
 interface Menu { readonly id: number; readonly x: number; readonly y: number; }
 
+const NOTICE_MILLIS = 6_000;
+
 export interface DashboardPipeAlertDetail {
   readonly step: DashboardPipeStep;
   readonly opener: HTMLElement | null;
@@ -51,6 +53,7 @@ export class DashboardPipesComponent {
   protected readonly ranges = signal<Readonly<Record<number, { first: number; last: number; left: number; max: number }>>>({});
   private opener: HTMLElement | null = null;
   private detailRequest = 0;
+  private noticeTimer: number | null = null;
   private readonly requestedPipe = signal<number | null>(null);
   protected readonly menuCard = computed(() => this.live.cards().find(card => card.id === this.menu()?.id) ?? null);
   protected readonly visible = computed(() => {
@@ -96,7 +99,7 @@ export class DashboardPipesComponent {
     const closeMenu = () => this.closeMenu();
     window.addEventListener('resize', closeMenu);
     window.addEventListener('scroll', closeMenu, true);
-    inject(DestroyRef).onDestroy(() => { window.removeEventListener('resize', closeMenu); window.removeEventListener('scroll', closeMenu, true); });
+    inject(DestroyRef).onDestroy(() => { window.removeEventListener('resize', closeMenu); window.removeEventListener('scroll', closeMenu, true); this.clearNoticeTimer(); });
   }
 
   protected t(key: string): string { return this.localization.translateDynamic('dashboard.pipe.' + key); }
@@ -151,13 +154,25 @@ export class DashboardPipesComponent {
     this.closeMenu(true);
     if (this.busy() !== null) return;
     if (this.auth.isAdmin && !card.enabled && !window.confirm(this.localization.translate('alerts.runDisabledConfirm'))) return;
-    this.busy.set(card.id); this.notice.set('');
+    this.busy.set(card.id); this.clearNoticeTimer(); this.notice.set('');
     try {
       if (this.auth.isAdmin) await this.api.run(card.id);
       else await this.request('/api/dashboard/pipes/'+card.id+'/run', { method: 'POST' });
-      this.notice.set(this.t('started').replace('{name}',card.name));
-    } catch (error) { this.notice.set(error instanceof ApiRequestError && error.code === 'DASHBOARD_RUN_RATE_LIMIT' ? this.localization.translate('dashboard.run.rateLimited') : this.t('requestFailed')); }
+      this.showNotice(this.t('started').replace('{name}',card.name));
+    } catch (error) { this.showNotice(error instanceof ApiRequestError && error.code === 'DASHBOARD_RUN_RATE_LIMIT' ? this.localization.translate('dashboard.run.rateLimited') : this.t('requestFailed')); }
     finally { this.busy.set(null); }
+  }
+  private showNotice(message: string): void {
+    this.clearNoticeTimer();
+    this.notice.set(message);
+    this.noticeTimer = window.setTimeout(() => {
+      this.noticeTimer = null;
+      this.notice.set('');
+    }, NOTICE_MILLIS);
+  }
+  private clearNoticeTimer(): void {
+    if (this.noticeTimer !== null) window.clearTimeout(this.noticeTimer);
+    this.noticeTimer = null;
   }
   protected navigate(card: DashboardPipeCard, definition: boolean): void {
     this.closeMenu(); void this.router.navigate(['/pipes'], { queryParams: definition ? { pipeId: card.id } : { tab: 'history', pipeId: card.id } });
@@ -197,7 +212,7 @@ export class DashboardPipesComponent {
     try {
       const detail = await this.request<StepDetail>('/api/dashboard/pipes/'+card.id+'/executions/'+card.execution.executionId+'/steps/'+encodeURIComponent(step.result.key));
       if (request === this.detailRequest) this.stepDetail.set(detail);
-    } catch { if (request === this.detailRequest) this.notice.set(this.t('requestFailed')); }
+    } catch { if (request === this.detailRequest) this.showNotice(this.t('requestFailed')); }
     finally { if (request === this.detailRequest) this.detailLoading.set(false); }
   }
   protected range(card: DashboardPipeCard, track: HTMLElement): void {
