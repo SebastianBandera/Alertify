@@ -36,7 +36,7 @@ class AlertCsvCodec {
             "name", "description", "templateKey", "cronExpression",
             "enabled", "allowConcurrentExecutions", "smartExecutionEnabled",
             "smartExecutionIntervalHours", "smartExecutionPolicy", "parameters", "tags",
-            "smartExecutionIntervalSource", "smartExecutionIntervalConfiguration"
+            "smartExecutionIntervalSource", "smartExecutionIntervalConfiguration", "executionMode"
     );
     private static final int MAX_ROWS = 10_000;
     private static final String PARAMETER_PREFIX = "parameter '";
@@ -83,7 +83,7 @@ class AlertCsvCodec {
                             writeJson(parameters),
                             writeJson(tags),
                             alert.getSmartExecutionIntervalSource().name(),
-                            intervalConfigurationName(alert)
+                            intervalConfigurationName(alert), alert.getExecutionMode().name()
                     )
             );
         }
@@ -118,7 +118,7 @@ class AlertCsvCodec {
         if (rows.isEmpty()) {
             throw new InvalidAlertImportException("The CSV file is empty");
         }
-        if (!rows.getFirst().equals(HEADER)) {
+        if (!rows.getFirst().equals(HEADER) && !rows.getFirst().equals(HEADER.subList(0, HEADER.size() - 1))) {
             throw new InvalidAlertImportException("CSV header must be exactly: " + String.join(",", HEADER));
         }
         if (rows.size() - 1 > MAX_ROWS) {
@@ -130,8 +130,8 @@ class AlertCsvCodec {
         for (int index = 1; index < rows.size(); index++) {
             List<String> fields = rows.get(index);
             int rowNumber = index + 1;
-            if (fields.size() != HEADER.size()) {
-                throw rowError(rowNumber, "expected " + HEADER.size() + " columns");
+            if (fields.size() != rows.getFirst().size()) {
+                throw rowError(rowNumber, "expected " + rows.getFirst().size() + " columns");
             }
 
             String name = fields.get(0).trim();
@@ -188,11 +188,22 @@ class AlertCsvCodec {
                     new ImportRow(
                             rowNumber, name, description, templateKey, cronExpression,
                             enabled, allowConcurrentExecutions, smartExecutionEnabled,
-                            smartExecutionIntervalHours, smartExecutionPolicy, parameters, tags, intervalSource, intervalConfiguration
+                            smartExecutionIntervalHours, smartExecutionPolicy, parameters, tags, intervalSource, intervalConfiguration, parseExecutionMode(fields, rowNumber)
                     )
             );
         }
         return result;
+    }
+
+    private static app.alertify.alerts.model.ExecutionMode parseExecutionMode(List<String> fields, int row) {
+        if (fields.size() < HEADER.size() || fields.getLast().isBlank())
+            return null;
+
+        try {
+            return app.alertify.alerts.model.ExecutionMode.valueOf(fields.getLast().trim());
+        } catch (IllegalArgumentException exception) {
+            throw rowError(row, "executionMode must be STANDALONE or PIPE");
+        }
     }
 
     private List<ImportParameter> parseParameters(String rawParameters, int rowNumber) {
@@ -373,7 +384,8 @@ class AlertCsvCodec {
         List<ImportParameter> parameters,
         List<ImportTag> tags,
         SmartExecutionIntervalSource intervalSource,
-        String intervalConfiguration
+        String intervalConfiguration,
+        app.alertify.alerts.model.ExecutionMode executionMode
     ) {
     }
 

@@ -27,6 +27,7 @@ import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 
 import app.alertify.dashboard.DashboardPageRequestHandler;
+import app.alertify.dashboard.DashboardPipePageRequestHandler;
 import app.alertify.logging.ApplicationEventLogger;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -51,15 +52,17 @@ public class ViewerEventWebSocketHandler extends TextWebSocketHandler implements
     private final JwtAuthenticationConverter jwtAuthenticationConverter;
     private final JsonMapper jsonMapper;
     private final DashboardPageRequestHandler pageRequestHandler;
+    private final DashboardPipePageRequestHandler pipePageRequestHandler;
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
     private final ConcurrentMap<String, SessionState> sessions = new ConcurrentHashMap<>();
 
-    public ViewerEventWebSocketHandler(JwtDecoder jwtDecoder, JwtAuthenticationConverter jwtAuthenticationConverter, JsonMapper jsonMapper, DashboardPageRequestHandler pageRequestHandler, ApplicationEventLogger eventLogger) {
+    public ViewerEventWebSocketHandler(JwtDecoder jwtDecoder, JwtAuthenticationConverter jwtAuthenticationConverter, JsonMapper jsonMapper, DashboardPageRequestHandler pageRequestHandler, ApplicationEventLogger eventLogger, DashboardPipePageRequestHandler pipePageRequestHandler) {
         this.eventLogger = eventLogger;
         this.jwtDecoder = jwtDecoder;
         this.jwtAuthenticationConverter = jwtAuthenticationConverter;
         this.jsonMapper = jsonMapper;
         this.pageRequestHandler = pageRequestHandler;
+        this.pipePageRequestHandler = pipePageRequestHandler;
         scheduler.scheduleWithFixedDelay(this::sendHeartbeats, HEARTBEAT_INTERVAL.toMillis(), HEARTBEAT_INTERVAL.toMillis(), TimeUnit.MILLISECONDS);
     }
 
@@ -198,13 +201,14 @@ public class ViewerEventWebSocketHandler extends TextWebSocketHandler implements
         }
 
         String requestId = requestIdNode.stringValue();
-        if (!pageRequestHandler.requestName().equals(nameNode.stringValue())) {
+        if (!pageRequestHandler.requestName().equals(nameNode.stringValue()) && !pipePageRequestHandler.requestName().equals(nameNode.stringValue())) {
             sendJson(state, new ErrorMessage("ERROR", requestId, "UNSUPPORTED_REQUEST", "Unsupported viewer request."));
             return;
         }
 
         try {
-            JsonNode response = pageRequestHandler.handleForViewer(frame.get("payload"));
+            JsonNode response = pageRequestHandler.requestName().equals(nameNode.stringValue())
+                    ? pageRequestHandler.handleForViewer(frame.get("payload")) : pipePageRequestHandler.handleForViewer(frame.get("payload"));
             sendJson(state, new ResponseMessage("RESPONSE", requestId, response));
         } catch (RuntimeException exception) {
             LOGGER.warn("Viewer WebSocket request failed: requestName={}", nameNode.stringValue(), exception);

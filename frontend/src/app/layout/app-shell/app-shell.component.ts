@@ -23,6 +23,7 @@ import { BrowserNotificationService } from '../../core/notifications/browser-not
 import { AdminEventChannelService } from '../../core/realtime/admin-event-channel.service';
 import { SessionActionsService } from '../../core/auth/session-actions.service';
 import { TranslationKey } from '../../core/i18n/localization.types';
+import { DashboardPipeLiveService } from '../../features/dashboard/pipes/dashboard-pipe-live.service';
 import { DashboardLiveService } from '../../features/dashboard/dashboard-live.service';
 import { EditorDraftService } from '../../shared/editor-drafts/editor-draft.service';
 import { AdminStatusBarComponent } from '../admin-status-bar/admin-status-bar.component';
@@ -50,6 +51,7 @@ export class AppShellComponent {
   protected readonly localization = inject(LocalizationService);
   private readonly adminEventChannel = inject(AdminEventChannelService);
   private readonly dashboardLive = inject(DashboardLiveService);
+  private readonly dashboardPipes = inject(DashboardPipeLiveService);
   private readonly browserNotifications = inject(BrowserNotificationService);
   private readonly sessionActions = inject(SessionActionsService);
   private readonly router = inject(Router);

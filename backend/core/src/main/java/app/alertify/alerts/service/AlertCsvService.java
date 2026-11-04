@@ -156,7 +156,7 @@ public class AlertCsvService {
                         new AlertCreateRequest(
                                 template.getId(), row.name(), row.description(), row.cronExpression(),
                                 row.enabled(), row.allowConcurrentExecutions(), parameters, tagIds, null,
-                                row.smartExecutionEnabled(), row.smartExecutionIntervalHours(), row.smartExecutionPolicy(), row.intervalSource(), intervalConfigurationId
+                                row.smartExecutionEnabled(), row.smartExecutionIntervalHours(), row.smartExecutionPolicy(), row.intervalSource(), intervalConfigurationId, row.executionMode()
                         )
                 );
                 created++;
@@ -181,7 +181,7 @@ public class AlertCsvService {
                     new AlertUpdateRequest(
                             alert.getVersion(), row.name(), row.description(), row.cronExpression(),
                             row.enabled(), row.allowConcurrentExecutions(), parameters, tagIds, null,
-                            row.smartExecutionEnabled(), row.smartExecutionIntervalHours(), row.smartExecutionPolicy(), row.intervalSource(), intervalConfigurationId
+                            row.smartExecutionEnabled(), row.smartExecutionIntervalHours(), row.smartExecutionPolicy(), row.intervalSource(), intervalConfigurationId, row.executionMode()
                     )
             );
             updated++;
@@ -232,7 +232,8 @@ public class AlertCsvService {
      * neither bumps their version nor reschedules them.
      */
     private boolean isUnchanged(Alert alert, AlertCsvCodec.ImportRow row, Set<Long> tagIds, List<AlertParameterValueRequest> parameters, Long intervalConfigurationId) {
-        if (!alert.getName().equals(row.name())
+        if ((row.executionMode() != null && alert.getExecutionMode() != row.executionMode())
+                || !alert.getName().equals(row.name())
                 || !Objects.equals(alert.getDescription(), row.description())
                 || !alert.getCronExpression().equals(row.cronExpression())
                 || alert.isEnabled() != row.enabled()

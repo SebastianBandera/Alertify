@@ -30,6 +30,7 @@ import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import app.alertify.alerts.template.annotation.AlertParameterSource;
+import app.alertify.dashboard.DashboardPipeEventPublisher;
 import app.alertify.jpa.entity.Tag;
 import app.alertify.jpa.entity.TagScope;
 import app.alertify.jpa.repository.AlertRepository;
@@ -105,9 +106,9 @@ class PipeDefinitionReadJpaIntegrationTest {
                 mock(AlertTemplateParameterDefinitionRepository.class), mock(ProcedureRepository.class),
                 mock(ProcedureTemplateParameterDefinitionRepository.class), mock(ProcedureTemplateOutputDefinitionRepository.class),
                 mock(HookRepository.class), mock(ProcedureParameterValueRepository.class), mock(TagRepository.class),
-                mock(PipeExecutionOrchestrator.class), mock(ApplicationEventLogger.class), mock(PipeBindingExpressionService.class));
+                mock(PipeExecutionOrchestrator.class), mock(ApplicationEventLogger.class), mock(PipeBindingExpressionService.class), mock(DashboardPipeEventPublisher.class));
         persistence = new PipeExecutionPersistenceService(pipes, mock(PipeExecutionRepository.class),
-                mock(PipeStepResultRepository.class), mock(ApplicationEventLogger.class));
+                mock(PipeStepResultRepository.class), mock(ApplicationEventLogger.class), mock(DashboardPipeEventPublisher.class));
     }
 
     @AfterAll

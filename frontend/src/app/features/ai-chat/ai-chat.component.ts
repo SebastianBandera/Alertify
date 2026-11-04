@@ -23,21 +23,44 @@ import { AiChatMessageComponent } from './ai-chat-message.component';
 
 type AiChatTimelineItem =
   | Readonly<{ kind: 'message'; key: string; message: AiChatMessage }>
+  | Readonly<{ kind: 'tools'; key: string; turnId: number; tools: readonly AiToolInvocation[] }>
+  | Readonly<{ kind: 'approval'; key: string; tool: AiToolInvocation }>
   | Readonly<{ kind: 'failure'; key: string; turn: AiChatTurn }>;
 
 export function buildAiChatTimeline(messages: readonly AiChatMessage[], turns: readonly AiChatTurn[]): readonly AiChatTimelineItem[] {
-  const failures = new Map(turns.filter((turn) => turn.status === 'FAILED').map((turn) => [turn.id, turn]));
-  const lastMessageIndexes = new Map<number, number>();
-  messages.forEach((message, index) => {
-    if (message.turnId !== null) lastMessageIndexes.set(message.turnId, index);
+  const entries = [
+    ...messages.map((message) => ({ createdAt: message.createdAt, id: message.id, turnId: message.turnId,
+      item: { kind: 'message', key: `message-${message.id}`, message } as AiChatTimelineItem })),
+    ...turns.flatMap((turn) => turn.tools.map((tool) => ({ createdAt: tool.createdAt, id: tool.id, turnId: turn.id,
+      item: tool.status === 'PENDING_APPROVAL'
+        ? { kind: 'approval', key: `approval-${tool.id}`, tool } as AiChatTimelineItem
+        : { kind: 'tools', key: `tools-${tool.id}`, turnId: turn.id, tools: [tool] } as AiChatTimelineItem }))),
+  ].sort((left, right) => {
+    const difference = timestampNanoseconds(left.createdAt) - timestampNanoseconds(right.createdAt);
+    if (difference !== 0n) return difference < 0n ? -1 : 1;
+
+    if (left.item.kind === 'message' && right.item.kind !== 'message') return -1;
+    if (right.item.kind === 'message' && left.item.kind !== 'message') return 1;
+
+    return left.id - right.id;
   });
+  const lastIndexes = new Map<number, number>();
+  entries.forEach((entry, index) => {
+    if (entry.turnId !== null) lastIndexes.set(entry.turnId, index);
+  });
+  const failures = new Map(turns.filter((turn) => turn.status === 'FAILED').map((turn) => [turn.id, turn]));
 
   const timeline: AiChatTimelineItem[] = [];
-  messages.forEach((message, index) => {
-    timeline.push({ kind: 'message', key: `message-${message.id}`, message });
-    if (message.turnId === null || lastMessageIndexes.get(message.turnId) !== index) return;
+  entries.forEach(({ item, turnId }, index) => {
+    const previous = timeline.at(-1);
+    if (item.kind === 'tools' && previous?.kind === 'tools' && item.turnId === previous.turnId)
+      timeline[timeline.length - 1] = { ...previous, tools: [...previous.tools, ...item.tools] };
+    else
+      timeline.push(item);
 
-    const failure = failures.get(message.turnId);
+    if (turnId === null || lastIndexes.get(turnId) !== index) return;
+
+    const failure = failures.get(turnId);
     if (!failure) return;
 
     timeline.push({ kind: 'failure', key: `failure-${failure.id}`, turn: failure });
@@ -47,6 +70,13 @@ export function buildAiChatTimeline(messages: readonly AiChatMessage[], turns: r
     if (failures.delete(turn.id)) timeline.push({ kind: 'failure', key: `failure-${turn.id}`, turn });
   }
   return timeline;
+}
+
+// Date.parse alone drops sub-millisecond precision from persisted Instant values.
+function timestampNanoseconds(value: string): bigint {
+  const fraction = /\.(\d+)/.exec(value)?.[1] ?? '';
+  return BigInt(Date.parse(value.replace(/\.\d+/, ''))) * 1_000_000n
+    + BigInt(fraction.slice(0, 9).padEnd(9, '0'));
 }
 
 @Component({
@@ -125,10 +155,15 @@ export class AiChatComponent implements OnInit {
     if (capacity <= 0) return this.emptyMeter(this.localization.translateDynamic('ai.chat.context.unavailable'));
 
     const remaining = this.clampPercent(100 - used * 100 / capacity);
-    const tooltip = `${this.localization.translateDynamic('ai.chat.context.title')}: ${this.percent(remaining)} `
-      + `${this.localization.translateDynamic('ai.chat.remaining')}\n`
-      + `${this.localization.translateDynamic('ai.chat.context.used')}: ${this.exactNumber(used)} / ${this.exactNumber(capacity)}`;
-    return { available: true, remaining, label: this.percent(remaining), tooltip };
+    const freeLabel = `${this.percent(remaining)} ${this.localization.translateDynamic('ai.chat.context.free')}`;
+    const occupiedLabel = `${this.percent(100 - remaining)} ${this.localization.translateDynamic('ai.chat.context.occupied')}`;
+    const tooltip = [
+      `${this.localization.translateDynamic('ai.chat.context.title')}: ${this.exactNumber(capacity)} tokens`,
+      `${freeLabel}: ${this.exactNumber(Math.max(0, capacity - used))} tokens`,
+      `${occupiedLabel}: ${this.exactNumber(used)} tokens`,
+      this.localization.translateDynamic('ai.chat.context.used'),
+    ].join('\n');
+    return { available: true, remaining, label: freeLabel, tooltip };
   });
   protected readonly weeklyMeter = computed(() => {
     const quota = this.selected()?.turns.at(-1)?.usage.quota;
@@ -429,8 +464,32 @@ export class AiChatComponent implements OnInit {
     return Math.max(1, Math.floor(window.innerWidth * AiChatComponent.MAX_VIEWPORT_RATIO));
   }
 
-  protected pendingTools(): readonly AiToolInvocation[] {
-    return this.selected()?.turns.flatMap((turn) => turn.tools).filter((tool) => tool.status === 'PENDING_APPROVAL') ?? [];
+  protected toolGroupSummary(tools: readonly AiToolInvocation[]): string {
+    const counts = new Map<string, number>();
+    for (const tool of tools) counts.set(tool.status, (counts.get(tool.status) ?? 0) + 1);
+    return [`${tools.length} ${this.localization.translateDynamic('ai.chat.tools.title')}`,
+      ...Array.from(counts, ([status, count]) => `${count} ${this.toolStatus(status)}`)].join(' · ');
+  }
+
+  protected toolStatus(status: string): string {
+    const key = `ai.chat.tools.status.${status}`;
+    const translated = this.localization.translateDynamic(key);
+    return translated === key ? status : translated;
+  }
+
+  protected toolApprovalDecision(tool: AiToolInvocation): string {
+    const decision = tool.approvalDecision ?? 'NOT_RECORDED';
+    const key = `ai.chat.tools.approval.${decision}`;
+    const translated = this.localization.translateDynamic(key);
+    return translated === key ? decision : translated;
+  }
+
+  protected toolContent(content: string): string {
+    try {
+      return JSON.stringify(JSON.parse(content), null, 2);
+    } catch {
+      return content;
+    }
   }
 
   protected activeTurnId(): number | null {
@@ -635,7 +694,7 @@ export class AiChatComponent implements OnInit {
     return new Intl.NumberFormat(this.localization.locale(), { style: 'percent', maximumFractionDigits: 1 }).format(value / 100);
   }
 
-  private dateTime(value: string): string {
+  protected dateTime(value: string): string {
     return new Intl.DateTimeFormat(this.localization.locale(), { dateStyle: 'short', timeStyle: 'medium' }).format(new Date(value));
   }
 

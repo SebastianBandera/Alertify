@@ -13,7 +13,7 @@ import tools.jackson.databind.json.JsonMapper;
 public class ViewerEventPublisher {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ViewerEventPublisher.class);
-    private static final Set<String> ALLOWED_EVENT_NAMES = Set.of("DASHBOARD_ALERT", "DASHBOARD_ALERT_REMOVED");
+    private static final Set<String> ALLOWED_EVENT_NAMES = Set.of("DASHBOARD_ALERT", "DASHBOARD_ALERT_REMOVED", "DASHBOARD_PIPE", "DASHBOARD_PIPE_REMOVED");
 
     private final ViewerEventWebSocketHandler handler;
     private final JsonMapper jsonMapper;

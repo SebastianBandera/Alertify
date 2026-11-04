@@ -94,6 +94,70 @@ class AiChatOperationHistoryJpaIntegrationTest {
     }
 
     @Test
+    void reviewHistoryIncludesAllKindsAndPriorTurnsButExcludesTheProposalFutureTurnsAndOtherChats() {
+        long[] ids = transactions.execute(status -> {
+            var own = conversation("review-owner");
+            var first = turn(own);
+            var creation = invocation(first, "DOMAIN");
+            creation.succeed("{\"id\":202}");
+            var currentTurn = turn(own);
+            var internal = invocation(currentTurn, "INTERNAL");
+            internal.succeed("loaded");
+            var rejected = invocation(currentTurn, "DOMAIN");
+            rejected.reject("safe reason", "REVIEW_REJECTED");
+            invocation(turn(own), "DOMAIN").succeed("future turn");
+            invocation(turn(conversation("review-other")), "DOMAIN").succeed("other chat");
+            var proposal = invocation(currentTurn, "DOMAIN");
+            invocation(currentTurn, "DOMAIN").succeed("after proposal");
+            entityManager.flush();
+            return new long[] { own.getId(), currentTurn.getId(), proposal.getId(), creation.getId(), internal.getId(), rejected.getId() };
+        });
+        var selected = transactions.execute(status -> invocations.findReviewHistory(ids[0], ids[1], ids[2], PageRequest.of(0, 41)));
+        assertThat(selected).extracting(AiToolInvocation::getId).containsExactly(ids[5], ids[4], ids[3]);
+        assertThat(selected.getFirst().getTurn().getId()).isEqualTo(ids[1]);
+        var page = transactions.execute(status -> invocations.findReviewHistory(ids[0], ids[1], ids[2], PageRequest.of(0, 1)));
+        assertThat(page).hasSize(1);
+    }
+
+    @Test
+    void reviewerConversationIsOwnerScopedTurnBoundAndFrozenBeforeTheProposedInvocation() {
+        var cutoff = java.time.Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MILLIS);
+        long[] ids = transactions.execute(status -> {
+            var own = conversation("review-conversation-owner");
+            var first = turn(own);
+            var original = reviewMessage(own, first, "USER", "Create A and B; writable=false", cutoff.minusSeconds(10));
+            var assistant = reviewMessage(own, first, "ASSISTANT", "A created", cutoff.minusSeconds(9));
+            var correction = reviewMessage(own, first, "USER", "B only; do not change others", cutoff.minusSeconds(8));
+            var current = turn(own);
+            reviewMessage(own, current, "USER", "Continue", cutoff.minusSeconds(7));
+            var progress = reviewMessage(own, current, "ASSISTANT", "Preparing B", cutoff.minusSeconds(6));
+            var legacy = reviewMessage(own, null, "SYSTEM", "Legacy note", cutoff.minusSeconds(5));
+            reviewMessage(own, turn(own), "USER", "Future turn", cutoff.minusSeconds(4));
+            reviewMessage(own, current, "ASSISTANT", "After invocation", cutoff.plusSeconds(1));
+            reviewMessage(own, current, "TOOL", "Separate tool result", cutoff.minusSeconds(3));
+            var other = conversation("other-review-owner");
+            reviewMessage(other, turn(other), "USER", "Other chat", cutoff.minusSeconds(2));
+            entityManager.flush();
+            return new long[] { own.getId(), current.getId(), original.getId(), assistant.getId(), correction.getId(), progress.getId(), legacy.getId() };
+        });
+        var selected = transactions.execute(status -> messages.findReviewContext("review-conversation-owner", ids[0], ids[1], cutoff, PageRequest.of(0, 41)));
+        assertThat(selected).extracting(AiMessage::getId).containsExactly(ids[6], ids[5], ids[4], ids[3], ids[2]);
+        assertThat(selected.getFirst().getTurnId()).isNull();
+        assertThat(selected.get(1).getTurnId()).isEqualTo(ids[1]);
+        var denied = transactions.execute(status -> messages.findReviewContext("another-subject", ids[0], ids[1], cutoff, PageRequest.of(0, 41)));
+        assertThat(denied).isEmpty();
+        var page = transactions.execute(status -> messages.findReviewContext("review-conversation-owner", ids[0], ids[1], cutoff, PageRequest.of(0, 2)));
+        assertThat(page).extracting(AiMessage::getId).containsExactly(ids[6], ids[5]);
+    }
+
+    private AiMessage reviewMessage(AiConversation conversation, AiTurn turn, String role, String content, java.time.Instant createdAt) {
+        var message = new AiMessage(conversation, turn, role, content);
+        org.springframework.test.util.ReflectionTestUtils.setField(message, "createdAt", createdAt);
+        entityManager.persist(message);
+        return message;
+    }
+
+    @Test
     void messageHistoryFetchesTurnDatesAndRetainsMessagesWithoutATurn() {
         Long conversationId = transactions.execute(status -> {
             var conversation = conversation("message dates");

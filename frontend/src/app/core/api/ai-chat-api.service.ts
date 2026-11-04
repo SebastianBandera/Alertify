@@ -55,6 +55,11 @@ export interface AiToolInvocation {
   readonly openWorldHint: boolean;
   readonly refreshTargets: readonly string[];
   readonly reviewReason: string | null;
+  readonly approvalDecision?: string;
+  readonly approvalActorType?: string | null;
+  readonly approvalActor?: string | null;
+  readonly approvalActorSubject?: string | null;
+  readonly approvalDecidedAt?: string | null;
   readonly diagnosticCode: string | null;
   readonly createdAt: string;
   readonly finishedAt: string | null;

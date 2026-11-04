@@ -11,6 +11,7 @@ import org.springframework.data.domain.Sort;
 
 import app.alertify.alerts.model.Alert;
 import app.alertify.alerts.model.AlertTemplateDefinition;
+import app.alertify.dashboard.DashboardPipeEventPublisher;
 import app.alertify.jpa.repository.AlertRepository;
 import app.alertify.jpa.repository.AlertTemplateParameterDefinitionRepository;
 import app.alertify.jpa.repository.HookRepository;
@@ -53,7 +54,7 @@ class PipeTemplateMetadataTest {
                 alerts, mock(AlertTemplateParameterDefinitionRepository.class), procedures,
                 mock(ProcedureTemplateParameterDefinitionRepository.class), mock(ProcedureTemplateOutputDefinitionRepository.class),
                 mock(HookRepository.class), mock(ProcedureParameterValueRepository.class), mock(TagRepository.class),
-                mock(PipeExecutionOrchestrator.class), mock(ApplicationEventLogger.class), mock(PipeBindingExpressionService.class));
+                mock(PipeExecutionOrchestrator.class), mock(ApplicationEventLogger.class), mock(PipeBindingExpressionService.class), mock(DashboardPipeEventPublisher.class));
         var options = service.options().resources();
         assertThat(options).extracting(value -> value.templateKey()).containsExactly(
                 alertTemplate.getTemplateKey(), procedureTemplate.getTemplateKey());

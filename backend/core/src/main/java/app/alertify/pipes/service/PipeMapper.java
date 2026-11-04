@@ -17,7 +17,7 @@ import app.alertify.pipes.model.PipeOutcome;
 import app.alertify.pipes.model.PipeStep;
 import app.alertify.pipes.model.PipeStepType;
 
-final class PipeMapper {
+public final class PipeMapper {
     private PipeMapper() {
     }
 
@@ -31,7 +31,7 @@ final class PipeMapper {
                 pipe.getCreatedAt(), pipe.getUpdatedAt());
     }
 
-    static PipeExecutionResponse execution(PipeExecution value) {
+    public static PipeExecutionResponse execution(PipeExecution value) {
         Long duration = value.getFinishedAt() == null ? null
                 : Duration.between(value.getStartedAt(), value.getFinishedAt()).toMillis();
         return new PipeExecutionResponse(value.getId(), value.getExecutionId(), value.getPipe().getId(), value.getPipeName(),

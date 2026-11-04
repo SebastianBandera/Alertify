@@ -87,6 +87,7 @@ export interface Alert {
   readonly cronExpression: string;
   readonly enabled: boolean;
   readonly allowConcurrentExecutions: boolean;
+  readonly executionMode?: 'STANDALONE' | 'PIPE';
   readonly smartExecutionEnabled: boolean;
   readonly smartExecutionIntervalHours: number | null;
   readonly smartExecutionIntervalSource?: 'FIXED' | 'CONFIGURATION';
@@ -117,6 +118,7 @@ export interface AlertWriteRequest {
   readonly cronExpression: string;
   readonly enabled: boolean;
   readonly allowConcurrentExecutions: boolean;
+  readonly executionMode?: 'STANDALONE' | 'PIPE';
   readonly smartExecutionEnabled: boolean;
   readonly smartExecutionIntervalHours: number | null;
   readonly smartExecutionIntervalSource?: 'FIXED' | 'CONFIGURATION';

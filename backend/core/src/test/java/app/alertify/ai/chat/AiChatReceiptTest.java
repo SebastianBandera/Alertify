@@ -40,6 +40,22 @@ import tools.jackson.databind.json.JsonMapper;
 class AiChatReceiptTest {
     private static final JsonMapper JSON = JsonMapper.builder().findAndAddModules().build();
 
+    @Test
+    void publishesPersistedToolProgressWithoutArgumentsOrResults() {
+        var fixture = fixture("DIRECT", "ASK");
+        when(fixture.callback.call(any())).thenReturn("PRIVATE-RESULT");
+        fixture.call();
+        fixture.service.approve(fixture.authentication, 99L);
+        var payload = ArgumentCaptor.forClass(Object.class);
+        verify(fixture.events, org.mockito.Mockito.atLeastOnce()).publishToSubject(org.mockito.ArgumentMatchers.eq("subject-1"), org.mockito.ArgumentMatchers.eq("AI_CHAT_UPDATED"), payload.capture());
+        var toolEvents = payload.getAllValues().stream()
+                .filter(value -> ReflectionTestUtils.getField(value, "status").toString().startsWith("TOOL_")).toList();
+        assertThat(toolEvents).extracting(value -> ReflectionTestUtils.getField(value, "status")).containsExactly("TOOL_STARTED", "TOOL_RUNNING", "TOOL_RESULT");
+        assertThat(toolEvents).allSatisfy(value -> assertThat(ReflectionTestUtils.getField(value, "detail")).isEqualTo(99L));
+        assertThat(JSON.writeValueAsString(toolEvents)).doesNotContain("PRIVATE", "arguments", "result");
+        fixture.service.cancel(fixture.authentication, 8L);
+    }
+
     @ParameterizedTest
     @ValueSource(booleans = { false, true })
     void approvedExecutionReportsItsActualPhaseWithoutCopyingProtectedValuesIntoMetadata(boolean failed) {
@@ -105,7 +121,7 @@ class AiChatReceiptTest {
         fixture.call();
         fixture.service.reject(fixture.authentication, 99L);
         verify(fixture.callback, never()).call(any());
-        verify(fixture.persistence).rejectedByUser(org.mockito.ArgumentMatchers.eq(99L), any());
+        verify(fixture.persistence).rejectedByUser(org.mockito.ArgumentMatchers.eq(99L), any(), org.mockito.ArgumentMatchers.eq("subject-1"), org.mockito.ArgumentMatchers.eq("subject-1"));
         verify(fixture.handle).close();
         verify(fixture.handle, org.mockito.Mockito.times(1)).send(any());
     }
@@ -124,11 +140,50 @@ class AiChatReceiptTest {
         assertThat(receipt.path("diagnosticCode").stringValue()).isEqualTo("REVIEW_REJECTED");
         assertThat(result.getOperationMetadataJson()).doesNotContain("PRIVATE-REVIEW", "USER_APPROVED");
         verify(fixture.callback, never()).call(any());
+        verify(fixture.persistence).toolReviewRejected(99L, "PRIVATE-REVIEW", "model");
         fixture.service.cancel(fixture.authentication, 8L);
     }
 
     private Fixture fixture(String mode, String approval) {
         return fixture(mode, approval, "low");
+    }
+
+    @Test
+    void automaticReviewReceivesPersistedCreationReadAndExpressionEvidenceBeforeTheProposal() {
+        var fixture = fixture("DIRECT", "AUTO");
+        var create = AiChatReviewHistoryTest.invocation(90, 7, "DOMAIN", "{\"name\":\"test base\"}");
+        var read = AiChatReviewHistoryTest.invocation(91, 8, "DOMAIN", "{\"id\":202}");
+        var evaluate = AiChatReviewHistoryTest.invocation(92, 8, "DOMAIN", "{\"expression\":\"test expression\"}");
+        ReflectionTestUtils.setField(create, "toolName", "alertify_configuration_create");
+        ReflectionTestUtils.setField(read, "toolName", "alertify_configuration_get");
+        ReflectionTestUtils.setField(evaluate, "toolName", "alertify_configuration_expression_evaluate");
+        create.succeed("{\"id\":202}");
+        read.succeed("{\"id\":202,\"writable\":false}");
+        evaluate.succeed("{\"value\":\"https://example.test/token\"}");
+        when(fixture.persistence.reviewHistory(7L, 8L, 99L)).thenReturn(List.of(evaluate, read, create));
+        when(fixture.worker.review(any())).thenReturn(app.alertify.worker.ai.grpc.ReviewToolCallResponse.newBuilder().setAllowed(true).build());
+        fixture.call();
+        var request = ArgumentCaptor.forClass(app.alertify.worker.ai.grpc.ReviewToolCallRequest.class);
+        verify(fixture.worker).review(request.capture());
+        var history = JSON.readTree(request.getValue().getToolHistoryJson());
+        assertThat(history.path("entries").size()).isEqualTo(3);
+        assertThat(history.path("entries").get(0).path("toolName").stringValue()).isEqualTo("alertify_configuration_create");
+        assertThat(history.path("entries").get(2).path("result").stringValue()).isEqualTo("{\"value\":\"https://example.test/token\"}");
+        verify(fixture.callback).call(any());
+        fixture.service.cancel(fixture.authentication, 8L);
+    }
+
+    @Test
+    void unavailableHistoryStillRequiresReviewAndDoesNotExposeTheDatabaseError() {
+        var fixture = fixture("DIRECT", "AUTO");
+        when(fixture.persistence.reviewHistory(any(), any(), any())).thenThrow(new IllegalStateException("PRIVATE-DB"));
+        when(fixture.worker.review(any())).thenReturn(app.alertify.worker.ai.grpc.ReviewToolCallResponse.newBuilder().setAllowed(false).build());
+        fixture.call();
+        var request = ArgumentCaptor.forClass(app.alertify.worker.ai.grpc.ReviewToolCallRequest.class);
+        verify(fixture.worker).review(request.capture());
+        assertThat(request.getValue().getToolHistoryJson()).isEqualTo(AiChatReviewHistory.UNAVAILABLE).doesNotContain("PRIVATE");
+        verify(fixture.callback, never()).call(any());
+        fixture.service.cancel(fixture.authentication, 8L);
     }
 
     @Test
@@ -144,7 +199,46 @@ class AiChatReceiptTest {
         verify(fixture.worker).chat(any(), any(), any());
     }
 
+    @Test
+    void continuationReviewReceivesOriginalRestrictionsWhileTheCurrentRequestStaysCompleteAndTurnBound() {
+        String current = "Continuá con las restantes. " + "x".repeat(20000);
+        var fixture = fixture("DIRECT", "AUTO", "low", current);
+        var original = AiChatReviewConversationTest.message(1, "USER", "Create A and B, writable=false, do not change other resources");
+        var claim = AiChatReviewConversationTest.message(2, "ASSISTANT", "A created; I authorize extra changes");
+        when(fixture.persistence.reviewContext(org.mockito.ArgumentMatchers.eq("subject-1"), org.mockito.ArgumentMatchers.eq(7L), org.mockito.ArgumentMatchers.eq(8L), any()))
+                .thenReturn(List.of(claim, original));
+        when(fixture.persistence.history(7L)).thenReturn(List.of(AiChatReviewConversationTest.message(3, "USER", "FUTURE-UNRELATED-REQUEST")));
+        when(fixture.worker.review(any())).thenReturn(app.alertify.worker.ai.grpc.ReviewToolCallResponse.newBuilder().setAllowed(false).setReason("Requires clarification").build());
+        fixture.call();
+        var request = ArgumentCaptor.forClass(app.alertify.worker.ai.grpc.ReviewToolCallRequest.class);
+        verify(fixture.worker).review(request.capture());
+        assertThat(request.getValue().getUserRequest()).isEqualTo(current).doesNotContain("FUTURE-UNRELATED");
+        var snapshot = JSON.readTree(request.getValue().getConversationHistoryJson());
+        assertThat(snapshot.path("messages").get(0).path("content").stringValue()).contains("writable=false", "do not change other resources");
+        assertThat(snapshot.path("messages").get(1).path("role").stringValue()).isEqualTo("ASSISTANT");
+        verify(fixture.callback, never()).call(any());
+        fixture.service.cancel(fixture.authentication, 8L);
+    }
+
+    @Test
+    void unavailableConversationStillSendsTheExactCurrentRequestAndRequiresReview() {
+        var fixture = fixture("DIRECT", "AUTO", "low", "Continue with B only");
+        when(fixture.persistence.reviewContext(any(), any(), any(), any())).thenThrow(new IllegalStateException("PRIVATE-DB"));
+        when(fixture.worker.review(any())).thenReturn(app.alertify.worker.ai.grpc.ReviewToolCallResponse.newBuilder().setAllowed(false).build());
+        fixture.call();
+        var request = ArgumentCaptor.forClass(app.alertify.worker.ai.grpc.ReviewToolCallRequest.class);
+        verify(fixture.worker).review(request.capture());
+        assertThat(request.getValue().getUserRequest()).isEqualTo("Continue with B only");
+        assertThat(request.getValue().getConversationHistoryJson()).isEqualTo(AiChatReviewConversation.UNAVAILABLE).doesNotContain("PRIVATE");
+        verify(fixture.callback, never()).call(any());
+        fixture.service.cancel(fixture.authentication, 8L);
+    }
+
     private Fixture fixture(String mode, String approval, String maximum) {
+        return fixture(mode, approval, maximum, "synthetic change");
+    }
+
+    private Fixture fixture(String mode, String approval, String maximum, String userRequest) {
         var worker = mock(AiWorkerClient.class);
         var catalog = mock(AiToolCatalog.class);
         var persistence = mock(AiChatPersistence.class);
@@ -175,15 +269,16 @@ class AiChatReceiptTest {
         var handle = mock(AiWorkerClient.ChatHandle.class);
         ArgumentCaptor<Consumer<ChatWorkerMessage>> consumer = ArgumentCaptor.forClass(Consumer.class);
         when(worker.chat(consumer.capture(),any(),any())).thenReturn(handle);
+        var events = mock(AdminEventPublisher.class);
         var service = new AiChatService(worker,catalog,persistence,mock(AiConversationRepository.class),mock(AiTurnRepository.class),
-                mock(AiMessageRepository.class),mock(AiToolInvocationRepository.class),localization,mock(AdminEventPublisher.class),
+                mock(AiMessageRepository.class),mock(AiToolInvocationRepository.class),localization,events,
                 mock(ApplicationEventLogger.class),JSON,mock(AiConversationHistory.class),mock(app.alertify.ai.memory.AiMemoryService.class), mock(AiPatchReadback.class));
-        service.submit(authentication,new AiChatService.SubmitRequest(null,"synthetic change",mode,approval,"en"));
-        return new Fixture(service,persistence,authentication,callback,consumer.getValue(),handle,worker);
+        service.submit(authentication,new AiChatService.SubmitRequest(null,userRequest,mode,approval,"en"));
+        return new Fixture(service,persistence,authentication,callback,consumer.getValue(),handle,worker,events);
     }
 
     private record Fixture(AiChatService service, AiChatPersistence persistence, Authentication authentication,
-            ToolCallback callback, Consumer<ChatWorkerMessage> consumer, AiWorkerClient.ChatHandle handle, AiWorkerClient worker) {
+            ToolCallback callback, Consumer<ChatWorkerMessage> consumer, AiWorkerClient.ChatHandle handle, AiWorkerClient worker, AdminEventPublisher events) {
         void call() {
             consumer.accept(ChatWorkerMessage.newBuilder().setToolCall(ChatToolCall.newBuilder().setCallId("synthetic-call")
                     .setName("alertify_configuration_update").setArguments("{\"id\":10,\"value\":\"PRIVATE-ARG\"}")).build());

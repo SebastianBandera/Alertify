@@ -72,6 +72,10 @@ public class Alert {
     @Column(nullable = false)
     private boolean enabled;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "execution_mode", nullable = false, length = 16)
+    private ExecutionMode executionMode = ExecutionMode.STANDALONE;
+
     @Column(name = "allow_concurrent_executions", nullable = false)
     private boolean allowConcurrentExecutions;
 
@@ -163,6 +167,14 @@ public class Alert {
 
     public String getCronExpression() {
         return cronExpression;
+    }
+
+    public ExecutionMode getExecutionMode() { return executionMode; }
+
+    public void changeExecutionMode(ExecutionMode mode) {
+        if (mode != null)
+            executionMode = mode;
+
     }
 
     public boolean isEnabled() {

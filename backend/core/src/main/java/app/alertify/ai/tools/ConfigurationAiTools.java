@@ -15,6 +15,7 @@ import app.alertify.ai.AiToolSupport;
 import app.alertify.ai.patch.AiPatchService;
 import app.alertify.ai.AlertifyTool;
 import app.alertify.ai.api.AiConfigurationCreateRequest;
+import app.alertify.ai.api.AiConfigurationExpressionDocumentation;
 import app.alertify.ai.api.AiConfigurationExpressionEvaluationRequest;
 import app.alertify.ai.api.AiConfigurationUpdateRequest;
 import app.alertify.ai.api.AiFilter;
@@ -89,7 +90,7 @@ public class ConfigurationAiTools {
         return tools.execute("alertify_configuration_get", () -> withUsageCount(configurations.getFresh(id)));
     }
     
-    @AlertifyTool(name = "alertify_configuration_patch", description = "Preferred tool for partial configuration edits. Read the current definition/version first; send only requested changes. Editable root fields: name, description, valueType, value (native JSON), tagIds and writable. value supports nested JSON paths; preserve writable unless explicitly requested. tagIds is the sorted list of tag IDs from the read response. Atomic operations validate the complete result and verify persistence. The coordinator automatically rereads after commit. Before editing existing elements test parameterKey for parameters, key for steps, both type and resourceId for targets, targetParameterKey for bindings. Full update is only for explicitly requested full replacement.", readOnly = false, refreshTargets = AiRefreshTarget.CONFIGURATIONS)
+    @AlertifyTool(name = "alertify_configuration_patch", description = AiConfigurationExpressionDocumentation.WRITE_GUIDANCE + "For an EXPRESSION, /value is the DSL string itself, not an expressionValue object. Preferred tool for partial configuration edits. Read the current definition/version first; send only requested changes. Editable root fields: name, description, valueType, value (native JSON), tagIds and writable. value supports nested JSON paths; preserve writable unless explicitly requested. tagIds is the sorted list of tag IDs from the read response. Atomic operations validate the complete result and verify persistence. The coordinator automatically rereads after commit. Before editing existing elements test parameterKey for parameters, key for steps, both type and resourceId for targets, targetParameterKey for bindings. Full update is only for explicitly requested full replacement.", readOnly = false, refreshTargets = AiRefreshTarget.CONFIGURATIONS)
     public ConfigurationResponse patch(long id, @Valid app.alertify.ai.api.AiPatchRequest request) {
         return tools.execute("alertify_configuration_patch", () -> {
             requireNonBinary(configurations.getFresh(id).valueType());
@@ -121,17 +122,17 @@ public class ConfigurationAiTools {
         return tools.execute("alertify_configuration_usages", () -> usages.get(id));
     }
 
-    @AlertifyTool(name = "alertify_configuration_expression_suggestions", description = "List safe references available to configuration expressions", readOnly = true)
+    @AlertifyTool(name = "alertify_configuration_expression_suggestions", description = "List currently available configuration expression references. " + AiConfigurationExpressionDocumentation.LANGUAGE + AiConfigurationExpressionDocumentation.WORKFLOW, readOnly = true)
     public ConfigurationExpressionSuggestionsResponse expressionSuggestions() {
         return tools.execute("alertify_configuration_expression_suggestions", expressions::suggestions);
     }
 
-    @AlertifyTool(name = "alertify_configuration_expression_evaluate", description = "Evaluate a draft configuration expression; secret references are forbidden", readOnly = true)
+    @AlertifyTool(name = "alertify_configuration_expression_evaluate", description = "Evaluate a draft configuration expression without saving it. " + AiConfigurationExpressionDocumentation.LANGUAGE + AiConfigurationExpressionDocumentation.WORKFLOW, readOnly = true)
     public ConfigurationExpressionEvaluationResponse evaluateExpression(@Valid AiConfigurationExpressionEvaluationRequest request) {
         return tools.execute("alertify_configuration_expression_evaluate", () -> expressions.evaluate(request.toRequest()));
     }
 
-    @AlertifyTool(name = "alertify_configuration_create", description = "Create a non-binary application configuration. writable controls whether resource executions may persist changed values, not permission for administrative creation or editing. writable=false still allows authorized administrative edits. valueType selects the only interpreted value field: STRING stringValue, EXPRESSION expressionValue, INTEGER integerValue, DECIMAL decimalValue, BOOLEAN booleanValue, DATE dateValue (yyyy-MM-dd), TIME timeValue (HH:mm), DATE_TIME dateTimeValue (ISO-8601 with offset), or JSON jsonValue (serialized JSON). The strict schema includes every value field; use neutral placeholders for fields not selected by valueType because Alertify ignores them.", readOnly = false, refreshTargets = AiRefreshTarget.CONFIGURATIONS)
+    @AlertifyTool(name = "alertify_configuration_create", description = AiConfigurationExpressionDocumentation.WRITE_GUIDANCE + "Create a non-binary application configuration. writable controls whether resource executions may persist changed values, not permission for administrative creation or editing. writable=false still allows authorized administrative edits. valueType selects the only interpreted value field: STRING stringValue, EXPRESSION expressionValue, INTEGER integerValue, DECIMAL decimalValue, BOOLEAN booleanValue, DATE dateValue (yyyy-MM-dd), TIME timeValue (HH:mm), DATE_TIME dateTimeValue (ISO-8601 with offset), or JSON jsonValue (serialized JSON). The strict schema includes every value field; use neutral placeholders for fields not selected by valueType because Alertify ignores them.", readOnly = false, refreshTargets = AiRefreshTarget.CONFIGURATIONS)
     public ConfigurationResponse create(@Valid AiConfigurationCreateRequest request) {
         return tools.execute("alertify_configuration_create", () -> {
             requireNonBinary(request.valueType());
@@ -139,7 +140,7 @@ public class ConfigurationAiTools {
         });
     }
 
-    @AlertifyTool(name = "alertify_configuration_update", description = "Full replacement: prefer alertify_configuration_patch for partial edits. Update a non-binary application configuration using its current version. writable controls whether resource executions may persist changed values, not permission for administrative editing. writable=false still allows authorized edits to value, description, name and tags. Preserve writable unless the user asks to change it; do not enable it to perform an administrative edit. valueType selects the only interpreted value field: STRING stringValue, EXPRESSION expressionValue, INTEGER integerValue, DECIMAL decimalValue, BOOLEAN booleanValue, DATE dateValue (yyyy-MM-dd), TIME timeValue (HH:mm), DATE_TIME dateTimeValue (ISO-8601 with offset), or JSON jsonValue (serialized JSON). The strict schema includes every value field; use neutral placeholders for fields not selected by valueType because Alertify ignores them.", readOnly = false, refreshTargets = AiRefreshTarget.CONFIGURATIONS)
+    @AlertifyTool(name = "alertify_configuration_update", description = AiConfigurationExpressionDocumentation.WRITE_GUIDANCE + "Full replacement: prefer alertify_configuration_patch for partial edits. Update a non-binary application configuration using its current version. writable controls whether resource executions may persist changed values, not permission for administrative editing. writable=false still allows authorized edits to value, description, name and tags. Preserve writable unless the user asks to change it; do not enable it to perform an administrative edit. valueType selects the only interpreted value field: STRING stringValue, EXPRESSION expressionValue, INTEGER integerValue, DECIMAL decimalValue, BOOLEAN booleanValue, DATE dateValue (yyyy-MM-dd), TIME timeValue (HH:mm), DATE_TIME dateTimeValue (ISO-8601 with offset), or JSON jsonValue (serialized JSON). The strict schema includes every value field; use neutral placeholders for fields not selected by valueType because Alertify ignores them.", readOnly = false, refreshTargets = AiRefreshTarget.CONFIGURATIONS)
     public ConfigurationResponse update(long id, @Valid AiConfigurationUpdateRequest request) {
         return tools.execute("alertify_configuration_update", () -> {
             requireNonBinary(configurations.get(id).valueType());

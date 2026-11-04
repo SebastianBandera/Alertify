@@ -688,6 +688,14 @@
               </aside>
             </section>
           }
+          <label>
+            <span>{{ localization.translate('alerts.form.executionMode') }}</span>
+            <select name="executionMode" [ngModel]="form().executionMode" (ngModelChange)="patchForm({ executionMode: $event })">
+              <option value="STANDALONE">Standalone</option>
+              <option value="PIPE">{{ localization.translate('alerts.form.executionMode.pipe') }}</option>
+            </select>
+            <small>{{ localization.translate('alerts.form.executionMode.help') }}</small>
+          </label>
           <label class="checkbox checkbox--with-help full">
             <input
               type="checkbox"

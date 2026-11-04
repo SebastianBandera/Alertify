@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import app.alertify.ai.AiInvocationContextHolder;
 import app.alertify.api.error.ResourceNotFoundException;
+import app.alertify.dashboard.DashboardPipeEventPublisher;
 import app.alertify.jpa.repository.PipeExecutionRepository;
 import app.alertify.jpa.repository.PipeRepository;
 import app.alertify.jpa.repository.PipeStepResultRepository;
@@ -23,16 +24,18 @@ import app.alertify.pipes.model.PipeStepStatus;
 
 @Service
 public class PipeExecutionPersistenceService {
+    private final DashboardPipeEventPublisher dashboard;
     private final PipeRepository pipeRepository;
     private final PipeExecutionRepository executionRepository;
     private final PipeStepResultRepository stepRepository;
     private final ApplicationEventLogger eventLogger;
 
-    public PipeExecutionPersistenceService(PipeRepository pipeRepository, PipeExecutionRepository executionRepository, PipeStepResultRepository stepRepository, ApplicationEventLogger eventLogger) {
+    public PipeExecutionPersistenceService(PipeRepository pipeRepository, PipeExecutionRepository executionRepository, PipeStepResultRepository stepRepository, ApplicationEventLogger eventLogger, DashboardPipeEventPublisher dashboard) {
         this.pipeRepository = pipeRepository;
         this.executionRepository = executionRepository;
         this.stepRepository = stepRepository;
         this.eventLogger = eventLogger;
+        this.dashboard = dashboard;
     }
 
     @Transactional(readOnly = true)
@@ -59,6 +62,7 @@ public class PipeExecutionPersistenceService {
         execution.recordAiProvenance(AiInvocationContextHolder.currentProvenance());
         managed.getSteps().forEach(step -> execution.addStep(new PipeStepResult(execution, step)));
         executionRepository.saveAndFlush(execution);
+        dashboard.changedAfterCommit(pipe.getId());
         eventLogger.successAfterCommit("PIPE_EXECUTION_STARTED", Map.of("executionId", executionId, "pipeId", pipe.getId(), "pipeName", pipe.getName()));
     }
 
@@ -67,6 +71,7 @@ public class PipeExecutionPersistenceService {
         PipeStepResult step = step(executionId, stepKey);
         step.start();
         stepRepository.flush();
+        dashboard.changedAfterCommit(execution(executionId).getPipe().getId());
     }
 
     @Transactional
@@ -74,6 +79,7 @@ public class PipeExecutionPersistenceService {
         PipeStepResult step = step(executionId, stepKey);
         step.complete(status, outcome, resourceExecutionId, errorCode);
         stepRepository.flush();
+        dashboard.changedAfterCommit(execution(executionId).getPipe().getId());
     }
 
     @Transactional
@@ -83,6 +89,7 @@ public class PipeExecutionPersistenceService {
             execution.finish(status, outcome, errorCode);
 
         executionRepository.flush();
+        dashboard.changedAfterCommit(execution.getPipe().getId());
         eventLogger.successAfterCommit("PIPE_EXECUTION_COMPLETED", Map.of("executionId", executionId,
                 "pipeId", execution.getPipe().getId(), "status", execution.getStatus().name(), "outcome", execution.getOutcome().name()));
     }
@@ -93,6 +100,7 @@ public class PipeExecutionPersistenceService {
         if (execution != null && execution.getStatus() == PipeExecutionStatus.RUNNING) {
             execution.finish(PipeExecutionStatus.FAILED, PipeOutcome.ERROR, errorCode);
             executionRepository.flush();
+            dashboard.changedAfterCommit(execution.getPipe().getId());
         }
     }
 

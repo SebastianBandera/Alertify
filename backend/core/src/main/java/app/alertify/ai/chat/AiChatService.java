@@ -133,7 +133,7 @@ public class AiChatService {
         AiChatPersistence.StartedTurn started = persistence.start(subject, username, request.conversationId(),
                 request.message().strip(), mode, approval, settings.getModel(), effort);
         List<AiToolDescriptor> permitted = catalog.descriptorsFor(authentication, EnumSet.allOf(AiToolGroup.class));
-        ActiveTurn active = new ActiveTurn(started.conversationId(), started.turnId(), subject, authentication, locale, mode, approval,
+        ActiveTurn active = new ActiveTurn(started.conversationId(), started.turnId(), subject, authentication, request.message().strip(), locale, mode, approval,
                 settings, effort, permitted.stream().collect(Collectors.toUnmodifiableMap(AiToolDescriptor::name, value -> value)));
         activeTurns.put(active.turnId, active);
         try {
@@ -156,7 +156,8 @@ public class AiChatService {
             throw new ResourceNotFoundException("Pending AI tool approval not found or expired");
         if (!pendingApprovals.remove(invocationId, pending))
             throw new IllegalStateException("The AI tool approval was already resolved");
-        persistence.toolRunning(invocationId, "Approved by the user");
+        persistence.toolApproved(invocationId, "Approved by the user", "USER", username(authentication), authentication.getName());
+        publish(pending.active, "TOOL_RUNNING", invocationId);
         execute(pending.active, pending.invocation, pending.descriptor, pending.callId, pending.arguments);
     }
 
@@ -166,7 +167,7 @@ public class AiChatService {
                 || !pendingApprovals.remove(invocationId, pending))
             throw new ResourceNotFoundException("Pending AI tool approval not found");
         String message = userRejectionMessage(pending.active.locale, pending.descriptor.name());
-        persistence.rejectedByUser(invocationId, message);
+        persistence.rejectedByUser(invocationId, message, username(authentication), authentication.getName());
         finish(pending.active);
         publish(pending.active, STATUS_CANCELLED, message);
     }
@@ -364,6 +365,7 @@ public class AiChatService {
         AiToolInvocation invocation = persistence.tool(active.turnId, generation, callId, name,
                 bounded(arguments, MAX_TOOL_ARGUMENT_BYTES), audit.kind(), audit.declared(), audit.allowed(), audit.readOnly(),
                 audit.destructiveHint(), audit.idempotentHint(), audit.openWorldHint(), audit.refreshTargets(), approval);
+        publish(active, "TOOL_STARTED", invocation.getId());
         if (!audit.allowed()) {
             String code = historyDenial != null ? historyDenial : audit.declared() ? "TOOL_NOT_ALLOWED" : "TOOL_UNKNOWN";
             String output = historyDenial != null ? "Failed: this feature is disabled or its configuration could not be verified."
@@ -404,8 +406,10 @@ public class AiChatService {
             var request = ReviewToolCallRequest.newBuilder()
                     .setModel(reviewerModel(active.settings)).setReasoningEffort(reviewerEffort(active.settings))
                     .setConversationId(active.conversationId).setTurnId(active.turnId)
-                    .setUserRequest(latestUserMessage(active.conversationId)).setToolName(descriptor.name())
+                    .setUserRequest(active.userRequest).setToolName(descriptor.name())
                     .setToolDescription(descriptor.description()).setArguments(arguments)
+                    .setToolHistoryJson(reviewHistoryJson(active, invocation.getId()))
+                    .setConversationHistoryJson(reviewConversationJson(active, invocation))
                     .setDestructiveHint(descriptor.destructiveHint()).setIdempotentHint(descriptor.idempotentHint())
                     .setOpenWorldHint(descriptor.openWorldHint()).build();
             app.alertify.worker.ai.grpc.ReviewToolCallResponse review;
@@ -413,7 +417,7 @@ public class AiChatService {
                 review = worker.review(request);
             } catch (RuntimeException exception) {
                 String output = "Failed: the automatic reviewer could not evaluate this action.";
-                persistence.toolFailed(invocation.getId(), output, "REVIEW_FAILED");
+                persistence.toolReviewFailed(invocation.getId(), output, reviewerModel(active.settings));
                 sendResult(active, invocation, callId, output, true, "REVIEW_FAILED", "REVIEW", "REVIEW_FAILED", "FAILED", List.of());
                 publish(active, STATUS_TOOL_RESULT, invocation.getId());
                 return;
@@ -423,7 +427,8 @@ public class AiChatService {
                 publish(active, "USAGE", null);
             }
             if (!review.getAllowed()) {
-                persistence.toolRejected(invocation.getId(), review.getReason(), "REVIEW_REJECTED");
+                persistence.toolReviewRejected(invocation.getId(), review.getReason(), reviewerModel(active.settings));
+                publish(active, STATUS_TOOL_RESULT, invocation.getId());
                 if (++active.autoRejections >= 3) {
                     fail(active, "AI_REVIEW_LIMIT", "The automatic reviewer rejected three proposed actions");
                     return;
@@ -431,7 +436,8 @@ public class AiChatService {
                 sendResult(active, invocation, callId, "Failed: the automatic reviewer rejected this action. Choose a safer alternative. Reason: " + review.getReason(), true, "REVIEW_REJECTED", "REVIEW", "AUTO_REJECTED", "REJECTED", List.of());
                 return;
             }
-            persistence.toolRunning(invocation.getId(), review.getReason());
+            persistence.toolApproved(invocation.getId(), review.getReason(), "AUTOMATIC_REVIEWER", reviewerModel(active.settings), null);
+            publish(active, "TOOL_RUNNING", invocation.getId());
         }
         execute(active, invocation, descriptor, callId, arguments);
     }
@@ -572,6 +578,14 @@ public class AiChatService {
             internalResult(active, invocation, callId, bounded(json.writeValueAsString(entries), MAX_TOOL_OUTPUT_BYTES), false, "");
         } catch (RuntimeException exception) {
             internalResult(active, invocation, callId, "Failed: restoration history could not be read.", true, "RESTORATION_HISTORY_FAILED");
+        }
+    }
+
+    private String reviewHistoryJson(ActiveTurn active, Long invocationId) {
+        try {
+            return AiChatReviewHistory.encode(json, persistence.reviewHistory(active.conversationId, active.turnId, invocationId));
+        } catch (RuntimeException exception) {
+            return AiChatReviewHistory.UNAVAILABLE;
         }
     }
 
@@ -893,12 +907,12 @@ public class AiChatService {
                 .setReadOnly(true).setIdempotentHint(true).build();
     }
 
-    private String latestUserMessage(Long conversationId) {
-        List<AiMessage> history = persistence.history(conversationId);
-        for (int index = history.size() - 1; index >= 0; index--)
-            if ("USER".equals(history.get(index).getRole()))
-                return history.get(index).getContent();
-        return "";
+    private String reviewConversationJson(ActiveTurn active, AiToolInvocation invocation) {
+        try {
+            return AiChatReviewConversation.encode(json, persistence.reviewContext(active.subject, active.conversationId, active.turnId, invocation.getCreatedAt()));
+        } catch (RuntimeException exception) {
+            return AiChatReviewConversation.UNAVAILABLE;
+        }
     }
 
     private ToolInvocationResponse invocation(AiToolInvocation value) {
@@ -906,7 +920,8 @@ public class AiChatService {
                 value.isDeclared(), value.isAllowed(), value.getArguments(), value.getResult(), value.getStatus(), value.isReadOnly(),
                 value.isDestructiveHint(), value.isIdempotentHint(), value.isOpenWorldHint(),
                 value.getRefreshTargets().isBlank() ? List.of() : Arrays.asList(value.getRefreshTargets().split(",")),
-                value.getReviewReason(), value.getDiagnosticCode(), value.getCreatedAt(), value.getFinishedAt());
+                value.getReviewReason(), value.getDiagnosticCode(), value.getCreatedAt(), value.getFinishedAt(),
+                value.getApprovalDecision(), value.getApprovalActorType(), value.getApprovalActor(), value.getApprovalActorSubject(), value.getApprovalDecidedAt());
     }
 
     private TurnResponse turn(AiTurn value) {
@@ -1028,6 +1043,7 @@ public class AiChatService {
         private final Long turnId;
         private final String subject;
         private final Authentication authentication;
+        private final String userRequest;
         private final String locale;
         private final String mode;
         private final String approvalPolicy;
@@ -1048,12 +1064,13 @@ public class AiChatService {
             }
         }
 
-        private ActiveTurn(Long conversationId, Long turnId, String subject, Authentication authentication, String locale, String mode,
+        private ActiveTurn(Long conversationId, Long turnId, String subject, Authentication authentication, String userRequest, String locale, String mode,
                 String approvalPolicy, AiSettings settings, String effort, Map<String, AiToolDescriptor> descriptors) {
             this.conversationId = conversationId;
             this.turnId = turnId;
             this.subject = subject;
             this.authentication = authentication;
+            this.userRequest = userRequest;
             this.locale = locale;
             this.mode = mode;
             this.approvalPolicy = approvalPolicy;
@@ -1125,7 +1142,8 @@ public class AiChatService {
     public record ToolInvocationResponse(Long id, String callId, long generation, String toolName, String kind,
             boolean declared, boolean allowed, String arguments, String result, String status, boolean readOnly,
             boolean destructiveHint, boolean idempotentHint, boolean openWorldHint, List<String> refreshTargets,
-            String reviewReason, String diagnosticCode, Instant createdAt, Instant finishedAt) {
+            String reviewReason, String diagnosticCode, Instant createdAt, Instant finishedAt,
+            String approvalDecision, String approvalActorType, String approvalActor, String approvalActorSubject, Instant approvalDecidedAt) {
     }
 
     private record RestorationHistoryEntry(Long invocationId, Long turnId, String toolName, String arguments,

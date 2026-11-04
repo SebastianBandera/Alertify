@@ -3,6 +3,7 @@ package app.alertify.alerts.api;
 import java.util.List;
 import java.util.Set;
 
+import app.alertify.alerts.model.ExecutionMode;
 import app.alertify.alerts.model.SmartExecutionPolicy;
 import app.alertify.alerts.model.SmartExecutionIntervalSource;
 
@@ -28,8 +29,13 @@ public record AlertUpdateRequest(
     @Positive Integer smartExecutionIntervalHours,
     SmartExecutionPolicy smartExecutionPolicy,
     SmartExecutionIntervalSource smartExecutionIntervalSource,
-    @jakarta.validation.constraints.Positive Long smartExecutionIntervalConfigurationId
+    @jakarta.validation.constraints.Positive Long smartExecutionIntervalConfigurationId,
+    ExecutionMode executionMode
 ) {
+    public AlertUpdateRequest(Long version, String name, String description, String cronExpression, boolean enabled, boolean allowConcurrentExecutions, List<AlertParameterValueRequest> parameters, Set<Long> tagIds, Boolean persistentIssues, Boolean smartExecutionEnabled, Integer smartExecutionIntervalHours, SmartExecutionPolicy smartExecutionPolicy, SmartExecutionIntervalSource smartExecutionIntervalSource, Long smartExecutionIntervalConfigurationId) {
+        this(version, name, description, cronExpression, enabled, allowConcurrentExecutions, parameters, tagIds, persistentIssues, smartExecutionEnabled, smartExecutionIntervalHours, smartExecutionPolicy, smartExecutionIntervalSource, smartExecutionIntervalConfigurationId, null);
+    }
+
     public AlertUpdateRequest(Long version, String name, String description, String cronExpression, boolean enabled, boolean allowConcurrentExecutions, List<AlertParameterValueRequest> parameters, Set<Long> tagIds, Boolean persistentIssues, Boolean smartExecutionEnabled, Integer smartExecutionIntervalHours, SmartExecutionPolicy smartExecutionPolicy) {
         this(version, name, description, cronExpression, enabled, allowConcurrentExecutions, parameters, tagIds, persistentIssues, smartExecutionEnabled, smartExecutionIntervalHours, smartExecutionPolicy, null, null);
     }

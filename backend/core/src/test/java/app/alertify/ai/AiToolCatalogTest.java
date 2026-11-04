@@ -232,6 +232,28 @@ class AiToolCatalogTest {
         assertTrue(schemaProperty(pipeUpdateSchema, "sourceOutputKey").path("description").stringValue().contains("never both"));
         JsonNode expressionSchema = JSON.readTree(descriptors.get("alertify_configuration_expression_evaluate").inputSchema());
         assertTrue(schemaProperty(expressionSchema, "configurationId").path("description").stringValue().contains("null or 0"));
+        for (String toolName : List.of("alertify_configuration_expression_suggestions", "alertify_configuration_expression_evaluate")) {
+            String description = descriptors.get(toolName).description();
+            assertTrue(description.contains("{{configs.kk base URL develop}}protocol/openid-connect/token"), toolName);
+            assertTrue(description.contains("concatenate by adjacency"), toolName);
+            assertTrue(description.contains("including another EXPRESSION"), toolName);
+            assertTrue(description.contains("configurations: [] means no configurations exist yet"), toolName);
+            assertTrue(description.contains("create the requested base first, then evaluate"), toolName);
+            assertTrue(description.contains("Secret references are forbidden"), toolName);
+        }
+        assertTrue(schemaProperty(expressionSchema, "expression").path("description").stringValue().contains("{{configs.NAME}}"));
+        for (String toolName : List.of("alertify_configuration_create", "alertify_configuration_update")) {
+            JsonNode schema = JSON.readTree(descriptors.get(toolName).inputSchema());
+            String description = schemaProperty(schema, "expressionValue").path("description").stringValue();
+            assertTrue(description.contains("{{configs.NAME}}"), toolName);
+            assertTrue(description.contains("concatenate by adjacency"), toolName);
+            assertTrue(description.contains("alertify_configuration_expression_evaluate"), toolName);
+        }
+        for (String toolName : List.of("alertify_configuration_create", "alertify_configuration_update", "alertify_configuration_patch")) {
+            assertTrue(descriptors.get(toolName).description().contains("alertify_configuration_expression_suggestions"), toolName);
+            assertTrue(descriptors.get(toolName).description().contains("do not replace a requested EXPRESSION with STRING"), toolName);
+        }
+        assertTrue(descriptors.get("alertify_configuration_patch").description().contains("/value is the DSL string itself"));
         assertFalse(descriptors.get("alertify_procedure_run").readOnly());
         assertEquals(Set.of(AiRefreshTarget.PROCEDURES), descriptors.get("alertify_procedure_run").refreshTargets());
         assertEquals(Set.of(AiRefreshTarget.CONFIGURATIONS), descriptors.get("alertify_configuration_create").refreshTargets());

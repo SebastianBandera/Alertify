@@ -6,6 +6,7 @@ import java.util.Set;
 import org.springframework.ai.tool.annotation.ToolParam;
 
 import app.alertify.alerts.api.AlertUpdateRequest;
+import app.alertify.alerts.model.ExecutionMode;
 import app.alertify.alerts.model.SmartExecutionPolicy;
 import app.alertify.alerts.model.SmartExecutionIntervalSource;
 import jakarta.validation.Valid;
@@ -29,8 +30,13 @@ public record AiAlertUpdateRequest(
     @ToolParam(required = false, description = "null preserves the current smart interval when smart execution remains enabled. Supply a positive interval when enabling or changing smart execution; disabling smart execution clears its interval.") @PositiveOrZero Integer smartExecutionIntervalHours,
     @ToolParam(required = false, description = "null preserves the current smart policy when smart execution remains enabled. Disabling smart execution clears its policy. This option does not change persistentIssues.") SmartExecutionPolicy smartExecutionPolicy,
     @ToolParam(required = false, description = "null preserves interval source. FIXED uses positive smartExecutionIntervalHours. CONFIGURATION reads hours from an INTEGER Config, clamped to 1..2147483647; a missing or incompatible Config records one SMART ERROR per incident.") SmartExecutionIntervalSource smartExecutionIntervalSource,
-    @ToolParam(required = false, description = "Positive INTEGER configuration ID for a CONFIGURATION interval. Omit both source and ID to preserve them. When explicitly selecting CONFIGURATION, supply the ID; null with an explicit source clears the reference. Do not change the Config writable flag.") @Positive Long smartExecutionIntervalConfigurationId
+    @ToolParam(required = false, description = "Positive INTEGER configuration ID for a CONFIGURATION interval. Omit both source and ID to preserve them. When explicitly selecting CONFIGURATION, supply the ID; null with an explicit source clears the reference. Do not change the Config writable flag.") @Positive Long smartExecutionIntervalConfigurationId,
+    @ToolParam(required = false, description = "Informational intended presentation context. null preserves the current mode. STANDALONE or PIPE changes dashboard presentation only; it does not change cron, smart execution or manual execution.") ExecutionMode executionMode
 ) {
+    public AiAlertUpdateRequest(Long version, String name, String description, String cronExpression, boolean enabled, boolean allowConcurrentExecutions, List<AiAlertParameterValue> parameters, Set<Long> tagIds, Boolean persistentIssues, Boolean smartExecutionEnabled, Integer smartExecutionIntervalHours, SmartExecutionPolicy smartExecutionPolicy, SmartExecutionIntervalSource smartExecutionIntervalSource, Long smartExecutionIntervalConfigurationId) {
+        this(version, name, description, cronExpression, enabled, allowConcurrentExecutions, parameters, tagIds, persistentIssues, smartExecutionEnabled, smartExecutionIntervalHours, smartExecutionPolicy, smartExecutionIntervalSource, smartExecutionIntervalConfigurationId, null);
+    }
+
     public AiAlertUpdateRequest(Long version, String name, String description, String cronExpression, boolean enabled, boolean allowConcurrentExecutions, List<AiAlertParameterValue> parameters, Set<Long> tagIds, Boolean persistentIssues, Boolean smartExecutionEnabled, Integer smartExecutionIntervalHours, SmartExecutionPolicy smartExecutionPolicy) {
         this(version, name, description, cronExpression, enabled, allowConcurrentExecutions, parameters, tagIds, persistentIssues, smartExecutionEnabled, smartExecutionIntervalHours, smartExecutionPolicy, null, null);
     }
@@ -39,6 +45,6 @@ public record AiAlertUpdateRequest(
     public AlertUpdateRequest toRequest() {
         return new AlertUpdateRequest(version, name, description, cronExpression, enabled, allowConcurrentExecutions,
                 parameters.stream().map(AiAlertParameterValue::toRequest).toList(), tagIds, persistentIssues,
-                smartExecutionEnabled, smartExecutionIntervalHours, smartExecutionPolicy, smartExecutionIntervalSource, smartExecutionIntervalConfigurationId);
+                smartExecutionEnabled, smartExecutionIntervalHours, smartExecutionPolicy, smartExecutionIntervalSource, smartExecutionIntervalConfigurationId, executionMode);
     }
 }

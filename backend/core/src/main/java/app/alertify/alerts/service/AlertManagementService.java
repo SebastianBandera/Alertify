@@ -174,6 +174,7 @@ public class AlertManagementService {
         boolean persistentIssues = request.persistentIssues() == null
                 ? template.isPersistentIssuesDefault()
                 : request.persistentIssues();
+        newAlert.changeExecutionMode(request.executionMode());
         newAlert.changePersistentIssues(persistentIssues, Instant.now());
         changeSmartExecution(newAlert, request.smartExecutionEnabled(), request.smartExecutionIntervalHours(), request.smartExecutionPolicy(), request.smartExecutionIntervalSource(), request.smartExecutionIntervalConfigurationId(), false);
         Alert alert = alertRepository.saveAndFlush(newAlert);
@@ -190,6 +191,7 @@ public class AlertManagementService {
         ensureVersion(alert, request.version());
         String name = normalizeRequired(request.name(), "name");
         ensureNameAvailable(name, id);
+        alert.changeExecutionMode(request.executionMode());
         alert.rename(name);
         alert.changeDescription(normalizeOptional(request.description()));
         alert.reschedule(validateCron(request.cronExpression()));

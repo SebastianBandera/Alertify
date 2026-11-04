@@ -34,6 +34,7 @@ import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 
 import app.alertify.dashboard.DashboardPageRequestHandler;
+import app.alertify.dashboard.DashboardPipePageRequestHandler;
 import app.alertify.logging.ApplicationEventLogger;
 import app.alertify.logging.RequestLogContext;
 
@@ -46,6 +47,7 @@ class ViewerEventWebSocketHandlerTest {
     @Mock private JwtDecoder jwtDecoder;
     @Mock private JwtAuthenticationConverter authenticationConverter;
     @Mock private DashboardPageRequestHandler pageRequestHandler;
+    @Mock private DashboardPipePageRequestHandler pipePageRequestHandler;
     @Mock private WebSocketSession session;
 
     private ViewerEventWebSocketHandler handler;
@@ -57,7 +59,7 @@ class ViewerEventWebSocketHandlerTest {
         when(session.isOpen()).thenReturn(true);
         request = new RequestLogContext(UUID.randomUUID(), "/alertify/api/viewer/events", "GET", System.nanoTime());
         when(session.getAttributes()).thenReturn(Map.of(RequestLogContext.REQUEST_ATTRIBUTE, request));
-        handler = new ViewerEventWebSocketHandler(jwtDecoder, authenticationConverter, JsonMapper.builder().build(), pageRequestHandler, eventLogger);
+        handler = new ViewerEventWebSocketHandler(jwtDecoder, authenticationConverter, JsonMapper.builder().build(), pageRequestHandler, eventLogger, pipePageRequestHandler);
         handler.afterConnectionEstablished(session);
     }
 
@@ -105,6 +107,7 @@ class ViewerEventWebSocketHandlerTest {
     void rejectsAdministrativeRequestsWithoutInvokingAHandler() throws Exception {
         authenticateAs("ROLE_DASHBOARD");
         when(pageRequestHandler.requestName()).thenReturn("DASHBOARD_PAGE");
+        when(pipePageRequestHandler.requestName()).thenReturn("DASHBOARD_PIPE_PAGE");
         handler.handleTextMessage(session, new TextMessage("{\"type\":\"AUTH\",\"token\":\"secret-token\"}"));
 
         handler.handleTextMessage(session, new TextMessage("{\"type\":\"REQUEST\",\"requestId\":\"request-1\",\"name\":\"SYSTEM_STATUS\",\"payload\":{}}"));

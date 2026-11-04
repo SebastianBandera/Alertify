@@ -30,10 +30,13 @@ import { AlertChartComponent } from './alert-chart.component';
 import { DashboardAcknowledgementService } from './dashboard-acknowledgement.service';
 import {
   compareDashboardCards,
+  cardForExecution,
   DashboardAlertCard,
   effectiveStatus,
   PendingIssue,
 } from './dashboard-card';
+import { DashboardPipeAlertDetail, DashboardPipesComponent } from './pipes/dashboard-pipes.component';
+import { DashboardPipeLiveService } from './pipes/dashboard-pipe-live.service';
 import { DashboardDeck } from './dashboard-deck';
 import { DashboardChange, DashboardLiveService } from './dashboard-live.service';
 import { DashboardMuteService } from './dashboard-mute.service';
@@ -134,7 +137,7 @@ const TRIGGER_LABEL_KEYS: Readonly<Record<ExecutionTrigger, TranslationKey>> = {
 
 @Component({
   selector: 'app-dashboard',
-  imports: [AlertChartComponent, DatePipe, FormsModule, NgTemplateOutlet, DragScrollDirective, DashboardRibbonComponent, DashboardConnectionOverlayComponent],
+  imports: [DashboardPipesComponent, AlertChartComponent, DatePipe, FormsModule, NgTemplateOutlet, DragScrollDirective, DashboardRibbonComponent, DashboardConnectionOverlayComponent],
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -154,7 +157,10 @@ export class DashboardComponent {
   protected readonly mute = inject(DashboardMuteService);
   protected readonly isAdmin = this.authService.isAdmin;
   protected readonly canRunFromDashboard = this.authService.canRunFromDashboard;
-  protected readonly cards = this.live.cards;
+  private readonly pipeLive = inject(DashboardPipeLiveService);
+  private readonly pipesView = viewChild(DashboardPipesComponent);
+  protected readonly hasPipes = computed(() => (this.pipesView()?.visibleCount() ?? this.pipeLive.cards().length) > 0);
+  protected readonly cards = computed(() => this.live.cards().filter(card => card.alert.executionMode !== 'PIPE'));
   /* Cards whose state just changed, while their highlight animation plays. */
   protected readonly changedIds = signal<ReadonlySet<number>>(new Set());
   protected readonly acknowledgements = inject(DashboardAcknowledgementService);
@@ -165,6 +171,7 @@ export class DashboardComponent {
   protected readonly availableTags = computed<readonly AlertTag[]>(() => {
     const tags = new Map<number, AlertTag>();
     for (const card of this.cards()) for (const tag of card.alert.tags) tags.set(tag.id, tag);
+    for (const card of this.pipeLive.cards()) for (const tag of card.tags) tags.set(tag.id, { ...tag, scope: 'ALERT' });
     return [...tags.values()].sort((left, right) => left.name.localeCompare(right.name));
   });
   protected readonly visibleCards = computed(() => {
@@ -206,6 +213,15 @@ export class DashboardComponent {
     return Array.from({ length: Math.max(0, pending) }, (_, index) => index);
   });
   protected readonly selectedCard = signal<DashboardAlertCard | null>(null);
+  protected readonly selectedPipeAlert = signal<DashboardPipeAlertDetail | null>(null);
+  private readonly pipeAlertCard = computed(() => {
+    const execution = this.selectedPipeAlert()?.step.alertExecution;
+    return execution ? this.live.cards().find(card => card.alert.id === execution.alertId) : undefined;
+  });
+  protected readonly pipeAlertIsLatest = computed(() => {
+    const execution = this.selectedPipeAlert()?.step.alertExecution;
+    return !execution || this.pipeAlertCard()?.lastExecution?.executionId === execution.executionId;
+  });
   protected readonly descriptionTooltip = signal<{ alertId: number; text: string; x: number; y: number } | null>(null);
   private readonly descriptionTooltipElement = viewChild<ElementRef<HTMLElement>>('descriptionTooltipElement');
   private descriptionTooltipTimer: number | null = null;
@@ -245,9 +261,20 @@ export class DashboardComponent {
       this.cards();
       this.openRequestedCard();
     });
+    effect(() => {
+      const detail = this.selectedPipeAlert();
+      const execution = detail?.step.alertExecution;
+      if (!execution) return;
+      const card = this.pipeAlertCard();
+      if (card) this.selectedCard.set(cardForExecution(card, execution));
+      else if (!this.live.loading()) {
+        this.selectedPipeAlert.set(null);
+        this.showNotice(this.localization.translate('dashboard.pipe.requestFailed'), true);
+      }
+    });
     /* Focus the dialog once it is rendered so Escape closes it without an extra click. */
     effect(() => {
-      if (this.selectedCard()) this.detailDialog()?.nativeElement.focus();
+      if (this.selectedCard()) this.detailDialog()?.nativeElement.focus({ preventScroll: true });
     });
     effect(() => storeViewSettings(this.settings()));
     /* The user's own "seen" marks come back on every (re)connection, like the tiles themselves. */
@@ -293,7 +320,7 @@ export class DashboardComponent {
     const card = this.cards().find((candidate) => candidate.alert.id === alertId);
     if (!card) return;
     this.requestedAlertId = null;
-    this.selectedCard.set(card);
+    this.openCard(card);
     void this.router.navigate([], { relativeTo: this.route, queryParams: { alert: null }, queryParamsHandling: 'merge', replaceUrl: true });
   }
 
@@ -308,7 +335,15 @@ export class DashboardComponent {
 
   protected openCard(card: DashboardAlertCard): void {
     this.hideDescriptionTooltip();
+    this.selectedPipeAlert.set(null);
     this.selectedCard.set(card);
+  }
+
+  protected openPipeAlert(detail: DashboardPipeAlertDetail): void {
+    this.hideDescriptionTooltip();
+    this.closeCardMenu();
+    this.selectedCard.set(null);
+    this.selectedPipeAlert.set(detail);
   }
 
   protected scheduleDescriptionTooltip(event: PointerEvent, card: DashboardAlertCard): void {
@@ -335,7 +370,10 @@ export class DashboardComponent {
   }
 
   protected closeCard(): void {
+    const opener = this.selectedPipeAlert()?.opener;
+    this.selectedPipeAlert.set(null);
     this.selectedCard.set(null);
+    if (opener?.isConnected) opener.focus({ preventScroll: true });
   }
 
   /* Secondary click, the context-menu key or Shift+F10; the keyboard ones report no pointer position. */
@@ -535,7 +573,7 @@ export class DashboardComponent {
     const before = this.cardRects();
     if (change.kind === 'update' && change.alertId !== null) {
       const selected = this.selectedCard();
-      if (selected?.alert.id === change.alertId) {
+      if (selected?.alert.id === change.alertId && !this.selectedPipeAlert()) {
         this.selectedCard.set(this.cards().find((card) => card.alert.id === change.alertId) ?? selected);
       }
       if (change.stateChanged) this.highlight(change.alertId);

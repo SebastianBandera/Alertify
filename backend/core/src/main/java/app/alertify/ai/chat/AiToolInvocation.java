@@ -51,6 +51,16 @@ public class AiToolInvocation {
     private String refreshTargets;
     @Column(name = "review_reason", columnDefinition = "text")
     private String reviewReason;
+    @Column(name = "approval_decision", nullable = false, length = 24)
+    private String approvalDecision = "NOT_RECORDED";
+    @Column(name = "approval_actor_type", length = 24)
+    private String approvalActorType;
+    @Column(name = "approval_actor", columnDefinition = "text")
+    private String approvalActor;
+    @Column(name = "approval_actor_subject", columnDefinition = "text")
+    private String approvalActorSubject;
+    @Column(name = "approval_decided_at")
+    private Instant approvalDecidedAt;
     @Column(name = "diagnostic_code", length = 64)
     private String diagnosticCode;
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -78,6 +88,7 @@ public class AiToolInvocation {
         this.openWorldHint = openWorldHint;
         this.refreshTargets = refreshTargets;
         status = waitingApproval ? "PENDING_APPROVAL" : "RUNNING";
+        approvalDecision = readOnly ? "NOT_REQUIRED" : allowed ? "PENDING" : "NOT_REQUESTED";
         createdAt = Instant.now();
     }
 
@@ -98,15 +109,33 @@ public class AiToolInvocation {
     public boolean isOpenWorldHint() { return openWorldHint; }
     public String getRefreshTargets() { return refreshTargets; }
     public String getReviewReason() { return reviewReason; }
+    public String getApprovalDecision() { return approvalDecision; }
+    public String getApprovalActorType() { return approvalActorType; }
+    public String getApprovalActor() { return approvalActor; }
+    public String getApprovalActorSubject() { return approvalActorSubject; }
+    public Instant getApprovalDecidedAt() { return approvalDecidedAt; }
     public String getDiagnosticCode() { return diagnosticCode; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getFinishedAt() { return finishedAt; }
 
     public void running(String reason) { status = "RUNNING"; reviewReason = reason; diagnosticCode = null; }
     public void succeed(String output) { status = "SUCCEEDED"; result = output; diagnosticCode = null; finishedAt = Instant.now(); }
-    public void fail(String output, String code) { status = "FAILED"; result = output; diagnosticCode = code; finishedAt = Instant.now(); }
-    public void reject(String reason, String code) { status = "REJECTED"; reviewReason = reason; diagnosticCode = code; finishedAt = Instant.now(); }
-    public void deny(String output, String code) { status = "REJECTED"; result = output; diagnosticCode = code; finishedAt = Instant.now(); }
-    public void cancel(String code) { status = "CANCELLED"; diagnosticCode = code; finishedAt = Instant.now(); }
-    public void interrupt(String code) { status = "INTERRUPTED"; diagnosticCode = code; finishedAt = Instant.now(); }
+    public void fail(String output, String code) { closePendingDecision(); status = "FAILED"; result = output; diagnosticCode = code; finishedAt = Instant.now(); }
+    public void reject(String reason, String code) { closePendingDecision(); status = "REJECTED"; reviewReason = reason; diagnosticCode = code; finishedAt = Instant.now(); }
+    public void deny(String output, String code) { closePendingDecision(); status = "REJECTED"; result = output; diagnosticCode = code; finishedAt = Instant.now(); }
+    public void cancel(String code) { closePendingDecision(); status = "CANCELLED"; diagnosticCode = code; finishedAt = Instant.now(); }
+    public void interrupt(String code) { closePendingDecision(); status = "INTERRUPTED"; diagnosticCode = code; finishedAt = Instant.now(); }
+
+    void approvalDecision(String decision, String actorType, String actor, String subject) {
+        approvalDecision = decision;
+        approvalActorType = actorType;
+        approvalActor = actor;
+        approvalActorSubject = subject;
+        approvalDecidedAt = Instant.now();
+    }
+
+    private void closePendingDecision() {
+        if ("PENDING".equals(approvalDecision))
+            approvalDecision = "NOT_DECIDED";
+    }
 }

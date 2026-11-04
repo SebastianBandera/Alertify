@@ -2,6 +2,7 @@ import { DOCUMENT } from '@angular/common';
 import { DestroyRef, inject, Injectable, signal } from '@angular/core';
 import { filter, map, Observable, Subject } from 'rxjs';
 
+import { DashboardPipeCard } from '../../features/dashboard/pipes/dashboard-pipe';
 import { DashboardAlertCard } from '../../features/dashboard/dashboard-card';
 import { AuthService } from '../auth/auth.service';
 import { RUNTIME_CONFIG } from '../config/runtime-config';
@@ -14,13 +15,15 @@ const REQUEST_TIMEOUT_MILLIS = 15_000;
 export type ViewerEventConnectionState = 'idle' | 'connecting' | 'connected' | 'reconnecting';
 
 interface ViewerEventPayloads {
+  readonly DASHBOARD_PIPE: DashboardPipeCard;
+  readonly DASHBOARD_PIPE_REMOVED: { readonly pipeId: number };
   readonly DASHBOARD_ALERT: DashboardAlertCard;
   readonly DASHBOARD_ALERT_REMOVED: { readonly alertId: number };
 }
 
 export type ViewerEventName = keyof ViewerEventPayloads;
 
-const EVENT_NAMES: ReadonlySet<string> = new Set<ViewerEventName>(['DASHBOARD_ALERT', 'DASHBOARD_ALERT_REMOVED']);
+const EVENT_NAMES: ReadonlySet<string> = new Set<ViewerEventName>(['DASHBOARD_ALERT', 'DASHBOARD_ALERT_REMOVED', 'DASHBOARD_PIPE', 'DASHBOARD_PIPE_REMOVED']);
 
 function isEventName(value: unknown): value is ViewerEventName {
   return typeof value === 'string' && EVENT_NAMES.has(value);

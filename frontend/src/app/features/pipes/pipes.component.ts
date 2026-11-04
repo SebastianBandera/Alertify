@@ -160,8 +160,11 @@ export class PipesComponent implements OnInit, OnDestroy {
     const executionId = this.route.snapshot.queryParamMap.get('executionId');
     if (tab === 'history' || executionId) this.activeTab.set('history');
     this.executionFilter.set(executionId);
+    const requestedPipeId = Number(this.route.snapshot.queryParamMap.get('pipeId')) || null;
+    this.historyPipeId.set(requestedPipeId);
     try {
       await this.loadAll();
+      if (requestedPipeId && this.activeTab() !== 'history') this.openEdit(await this.api.get(requestedPipeId));
     } finally {
       this.countsLoaded.set(true);
     }

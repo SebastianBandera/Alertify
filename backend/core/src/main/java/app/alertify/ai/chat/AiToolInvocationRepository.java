@@ -19,6 +19,17 @@ public interface AiToolInvocationRepository extends JpaRepository<AiToolInvocati
             JOIN FETCH invocation.turn turn
             WHERE turn.conversation.id = :conversationId
               AND turn.id <= :throughTurnId
+              AND invocation.id < :beforeInvocationId
+            ORDER BY invocation.id DESC
+            """)
+    List<AiToolInvocation> findReviewHistory(@Param("conversationId") Long conversationId, @Param("throughTurnId") Long throughTurnId, @Param("beforeInvocationId") Long beforeInvocationId, Pageable pageable);
+
+    @Query("""
+            SELECT invocation
+            FROM AiToolInvocation invocation
+            JOIN FETCH invocation.turn turn
+            WHERE turn.conversation.id = :conversationId
+              AND turn.id <= :throughTurnId
               AND invocation.kind = 'DOMAIN'
               AND (:beforeId = 0 OR invocation.id < :beforeId)
             ORDER BY invocation.id DESC

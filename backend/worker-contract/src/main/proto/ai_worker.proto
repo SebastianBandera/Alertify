@@ -218,6 +218,8 @@ message ReviewToolCallRequest {
   bool open_world_hint = 9;
   int64 conversation_id = 10;
   int64 turn_id = 11;
+  string tool_history_json = 12;
+  string conversation_history_json = 13;
 }
 
 message ReviewToolCallResponse {

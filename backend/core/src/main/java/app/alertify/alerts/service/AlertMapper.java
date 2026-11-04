@@ -53,7 +53,7 @@ public final class AlertMapper {
                 values.stream().map(AlertMapper::toParameterValue).toList(),
                 alert.getCreatedAt(), alert.getUpdatedAt(), alert.getPersistentIssuesSince(),
                 alert.isSmartExecutionEnabled(), alert.getSmartExecutionIntervalHours(), alert.getSmartExecutionPolicy(),
-                alert.getSmartExecutionIntervalSource(), alert.getSmartExecutionIntervalConfigurationId()
+                alert.getSmartExecutionIntervalSource(), alert.getSmartExecutionIntervalConfigurationId(), alert.getExecutionMode()
         );
     }
 

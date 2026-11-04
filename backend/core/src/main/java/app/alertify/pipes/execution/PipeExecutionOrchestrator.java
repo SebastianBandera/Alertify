@@ -68,9 +68,16 @@ public class PipeExecutionOrchestrator implements AutoCloseable {
         this.bindingExpressions = bindingExpressions;
     }
 
-    public UUID triggerManual(long pipeId, String triggeredBy) {
+    public UUID triggerManual(long pipeId, String triggeredBy) { return triggerManual(pipeId, triggeredBy, true); }
+
+    public UUID triggerFromDashboard(long pipeId, String triggeredBy) { return triggerManual(pipeId, triggeredBy, false); }
+
+    private UUID triggerManual(long pipeId, String triggeredBy, boolean includeDisabled) {
         maintenanceModeService.assertNotActive();
         Pipe pipe = persistence.definition(pipeId);
+        if (!includeDisabled && !pipe.isEnabled())
+            throw new app.alertify.api.error.ConflictException("PIPE_DISABLED", "Disabled Pipe cannot be run from the dashboard", Map.of());
+
         if (!enter(pipeId, pipe.isConcurrentExecutionAllowed()))
             throw new PipeExecutionException("Pipe '" + pipe.getName() + "' is already running and does not allow concurrent executions");
 
@@ -78,7 +85,7 @@ public class PipeExecutionOrchestrator implements AutoCloseable {
         Instant deadline = Instant.now().plus(Duration.ofMinutes(30));
         try {
             executor.submit(AiInvocationContextHolder.wrap(() -> execute(pipe, executionId, executionId, null, 1,
-                    PipeExecutionTrigger.MANUAL, triggeredBy, deadline, true)));
+                    PipeExecutionTrigger.MANUAL, triggeredBy, deadline, includeDisabled)));
         } catch (RuntimeException exception) {
             leave(pipeId);
             throw exception;
