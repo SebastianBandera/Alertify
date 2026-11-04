@@ -11,7 +11,7 @@ import tools.jackson.databind.json.JsonMapper;
 /** Ephemeral reviewer context. Never persist or log its arguments, results or reasons. */
 final class AiChatReviewHistory {
     static final int MAX_ENTRIES = 40;
-    static final int MAX_FIELD_BYTES = 16 * 1024;
+    static final int MAX_FIELD_BYTES = 64 * 1024;
     static final int MAX_HISTORY_BYTES = 256 * 1024;
     static final String UNAVAILABLE = "{\"available\":false,\"truncated\":false,\"entries\":[]}";
 

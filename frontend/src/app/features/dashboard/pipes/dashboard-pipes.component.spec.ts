@@ -53,8 +53,54 @@ describe('dashboard Pipe menu focus', () => {
 
   afterEach(() => {
     fixture?.destroy();
+    vi.useRealTimers();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+  });
+
+  it('dismisses an execution notice after six seconds', async () => {
+    vi.useFakeTimers();
+    await fixture.componentInstance['run'](CARD);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.dashboard__notice')?.textContent).toBe('dashboard.pipe.started');
+    vi.advanceTimersByTime(5_999);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.dashboard__notice')).not.toBeNull();
+    vi.advanceTimersByTime(1);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.dashboard__notice')).toBeNull();
+  });
+
+  it('gives a repeated execution notice its own full six seconds', async () => {
+    vi.useFakeTimers();
+    await fixture.componentInstance['run'](CARD);
+    vi.advanceTimersByTime(3_000);
+    await fixture.componentInstance['run'](CARD);
+    vi.advanceTimersByTime(3_000);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.dashboard__notice')).not.toBeNull();
+    vi.advanceTimersByTime(3_000);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.dashboard__notice')).toBeNull();
+  });
+
+  it('also dismisses a failed execution request notice', async () => {
+    vi.useFakeTimers();
+    vi.mocked(TestBed.inject(PipeApiService).run).mockRejectedValue(new Error('Request failed'));
+    await fixture.componentInstance['run'](CARD);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.dashboard__notice')?.textContent).toBe('dashboard.pipe.requestFailed');
+    vi.advanceTimersByTime(6_000);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.dashboard__notice')).toBeNull();
+  });
+
+  it('cancels the notice timer when the dashboard is destroyed', async () => {
+    vi.useFakeTimers();
+    await fixture.componentInstance['run'](CARD);
+    fixture.destroy();
+    vi.advanceTimersByTime(6_000);
+    expect(fixture.componentInstance['notice']()).toBe('dashboard.pipe.started');
   });
 
   it('keeps the menu open when focusing its first action would otherwise scroll the page', async () => {
