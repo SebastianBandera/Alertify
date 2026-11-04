@@ -64,7 +64,7 @@ class AiChatReviewHistoryTest {
 
     @Test
     void truncatesUtf8FieldsWithoutSplittingCodePointsAndKeepsJsonValid() {
-        String content = "a" + "😀".repeat(5000);
+        String content = "a" + "😀".repeat(20000);
         var invocation = invocation(1, 7, "DOMAIN", content);
         invocation.succeed(content);
         ReflectionTestUtils.setField(invocation, "reviewReason", content);
@@ -78,6 +78,22 @@ class AiChatReviewHistoryTest {
             assertThat(value.getBytes(StandardCharsets.UTF_8).length).isLessThanOrEqualTo(AiChatReviewHistory.MAX_FIELD_BYTES);
             assertThat(content).startsWith(value);
         }
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = { 16 * 1024 + 1, 64 * 1024, 64 * 1024 + 1 })
+    void retainsFieldsUpTo64KiBAndTruncatesBeyondIt(int bytes) {
+        String content = "a".repeat(bytes);
+        var invocation = invocation(1, 7, "DOMAIN", content);
+        invocation.succeed(content);
+        ReflectionTestUtils.setField(invocation, "reviewReason", content);
+        var snapshot = JSON.readTree(AiChatReviewHistory.encode(JSON, List.of(invocation)));
+        var entry = snapshot.path("entries").get(0);
+        for (String field : List.of("arguments", "result", "reviewReason"))
+            assertThat(entry.path(field).stringValue()).isEqualTo(content.substring(0, Math.min(bytes, 64 * 1024)));
+
+        assertThat(entry.path("truncatedFields").size()).isEqualTo(bytes > 64 * 1024 ? 3 : 0);
+        assertThat(snapshot.path("truncated").booleanValue()).isEqualTo(bytes > 64 * 1024);
     }
 
     @Test

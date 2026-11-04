@@ -7,6 +7,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import tools.jackson.databind.json.JsonMapper;
@@ -47,7 +49,7 @@ class AiChatReviewConversationTest {
 
     @Test
     void boundsEscapedJsonAndUtf8ContentWithoutSplittingCharacters() {
-        var unicode = message(1, "USER", "a" + "😀".repeat(5000));
+        var unicode = message(1, "USER", "a" + "😀".repeat(20000));
         var snapshot = JSON.readTree(AiChatReviewConversation.encode(JSON, List.of(unicode)));
         var message = snapshot.path("messages").get(0);
         String content = message.path("content").stringValue();
@@ -65,6 +67,17 @@ class AiChatReviewConversationTest {
         var selected = bounded.path("messages");
         assertThat(selected.size()).isBetween(1, 39);
         assertThat(selected.get(selected.size() - 1).path("messageId").longValue()).isEqualTo(40);
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = { 16 * 1024 + 1, 64 * 1024, 64 * 1024 + 1 })
+    void retainsContentUpTo64KiBAndTruncatesBeyondIt(int bytes) {
+        String content = "a".repeat(bytes);
+        var snapshot = JSON.readTree(AiChatReviewConversation.encode(JSON, List.of(message(1, "USER", content))));
+        var message = snapshot.path("messages").get(0);
+        assertThat(message.path("content").stringValue()).isEqualTo(content.substring(0, Math.min(bytes, 64 * 1024)));
+        assertThat(message.path("contentTruncated").booleanValue()).isEqualTo(bytes > 64 * 1024);
+        assertThat(snapshot.path("truncated").booleanValue()).isEqualTo(bytes > 64 * 1024);
     }
 
     @Test

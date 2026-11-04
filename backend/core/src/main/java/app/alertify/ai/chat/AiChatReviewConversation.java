@@ -11,7 +11,7 @@ import tools.jackson.databind.json.JsonMapper;
 /** Ephemeral, attributed conversational data for review; never log or persist the snapshot. */
 final class AiChatReviewConversation {
     static final int MAX_MESSAGES = 40;
-    static final int MAX_CONTENT_BYTES = 16 * 1024;
+    static final int MAX_CONTENT_BYTES = 64 * 1024;
     static final int MAX_CONTEXT_BYTES = 128 * 1024;
     static final String UNAVAILABLE = "{\"available\":false,\"truncated\":false,\"messages\":[]}";
 
