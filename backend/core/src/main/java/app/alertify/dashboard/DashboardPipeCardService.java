@@ -26,12 +26,14 @@ public class DashboardPipeCardService {
     private final PipeExecutionRepository executions;
     private final AlertExecutionRepository alerts;
     private final NamedParameterJdbcTemplate jdbc;
+    private final DashboardPipeExecutionQuery executionQuery;
 
-    public DashboardPipeCardService(PipeRepository pipes, PipeExecutionRepository executions, AlertExecutionRepository alerts, NamedParameterJdbcTemplate jdbc) {
+    public DashboardPipeCardService(PipeRepository pipes, PipeExecutionRepository executions, AlertExecutionRepository alerts, NamedParameterJdbcTemplate jdbc, DashboardPipeExecutionQuery executionQuery) {
         this.pipes = pipes;
         this.executions = executions;
         this.alerts = alerts;
         this.jdbc = jdbc;
+        this.executionQuery = executionQuery;
     }
 
     public PipePage page(int number, int size) {
@@ -58,6 +60,7 @@ public class DashboardPipeCardService {
 
         Instant observed = Instant.now();
         List<Long> ids = definitions.stream().map(Pipe::getId).toList();
+        Map<Long, DashboardPipeExecutionQuery.State> states = executionQuery.states(ids);
         List<Long> latest = jdbc.queryForList("select distinct on (pipe_id) id from core.pipe_executions where pipe_id in (:ids) order by pipe_id, started_at desc, id desc", Map.of("ids", ids), Long.class);
         Map<Long, PipeExecution> byPipe = executions.findAllById(latest).stream().collect(Collectors.toMap(value -> value.getPipe().getId(), value -> value));
         List<UUID> childIds = byPipe.values().stream().flatMap(value -> value.getSteps().stream()).filter(value -> value.getStepType() == PipeStepType.ALERT && value.getResourceExecutionId() != null).map(PipeStepResult::getResourceExecutionId).toList();
@@ -82,7 +85,8 @@ public class DashboardPipeCardService {
                 }).toList();
             }
             Set<TagResponse> tags = pipe.getTags().stream().map(tag -> new TagResponse(tag.getId(), tag.getVersion(), tag.getScope(), tag.getName(), tag.getColor(), tag.getCreatedAt(), tag.getUpdatedAt())).collect(Collectors.toCollection(LinkedHashSet::new));
-            return new DashboardPipeCardResponse(pipe.getId(), pipe.getVersion(), pipe.getName(), pipe.getDescription(), pipe.isEnabled(), pipe.isConcurrentExecutionAllowed(), tags, execution == null ? null : PipeMapper.execution(execution), steps, observed);
+            DashboardPipeExecutionQuery.State state = states.get(pipe.getId());
+            return new DashboardPipeCardResponse(pipe.getId(), pipe.getVersion(), pipe.getName(), pipe.getDescription(), pipe.isEnabled(), pipe.isConcurrentExecutionAllowed(), tags, execution == null ? null : PipeMapper.execution(execution), steps, state == null ? null : state.outcome(), state == null ? null : state.changedAt(), observed);
         }).toList();
     }
 

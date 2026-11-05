@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AlertMessageService } from '../../../core/alert-messages/alert-message.service';
 import { AuthService } from '../../../core/auth/auth.service';
-import { PipeApiService } from '../../../core/api/pipe-api.service';
+import { PipeApiService, PipeExecution, PipeOutcome } from '../../../core/api/pipe-api.service';
 import { RUNTIME_CONFIG } from '../../../core/config/runtime-config';
 import { LocalizationService } from '../../../core/i18n/localization.service';
 import { DashboardPipeCard } from './dashboard-pipe';
@@ -16,6 +16,7 @@ import { DashboardPipesComponent } from './dashboard-pipes.component';
 const CARD: DashboardPipeCard = {
   id: 4, version: 1, name: 'Mixed Pipe', description: null, enabled: true,
   allowConcurrentExecutions: false, tags: [], execution: null, observedAt: '2026-11-03T12:00:00Z',
+  lastOutcome: null, stateChangedAt: null,
   steps: [{
     templateKey: 'example.Procedure', alertExecution: null,
     result: { key: 'procedure', position: 0, type: 'PROCEDURE', phase: 'MAIN', resourceId: 1,
@@ -56,6 +57,47 @@ describe('dashboard Pipe menu focus', () => {
     vi.useRealTimers();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+  });
+
+  it('keeps Pipe order on start, progress and a repeated final outcome, including initial load during a run', () => {
+    const live = TestBed.inject(DashboardPipeLiveService).cards as ReturnType<typeof signal<DashboardPipeCard[]>>;
+    const first = pipeCard(1, 'First', 'WARN', '2026-11-01T12:00:00Z');
+    const second = pipeCard(2, 'Second', 'WARN', '2026-11-02T12:00:00Z');
+    const ids = () => [...fixture.nativeElement.querySelectorAll('.pipe-card')].map((element: Element) => element.getAttribute('data-pipe-id'));
+    live.set([first, second]);
+    fixture.detectChanges();
+    expect(ids()).toEqual(['2', '1']);
+
+    const running = { ...first, execution: { ...first.execution!, status: 'RUNNING' as const, outcome: null, startedAt: '2026-11-05T12:00:00Z', finishedAt: null } };
+    live.set([running, second]);
+    fixture.detectChanges();
+    expect(ids()).toEqual(['2', '1']);
+    expect(fixture.nativeElement.querySelector('[data-pipe-id="1"] .running')).not.toBeNull();
+    live.set([{ ...running, observedAt: '2026-11-05T12:00:05Z' }, second]);
+    fixture.detectChanges();
+    expect(ids()).toEqual(['2', '1']);
+
+    live.set([{ ...first, execution: { ...first.execution!, startedAt: '2026-11-05T12:00:00Z', finishedAt: '2026-11-05T12:00:10Z' } }, second]);
+    fixture.detectChanges();
+    expect(ids()).toEqual(['2', '1']);
+
+    fixture.destroy();
+    live.set([running, second]);
+    fixture = TestBed.createComponent(DashboardPipesComponent);
+    fixture.detectChanges();
+    expect(ids()).toEqual(['2', '1']);
+  });
+
+  it('reorders Pipes when their final severity changes', () => {
+    const live = TestBed.inject(DashboardPipeLiveService).cards as ReturnType<typeof signal<DashboardPipeCard[]>>;
+    const first = pipeCard(1, 'First', 'SUCCESS', '2026-11-01T12:00:00Z');
+    const second = pipeCard(2, 'Second', 'WARN', '2026-11-02T12:00:00Z');
+    live.set([first, second]);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.pipe-card').getAttribute('data-pipe-id')).toBe('2');
+    live.set([{ ...first, lastOutcome: 'ERROR', stateChangedAt: '2026-11-05T12:00:10Z', execution: { ...first.execution!, outcome: 'ERROR' } }, second]);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.pipe-card').getAttribute('data-pipe-id')).toBe('1');
   });
 
   it('dismisses an execution notice after six seconds', async () => {
@@ -169,3 +211,8 @@ describe('dashboard Pipe menu focus', () => {
     expect(fixture.nativeElement.querySelector('.pipe-card')).toBeNull();
   });
 });
+
+function pipeCard(id: number, name: string, outcome: PipeOutcome, stateChangedAt: string): DashboardPipeCard {
+  return { ...CARD, id, name, lastOutcome: outcome, stateChangedAt,
+    execution: { id, executionId: 'execution-' + id, status: 'COMPLETED', outcome, startedAt: stateChangedAt, finishedAt: stateChangedAt } as PipeExecution };
+}

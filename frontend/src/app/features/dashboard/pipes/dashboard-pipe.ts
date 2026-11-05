@@ -1,5 +1,5 @@
 import { AlertExecution } from '../../../core/api/alert-api.service';
-import { PipeExecution, PipeStepResult, PipeTag } from '../../../core/api/pipe-api.service';
+import { PipeExecution, PipeOutcome, PipeStepResult, PipeTag } from '../../../core/api/pipe-api.service';
 
 export interface DashboardPipeStep {
   readonly result: PipeStepResult;
@@ -16,13 +16,16 @@ export interface DashboardPipeCard {
   readonly allowConcurrentExecutions: boolean;
   readonly tags: readonly PipeTag[];
   readonly execution: PipeExecution | null;
+  readonly lastOutcome: PipeOutcome | null;
+  readonly stateChangedAt: string | null;
   readonly steps: readonly DashboardPipeStep[];
   readonly observedAt: string;
 }
 
 export function pipeState(card: DashboardPipeCard): 'error' | 'warn' | 'success' | 'none' {
-  return card.execution?.outcome === 'ERROR' ? 'error' : card.execution?.outcome === 'WARN' ? 'warn'
-    : card.execution?.outcome === 'SUCCESS' ? 'success' : 'none';
+  const outcome = card.lastOutcome ?? card.execution?.outcome;
+  return outcome === 'ERROR' ? 'error' : outcome === 'WARN' ? 'warn'
+    : outcome === 'SUCCESS' ? 'success' : 'none';
 }
 
 /** Semantic identity deliberately excludes time, durations, execution IDs and procedure outputs. */
