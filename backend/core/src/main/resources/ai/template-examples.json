@@ -549,6 +549,21 @@
   },
   {
     "templateKey": "app.alertify.alerts.templates.WebRequestAlertTemplate",
+    "name": "Root array with exactly two ordered IDs",
+    "description": "Check a response array contains exactly two elements with IDs 1 and 2 in that order.",
+    "text": {
+      "url": "https://api.example.test/items",
+      "jsonAssertions": "$ sizeEquals 2\n/0/id equals 1\n/1/id equals 2"
+    },
+    "bindings": {},
+    "notes": [
+      "The exact token $ selects the complete response JSON. Size operators count array elements or object fields, not nested contents; scalars do not satisfy size assertions.",
+      "The pointer / selects a property with an empty name, not the root. Use /field or /0/id for JSON Pointer paths; $.field and $/0 are not supported.",
+      "The ID assertions require the specified order. The $ alias belongs only to WebRequestAlertTemplate.jsonAssertions, not PATCH or other JSON Pointer fields."
+    ]
+  },
+  {
+    "templateKey": "app.alertify.alerts.templates.WebRequestAlertTemplate",
     "name": "JSON POST with protected headers",
     "description": "Send JSON and obtain authorization headers from a secret binding.",
     "text": {

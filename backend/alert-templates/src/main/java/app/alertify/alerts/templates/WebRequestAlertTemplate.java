@@ -378,7 +378,7 @@ public final class WebRequestAlertTemplate implements AlertEvaluator {
             if (tokens.length < 2)
                 throw new IllegalArgumentException("Each JSON assertion must be '<pointer> <operator> [value]'");
 
-            String pointer = tokens[0];
+            String pointer = "$".equals(tokens[0]) ? "" : tokens[0];
             validatePointer(pointer);
             JsonAssertionOperator operator = JsonAssertionOperator.byKeyword(tokens[1]);
             String value = tokens.length == 3 ? tokens[2].trim() : "";

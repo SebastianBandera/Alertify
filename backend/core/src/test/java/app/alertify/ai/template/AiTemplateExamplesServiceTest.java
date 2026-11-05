@@ -96,6 +96,20 @@ class AiTemplateExamplesServiceTest {
     }
 
     @Test
+    void exposesRootArrayAssertionsAndTheirUsageRulesToTheChat() {
+        assertThat(examples.examples(WebRequestAlertTemplate.class.getName(), rules(WebRequestAlertTemplate.class)))
+                .filteredOn(example -> example.name().equals("Root array with exactly two ordered IDs"))
+                .singleElement().satisfies(example -> {
+                    assertThat(example.parameters()).filteredOn(parameter -> parameter.parameterKey().equals("jsonAssertions"))
+                            .singleElement().satisfies(parameter -> assertThat(parameter.textValue())
+                                    .isEqualTo("$ sizeEquals 2\n/0/id equals 1\n/1/id equals 2"));
+                    assertThat(example.notes()).anyMatch(note -> note.contains("$ selects the complete response JSON"));
+                    assertThat(example.notes()).anyMatch(note -> note.contains("empty name, not the root"));
+                    assertThat(example.notes()).anyMatch(note -> note.contains("specified order"));
+                });
+    }
+
+    @Test
     void unknownCustomTemplatesDoNotReceiveInventedExamples() {
         assertThat(examples.examples("app.alertify.alerts.templates.custom.Unknown", List.of())).isEmpty();
     }

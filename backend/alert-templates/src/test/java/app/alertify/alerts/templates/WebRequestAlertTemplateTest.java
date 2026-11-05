@@ -11,8 +11,13 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Stream;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import app.alertify.alerts.AlertExecutionContext;
 import app.alertify.alerts.AlertResult;
@@ -258,6 +263,98 @@ class WebRequestAlertTemplateTest {
         } finally {
             server.stop(0);
         }
+    }
+
+    @ParameterizedTest
+    @MethodSource("rootArrayResponses")
+    void checksRootArraySizeBeforeOrderedIds(String body, AlertExecutionStatus status, Integer unmatchedIndex) throws Exception {
+        HttpServer server = server(exchange -> respond(exchange, 200, body));
+        try {
+            AlertResult result = template(server, "GET", "200", null, "[]", null,
+                "$ sizeEquals 2\n/0/id equals 1\n/1/id equals 2", 3).evaluate(new AlertExecutionContext());
+
+            assertEquals(status, result.status());
+            assertEquals(3, result.statusMessage().get("jsonAssertionCount"));
+            assertEquals(unmatchedIndex, result.statusMessage().get("unmatchedJsonAssertionIndex"));
+            if (unmatchedIndex != null)
+                assertEquals("jsonAssertionMismatch", result.statusMessage().get("failureReason"));
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    private static Stream<Arguments> rootArrayResponses() {
+        return Stream.of(
+            Arguments.of("[{\"id\":1},{\"id\":2}]", AlertExecutionStatus.SUCCESS, null),
+            Arguments.of("[]", AlertExecutionStatus.WARN, 0),
+            Arguments.of("[{\"id\":1}]", AlertExecutionStatus.WARN, 0),
+            Arguments.of("[{\"id\":1},{\"id\":2},{\"id\":3}]", AlertExecutionStatus.WARN, 0),
+            Arguments.of("[{\"id\":9},{\"id\":2}]", AlertExecutionStatus.WARN, 1),
+            Arguments.of("[{\"id\":1},{\"id\":9}]", AlertExecutionStatus.WARN, 2)
+        );
+    }
+
+    @ParameterizedTest
+    @MethodSource("rootAssertions")
+    void supportsRootAliasWithExistingOperatorsAndJsonTypes(String body, String assertions) throws Exception {
+        HttpServer server = server(exchange -> respond(exchange, 200, body));
+        try {
+            AlertResult result = template(server, "GET", "200", null, "[]", null, assertions, 3)
+                .evaluate(new AlertExecutionContext());
+
+            assertEquals(AlertExecutionStatus.SUCCESS, result.status());
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    private static Stream<Arguments> rootAssertions() {
+        return Stream.of(
+            Arguments.of("2", "$ exists\n$ equals 2\n$ notEquals 3\n$ gt 1\n$ gte 2\n$ lt 3\n$ lte 2"),
+            Arguments.of("[1,2]", "$ sizeEquals 2\n$ sizeNotEquals 3\n$ sizeGt 1\n$ sizeGte 2\n$ sizeLt 3\n$ sizeLte 2\n$ contains 1"),
+            Arguments.of("{\"one\":1,\"two\":2}", "$ sizeEquals 2"),
+            Arguments.of("\"ready\"", "$ contains read"),
+            Arguments.of("null", "$ exists\n$ equals null")
+        );
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = { "42", "\"ok\"", "true", "null" })
+    void doesNotTreatRootScalarsAsContainers(String body) throws Exception {
+        HttpServer server = server(exchange -> respond(exchange, 200, body));
+        try {
+            AlertResult result = template(server, "GET", "200", null, "[]", null, "$ sizeEquals 2", 3)
+                .evaluate(new AlertExecutionContext());
+
+            assertEquals(AlertExecutionStatus.WARN, result.status());
+            assertEquals("jsonAssertionMismatch", result.statusMessage().get("failureReason"));
+            assertEquals(0, result.statusMessage().get("unmatchedJsonAssertionIndex"));
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void preservesPointersToEmptyAndDollarPropertyNames() throws Exception {
+        HttpServer server = server(exchange -> respond(exchange, 200, "{\"\":[1,2],\"$\":[3]}"));
+        try {
+            AlertResult result = template(server, "GET", "200", null, "[]", null,
+                "/ sizeEquals 2\n/$ sizeEquals 1", 3).evaluate(new AlertExecutionContext());
+
+            assertEquals(AlertExecutionStatus.SUCCESS, result.status());
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = { "$.id exists", "$/0 exists" })
+    void rejectsJsonPathAndRootAliasPrefixes(String assertion) {
+        WebRequestAlertTemplate invalid = new WebRequestAlertTemplate(
+            "https://example.test", "GET", "200", null, "[]", null, null, assertion, 3, null
+        );
+
+        assertThrows(IllegalArgumentException.class, () -> invalid.evaluate(new AlertExecutionContext()));
     }
 
     @Test
