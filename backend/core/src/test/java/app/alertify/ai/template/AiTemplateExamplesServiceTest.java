@@ -110,6 +110,23 @@ class AiTemplateExamplesServiceTest {
     }
 
     @Test
+    void exposesUnorderedAndNestedObjectExamplesWithPresenceSemantics() {
+        Map<String, String> assertions = Map.of(
+                "Root array with exactly two unordered IDs", "$ sizeEquals 2\n$ containsObject {\"id\":1}\n$ containsObject {\"id\":2}",
+                "Partial object in a selected array", "/items containsObject {\"id\":2}",
+                "Partial objects and nested arrays", "$ containsObject {\"id\":2,\"documentos\":[{\"numeroDocumento\":\"DOC-2\"}]}");
+        var recipes = examples.examples(WebRequestAlertTemplate.class.getName(), rules(WebRequestAlertTemplate.class));
+        for (var expected : assertions.entrySet()) {
+            assertThat(recipes).filteredOn(example -> example.name().equals(expected.getKey()))
+                    .singleElement().satisfies(example -> {
+                        assertThat(example.parameters()).filteredOn(parameter -> parameter.parameterKey().equals("jsonAssertions"))
+                                .singleElement().satisfies(parameter -> assertThat(parameter.textValue()).isEqualTo(expected.getValue()));
+                        assertThat(example.notes()).anyMatch(note -> note.contains("presence, not uniqueness or multiplicity"));
+                    });
+        }
+    }
+
+    @Test
     void unknownCustomTemplatesDoNotReceiveInventedExamples() {
         assertThat(examples.examples("app.alertify.alerts.templates.custom.Unknown", List.of())).isEmpty();
     }

@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 
@@ -292,6 +293,117 @@ class WebRequestAlertTemplateTest {
             Arguments.of("[{\"id\":9},{\"id\":2}]", AlertExecutionStatus.WARN, 1),
             Arguments.of("[{\"id\":1},{\"id\":9}]", AlertExecutionStatus.WARN, 2)
         );
+    }
+
+    @ParameterizedTest
+    @MethodSource("unorderedIdResponses")
+    void checksRootArrayIdsWithoutDependingOnOrder(String body, AlertExecutionStatus status, Integer unmatchedIndex) throws Exception {
+        HttpServer server = server(exchange -> respond(exchange, 200, body));
+        try {
+            AlertResult result = template(server, "GET", "200", null, "[]", null,
+                "$ sizeEquals 2\n$ containsObject {\"id\":1}\n$ containsObject {\"id\":2}", 3).evaluate(new AlertExecutionContext());
+
+            assertEquals(status, result.status());
+            assertEquals(3, result.statusMessage().get("jsonAssertionCount"));
+            assertEquals(unmatchedIndex, result.statusMessage().get("unmatchedJsonAssertionIndex"));
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    private static Stream<Arguments> unorderedIdResponses() {
+        return Stream.of(
+            Arguments.of("[{\"id\":1,\"name\":\"first\"},{\"id\":2}]", AlertExecutionStatus.SUCCESS, null),
+            Arguments.of("[{\"id\":2},{\"id\":1,\"name\":\"first\"}]", AlertExecutionStatus.SUCCESS, null),
+            Arguments.of("[{\"id\":1},{\"id\":1}]", AlertExecutionStatus.WARN, 2),
+            Arguments.of("[{\"id\":2},{\"id\":2}]", AlertExecutionStatus.WARN, 1),
+            Arguments.of("[{\"id\":1},{\"id\":2},{\"id\":3}]", AlertExecutionStatus.WARN, 0)
+        );
+    }
+
+    @ParameterizedTest
+    @MethodSource("objectPatternCases")
+    void matchesPartialObjectsAndSubarraysWithinTheSameCandidate(String body, String pointer, String pattern, boolean matches) throws Exception {
+        HttpServer server = server(exchange -> respond(exchange, 200, body));
+        try {
+            AlertResult result = template(server, "GET", "200", null, "[]", null,
+                pointer + " containsObject " + pattern, 3).evaluate(new AlertExecutionContext());
+
+            assertEquals(matches ? AlertExecutionStatus.SUCCESS : AlertExecutionStatus.WARN, result.status());
+            if (!matches) {
+                assertEquals("jsonAssertionMismatch", result.statusMessage().get("failureReason"));
+                assertEquals(0, result.statusMessage().get("unmatchedJsonAssertionIndex"));
+            }
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    private static Stream<Arguments> objectPatternCases() {
+        return Stream.of(
+            Arguments.of("[null,1,\"x\",{\"id\":2}]", "$", "{\"id\":2}", true),
+            Arguments.of("{\"items\":[{\"id\":2,\"active\":true}]}", "/items", "{\"active\":true,\"id\":2}", true),
+            Arguments.of("{\"items\":[{\"id\":2}]}", "/missing", "{\"id\":2}", false),
+            Arguments.of("[]", "$", "{\"id\":2}", false),
+            Arguments.of("{\"id\":2}", "$", "{\"id\":2}", false),
+            Arguments.of("null", "$", "{\"id\":2}", false),
+            Arguments.of("42", "$", "{\"id\":2}", false),
+            Arguments.of("[{\"id\":\"2\"}]", "$", "{\"id\":2}", false),
+            Arguments.of("[{\"id\":2}]", "$", "{\"id\":\"2\"}", false),
+            Arguments.of("[{\"id\":2.0}]", "$", "{\"id\":2}", false),
+            Arguments.of("[{\"id\":2,\"email\":null}]", "$", "{\"id\":2,\"email\":null}", true),
+            Arguments.of("[{\"id\":2}]", "$", "{\"id\":2,\"email\":null}", false),
+            Arguments.of("[{\"id\":1,\"name\":\"first\"},{\"id\":2,\"name\":\"second\"}]", "$", "{\"id\":2,\"name\":\"first\"}", false),
+            Arguments.of("[{\"country\":{\"code\":\"UY\",\"name\":\"Uruguay\"}}]", "$", "{\"country\":{\"code\":\"UY\"}}", true),
+            Arguments.of("[{\"country\":\"UY\"}]", "$", "{\"country\":{\"code\":\"UY\"}}", false),
+            Arguments.of("[{\"id\":2,\"documents\":[{\"number\":\"B\"},{\"number\":\"A\",\"type\":\"CI\"},{\"number\":\"C\"}]}]", "$", "{\"id\":2,\"documents\":[{\"number\":\"A\"},{\"number\":\"B\"}]}", true),
+            Arguments.of("[{\"id\":1,\"documents\":[{\"number\":\"A\"}]},{\"id\":2,\"documents\":[{\"number\":\"B\"}]}]", "$", "{\"id\":2,\"documents\":[{\"number\":\"A\"}]}", false),
+            Arguments.of("[{\"documents\":[{\"number\":\"A\",\"type\":\"X\"},{\"number\":\"B\",\"type\":\"CI\"}]}]", "$", "{\"documents\":[{\"number\":\"A\",\"type\":\"CI\"}]}", false),
+            Arguments.of("[{\"documents\":[{\"number\":\"A\"}]}]", "$", "{\"documents\":[{\"number\":\"B\"}]}", false),
+            Arguments.of("[{\"documents\":null}]", "$", "{\"documents\":[]}", false),
+            Arguments.of("[{\"documents\":{}}]", "$", "{\"documents\":[]}", false),
+            Arguments.of("[{\"documents\":[]}]", "$", "{\"documents\":[]}", true),
+            Arguments.of("[{\"documents\":[{\"number\":\"A\"}]}]", "$", "{\"documents\":[]}", true),
+            Arguments.of("[{\"values\":[\"b\",null,true,1,\"a\"]}]", "$", "{\"values\":[\"a\",1,true,null]}", true),
+            Arguments.of("[{\"values\":[\"1\"]}]", "$", "{\"values\":[1]}", false),
+            Arguments.of("[{\"values\":[\"a\"]}]", "$", "{\"values\":[\"a\",\"a\"]}", true),
+            Arguments.of("[{\"country\":{\"code\":\"UY\"}}]", "$", "{\"country\":{}}", true),
+            Arguments.of("[{\"country\":null}]", "$", "{\"country\":{}}", false),
+            Arguments.of("[{\"matrix\":[[1,2],[3]]}]", "$", "{\"matrix\":[[2,1]]}", true),
+            Arguments.of("[{\"a/b\":{\"~\":2}}]", "$", "{\"a/b\":{\"~\":2}}", true)
+        );
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = { "", "{}", "[]", "null", "42", "true", "\"fixture-pattern-marker\"", "{\"label\":\"fixture-pattern-marker\"", "{\"id\":1} {\"id\":2}", "{\"id\":1} trailing" })
+    void rejectsInvalidObjectPatternsBeforeSendingTheRequestWithoutEchoingValues(String pattern) throws Exception {
+        AtomicInteger requests = new AtomicInteger();
+        HttpServer server = server(exchange -> { requests.incrementAndGet(); respond(exchange, 200, "[]"); });
+        try {
+            WebRequestAlertTemplate invalid = template(server, "GET", "200", null, "[]", null,
+                "$ containsObject " + pattern, 3);
+
+            IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> invalid.evaluate(new AlertExecutionContext()));
+            assertEquals(0, requests.get());
+            assertFalse(error.getMessage().contains("fixture-pattern-marker"));
+            assertEquals(null, error.getCause());
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void keepsContainsComparingCompleteObjectsInsteadOfPartialPatterns() throws Exception {
+        HttpServer server = server(exchange -> respond(exchange, 200, "[{\"id\":1,\"name\":\"first\"}]"));
+        try {
+            AlertResult result = template(server, "GET", "200", null, "[]", null, "$ contains {\"id\":1}", 3)
+                .evaluate(new AlertExecutionContext());
+
+            assertEquals(AlertExecutionStatus.WARN, result.status());
+            assertEquals("jsonAssertionMismatch", result.statusMessage().get("failureReason"));
+        } finally {
+            server.stop(0);
+        }
     }
 
     @ParameterizedTest

@@ -94,6 +94,9 @@ class AiChatServiceManagementTest {
                 "use the exact token $", "$ sizeEquals 2", "/0/id equals 1", "/1/id equals 2",
                 "The pointer / selects a property with an empty name, not the root",
                 "never to PATCH paths or other JSON Pointer fields",
+                "containsObject", "same candidate object", "Nested arrays require each pattern element",
+                "presence, not uniqueness or multiplicity", "a missing field differs from explicit null",
+                "use indexed equals assertions only when order matters",
                 "being a separate tag entity does not make that ID invalid",
                 "Do not invent a second association ID");
         assertThat(message.getValue().getStart().getToolsList()).filteredOn(tool -> "alertify_operation_history".equals(tool.getName()))

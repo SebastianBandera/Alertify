@@ -564,6 +564,48 @@
   },
   {
     "templateKey": "app.alertify.alerts.templates.WebRequestAlertTemplate",
+    "name": "Root array with exactly two unordered IDs",
+    "description": "Check that an array contains IDs 1 and 2 in either order, allowing additional object fields.",
+    "text": {
+      "url": "https://api.example.test/items",
+      "jsonAssertions": "$ sizeEquals 2\n$ containsObject {\"id\":1}\n$ containsObject {\"id\":2}"
+    },
+    "bindings": {},
+    "notes": [
+      "Use containsObject when order is irrelevant; keep indexed equals assertions when order matters. All supplied fields must match the same object, while additional fields are allowed.",
+      "containsObject checks presence, not uniqueness or multiplicity. Use sizeEquals separately to enforce the array length. Scalars use Jackson node equality without type coercion, and missing fields differ from explicit null."
+    ]
+  },
+  {
+    "templateKey": "app.alertify.alerts.templates.WebRequestAlertTemplate",
+    "name": "Partial object in a selected array",
+    "description": "Search an array below the response root using JSON Pointer instead of an array index.",
+    "text": {
+      "url": "https://api.example.test/items",
+      "jsonAssertions": "/items containsObject {\"id\":2}"
+    },
+    "bindings": {},
+    "notes": [
+      "The selected node must be an array. The pattern must be a non-empty JSON object; additional candidate fields are allowed.",
+      "containsObject checks presence, not uniqueness or multiplicity. Use /items sizeEquals 2 separately when exactly two items are required."
+    ]
+  },
+  {
+    "templateKey": "app.alertify.alerts.templates.WebRequestAlertTemplate",
+    "name": "Partial objects and nested arrays",
+    "description": "Find a person and a document belonging to that same person without depending on array order.",
+    "text": {
+      "url": "https://api.example.test/people",
+      "jsonAssertions": "$ containsObject {\"id\":2,\"documentos\":[{\"numeroDocumento\":\"DOC-2\"}]}"
+    },
+    "bindings": {},
+    "notes": [
+      "All fields must match the same person, and document fields must match the same document. Objects are matched recursively by supplied fields; extra fields are allowed.",
+      "Each nested array pattern element must find a match regardless of order, and extra elements are allowed. containsObject checks presence, not uniqueness or multiplicity: repeated patterns can reuse a match, and an empty nested array pattern does not check length."
+    ]
+  },
+  {
+    "templateKey": "app.alertify.alerts.templates.WebRequestAlertTemplate",
     "name": "JSON POST with protected headers",
     "description": "Send JSON and obtain authorization headers from a secret binding.",
     "text": {

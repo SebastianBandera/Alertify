@@ -388,9 +388,22 @@ public final class WebRequestAlertTemplate implements AlertEvaluator {
                 throw new IllegalArgumentException("JSON assertion operator '" + tokens[1] + "' requires a value");
 
             operator.validateValue(value);
-            assertions.add(new JsonAssertion(pointer, operator, value));
+            JsonNode objectPattern = operator == JsonAssertionOperator.CONTAINS_OBJECT ? parseObjectPattern(value) : null;
+            assertions.add(new JsonAssertion(pointer, operator, value, objectPattern));
         }
         return List.copyOf(assertions);
+    }
+
+    private static JsonNode parseObjectPattern(String value) {
+        try (var parser = JSON.createParser(value)) {
+            JsonNode pattern = JSON.readTree(parser);
+            if (pattern == null || !pattern.isObject() || pattern.isEmpty() || parser.nextToken() != null)
+                throw new IllegalArgumentException();
+
+            return pattern;
+        } catch (RuntimeException exception) {
+            throw new IllegalArgumentException("JSON assertion operator 'containsObject' requires a single non-empty JSON object");
+        }
     }
 
     private static void validatePointer(String pointer) {
@@ -519,6 +532,7 @@ public final class WebRequestAlertTemplate implements AlertEvaluator {
         LESS_THAN("lt"),
         LESS_THAN_OR_EQUAL("lte"),
         CONTAINS("contains"),
+        CONTAINS_OBJECT("containsObject"),
         SIZE_EQUALS("sizeEquals"),
         SIZE_NOT_EQUALS("sizeNotEquals"),
         SIZE_GREATER_THAN("sizeGt"),
@@ -570,7 +584,7 @@ public final class WebRequestAlertTemplate implements AlertEvaluator {
         }
     }
 
-    private record JsonAssertion(String pointer, JsonAssertionOperator operator, String value) {
+    private record JsonAssertion(String pointer, JsonAssertionOperator operator, String value, JsonNode objectPattern) {
 
         boolean matches(JsonNode root) {
             JsonNode node = root.at(pointer);
@@ -583,6 +597,7 @@ public final class WebRequestAlertTemplate implements AlertEvaluator {
                 case LESS_THAN -> node.isNumber() && node.asDouble() < Double.parseDouble(value);
                 case LESS_THAN_OR_EQUAL -> node.isNumber() && node.asDouble() <= Double.parseDouble(value);
                 case CONTAINS -> contains(node);
+                case CONTAINS_OBJECT -> containsObject(node);
                 case SIZE_EQUALS -> isContainer(node) && node.size() == Integer.parseInt(value);
                 case SIZE_NOT_EQUALS -> isContainer(node) && node.size() != Integer.parseInt(value);
                 case SIZE_GREATER_THAN -> isContainer(node) && node.size() > Integer.parseInt(value);
@@ -601,6 +616,51 @@ public final class WebRequestAlertTemplate implements AlertEvaluator {
                 return false;
             }
             return node.isString() && node.stringValue().contains(value);
+        }
+
+        private boolean containsObject(JsonNode node) {
+            if (!node.isArray())
+                return false;
+
+            for (JsonNode element : node) {
+                if (element.isObject() && matchesPattern(element, objectPattern))
+                    return true;
+            }
+            return false;
+        }
+
+        private static boolean matchesPattern(JsonNode actual, JsonNode expected) {
+            if (actual == null)
+                return false;
+
+            if (expected.isObject()) {
+                if (!actual.isObject())
+                    return false;
+
+                for (String field : expected.propertyNames()) {
+                    if (!matchesPattern(actual.get(field), expected.get(field)))
+                        return false;
+                }
+                return true;
+            }
+            if (expected.isArray()) {
+                if (!actual.isArray())
+                    return false;
+
+                for (JsonNode expectedElement : expected) {
+                    boolean found = false;
+                    for (JsonNode actualElement : actual) {
+                        if (matchesPattern(actualElement, expectedElement)) {
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found)
+                        return false;
+                }
+                return true;
+            }
+            return expected.equals(actual);
         }
 
         private static String canonicalText(JsonNode node) {
