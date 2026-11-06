@@ -1090,6 +1090,8 @@ export type TranslationKey =
   | 'alerts.wizard.requests'
   | 'alerts.wizard.steps'
   | 'alerts.wizard.redaction'
+  | 'alerts.wizard.maskEnabled'
+  | 'alerts.wizard.maskHelp'
   | 'alerts.wizard.reference'
   | 'alerts.wizard.insertFill'
   | 'alerts.wizard.execute'

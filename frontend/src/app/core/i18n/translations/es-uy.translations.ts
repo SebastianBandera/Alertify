@@ -533,6 +533,8 @@ export const ES_UY_TRANSLATIONS = {
   'alerts.wizard.requests': 'solicitudes al modelo',
   'alerts.wizard.steps': 'Pasos de la alerta',
   'alerts.wizard.redaction': 'Los valores secretos se protegen con [REDACTED].',
+  'alerts.wizard.maskEnabled': 'Enmascarar la vista',
+  'alerts.wizard.maskHelp': 'Solo vos podés cambiar esta opción. Al desactivarla, tu vista puede mostrar datos sensibles. El chat mantiene la protección. Activala para adjuntar capturas.',
   'alerts.wizard.reference': 'Elegí una configuración o secreto existente',
   'alerts.wizard.insertFill': 'Insertar referencia FILL',
   'alerts.wizard.execute': 'Ejecutar pasos pendientes',

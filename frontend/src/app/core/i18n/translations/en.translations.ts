@@ -533,6 +533,8 @@ export const EN_TRANSLATIONS = {
   'alerts.wizard.requests': 'model requests',
   'alerts.wizard.steps': 'Alert steps',
   'alerts.wizard.redaction': 'Secret values are protected with [REDACTED].',
+  'alerts.wizard.maskEnabled': 'Mask the view',
+  'alerts.wizard.maskHelp': 'Only you can change this option. Turning it off may show sensitive data in your view. Chat remains protected. Enable it to attach screenshots.',
   'alerts.wizard.reference': 'Choose an existing configuration or secret',
   'alerts.wizard.insertFill': 'Insert FILL reference',
   'alerts.wizard.execute': 'Run remaining steps',

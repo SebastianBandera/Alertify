@@ -283,6 +283,7 @@ export class PlaywrightWizardComponent implements OnInit {
   }
 
   protected attach(): void {
+    if (this.state()?.maskEnabled === false) return;
     const frame = this.remote()?.frame();
     if (!frame) return;
     void fetch(frame.url).then(response => response.blob()).then(blob => {

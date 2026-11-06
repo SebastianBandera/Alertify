@@ -48,6 +48,7 @@ public final class InteractiveBrowserMain implements AutoCloseable {
     private String publishedUrl;
     private String activeEngine;
     private boolean capturing;
+    private boolean maskEnabled = true;
     private JsonNode settings;
     private int completed;
     private String appliedSteps = "";
@@ -145,6 +146,15 @@ public final class InteractiveBrowserMain implements AutoCloseable {
                     result(request, Map.of("status", "READY"));
                 }
                 case "SCREENSHOT" -> capture(request.getRequestId());
+                case "SET_MASK" -> {
+                    requireBrowser();
+                    if (!payload.path("enabled").isBoolean())
+                        throw new IllegalArgumentException("A boolean mask setting is required");
+
+                    maskEnabled = payload.path("enabled").booleanValue();
+                    capture("");
+                    result(request, Map.of("maskEnabled", maskEnabled));
+                }
                 case "EXECUTE" -> execute(request, payload);
                 case "TEST" -> test(request, payload);
                 default -> throw new IllegalArgumentException("Unsupported operation");
@@ -406,11 +416,13 @@ public final class InteractiveBrowserMain implements AutoCloseable {
         try {
             rememberPasswords();
             publishUrl();
+            // Explicit captures are always protected; only the user's live view may opt out.
+            boolean masked = maskEnabled || !requestId.isEmpty();
             List<Locator> masks = new ArrayList<>();
-            if (!sensitive.isEmpty())
+            if (masked && !sensitive.isEmpty())
                 masks.addAll(protection.componentAndFoldedTextMasks(filter().base64Values()));
 
-            for (Frame frame : session.page().frames()) {
+            for (Frame frame : masked ? session.page().frames() : List.<Frame>of()) {
                 masks.add(frame.locator("input[type=password]"));
                 if (!sensitive.isEmpty()) {
                     // Canvas, images and frames cannot be reliably inspected for reflected secret pixels.
@@ -420,7 +432,7 @@ public final class InteractiveBrowserMain implements AutoCloseable {
                 }
             }
             var options = new Page.ScreenshotOptions().setType(ScreenshotType.JPEG).setQuality(65).setMask(masks).setTimeout(2000);
-            if (!sensitive.isEmpty())
+            if (masked && !sensitive.isEmpty())
                 options.setStyle("*::before, *::after { content: none !important; } * { background-image: none !important; }");
 
             long nextFrame = frameId + 1;
@@ -432,7 +444,7 @@ public final class InteractiveBrowserMain implements AutoCloseable {
             while (frameRevisions.size() > 10) frameRevisions.remove(frameRevisions.keySet().iterator().next());
 
             send(WizardEvent.newBuilder().setRequestId(requestId).setType(requestId.isEmpty() ? "FRAME" : "IMAGE")
-                    .setImage(ByteString.copyFrom(image)).setFrameId(frameId).build());
+                    .setImage(ByteString.copyFrom(image)).setFrameId(frameId).setJson(json.writeValueAsString(Map.of("masked", masked))).build());
         } catch (RuntimeException exception) {
             // No raw fallback: a failed mask/capture must never release an unprotected frame.
             if (!requestId.isEmpty())

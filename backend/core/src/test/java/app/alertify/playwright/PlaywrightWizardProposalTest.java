@@ -53,6 +53,83 @@ class PlaywrightWizardProposalTest {
 
     @Test
     @SuppressWarnings("unchecked")
+    void manualMaskChangesAreSessionOnlyAndUnmaskedFramesCannotBeAttached() throws Exception {
+        prepare("ASK");
+        ((Map<UUID, Object>) ReflectionTestUtils.getField(service, "sessions")).put(draft.getId(), session);
+        var authentication = new UsernamePasswordAuthenticationToken("admin-subject", "", List.of(new SimpleGrantedAuthority("ROLE_ADMIN")));
+        StreamObserver<WizardRequest> browser = mock(StreamObserver.class);
+        doAnswer(invocation -> {
+            WizardRequest request = invocation.getArgument(0);
+            browserRequests.add(request);
+            var pending = (ConcurrentMap<String, CompletableFuture<WizardEvent>>) ReflectionTestUtils.getField(session, "pending");
+            pending.get(request.getRequestId()).complete(WizardEvent.newBuilder().setType("RESULT").setJson("{}").build());
+            return null;
+        }).when(browser).onNext(any());
+        ReflectionTestUtils.setField(session, "requests", browser);
+        ReflectionTestUtils.setField(session, "attachment", WizardEvent.newBuilder().setFrameId(7).build());
+        var frames = (Map<Long, WizardEvent>) ReflectionTestUtils.getField(session, "recentFrames");
+        frames.put(7L, WizardEvent.newBuilder().setFrameId(7).build());
+        String original = draft.getDocument();
+        service.request(authentication, json.valueToTree(Map.of("operation", "SET_MASK", "id", draft.getId(), "clientId", "browser-a", "enabled", false)));
+        awaitOperation();
+        assertThat(ReflectionTestUtils.getField(session, "maskEnabled")).isEqualTo(false);
+        assertThat(ReflectionTestUtils.getField(session, "attachment")).isNull();
+        assertThat(frames).isEmpty();
+        assertThat(draft.getDocument()).isEqualTo(original);
+        var state = json.valueToTree(service.request(authentication, json.valueToTree(Map.of("operation", "GET", "id", draft.getId()))));
+        assertThat(state.path("maskEnabled").asBoolean()).isFalse();
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.request(authentication,
+                json.valueToTree(Map.of("operation", "ATTACH", "id", draft.getId(), "clientId", "browser-a", "frameId", 7))))
+                .hasMessageContaining("Enable the view mask");
+        service.request(authentication, json.valueToTree(Map.of("operation", "SET_MASK", "id", draft.getId(), "clientId", "browser-a", "enabled", true)));
+        awaitOperation();
+        assertThat(ReflectionTestUtils.getField(session, "maskEnabled")).isEqualTo(true);
+        assertThat(browserRequests).extracting(WizardRequest::getOperation).containsExactly("SET_MASK", "SET_MASK");
+        assertThat(draft.getDocument()).isEqualTo(original);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.request(authentication,
+                json.valueToTree(Map.of("operation", "SET_MASK", "id", draft.getId(), "clientId", "other-window", "enabled", false))))
+                .hasMessageContaining("another assistant window");
+    }
+
+    @Test
+    void aiCannotToggleTheMaskThroughToolsOrScriptCommands() throws Exception {
+        prepare("AUTO");
+        for (String name : List.of("SET_MASK", "browser_set_mask")) {
+            var call = ChatToolCall.newBuilder().setCallId(UUID.randomUUID().toString()).setName(name).setArguments("{\"enabled\":false}").build();
+            ReflectionTestUtils.invokeMethod(service, "handleTool", session, call, new CompletableFuture<Void>());
+            assertThat(replies.getLast().getFailed()).isTrue();
+        }
+        assertThat(steps("SET_MASK false").getFailed()).isTrue();
+        assertThat(browserRequests).isEmpty();
+        assertThat(ReflectionTestUtils.getField(session, "maskEnabled")).isEqualTo(true);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void aiCaptureCannotOverrideProtectionEvenWhenTheUserUnmasksTheView() throws Exception {
+        prepare("AUTO");
+        ReflectionTestUtils.setField(session, "maskEnabled", false);
+        StreamObserver<WizardRequest> browser = mock(StreamObserver.class);
+        doAnswer(invocation -> {
+            WizardRequest request = invocation.getArgument(0);
+            browserRequests.add(request);
+            var pending = (ConcurrentMap<String, CompletableFuture<WizardEvent>>) ReflectionTestUtils.getField(session, "pending");
+            pending.get(request.getRequestId()).complete(WizardEvent.newBuilder().setType("IMAGE").setImage(com.google.protobuf.ByteString.copyFromUtf8("fixture-image")).build());
+            return null;
+        }).when(browser).onNext(any());
+        ReflectionTestUtils.setField(session, "requests", browser);
+        var call = ChatToolCall.newBuilder().setCallId(UUID.randomUUID().toString()).setName("browser_capture").setArguments("{\"masked\":false,\"enabled\":false}").build();
+        ReflectionTestUtils.invokeMethod(service, "handleTool", session, call, new CompletableFuture<Void>());
+        assertThat(replies.getLast().getFailed()).isFalse();
+        assertThat(browserRequests).singleElement().satisfies(request -> {
+            assertThat(request.getOperation()).isEqualTo("SCREENSHOT");
+            assertThat(json.readTree(request.getJson()).isEmpty()).isTrue();
+        });
+        assertThat(ReflectionTestUtils.getField(session, "maskEnabled")).isEqualTo(false);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
     void sanitizesEveryProviderContextSourceAndKeepsReferencePointersExact() throws Exception {
         prepare("ASK");
         String canary = "fixture-provider-private";
