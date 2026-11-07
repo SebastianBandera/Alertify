@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
 import {
@@ -81,7 +82,7 @@ function persistUpdatedAtSort(sort: SortDirection | null): void {
 
 @Component({
   selector: 'app-configs',
-  imports: [FormsModule, ExpressionEditorComponent],
+  imports: [FormsModule, RouterLink, ExpressionEditorComponent],
   templateUrl: './configs.component.html',
   styleUrl: './configs.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -402,6 +403,15 @@ export class ConfigsComponent implements OnInit {
     this.usages.set(null);
     this.usagesError.set(null);
     this.usagesLoading.set(false);
+  }
+
+  protected usageWarningLabel(code: string): string {
+    switch (code) {
+      case 'SECRET_SCRIPT_EXCLUDED': return this.localization.translate('usages.secretScriptExcluded');
+      case 'INVALID_SCRIPT': return this.localization.translate('usages.invalidScript');
+      case 'SCRIPT_UNAVAILABLE': return this.localization.translate('usages.scriptUnavailable');
+      default: return this.localization.translate('usages.referenceUnavailable');
+    }
   }
 
   protected usageTypeLabel(type: ConfigurationUsageType): string {

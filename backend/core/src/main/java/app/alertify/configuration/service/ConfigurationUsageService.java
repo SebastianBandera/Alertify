@@ -16,6 +16,7 @@ import app.alertify.api.error.ResourceNotFoundException;
 import app.alertify.configuration.api.ConfigurationUsagesResponse;
 import app.alertify.configuration.api.ConfigurationUsagesResponse.Usage;
 import app.alertify.jpa.repository.ApplicationConfigurationRepository;
+import app.alertify.playwright.PlaywrightUsageAnalyzer;
 
 /** Resolves consumers from persisted binding and expression dependency edges. */
 @Service
@@ -84,10 +85,12 @@ public class ConfigurationUsageService {
 
     private final NamedParameterJdbcTemplate jdbcTemplate;
     private final ApplicationConfigurationRepository configurationRepository;
+    private final PlaywrightUsageAnalyzer playwright;
 
-    public ConfigurationUsageService(NamedParameterJdbcTemplate jdbcTemplate, ApplicationConfigurationRepository configurationRepository) {
+    public ConfigurationUsageService(NamedParameterJdbcTemplate jdbcTemplate, ApplicationConfigurationRepository configurationRepository, PlaywrightUsageAnalyzer playwright) {
         this.jdbcTemplate = jdbcTemplate;
         this.configurationRepository = configurationRepository;
+        this.playwright = playwright;
     }
 
     @Transactional(readOnly = true)
@@ -117,12 +120,19 @@ public class ConfigurationUsageService {
             destination.computeIfAbsent(rootId, _ -> new ArrayList<>()).add(usage);
         });
 
+        var analysis = playwright.analyze();
+        for (Long id : ids) {
+            for (var consumer : analysis.consumers("CONFIGURATION", id)) {
+                var destination = consumer.direct() ? direct : indirect;
+                destination.computeIfAbsent(id, _ -> new ArrayList<>()).add(new Usage("ALERT", consumer.id(), consumer.name(), consumer.enabled()));
+            }
+        }
         Map<Long, ConfigurationUsagesResponse> responses = new HashMap<>();
         for (Long id : ids) {
-            List<Usage> directUsages = direct.getOrDefault(id, List.of()).stream().sorted(USAGE_ORDER).toList();
-            List<Usage> indirectUsages = indirect.getOrDefault(id, List.of()).stream().sorted(USAGE_ORDER).toList();
+            List<Usage> directUsages = direct.getOrDefault(id, List.of()).stream().distinct().sorted(USAGE_ORDER).toList();
+            List<Usage> indirectUsages = indirect.getOrDefault(id, List.of()).stream().distinct().filter(usage -> !directUsages.contains(usage)).sorted(USAGE_ORDER).toList();
             responses.put(id, new ConfigurationUsagesResponse(
-                    directUsages.size() + indirectUsages.size(), directUsages, indirectUsages));
+                    directUsages.size() + indirectUsages.size(), directUsages, indirectUsages, analysis.complete(), analysis.warnings(), analysis.issues()));
         }
         return responses;
     }

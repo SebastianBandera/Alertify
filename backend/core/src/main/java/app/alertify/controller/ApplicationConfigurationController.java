@@ -67,7 +67,7 @@ public class ApplicationConfigurationController {
     public Page<ConfigurationResponse> search(@RequestParam MultiValueMap<String, String> params, @PageableDefault(size = 20, sort = "name") Pageable pageable) {
         Page<ConfigurationResponse> page = service.search(params, pageable);
         var usages = usageService.getForIds(page.getContent().stream().map(ConfigurationResponse::id).toList());
-        return page.map(configuration -> configuration.withUsageCount(usages.get(configuration.id()).totalCount()));
+        return page.map(configuration -> configuration.withUsages(usages.get(configuration.id())));
     }
 
     @GetMapping(value = "/export", produces = "text/csv")
@@ -149,6 +149,6 @@ public class ApplicationConfigurationController {
     }
 
     private ConfigurationResponse withUsageCount(ConfigurationResponse response) {
-        return response.withUsageCount(usageService.getForIds(java.util.List.of(response.id())).get(response.id()).totalCount());
+        return response.withUsages(usageService.getForIds(java.util.List.of(response.id())).get(response.id()));
     }
 }

@@ -1,6 +1,13 @@
 export type AppLocale = 'en' | 'es-UY';
 
 export type TranslationKey =
+  | 'usages.incomplete'
+  | 'usages.partialHelp'
+  | 'usages.noneDetected'
+  | 'usages.secretScriptExcluded'
+  | 'usages.invalidScript'
+  | 'usages.scriptUnavailable'
+  | 'usages.referenceUnavailable'
   | 'chart.events'
   | 'alertMessage.elasticsearchEventCount.count'
   | 'alertMessage.elasticsearchEventCount.window'

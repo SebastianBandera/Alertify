@@ -1,6 +1,6 @@
 import { Type, WritableSignal, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
+import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
 import { EMPTY, of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -38,12 +38,14 @@ const screens: { name: string; component: Type<unknown>; endpoint: string; other
 describe.each(screens)('$name updated-at ordering', ({ name, component, endpoint, other }) => {
   let fixture: ComponentFixture<unknown>;
   let requests: URL[];
+  let incompleteUsages: boolean;
   const storageKey = `alertify.${name}.updated-at-sort`;
   const otherStorageKey = `alertify.${other}.updated-at-sort`;
 
   beforeEach(async () => {
     localStorage.clear();
     requests = [];
+    incompleteUsages = false;
     vi.stubGlobal('ResizeObserver', class {
       observe(): void {}
       disconnect(): void {}
@@ -54,10 +56,11 @@ describe.each(screens)('$name updated-at ordering', ({ name, component, endpoint
       if (url.pathname === endpoint) {
         requests.push(url);
         body = {
-          content: [{ id: 1, name: 'Example', templateKey: 'example.TestTemplate', valueType: 'STRING', value: 'Example value', tags: [], parameters: [], usageCount: 0, recoveryStatus: 'RECOVERABLE', updatedAt: '2026-01-01T00:00:00Z' }],
+          content: [{ id: 1, name: 'Example', templateKey: 'example.TestTemplate', valueType: 'STRING', value: 'Example value', tags: [], parameters: [], usageCount: 0, usageAnalysisComplete: !incompleteUsages, recoveryStatus: 'RECOVERABLE', updatedAt: '2026-01-01T00:00:00Z' }],
           page: { number: Number(url.searchParams.get('page')), totalElements: 100, totalPages: 10 },
         };
-      } else if (url.pathname.endsWith('-tags')) body = { content: [] };
+      } else if (url.pathname.endsWith('/usages')) body = { totalCount: 0, direct: [], indirect: [], analysisComplete: !incompleteUsages, analysisWarnings: incompleteUsages ? ['SECRET_SCRIPT_EXCLUDED', 'INVALID_SCRIPT'] : [], analysisIssues: incompleteUsages ? [{ code: 'INVALID_SCRIPT', alertId: 15, alertName: 'Problem alert' }, { code: 'SECRET_SCRIPT_EXCLUDED', alertId: 20, alertName: 'Secret script alert' }] : [] };
+      else if (url.pathname.endsWith('-tags')) body = { content: [] };
       else if (url.pathname.endsWith('-templates')) body = [];
       else if (url.pathname.endsWith('/binding-options')) body = { configurations: [], secrets: [], procedures: [] };
       else if (url.pathname.endsWith('-executions')) body = { content: [], page: { number: 0, totalElements: 0, totalPages: 0 } };
@@ -70,7 +73,7 @@ describe.each(screens)('$name updated-at ordering', ({ name, component, endpoint
       providers: [
         { provide: AuthService, useValue: { getAccessToken: async () => 'test-token', userIdentifier: 'sort-test-user' } },
         { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap: convertToParamMap({ tab: name }) }, queryParamMap: of(convertToParamMap({ tab: name })) } },
-        { provide: Router, useValue: { navigate: vi.fn().mockResolvedValue(true) } },
+        provideRouter([]),
         { provide: RUNTIME_CONFIG, useValue: { apiBaseUrl: 'https://example.test' } },
         { provide: LocalizationService, useValue: { locale: signal('en'), translate: (key: string) => key, translateDynamic: (key: string) => key } },
         { provide: AdminEventChannelService, useValue: { on: () => EMPTY } },
@@ -101,6 +104,28 @@ describe.each(screens)('$name updated-at ordering', ({ name, component, endpoint
     fixture.nativeElement.querySelector('th.sortable-column button').click();
     await settle();
   }
+
+  it.runIf(name === 'configs' || name === 'secrets')('shows incomplete analysis only in the detail and does not claim zero uses', async () => {
+    incompleteUsages = true;
+    await open();
+    expect(fixture.nativeElement.querySelector('.usage-incomplete')).toBeNull();
+    fixture.nativeElement.querySelector('button.usage-count').click();
+    await vi.waitFor(() => {
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('.usage-warning')).not.toBeNull();
+    });
+    const modal: HTMLElement = fixture.nativeElement.querySelector('.modal--usages');
+    expect(modal.textContent).toContain('usages.secretScriptExcluded');
+    expect(modal.textContent).toContain('usages.invalidScript');
+    expect(modal.textContent).toContain('usages.noneDetected');
+    expect(modal.textContent).not.toContain(`${name}.usages.empty`);
+    const issueLink = Array.from(modal.querySelectorAll<HTMLAnchorElement>('.usage-issues a')).find(link => link.textContent === 'Problem alert')!;
+    expect(issueLink).toBeDefined();
+    const destination = new URL(issueLink.href);
+    expect(destination.pathname).toBe('/alerts');
+    expect(destination.searchParams.get('search')).toBe('Problem alert');
+    expect(destination.searchParams.get('editAlertId')).toBe('15');
+  });
 
   it('cycles newest, oldest and name ordering across pages while preserving filters', async () => {
     await open();

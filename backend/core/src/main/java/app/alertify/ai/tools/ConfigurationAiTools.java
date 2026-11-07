@@ -81,7 +81,7 @@ public class ConfigurationAiTools {
         return tools.execute("alertify_configuration_search", () -> {
             var result = configurations.search(support.filters(filters), page.pageable());
             var counts = usages.getForIds(result.getContent().stream().map(ConfigurationResponse::id).toList());
-            return AiPage.from(result.map(value -> value.withUsageCount(counts.get(value.id()).totalCount())));
+            return AiPage.from(result.map(value -> value.withUsages(counts.get(value.id()))));
         });
     }
 
@@ -227,7 +227,7 @@ public class ConfigurationAiTools {
     }
 
     private ConfigurationResponse withUsageCount(ConfigurationResponse response) {
-        return response.withUsageCount(usages.getForIds(List.of(response.id())).get(response.id()).totalCount());
+        return response.withUsages(usages.getForIds(List.of(response.id())).get(response.id()));
     }
 
     private static AiSecretReference reference(SecretResponse value) {

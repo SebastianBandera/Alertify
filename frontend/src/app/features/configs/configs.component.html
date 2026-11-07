@@ -278,8 +278,24 @@
           <div class="alert alert--error" role="alert">{{ usagesError() }}</div>
         } @else if (usages(); as usageDetails) {
           <p class="usage-summary">{{ localization.translate('configs.usages.total').replace('{count}', usageDetails.totalCount.toString()) }}</p>
+          @if (usageDetails.analysisComplete === false) {
+            <div class="usage-warning" role="status">
+              <strong>{{ localization.translate('usages.incomplete') }}</strong>
+              <p>{{ localization.translate('usages.partialHelp') }}</p>
+              @for (warning of usageDetails.analysisWarnings ?? []; track warning) {
+                <p>{{ usageWarningLabel(warning) }}</p>
+                <ul class="usage-issues">
+                  @for (issue of usageDetails.analysisIssues ?? []; track issue.code + ':' + issue.alertId) {
+                    @if (issue.code === warning) {
+                      <li><a [routerLink]="['/alerts']" [queryParams]="{ tab: 'alerts', search: issue.alertName, editAlertId: issue.alertId }">{{ issue.alertName }}</a></li>
+                    }
+                  }
+                </ul>
+              }
+            </div>
+          }
           @if (usageDetails.totalCount === 0) {
-            <p class="muted">{{ localization.translate('configs.usages.empty') }}</p>
+            <p class="muted">{{ localization.translate(usageDetails.analysisComplete === false ? 'usages.noneDetected' : 'configs.usages.empty') }}</p>
           } @else {
             <section class="usage-group" [attr.aria-label]="localization.translate('configs.usages.direct')">
               <h3>{{ localization.translate('configs.usages.direct') }} <span>{{ usageDetails.direct.length }}</span></h3>

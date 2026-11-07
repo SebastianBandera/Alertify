@@ -25,13 +25,14 @@ public record ConfigurationResponse(
     Set<TagResponse> tags,
     Instant createdAt,
     Instant updatedAt,
-    int usageCount
+    int usageCount,
+    boolean usageAnalysisComplete
 ) {
     public ConfigurationResponse(Long id, long version, String name, String description, ConfigurationValueType valueType,
             JsonNode value, String binaryFileName, String binaryContentType, Long binarySize, Long binaryZipSize,
             boolean writable, Set<TagResponse> tags, Instant createdAt, Instant updatedAt) {
         this(id, version, name, description, valueType, value, binaryFileName, binaryContentType, binarySize,
-                binaryZipSize, writable, tags, createdAt, updatedAt, 0);
+                binaryZipSize, writable, tags, createdAt, updatedAt, 0, true);
     }
 
     public ConfigurationResponse(Long id, long version, String name, String description, ConfigurationValueType valueType,
@@ -41,6 +42,12 @@ public record ConfigurationResponse(
 
     public ConfigurationResponse withUsageCount(int count) {
         return new ConfigurationResponse(id, version, name, description, valueType, value, binaryFileName,
-                binaryContentType, binarySize, binaryZipSize, writable, tags, createdAt, updatedAt, count);
+                binaryContentType, binarySize, binaryZipSize, writable, tags, createdAt, updatedAt, count, usageAnalysisComplete);
+    }
+
+    public ConfigurationResponse withUsages(ConfigurationUsagesResponse usages) {
+        return new ConfigurationResponse(id, version, name, description, valueType, value, binaryFileName,
+                binaryContentType, binarySize, binaryZipSize, writable, tags, createdAt, updatedAt,
+                usages.totalCount(), usages.analysisComplete());
     }
 }
