@@ -402,6 +402,19 @@ export class ProceduresComponent implements OnInit {
     event.preventDefault();
     const file = imageItem.getAsFile();
     if (!file) return;
+    await this.analyzeTotpQrFile(file);
+  }
+
+  protected async onTotpQrFileChange(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+    await this.analyzeTotpQrFile(file);
+  }
+
+  private async analyzeTotpQrFile(file: File): Promise<void> {
+    if (this.wizardStatus() === 'analyzing') return;
     this.wizardStatus.set('analyzing');
     this.wizardError.set(null);
     try {

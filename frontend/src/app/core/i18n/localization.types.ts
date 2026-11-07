@@ -958,6 +958,7 @@ export type TranslationKey =
   | 'procedures.wizards.totpQr.description'
   | 'procedures.wizards.totpQr.instructions'
   | 'procedures.wizards.totpQr.placeholder'
+  | 'procedures.wizards.totpQr.selectFile'
   | 'procedures.wizards.totpQr.analyzing'
   | 'procedures.column.name'
   | 'procedures.column.template'

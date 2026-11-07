@@ -321,12 +321,18 @@
     } @else if (selectedWizard() === 'totp-qr') {
       <div class="wizard-panel">
         <header class="wizard-panel__header">
-          <button type="button" class="button button--secondary" (click)="backToWizardSelector()">
+          <button type="button" class="button button--secondary" [disabled]="wizardStatus() === 'analyzing'" (click)="backToWizardSelector()">
             {{ localization.translate('procedures.wizards.back') }}
           </button>
           <h2>{{ localization.translate('procedures.wizards.totpQr.title') }}</h2>
           <label for="totp-qr-paste">{{ localization.translate('procedures.wizards.totpQr.instructions') }}</label>
         </header>
+        <div class="wizard-panel__upload">
+          <input #totpQrFileInput type="file" accept="image/*" hidden [disabled]="wizardStatus() === 'analyzing'" (change)="onTotpQrFileChange($event)" />
+          <button type="button" class="button button--secondary" [disabled]="wizardStatus() === 'analyzing'" (click)="totpQrFileInput.click()">
+            {{ localization.translate('procedures.wizards.totpQr.selectFile') }}
+          </button>
+        </div>
         <textarea
           id="totp-qr-paste"
           readonly
