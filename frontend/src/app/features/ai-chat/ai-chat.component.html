@@ -49,9 +49,9 @@
       <strong>{{ localization.translateDynamic('ai.chat.title') }}</strong>
       <div>
         @if (popout()) {
-          <button class="ai-chat__secondary-button" type="button" (click)="reattach()">{{ localization.translateDynamic('ai.chat.reattach') }}</button>
+          <button class="ai-chat__secondary-button" type="button" [disabled]="busy() || windows.transferring()" (click)="reattach()">{{ localization.translateDynamic('ai.chat.reattach') }}</button>
         } @else {
-          <button class="ai-chat__secondary-button" type="button" (click)="detach()">{{ localization.translateDynamic('ai.chat.detach') }}</button>
+          <button class="ai-chat__secondary-button" type="button" [disabled]="busy() || windows.transferring()" (click)="detach()">{{ localization.translateDynamic('ai.chat.detach') }}</button>
           <button class="ai-chat__close-button" type="button" (click)="toggle()" aria-label="Close">&times;</button>
         }
       </div>
@@ -59,19 +59,19 @@
 
     <div class="ai-chat__toolbar">
       <label class="ai-chat__control-label" for="ai-chat-conversation">{{ localization.translateDynamic('ai.chat.conversation') }}</label>
-      <select id="ai-chat-conversation" [ngModel]="desiredConversationId() ?? ''" (ngModelChange)="$event ? select(+$event) : newConversation()" [attr.title]="selected()?.title ?? localization.translateDynamic('ai.chat.new')">
+      <select id="ai-chat-conversation" [disabled]="windows.transferring()" [ngModel]="desiredConversationId() ?? ''" (ngModelChange)="$event ? select(+$event) : selectNewDraft()" [attr.title]="selected()?.title ?? localization.translateDynamic('ai.chat.new')">
         <option value="">{{ localization.translateDynamic('ai.chat.new') }}</option>
         @for (conversation of conversations(); track conversation.id) {
           <option [value]="conversation.id">{{ conversation.title }}</option>
         }
       </select>
-      <button class="ai-chat__new-button" type="button" (click)="newConversation()" [attr.aria-label]="localization.translateDynamic('ai.chat.new')" [attr.title]="localization.translateDynamic('ai.chat.new')">+</button>
+      <button class="ai-chat__new-button" type="button" [disabled]="windows.transferring()" (click)="newConversation()" [attr.aria-label]="localization.translateDynamic('ai.chat.new')" [attr.title]="localization.translateDynamic('ai.chat.new')">+</button>
     </div>
 
     <div class="ai-chat__options">
       @if (reasoningOptions().length > 1) {
         <label for="ai-chat-reasoning">{{ localization.translateDynamic('ai.general.reasoningEffort') }}
-          <select id="ai-chat-reasoning" [ngModel]="reasoningEffort()" (ngModelChange)="setReasoningEffort($event)">
+          <select id="ai-chat-reasoning" [disabled]="windows.transferring()" [ngModel]="reasoningEffort()" (ngModelChange)="setReasoningEffort($event)">
             @for (effort of reasoningOptions(); track effort) {
               <option [value]="effort">{{ localization.translateDynamic('ai.reasoning.' + effort) }}</option>
             }
@@ -79,7 +79,7 @@
         </label>
       }
       <label>{{ localization.translateDynamic('ai.chat.mode') }}
-        <select [ngModel]="mode()" (ngModelChange)="mode.set($event)">
+        <select [disabled]="windows.transferring()" [ngModel]="mode()" (ngModelChange)="setMode($event)">
           <option value="READ_ONLY">{{ localization.translateDynamic('ai.chat.mode.readOnly') }}</option>
           <option value="PLAN">{{ localization.translateDynamic('ai.chat.mode.plan') }}</option>
           <option value="DIRECT">{{ localization.translateDynamic('ai.chat.mode.direct') }}</option>
@@ -87,7 +87,7 @@
       </label>
       @if (mode() === 'DIRECT') {
         <label>{{ localization.translateDynamic('ai.chat.approval') }}
-          <select [ngModel]="approvalPolicy()" (ngModelChange)="approvalPolicy.set($event)">
+          <select [disabled]="windows.transferring()" [ngModel]="approvalPolicy()" (ngModelChange)="setApprovalPolicy($event)">
             <option value="ASK">{{ localization.translateDynamic('ai.chat.approval.ask') }}</option>
             <option value="AUTO">{{ localization.translateDynamic('ai.chat.approval.auto') }}</option>
           </select>
@@ -113,7 +113,12 @@
           </article>
         } @else if (item.kind === 'tools') {
           <details class="ai-chat__tools">
-            <summary>{{ toolGroupSummary(item.tools) }}</summary>
+            <summary>
+              <span>{{ toolGroupSummary(item.tools) }}</span>
+              @if (item.tools.at(-1); as latest) {
+                <span class="ai-chat__latest-tool">{{ localization.translateDynamic('ai.chat.tools.latest') }}: <code>{{ latest.toolName }}</code> · {{ toolStatus(latest.status) }}</span>
+              }
+            </summary>
             @for (tool of item.tools; track tool.id) {
               <details class="ai-chat__tool">
                 <summary><code>{{ tool.toolName }}</code> <span>{{ toolStatus(tool.status) }}</span></summary>
@@ -153,8 +158,8 @@
             <code>{{ item.tool.toolName }}</code>
             <pre>{{ toolContent(item.tool.arguments) }}</pre>
             <div>
-              <button type="button" [disabled]="busy() || !chatAvailable()" (click)="approve(item.tool)">{{ localization.translateDynamic('ai.chat.approve') }}</button>
-              <button type="button" [disabled]="busy() || !chatAvailable()" (click)="reject(item.tool)">{{ localization.translateDynamic('ai.chat.reject') }}</button>
+              <button type="button" [disabled]="busy() || windows.transferring() || !chatAvailable()" (click)="approve(item.tool)">{{ localization.translateDynamic('ai.chat.approve') }}</button>
+              <button type="button" [disabled]="busy() || windows.transferring() || !chatAvailable()" (click)="reject(item.tool)">{{ localization.translateDynamic('ai.chat.reject') }}</button>
             </div>
           </article>
         } @else {
@@ -181,7 +186,7 @@
     @if (error()) { <p class="ai-chat__error">{{ error() }}</p> }
     <footer class="ai-chat__composer">
       <label class="ai-chat__control-label" for="ai-chat-message">{{ localization.translateDynamic('ai.chat.message') }}</label>
-      <textarea id="ai-chat-message" rows="3" maxlength="32768" [disabled]="!chatAvailable()" [value]="message()" (input)="updateMessage($event)" (keydown)="handleComposerKeydown($event)" [placeholder]="localization.translateDynamic('ai.chat.placeholder')"></textarea>
+      <textarea id="ai-chat-message" rows="3" maxlength="32768" [disabled]="!chatAvailable() || windows.transferring()" [value]="message()" (input)="updateMessage($event)" (keydown)="handleComposerKeydown($event)" [placeholder]="localization.translateDynamic('ai.chat.placeholder')"></textarea>
       <div class="ai-chat__composer-bottom">
         <div class="ai-chat__usage" aria-live="polite">
           @if (selected()) {
@@ -219,7 +224,7 @@
               <button
                 class="ai-chat__cancel-button"
                 type="button"
-                [disabled]="busy() || !chatAvailable()"
+                [disabled]="busy() || windows.transferring() || !chatAvailable()"
                 (click)="cancelTurn(turnId)"
                 [attr.aria-label]="localization.translateDynamic('ai.chat.cancel')"
                 aria-describedby="ai-chat-cancel-tooltip"
@@ -232,7 +237,7 @@
               </span>
             </span>
           }
-          <button class="ai-chat__send-button" type="button" [disabled]="busy() || !chatAvailable() || !conversationReady() || !!activeTurnId() || !message().trim()" (click)="send()">{{ localization.translateDynamic('ai.chat.send') }}</button>
+          <button class="ai-chat__send-button" type="button" [disabled]="busy() || windows.transferring() || !chatAvailable() || !conversationReady() || !!activeTurnId() || !message().trim()" (click)="send()">{{ localization.translateDynamic('ai.chat.send') }}</button>
         </div>
       </div>
     </footer>

@@ -40,6 +40,8 @@
 .ai-chat__approval { margin: .8rem 0; padding: .8rem; border: 1px solid #f59e0b; border-radius: .6rem; background: #fffbeb; }
 .ai-chat__tools { min-width: 0; margin: 0 0 .75rem; padding: .4rem .6rem; border: 1px solid #d8dee7; border-radius: .45rem; color: #596579; background: #f1f3f6; font-size: .75rem; line-height: 1.5; overflow-wrap: anywhere; }
 .ai-chat__tools summary { cursor: pointer; padding: .2rem 0; }
+.ai-chat__latest-tool { display: block; margin-left: 1rem; }
+.ai-chat__latest-tool code { font-size: inherit; white-space: normal; overflow-wrap: anywhere; }
 .ai-chat__tools summary:focus-visible { outline: 2px solid #6366f1; outline-offset: 2px; border-radius: .2rem; }
 .ai-chat__tool { min-width: 0; margin-top: .4rem; padding: .3rem .45rem; border-top: 1px solid #d8dee7; }
 .ai-chat__tool summary code { font-size: inherit; }
