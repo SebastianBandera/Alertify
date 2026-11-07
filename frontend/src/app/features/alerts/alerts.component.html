@@ -222,7 +222,7 @@
             @for (alert of alerts(); track alert.id) {
               <tr>
                 <td><strong>{{ alert.name }}</strong><small [title]="alert.description || null">{{ alert.description || '—' }}</small></td>
-                <td class="template-cell"><strong>{{ dynamic(alert.templateNameKey) }}</strong><small class="mono" [title]="alert.templateKey">{{ templateClassName(alert.templateKey) }}</small></td>
+                <td class="template-cell"><strong><a class="resource-link" [routerLink]="['/alerts']" [queryParams]="{ tab: 'templates', templateSearch: dynamic(alert.templateNameKey) }">{{ dynamic(alert.templateNameKey) }}</a></strong><small class="mono" [title]="alert.templateKey">{{ templateClassName(alert.templateKey) }}</small></td>
                 <td>
                   <div class="tag-list">
                     @for (tag of alert.tags; track tag.id) {

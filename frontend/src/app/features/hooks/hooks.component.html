@@ -86,7 +86,7 @@
                 <td>
                   <ol class="compact-list">
                     @for (target of hook.targets; track target.id) {
-                      <li><span class="type">{{ dynamic('hooks.type.' + target.type) }}</span> {{ target.resourceName }}</li>
+                      <li><span class="type">{{ dynamic('hooks.type.' + target.type) }}</span> <a class="resource-link" [routerLink]="target.type === 'ALERT' ? '/alerts' : target.type === 'PROCEDURE' ? '/procedures' : '/pipes'" [queryParams]="target.type === 'ALERT' ? { tab: 'alerts', search: target.resourceName, editAlertId: target.resourceId } : target.type === 'PROCEDURE' ? { tab: 'procedures', search: target.resourceName, editProcedureId: target.resourceId } : { tab: 'pipes', search: target.resourceName, pipeId: target.resourceId }">{{ target.resourceName }}</a></li>
                     }
                   </ol>
                 </td>

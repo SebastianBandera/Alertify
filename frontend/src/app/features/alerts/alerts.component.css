@@ -252,3 +252,6 @@ details summary { color: var(--primary-strong); cursor: pointer; font-weight: 70
   .modal--closure form > footer { padding: 14px 18px; }
   .modal--closure form > footer .button { flex: 1; padding-inline: 8px; }
 }
+.resource-link { color: inherit; cursor: pointer; text-decoration: none; font-weight: 700; }
+.resource-link:hover, .resource-link:focus-visible { text-decoration: underline; text-underline-offset: 2px; }
+.resource-link:focus-visible { outline: 2px solid var(--primary-strong); outline-offset: 3px; border-radius: 2px; }

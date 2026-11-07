@@ -2,7 +2,7 @@ import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, OnInit, computed, effect, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, ParamMap, Router, RouterLink } from '@angular/router';
 
 import { AlertParameterSource } from '../../core/api/alert-api.service';
 import { ApiRequestError, SortDirection, TagMatchMode } from '../../core/api/configuration-api.service';
@@ -106,7 +106,7 @@ function procedureTab(value: string | null): ProcedureTab {
 
 @Component({
   selector: 'app-procedures',
-  imports: [ResizableTableDirective, DatePipe, FormsModule, SearchableSelectComponent],
+  imports: [ResizableTableDirective, DatePipe, FormsModule, RouterLink, SearchableSelectComponent],
   templateUrl: './procedures.component.html',
   styleUrl: './procedures.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -122,6 +122,8 @@ export class ProceduresComponent implements OnInit {
   private readonly destroyRef = inject(DestroyRef);
   private readonly events = inject(AdminEventChannelService);
   private readonly editorViewport = inject(EditorViewportService);
+  private routeParameters: ParamMap | null = null;
+  private routeRequest = 0;
 
   protected readonly activeTab = signal<ProcedureTab>('procedures');
   protected readonly procedures = signal<readonly Procedure[]>([]);
@@ -241,19 +243,12 @@ export class ProceduresComponent implements OnInit {
       if (event.targets.includes('ALL') || event.targets.includes('PROCEDURES'))
         void this.loadAll(false);
     });
+    this.routeParameters = this.route.snapshot.queryParamMap;
+    this.applyRouteFilters(this.routeParameters);
     const requestedTab = this.route.snapshot.queryParamMap.get('tab');
     const executionId = this.route.snapshot.queryParamMap.get('executionId');
     this.historyExecutionId.set(executionId);
-    this.activeTab.set(executionId ? 'history' : procedureTab(requestedTab));
-    this.route.queryParamMap
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((parameters) => {
-        const tab = procedureTab(parameters.get('tab'));
-        if (tab === this.activeTab()) return;
-
-        this.activeTab.set(tab);
-        void this.loadTab(tab);
-      });
+    this.activeTab.set(this.routeParameters.has('editProcedureId') ? 'procedures' : executionId ? 'history' : procedureTab(requestedTab));
     if (requestedTab !== this.activeTab()) {
       void this.router.navigate([], {
         relativeTo: this.route,
@@ -264,8 +259,72 @@ export class ProceduresComponent implements OnInit {
     }
     try {
       await this.loadAll();
+      await this.openRouteEditor(this.routeParameters, ++this.routeRequest);
     } finally {
       this.countsLoaded.set(true);
+    }
+    if (!this.destroyRef.destroyed) this.route.queryParamMap
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((parameters) => { void this.handleRoute(parameters); });
+  }
+
+  private applyRouteFilters(parameters: ParamMap): boolean {
+    const previous = this.routeParameters;
+    let reload = false;
+    if (parameters.has('search') || previous?.has('search')) {
+      const search = parameters.get('search') ?? '';
+      if (search !== this.search() || parameters.has('editProcedureId')) {
+        this.search.set(search);
+        this.templateFilterId.set(null);
+        this.procedurePage.set(0);
+        reload = true;
+      }
+    }
+    if (parameters.has('templateSearch') || previous?.has('templateSearch')) {
+      const search = parameters.get('templateSearch') ?? '';
+      if (search !== this.templateListSearch() || parameters.get('tab') !== previous?.get('tab')) {
+        this.templateListSearch.set(search);
+        this.selectedTemplateTagKeys.set([]);
+        this.templateTagMatchMode.set('OR');
+        this.templatePage.set(0);
+      }
+    }
+    return reload;
+  }
+
+  private async handleRoute(parameters: ParamMap): Promise<void> {
+    const previous = this.routeParameters;
+    if (['tab', 'search', 'templateSearch', 'editProcedureId'].every((key) => parameters.get(key) === previous?.get(key))) return;
+    const request = ++this.routeRequest;
+    const reload = this.applyRouteFilters(parameters);
+    this.routeParameters = parameters;
+    const tab = parameters.has('editProcedureId') ? 'procedures' : procedureTab(parameters.get('tab'));
+    const tabChanged = tab !== this.activeTab();
+    this.activeTab.set(tab);
+    try {
+      if (tabChanged || (tab === 'procedures' && reload)) await this.loadTab(tab);
+      await this.openRouteEditor(parameters, request);
+    } catch (error) {
+      if (!this.destroyRef.destroyed && request === this.routeRequest) this.error.set(this.errorMessage(error));
+    }
+  }
+
+  private async openRouteEditor(parameters: ParamMap, request: number): Promise<void> {
+    const value = parameters.get('editProcedureId');
+    if (value === null) return;
+    if (this.destroyRef.destroyed || request !== this.routeRequest || this.route.snapshot.queryParamMap.get('editProcedureId') !== value) return;
+    const id = Number(value);
+    try {
+      if (!Number.isSafeInteger(id) || id <= 0) return;
+      this.editorOpen.set(false);
+      const procedure = await this.api.getProcedure(id);
+      if (!this.destroyRef.destroyed && request === this.routeRequest && this.route.snapshot.queryParamMap.get('editProcedureId') === value) this.openEdit(procedure);
+    } catch (error) {
+      if (!this.destroyRef.destroyed && request === this.routeRequest) this.error.set(this.errorMessage(error));
+    } finally {
+      if (!this.destroyRef.destroyed && this.route.snapshot.queryParamMap.get('editProcedureId') === value) {
+        await this.router.navigate([], { relativeTo: this.route, queryParams: { editProcedureId: null }, queryParamsHandling: 'merge', replaceUrl: true });
+      }
     }
   }
 
@@ -276,6 +335,7 @@ export class ProceduresComponent implements OnInit {
   protected updateTemplateListSearch(value: string): void {
     this.templateListSearch.set(value);
     this.templatePage.set(0);
+    void this.router.navigate([], { relativeTo: this.route, queryParams: { templateSearch: value || null }, queryParamsHandling: 'merge', replaceUrl: true });
   }
 
   protected addTemplateTagFilter(event: Event): void {
@@ -379,6 +439,7 @@ export class ProceduresComponent implements OnInit {
 
   protected async applySearch(): Promise<void> {
     this.procedurePage.set(0);
+    void this.router.navigate([], { relativeTo: this.route, queryParams: { search: this.search() || null }, queryParamsHandling: 'merge', replaceUrl: true });
     await this.loadProcedures();
   }
 

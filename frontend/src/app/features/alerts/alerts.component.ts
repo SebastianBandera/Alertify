@@ -2,7 +2,7 @@ import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, Injector, OnInit, afterNextRender, computed, effect, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, ParamMap, Router, RouterLink } from '@angular/router';
 
 import {
   Alert,
@@ -110,7 +110,7 @@ function alertTab(value: string | null): AlertTab {
 
 @Component({
   selector: 'app-alerts',
-  imports: [ResizableTableDirective, DatePipe, FormsModule, SearchableSelectComponent, PlaywrightWizardComponent],
+  imports: [ResizableTableDirective, DatePipe, FormsModule, RouterLink, SearchableSelectComponent, PlaywrightWizardComponent],
   templateUrl: './alerts.component.html',
   styleUrl: './alerts.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -127,6 +127,8 @@ export class AlertsComponent implements OnInit {
   private readonly elementRef: ElementRef<HTMLElement> = inject(ElementRef);
   private readonly injector = inject(Injector);
   private readonly editorViewport = inject(EditorViewportService);
+  private routeParameters: ParamMap | null = null;
+  private routeRequest = 0;
 
   protected readonly activeTab = signal<AlertTab>('alerts');
   protected readonly playwrightWizardOpen = signal(false);
@@ -304,6 +306,8 @@ export class AlertsComponent implements OnInit {
       else if (event.targets.includes('CONFIGURATIONS') || event.targets.includes('PROCEDURES'))
         void this.loadBindings();
     });
+    this.routeParameters = this.route.snapshot.queryParamMap;
+    this.applyRouteFilters(this.routeParameters);
     const requestedTab = this.route.snapshot.queryParamMap.get('tab');
     const requestedExecutionId = this.route.snapshot.queryParamMap.get('executionId');
     const requestedEditAlertId = Number(this.route.snapshot.queryParamMap.get('editAlertId'));
@@ -314,19 +318,10 @@ export class AlertsComponent implements OnInit {
     if (hasRequestedAlert) this.historyAlertId.set(requestedAlertId);
     this.historyExecutionId.set(requestedExecutionId);
     this.activeTab.set(hasRequestedDefinition ? 'alerts' : requestedExecutionId || hasRequestedAlert ? 'history' : alertTab(requestedTab));
-    this.route.queryParamMap
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((parameters) => {
-        const tab = alertTab(parameters.get('tab'));
-        if (tab === this.activeTab()) return;
-
-        this.activeTab.set(tab);
-        void this.loadTab(tab);
-      });
-    if (requestedTab !== this.activeTab() || hasRequestedAlert || this.route.snapshot.queryParamMap.has('editAlertId')) {
+    if (requestedTab !== this.activeTab() || hasRequestedAlert) {
       void this.router.navigate([], {
         relativeTo: this.route,
-        queryParams: { tab: this.activeTab(), alertId: null, editAlertId: null },
+        queryParams: { tab: this.activeTab(), alertId: null },
         queryParamsHandling: 'merge',
         replaceUrl: true,
       });
@@ -334,16 +329,74 @@ export class AlertsComponent implements OnInit {
 
     try {
       await Promise.all([this.loadAlerts(), this.loadTemplates(), this.loadTags(), this.loadBindings(), this.loadHistory()]);
-      if (hasRequestedDefinition) {
-        try {
-          const alert = await this.api.getAlert(requestedEditAlertId);
-          if (!this.destroyRef.destroyed) this.openEdit(alert);
-        } catch (error) {
-          if (!this.destroyRef.destroyed) this.error.set(this.errorMessage(error));
-        }
-      }
+      await this.openRouteEditor(this.routeParameters, ++this.routeRequest);
     } finally {
       this.countsLoaded.set(true);
+    }
+    if (!this.destroyRef.destroyed) this.route.queryParamMap
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((parameters) => { void this.handleRoute(parameters); });
+  }
+
+  private applyRouteFilters(parameters: ParamMap): boolean {
+    const previous = this.routeParameters;
+    let reload = false;
+    if (parameters.has('search') || previous?.has('search')) {
+      const search = parameters.get('search') ?? '';
+      if (search !== this.search() || parameters.has('editAlertId')) {
+        this.search.set(search);
+        this.templateFilterId.set(null);
+        this.selectedTagIds.set([]);
+        this.tagMatchMode.set('OR');
+        this.alertPage.set(0);
+        reload = true;
+      }
+    }
+    if (parameters.has('templateSearch') || previous?.has('templateSearch')) {
+      const search = parameters.get('templateSearch') ?? '';
+      if (search !== this.templateListSearch() || parameters.get('tab') !== previous?.get('tab')) {
+        this.templateListSearch.set(search);
+        this.selectedTemplateTagKeys.set([]);
+        this.templateTagMatchMode.set('OR');
+        this.templatePage.set(0);
+      }
+    }
+    return reload;
+  }
+
+  private async handleRoute(parameters: ParamMap): Promise<void> {
+    const previous = this.routeParameters;
+    if (['tab', 'search', 'templateSearch', 'editAlertId'].every((key) => parameters.get(key) === previous?.get(key))) return;
+    const request = ++this.routeRequest;
+    const reload = this.applyRouteFilters(parameters);
+    this.routeParameters = parameters;
+    const tab = parameters.has('editAlertId') ? 'alerts' : alertTab(parameters.get('tab'));
+    const tabChanged = tab !== this.activeTab();
+    this.activeTab.set(tab);
+    try {
+      if (tabChanged || (tab === 'alerts' && reload)) await this.loadTab(tab);
+      await this.openRouteEditor(parameters, request);
+    } catch (error) {
+      if (!this.destroyRef.destroyed && request === this.routeRequest) this.error.set(this.errorMessage(error));
+    }
+  }
+
+  private async openRouteEditor(parameters: ParamMap, request: number): Promise<void> {
+    const value = parameters.get('editAlertId');
+    if (value === null) return;
+    if (this.destroyRef.destroyed || request !== this.routeRequest || this.route.snapshot.queryParamMap.get('editAlertId') !== value) return;
+    const id = Number(value);
+    try {
+      if (!Number.isSafeInteger(id) || id <= 0) return;
+      this.editorOpen.set(false);
+      const alert = await this.api.getAlert(id);
+      if (!this.destroyRef.destroyed && request === this.routeRequest && this.route.snapshot.queryParamMap.get('editAlertId') === value) this.openEdit(alert);
+    } catch (error) {
+      if (!this.destroyRef.destroyed && request === this.routeRequest) this.error.set(this.errorMessage(error));
+    } finally {
+      if (!this.destroyRef.destroyed && this.route.snapshot.queryParamMap.get('editAlertId') === value) {
+        await this.router.navigate([], { relativeTo: this.route, queryParams: { editAlertId: null }, queryParamsHandling: 'merge', replaceUrl: true });
+      }
     }
   }
 
@@ -502,6 +555,7 @@ export class AlertsComponent implements OnInit {
 
   protected applySearch(): void {
     this.alertPage.set(0);
+    void this.router.navigate([], { relativeTo: this.route, queryParams: { search: this.search() || null }, queryParamsHandling: 'merge', replaceUrl: true });
     void this.loadAlerts();
   }
 
@@ -566,6 +620,7 @@ export class AlertsComponent implements OnInit {
   protected updateTemplateListSearch(value: string): void {
     this.templateListSearch.set(value);
     this.templatePage.set(0);
+    void this.router.navigate([], { relativeTo: this.route, queryParams: { templateSearch: value || null }, queryParamsHandling: 'merge', replaceUrl: true });
   }
 
   protected showTemplateAlerts(template: AlertTemplate): void {

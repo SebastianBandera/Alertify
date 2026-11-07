@@ -1,4 +1,7 @@
 :host { display: block; }
+.resource-link { color: inherit; cursor: pointer; text-decoration: none; }
+.resource-link:hover, .resource-link:focus-visible { text-decoration: underline; text-underline-offset: 2px; }
+.resource-link:focus-visible { outline: 2px solid var(--primary-strong); outline-offset: 3px; border-radius: 2px; }
 .hooks-page { overflow: hidden; border: 1px solid var(--border); border-radius: 16px; background: var(--surface); box-shadow: var(--shadow); }
 h1, h2, h3, p { margin: 0; }
 h1 { font-size: 22px; letter-spacing: -.03em; }

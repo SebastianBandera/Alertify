@@ -172,3 +172,6 @@ details summary { color: var(--primary-strong); cursor: pointer; font-weight: 70
   .parameter-card__heading { flex-direction: column; }
   .tag-form { grid-template-columns: 1fr; }
 }
+.resource-link { color: inherit; cursor: pointer; text-decoration: none; font-weight: 700; }
+.resource-link:hover, .resource-link:focus-visible { text-decoration: underline; text-underline-offset: 2px; }
+.resource-link:focus-visible { outline: 2px solid var(--primary-strong); outline-offset: 3px; border-radius: 2px; }

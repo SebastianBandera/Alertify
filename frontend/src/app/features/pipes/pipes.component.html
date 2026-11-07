@@ -76,7 +76,7 @@
                   <ol class="compact-list">
                     @for (step of pipe.steps; track step.id) {
                       <li>
-                        <strong>{{ step.resourceName }}</strong>
+                        <strong><a class="resource-link" [routerLink]="[step.type === 'ALERT' ? '/alerts' : '/procedures']" [queryParams]="step.type === 'ALERT' ? { tab: 'alerts', search: step.resourceName, editAlertId: step.resourceId } : { tab: 'procedures', search: step.resourceName, editProcedureId: step.resourceId }">{{ step.resourceName }}</a></strong>
                         <span class="resource-meta"><code>{{ step.key }}</code><span class="type">{{ step.type }} · {{ step.phase }}</span></span>
                         <code class="template-name" [title]="templateKeyFor(step)">{{ templateName(templateKeyFor(step)) }}</code>
                       </li>

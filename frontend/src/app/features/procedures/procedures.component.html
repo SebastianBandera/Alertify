@@ -118,7 +118,7 @@
             @for (procedure of procedures(); track procedure.id) {
               <tr>
                 <td><strong>{{ procedure.name }}</strong><small [title]="procedure.description || null">{{ procedure.description || '—' }}</small></td>
-                <td class="template-cell"><strong>{{ dynamic(procedure.templateNameKey) }}</strong><small class="mono" [title]="procedure.templateKey">{{ templateClassName(procedure.templateKey) }}</small></td>
+                <td class="template-cell"><strong><a class="resource-link" [routerLink]="['/procedures']" [queryParams]="{ tab: 'templates', templateSearch: dynamic(procedure.templateNameKey) }">{{ dynamic(procedure.templateNameKey) }}</a></strong><small class="mono" [title]="procedure.templateKey">{{ templateClassName(procedure.templateKey) }}</small></td>
                 <td>
                   <div class="tag-list">
                     @for (tag of procedure.tags; track tag.id) {

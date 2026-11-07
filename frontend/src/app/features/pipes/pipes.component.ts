@@ -2,7 +2,7 @@ import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, OnDestroy, OnInit, effect, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, ParamMap, Router, RouterLink } from '@angular/router';
 
 import { ApiRequestError } from '../../core/api/configuration-api.service';
 import {
@@ -84,7 +84,7 @@ function readStoredPageSize(): number {
 
 @Component({
   selector: 'app-pipes',
-  imports: [ResizableTableDirective, DatePipe, FormsModule, ExpressionEditorComponent],
+  imports: [ResizableTableDirective, DatePipe, FormsModule, RouterLink, ExpressionEditorComponent],
   templateUrl: './pipes.component.html',
   styleUrl: './pipes.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -100,6 +100,8 @@ export class PipesComponent implements OnInit, OnDestroy {
   private readonly events = inject(AdminEventChannelService);
   private readonly elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly editorViewport = inject(EditorViewportService);
+  private routeParameters: ParamMap | null = null;
+  private routeRequest = 0;
 
   protected readonly activeTab = signal<PipeTab>('pipes');
   protected readonly pipes = signal<readonly Pipe[]>([]);
@@ -156,19 +158,85 @@ export class PipesComponent implements OnInit, OnDestroy {
       if (event.targets.includes('ALL') || event.targets.includes('PIPES'))
         void this.loadAll(false);
     });
+    this.routeParameters = this.route.snapshot.queryParamMap;
+    this.search.set(this.routeParameters.get('search') ?? '');
     const tab = this.route.snapshot.queryParamMap.get('tab');
     const executionId = this.route.snapshot.queryParamMap.get('executionId');
     if (tab === 'history' || executionId) this.activeTab.set('history');
     this.executionFilter.set(executionId);
-    const requestedPipeId = Number(this.route.snapshot.queryParamMap.get('pipeId')) || null;
+    const requestedPipeId = this.routePipeId(this.routeParameters);
     this.historyPipeId.set(requestedPipeId);
     try {
       await this.loadAll();
-      if (requestedPipeId && this.activeTab() !== 'history') this.openEdit(await this.api.get(requestedPipeId));
+      await this.openRouteEditor(this.routeParameters, ++this.routeRequest);
     } finally {
       this.countsLoaded.set(true);
     }
     if (this.activeTab() === 'history') this.startRefresh();
+    if (!this.destroyRef.destroyed) this.route.queryParamMap
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((parameters) => { void this.handleRoute(parameters); });
+  }
+
+  private routePipeId(parameters: ParamMap): number | null {
+    const id = Number(parameters.get('pipeId'));
+    return Number.isSafeInteger(id) && id > 0 ? id : null;
+  }
+
+  private async handleRoute(parameters: ParamMap): Promise<void> {
+    const previous = this.routeParameters;
+    if (['tab', 'search', 'pipeId', 'executionId'].every((key) => parameters.get(key) === previous?.get(key))) return;
+    const request = ++this.routeRequest;
+    this.routeParameters = parameters;
+    const tab = parameters.get('tab') === 'history' || parameters.get('executionId') ? 'history' : 'pipes';
+    const tabChanged = tab !== this.activeTab();
+    const search = parameters.get('search') ?? '';
+    const searchChanged = search !== this.search();
+    if (searchChanged || (tab === 'pipes' && parameters.has('pipeId'))) {
+      this.search.set(search);
+      this.pageIndex.set(0);
+    }
+    this.activeTab.set(tab);
+    try {
+      if (tab === 'history') {
+        const pipeId = this.routePipeId(parameters);
+        const executionId = parameters.get('executionId');
+        const filtersChanged = pipeId !== this.historyPipeId() || executionId !== this.executionFilter();
+        this.historyPipeId.set(pipeId);
+        this.executionFilter.set(executionId);
+        if (tabChanged || filtersChanged) {
+          this.historyPageIndex.set(0);
+          await this.loadHistory();
+        }
+        this.startRefresh();
+      } else {
+        this.stopRefresh();
+        if (tabChanged || searchChanged || parameters.has('pipeId')) await this.loadPipes();
+        await this.openRouteEditor(parameters, request);
+      }
+    } catch (error) {
+      if (!this.destroyRef.destroyed && request === this.routeRequest) this.error.set(this.errorMessage(error));
+    }
+  }
+
+  private async openRouteEditor(parameters: ParamMap, request: number): Promise<void> {
+    if (parameters.get('tab') === 'history' || parameters.get('executionId')) return;
+    const value = parameters.get('pipeId');
+    if (value === null) return;
+    if (this.destroyRef.destroyed || request !== this.routeRequest || this.route.snapshot.queryParamMap.get('pipeId') !== value) return;
+    const id = this.routePipeId(parameters);
+    try {
+      if (id === null) return;
+      this.editorOpen.set(false);
+      const pipe = await this.api.get(id);
+      if (!this.destroyRef.destroyed && request === this.routeRequest && this.route.snapshot.queryParamMap.get('pipeId') === value) this.openEdit(pipe);
+    } catch (error) {
+      if (!this.destroyRef.destroyed && request === this.routeRequest) this.error.set(this.errorMessage(error));
+    } finally {
+      if (!this.destroyRef.destroyed && this.route.snapshot.queryParamMap.get('pipeId') === value) {
+        await this.router.navigate([], { relativeTo: this.route, queryParams: { pipeId: null }, queryParamsHandling: 'merge', replaceUrl: true });
+      }
+    }
   }
 
   ngOnDestroy(): void { this.stopRefresh(); }
@@ -179,7 +247,7 @@ export class PipesComponent implements OnInit, OnDestroy {
     this.activeTab.set(tab);
     await this.router.navigate([], {
       relativeTo: this.route,
-      queryParams: { tab, executionId: tab === 'history' ? this.executionFilter() : null },
+      queryParams: { tab, executionId: tab === 'history' ? this.executionFilter() : null, pipeId: tab === 'history' ? this.historyPipeId() : null },
       queryParamsHandling: 'merge',
       replaceUrl: true,
     });
@@ -194,6 +262,7 @@ export class PipesComponent implements OnInit, OnDestroy {
 
   protected async applySearch(): Promise<void> {
     this.pageIndex.set(0);
+    void this.router.navigate([], { relativeTo: this.route, queryParams: { search: this.search() || null }, queryParamsHandling: 'merge', replaceUrl: true });
     await this.loadPipes();
   }
 
@@ -806,7 +875,7 @@ export class PipesComponent implements OnInit, OnDestroy {
   private async updateHistoryQuery(): Promise<void> {
     await this.router.navigate([], {
       relativeTo: this.route,
-      queryParams: { tab: 'history', executionId: this.executionFilter() },
+      queryParams: { tab: 'history', executionId: this.executionFilter(), pipeId: this.historyPipeId() },
       queryParamsHandling: 'merge',
       replaceUrl: true,
     });

@@ -194,6 +194,10 @@ export class ProcedureApiService {
     return this.request(`/api/procedures?${params}`);
   }
 
+  async getProcedure(id: number): Promise<Procedure> {
+    return this.request(`/api/procedures/${id}`);
+  }
+
   async listTemplates(): Promise<readonly ProcedureTemplate[]> {
     return this.request('/api/procedure-templates');
   }
