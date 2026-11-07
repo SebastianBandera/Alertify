@@ -11,6 +11,7 @@ import { AuthService } from '../../core/auth/auth.service';
 import { RUNTIME_CONFIG } from '../../core/config/runtime-config';
 import { LocalizationService } from '../../core/i18n/localization.service';
 import { AdminEventChannelService } from '../../core/realtime/admin-event-channel.service';
+import { EditorDraftService } from '../../shared/editor-drafts/editor-draft.service';
 import { HooksComponent } from '../hooks/hooks.component';
 import { PipesComponent } from '../pipes/pipes.component';
 import { ProceduresComponent } from '../procedures/procedures.component';
@@ -21,7 +22,12 @@ interface ResourceHarness {
   loading(): boolean;
   editorOpen(): boolean;
   error(): string | null;
-  form(): { name: string };
+  form(): { name: string; executionMode?: 'STANDALONE' | 'PIPE'; [key: string]: unknown };
+  patchForm(patch: { executionMode?: 'STANDALONE' | 'PIPE'; name?: string }): void;
+  save(): Promise<void>;
+  minimizeDraft(): void;
+  restoreDraft(): void;
+  selectTemplateId(id: number | null): void;
   search: WritableSignal<string>;
   templateListSearch: WritableSignal<string>;
   templateFilterId: WritableSignal<number | null>;
@@ -61,32 +67,39 @@ describe('resource navigation', () => {
   let harness: RouterTestingHarness;
   let requests: URL[];
   let missingResource: boolean;
+  let executionMode: 'STANDALONE' | 'PIPE' | undefined;
+  let writes: Record<string, unknown>[];
 
   beforeEach(async () => {
     localStorage.clear();
     requests = [];
     missingResource = false;
+    executionMode = 'PIPE';
+    writes = [];
     vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
     vi.stubGlobal('ResizeObserver', class {
       observe(): void {}
       disconnect(): void {}
     });
-    vi.stubGlobal('fetch', vi.fn(async (input: string) => {
+    vi.stubGlobal('fetch', vi.fn(async (input: string, init?: RequestInit) => {
       const url = new URL(input);
       requests.push(url);
       const path = url.pathname;
       let body: unknown = {};
       let status = 200;
       const page = (content: unknown[]) => ({ content, page: { number: Number(url.searchParams.get('page') ?? 0), totalPages: 10, totalElements: 100 } });
-      if (path === '/api/pipes/42') {
+      if (init?.method === 'POST' || init?.method === 'PUT') {
+        writes.push(JSON.parse(init.body as string));
+        body = { ...resource, ...writes.at(-1) };
+      } else if (path === '/api/pipes/42') {
         body = missingResource ? { code: 'RESOURCE_NOT_FOUND', message: 'Resource not found' } : pipeResource;
         status = missingResource ? 404 : 200;
       } else if (/\/api\/(alerts|procedures)\/42$/.test(path)) {
-        body = missingResource ? { code: 'RESOURCE_NOT_FOUND', message: 'Resource not found' } : resource;
+        body = missingResource ? { code: 'RESOURCE_NOT_FOUND', message: 'Resource not found' } : { ...resource, executionMode };
         status = missingResource ? 404 : 200;
       } else if (/\/api\/(alerts|procedures)$/.test(path)) {
         // The target is deliberately absent from the loaded page.
-        body = page([{ ...resource, id: 1, name: RESOURCE_NAME + ' similar' }]);
+        body = page([{ ...resource, executionMode, id: 1, name: RESOURCE_NAME + ' similar' }]);
       } else if (path.endsWith('-templates')) {
         body = [template, { ...template, id: 8, templateKey: 'example.OtherTemplate', nameKey: 'Other', descriptionKey: 'Other' }];
       } else if (path.endsWith('/binding-options')) {
@@ -159,6 +172,14 @@ describe('resource navigation', () => {
   }
 
   for (const { name, editKey } of screens) {
+    it.each(['STANDALONE', 'PIPE', undefined] as const)(`shows the ${name} run button only for standalone mode (%s)`, async (mode) => {
+      executionMode = mode;
+      await navigate('/' + name + '?tab=' + name);
+      const count = mode === 'PIPE' ? 0 : 1;
+      expect(harness.routeNativeElement!.querySelectorAll('.actions__run')).toHaveLength(count);
+      expect(harness.routeNativeElement!.querySelectorAll('.actions__divider')).toHaveLength(count);
+      expect(harness.routeNativeElement!.querySelectorAll('td.actions button:not(.actions__run)')).toHaveLength(3);
+    });
     it(`links the ${name} template name to its filtered catalog and handles navigation in the same component`, async () => {
       await navigate('/' + name + '?tab=' + name);
       const instance = current();
@@ -276,6 +297,42 @@ describe('resource navigation', () => {
       expect(current().form().name).toBe(RESOURCE_NAME);
     });
   }
+
+  it('preserves the Procedure mode through editing, template selection, drafts and saving', async () => {
+    await navigate('/procedures?tab=procedures&editProcedureId=42');
+    await vi.waitFor(() => expect(current().editorOpen()).toBe(true));
+    expect(current().form().executionMode).toBe('PIPE');
+    const select = harness.routeNativeElement!.querySelector<HTMLSelectElement>('select[name=executionMode]')!;
+    expect(select.value).toBe('PIPE');
+    current().minimizeDraft();
+    current().restoreDraft();
+    expect(current().form().executionMode).toBe('PIPE');
+    current().selectTemplateId(7);
+    expect(current().form().executionMode).toBe('PIPE');
+    await current().save();
+    expect(writes.at(-1)?.['executionMode']).toBe('PIPE');
+    await navigate('/procedures?tab=procedures&editProcedureId=42');
+    await vi.waitFor(() => expect(current().editorOpen()).toBe(true));
+    current().patchForm({ executionMode: 'STANDALONE' });
+    await current().save();
+    expect(writes.at(-1)?.['executionMode']).toBe('STANDALONE');
+  });
+
+  it('defaults legacy Procedure responses and drafts to standalone', async () => {
+    executionMode = undefined;
+    await navigate('/procedures?tab=procedures&editProcedureId=42');
+    await vi.waitFor(() => expect(current().editorOpen()).toBe(true));
+    expect(current().form().executionMode).toBe('STANDALONE');
+    const { executionMode: _mode, ...legacy } = current().form();
+    TestBed.inject(EditorDraftService).save('procedures', legacy, null);
+    current().restoreDraft();
+    expect(current().form().executionMode).toBe('STANDALONE');
+  });
+
+  it('keeps the Pipe list run button available', async () => {
+    await navigate('/pipes');
+    expect(harness.routeNativeElement!.querySelectorAll('.actions__run')).toHaveLength(1);
+  });
 
   for (const [index, name, editKey] of [[0, 'alerts', 'editAlertId'], [1, 'procedures', 'editProcedureId'], [2, 'pipes', 'pipeId']] as const) {
     it(`opens a Hook's ${name} destination filtered by name and edits the exact resource`, async () => {

@@ -3,6 +3,8 @@ package app.alertify.procedures.api;
 import java.util.List;
 import java.util.Set;
 
+import app.alertify.alerts.model.ExecutionMode;
+
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -18,6 +20,10 @@ public record ProcedureUpdateRequest(
     boolean enabled,
     boolean allowConcurrentExecutions,
     @NotNull @Size(max = 100) List<@Valid ProcedureParameterValueRequest> parameters,
-    @NotNull @Size(max = 100) Set<@Positive Long> tagIds
+    @NotNull @Size(max = 100) Set<@Positive Long> tagIds,
+    ExecutionMode executionMode
 ) {
+    public ProcedureUpdateRequest(Long version, String name, String description, String cronExpression, boolean enabled, boolean allowConcurrentExecutions, List<ProcedureParameterValueRequest> parameters, Set<Long> tagIds) {
+        this(version, name, description, cronExpression, enabled, allowConcurrentExecutions, parameters, tagIds, null);
+    }
 }

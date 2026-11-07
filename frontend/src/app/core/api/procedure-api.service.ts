@@ -85,6 +85,7 @@ export interface Procedure {
   readonly cronExpression: string;
   readonly enabled: boolean;
   readonly allowConcurrentExecutions: boolean;
+  readonly executionMode?: 'STANDALONE' | 'PIPE';
   readonly tags: readonly ProcedureTag[];
   readonly parameters: readonly ProcedureParameterValue[];
   readonly createdAt: string;
@@ -109,6 +110,7 @@ export interface ProcedureWriteRequest {
   readonly cronExpression: string;
   readonly enabled: boolean;
   readonly allowConcurrentExecutions: boolean;
+  readonly executionMode?: 'STANDALONE' | 'PIPE';
   readonly tagIds: readonly number[];
   readonly parameters: readonly ProcedureParameterWriteRequest[];
 }

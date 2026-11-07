@@ -14,6 +14,7 @@ import java.util.regex.Pattern;
 import org.springframework.stereotype.Component;
 
 import app.alertify.alerts.template.annotation.AlertParameterSource;
+import app.alertify.alerts.model.ExecutionMode;
 import app.alertify.api.csv.CsvSupport;
 import app.alertify.api.error.InvalidProcedureImportException;
 import app.alertify.jpa.entity.Tag;
@@ -26,9 +27,10 @@ import tools.jackson.databind.json.JsonMapper;
 @Component
 class ProcedureCsvCodec {
     private static final String PARAMETER_PREFIX = "parameter '";
-    private static final List<String> HEADER = List.of(
+    private static final List<String> LEGACY_HEADER = List.of(
             "name", "description", "templateKey", "cronExpression", "enabled", "allowConcurrentExecutions", "parameters", "tags"
     );
+    private static final List<String> HEADER = java.util.stream.Stream.concat(LEGACY_HEADER.stream(), java.util.stream.Stream.of("executionMode")).toList();
     private static final int MAX_ROWS = 10_000;
     private static final Pattern TAG_COLOR = Pattern.compile("^#[0-9A-Fa-f]{6}$");
     private final JsonMapper jsonMapper;
@@ -46,7 +48,7 @@ class ProcedureCsvCodec {
                     .map(tag -> new ExportTag(tag.getName(), tag.getColor())).toList();
             CsvSupport.appendRow(csv, List.of(procedure.getName(), nullable(procedure.getDescription()),
                     procedure.getTemplate().getTemplateKey(), procedure.getCronExpression(), Boolean.toString(procedure.isEnabled()),
-                    Boolean.toString(procedure.isConcurrentExecutionAllowed()), json(parameters), json(tags)));
+                    Boolean.toString(procedure.isConcurrentExecutionAllowed()), json(parameters), json(tags), procedure.getExecutionMode().name()));
         }
         return csv.toString().getBytes(StandardCharsets.UTF_8);
     }
@@ -76,8 +78,8 @@ class ProcedureCsvCodec {
         }
         if (rows.isEmpty()) throw new InvalidProcedureImportException("The CSV file is empty");
 
-        if (!rows.getFirst().equals(HEADER))
-            throw new InvalidProcedureImportException("CSV header must be exactly: " + String.join(",", HEADER));
+        if (!rows.getFirst().equals(HEADER) && !rows.getFirst().equals(LEGACY_HEADER))
+            throw new InvalidProcedureImportException("CSV header must be exactly: " + String.join(",", HEADER) + " (or omit executionMode for legacy files)");
 
         if (rows.size() - 1 > MAX_ROWS)
             throw new InvalidProcedureImportException("CSV contains more than " + MAX_ROWS + " procedures");
@@ -87,7 +89,7 @@ class ProcedureCsvCodec {
         for (int index = 1; index < rows.size(); index++) {
             List<String> fields = rows.get(index);
             int row = index + 1;
-            if (fields.size() != HEADER.size()) throw error(row, "expected " + HEADER.size() + " columns");
+            if (fields.size() != rows.getFirst().size()) throw error(row, "expected " + rows.getFirst().size() + " columns");
 
             String name = fields.get(0).trim();
 
@@ -115,7 +117,7 @@ class ProcedureCsvCodec {
             boolean allowConcurrentExecutions = parseBoolean(fields.get(5), row, "allowConcurrentExecutions");
 
             result.add(new ImportRow(row, name, description, templateKey, cronExpression, enabled, allowConcurrentExecutions,
-                    parameters(fields.get(6), row), tags(fields.get(7), row)));
+                    parameters(fields.get(6), row), tags(fields.get(7), row), executionMode(fields, row)));
         }
         return List.copyOf(result);
     }
@@ -153,6 +155,13 @@ class ProcedureCsvCodec {
                     source == AlertParameterSource.TEXT ? parameterValue : parameterValue.trim()));
         }
         return List.copyOf(result);
+    }
+
+    private static ExecutionMode executionMode(List<String> fields, int row) {
+        if (fields.size() == LEGACY_HEADER.size() || fields.getLast().isBlank()) return null;
+
+        try { return ExecutionMode.valueOf(fields.getLast().trim()); }
+        catch (IllegalArgumentException exception) { throw error(row, "executionMode must be STANDALONE or PIPE", exception); }
     }
 
     private List<ImportTag> tags(String raw, int row) {
@@ -214,7 +223,7 @@ class ProcedureCsvCodec {
         return new InvalidProcedureImportException("CSV row " + row + ": " + message, cause);
     }
 
-    record ImportRow(int rowNumber, String name, String description, String templateKey, String cronExpression, boolean enabled, boolean allowConcurrentExecutions, List<ImportParameter> parameters, List<ImportTag> tags) { }
+    record ImportRow(int rowNumber, String name, String description, String templateKey, String cronExpression, boolean enabled, boolean allowConcurrentExecutions, List<ImportParameter> parameters, List<ImportTag> tags, ExecutionMode executionMode) { }
     record ImportParameter(String key, AlertParameterSource source, String value) { }
     record ImportTag(String name, String color) { }
     private record ExportParameter(String key, AlertParameterSource source, String value) { }

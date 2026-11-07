@@ -155,9 +155,11 @@ public class ProcedureManagementService {
         ensureNameAvailable(name, null);
         ProcedureTemplateDefinition template = templateRepository.findById(request.templateId())
                 .orElseThrow(() -> notFound("Procedure template", request.templateId()));
-        Procedure procedure = procedureRepository.saveAndFlush(new Procedure(template, name,
+        Procedure definition = new Procedure(template, name,
                 optional(request.description()), validateCron(request.cronExpression()), request.enabled(), request.allowConcurrentExecutions() == null || request.allowConcurrentExecutions(),
-                resolveTags(request.tagIds())));
+                resolveTags(request.tagIds()));
+        definition.changeExecutionMode(request.executionMode());
+        Procedure procedure = procedureRepository.saveAndFlush(definition);
         List<ProcedureParameterValue> values = synchronizeParameters(procedure, request.parameters(), List.of());
         eventLogger.successAfterCommit("PROCEDURE_CREATED", Map.of(PROCEDURE_ID, procedure.getId(), "name", procedure.getName(), "templateId", template.getId(), ALLOW_CONCURRENT_EXECUTIONS, procedure.isConcurrentExecutionAllowed()));
         scheduleService.rescheduleAfterCommit(procedure.getId());
@@ -181,6 +183,7 @@ public class ProcedureManagementService {
             procedure.disable();
 
         procedure.changeConcurrentExecution(request.allowConcurrentExecutions());
+        procedure.changeExecutionMode(request.executionMode());
         procedure.replaceTags(resolveTags(request.tagIds()));
         List<ProcedureParameterValue> values = synchronizeParameters(procedure, request.parameters(),
                 parameterValueRepository.findAllByOwnerIdOrdered(id));

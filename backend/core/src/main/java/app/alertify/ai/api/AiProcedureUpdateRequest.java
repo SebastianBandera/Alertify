@@ -3,6 +3,8 @@ package app.alertify.ai.api;
 import java.util.List;
 import java.util.Set;
 
+import app.alertify.alerts.model.ExecutionMode;
+
 import org.springframework.ai.tool.annotation.ToolParam;
 
 import app.alertify.procedures.api.ProcedureUpdateRequest;
@@ -21,11 +23,15 @@ public record AiProcedureUpdateRequest(
     boolean enabled,
     boolean allowConcurrentExecutions,
     @ToolParam(description = "Complete replacement list, not a patch. Start from the freshly read parameters, replace the requested entry by parameterKey exactly once and preserve all other entries and sources. Omitted entries may reset to template defaults or be removed; do not omit them to preserve them.") @NotNull @Size(max = 100) List<@NotNull @Valid AiProcedureParameterValue> parameters,
-    @NotNull @Size(max = 100) Set<@Positive Long> tagIds
+    @NotNull @Size(max = 100) Set<@Positive Long> tagIds,
+    @ToolParam(required = false, description = "Intended execution context: STANDALONE or PIPE. null preserves the existing mode. PIPE hides the run button in the resource list; it does not change cron or execution permissions.") ExecutionMode executionMode
 ) {
+    public AiProcedureUpdateRequest(Long version, String name, String description, String cronExpression, boolean enabled, boolean allowConcurrentExecutions, List<AiProcedureParameterValue> parameters, Set<Long> tagIds) {
+        this(version, name, description, cronExpression, enabled, allowConcurrentExecutions, parameters, tagIds, null);
+    }
 
     public ProcedureUpdateRequest toRequest() {
         return new ProcedureUpdateRequest(version, name, description, cronExpression, enabled,
-                allowConcurrentExecutions, parameters.stream().map(AiProcedureParameterValue::toRequest).toList(), tagIds);
+                allowConcurrentExecutions, parameters.stream().map(AiProcedureParameterValue::toRequest).toList(), tagIds, executionMode);
     }
 }

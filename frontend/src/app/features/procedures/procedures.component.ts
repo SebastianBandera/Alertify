@@ -63,6 +63,7 @@ interface ProcedureForm {
   cronExpression: string;
   enabled: boolean;
   allowConcurrentExecutions: boolean;
+  executionMode: 'STANDALONE' | 'PIPE';
   tagIds: number[];
   parameters: Readonly<Record<string, ParameterForm>>;
 }
@@ -531,6 +532,7 @@ export class ProceduresComponent implements OnInit {
       cronExpression: procedure.cronExpression,
       enabled: procedure.enabled,
       allowConcurrentExecutions: procedure.allowConcurrentExecutions,
+      executionMode: procedure.executionMode ?? 'STANDALONE',
       tagIds: procedure.tags.map((tag) => tag.id),
       parameters,
     });
@@ -550,7 +552,7 @@ export class ProceduresComponent implements OnInit {
     const draft = this.drafts.read<ProcedureForm, Procedure>('procedures');
     if (!draft || this.saving()) return;
     this.editorViewport.capture(draft.editing ? `procedure-${draft.editing.id}` : 'procedure-create');
-    this.form.set(draft.form);
+    this.form.set({ ...draft.form, description: draft.form.description ?? '', executionMode: draft.form.executionMode ?? 'STANDALONE' });
     this.editing.set(draft.editing);
     this.formError.set(null);
     this.editorOpen.set(true);
@@ -574,6 +576,7 @@ export class ProceduresComponent implements OnInit {
       cronExpression: current.cronExpression,
       enabled: current.enabled,
       allowConcurrentExecutions: current.allowConcurrentExecutions,
+      executionMode: current.executionMode,
       tagIds: current.tagIds,
     });
   }
@@ -681,6 +684,7 @@ export class ProceduresComponent implements OnInit {
         cronExpression,
         enabled: form.enabled,
         allowConcurrentExecutions: form.allowConcurrentExecutions,
+        executionMode: form.executionMode,
         tagIds: form.tagIds,
         parameters,
       };
@@ -919,7 +923,7 @@ export class ProceduresComponent implements OnInit {
   }
 
   private emptyForm(): ProcedureForm {
-    return { templateId: null, name: '', description: '', cronExpression: '-', enabled: true, allowConcurrentExecutions: true, tagIds: [], parameters: {} };
+    return { templateId: null, name: '', description: '', cronExpression: '-', enabled: true, allowConcurrentExecutions: true, executionMode: 'STANDALONE', tagIds: [], parameters: {} };
   }
 
   private formForTemplate(template: ProcedureTemplate | null): ProcedureForm {

@@ -253,17 +253,22 @@
                 <td class="updated-at" [title]="(alert.updatedAt | date:'medium') || ''"><span>{{ alert.updatedAt | date:'mediumDate' }}</span><small>{{ alert.updatedAt | date:'mediumTime' }}</small></td>
                 <td class="actions">
                   <div class="actions__group">
-                    <button
-                      class="actions__run"
-                      type="button"
-                      [disabled]="runningAlertId() !== null"
-                      [title]="localization.translate(runningAlertId() === alert.id ? 'alerts.runStarting' : 'alerts.runNowHint')"
-                      [attr.aria-label]="localization.translate(runningAlertId() === alert.id ? 'alerts.runStarting' : 'alerts.runNowHint')"
-                      (click)="runAlertNow(alert)"
-                    >
-                      <span class="actions__run-icon" aria-hidden="true"></span>
-                    </button>
-                    <span class="actions__divider" aria-hidden="true"></span>
+                    @if ((alert.executionMode ?? 'STANDALONE') === 'STANDALONE') {
+                      <button
+                        class="actions__run"
+                        type="button"
+                        [disabled]="runningAlertId() !== null"
+                        [title]="localization.translate(runningAlertId() === alert.id ? 'alerts.runStarting' : 'alerts.runNowHint')"
+                        [attr.aria-label]="localization.translate(runningAlertId() === alert.id ? 'alerts.runStarting' : 'alerts.runNowHint')"
+                        (click)="runAlertNow(alert)"
+                      >
+                        <span class="actions__run-icon" aria-hidden="true"></span>
+                      </button>
+                      <span class="actions__divider" aria-hidden="true"></span>
+                    } @else {
+                      <span class="actions__run-spacer" aria-hidden="true"></span>
+                      <span class="actions__divider-spacer" aria-hidden="true"></span>
+                    }
                     <button type="button" [title]="localization.translate('alerts.historyHint')" (click)="showAlertHistory(alert)">{{ localization.translate('alerts.history') }}</button>
                     <button type="button" [attr.data-editor-viewport]="'alert-' + alert.id" (click)="openEdit(alert)">{{ localization.translate('alerts.edit') }}</button>
                     <button class="danger" type="button" (click)="deleteAlert(alert)">{{ localization.translate('alerts.delete') }}</button>

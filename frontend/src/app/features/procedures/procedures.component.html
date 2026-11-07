@@ -137,17 +137,22 @@
                 <td class="updated-at" [title]="(procedure.updatedAt | date:'medium') || ''"><span>{{ procedure.updatedAt | date:'mediumDate' }}</span><small>{{ procedure.updatedAt | date:'mediumTime' }}</small></td>
                 <td class="actions">
                   <div class="actions__group">
-                    <button
-                      class="actions__run"
-                      type="button"
-                      (click)="run(procedure)"
-                      [disabled]="runningId() !== null"
-                      [title]="localization.translate('procedures.run')"
-                      [attr.aria-label]="localization.translate('procedures.run')"
-                    >
-                      <span class="actions__run-icon" aria-hidden="true"></span>
-                    </button>
-                    <span class="actions__divider" aria-hidden="true"></span>
+                    @if ((procedure.executionMode ?? 'STANDALONE') === 'STANDALONE') {
+                      <button
+                        class="actions__run"
+                        type="button"
+                        (click)="run(procedure)"
+                        [disabled]="runningId() !== null"
+                        [title]="localization.translate('procedures.run')"
+                        [attr.aria-label]="localization.translate('procedures.run')"
+                      >
+                        <span class="actions__run-icon" aria-hidden="true"></span>
+                      </button>
+                      <span class="actions__divider" aria-hidden="true"></span>
+                    } @else {
+                      <span class="actions__run-spacer" aria-hidden="true"></span>
+                      <span class="actions__divider-spacer" aria-hidden="true"></span>
+                    }
                     <button type="button" [title]="localization.translate('procedures.historyHint')" (click)="showProcedureHistory(procedure)">{{ localization.translate('procedures.history') }}</button>
                     <button type="button" [attr.data-editor-viewport]="'procedure-' + procedure.id" (click)="openEdit(procedure)">{{ localization.translate('procedures.edit') }}</button>
                     <button class="danger" type="button" (click)="remove(procedure)">{{ localization.translate('procedures.delete') }}</button>
@@ -476,6 +481,14 @@
               {{ localization.translate('procedures.form.allowConcurrentExecutions') }}
               <small>{{ localization.translate('procedures.form.allowConcurrentExecutionsHelp') }}</small>
             </span>
+          </label>
+          <label class="full">
+            <span>{{ localization.translate('procedures.form.executionMode') }}</span>
+            <select name="executionMode" [ngModel]="form().executionMode" (ngModelChange)="patchForm({ executionMode: $event })">
+              <option value="STANDALONE">Standalone</option>
+              <option value="PIPE">{{ localization.translate('procedures.form.executionMode.pipe') }}</option>
+            </select>
+            <small>{{ localization.translate('procedures.form.executionMode.help') }}</small>
           </label>
           <label class="full">
             <span>{{ localization.translate('procedures.form.description') }}</span>

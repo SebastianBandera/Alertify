@@ -13,9 +13,12 @@ import org.hibernate.envers.AuditTable;
 import org.hibernate.envers.Audited;
 import org.hibernate.envers.NotAudited;
 
+import app.alertify.alerts.model.ExecutionMode;
 import app.alertify.jpa.entity.Tag;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -68,6 +71,10 @@ public class Procedure {
     @Column(name = "allow_concurrent_executions", nullable = false)
     private boolean allowConcurrentExecutions;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "execution_mode", nullable = false, length = 16)
+    private ExecutionMode executionMode = ExecutionMode.STANDALONE;
+
     @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(name = "procedure_tag", schema = "core",
             joinColumns = @JoinColumn(name = "procedure_id"),
@@ -106,6 +113,12 @@ public class Procedure {
     public String getCronExpression() { return cronExpression; }
     public boolean isEnabled() { return enabled; }
     public boolean isConcurrentExecutionAllowed() { return allowConcurrentExecutions; }
+    public ExecutionMode getExecutionMode() { return executionMode; }
+    public void changeExecutionMode(ExecutionMode mode) {
+        if (mode != null)
+            executionMode = mode;
+
+    }
     public Set<Tag> getTags() { return Collections.unmodifiableSet(tags); }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }

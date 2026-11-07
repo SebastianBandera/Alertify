@@ -4,6 +4,8 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Set;
 
+import app.alertify.alerts.model.ExecutionMode;
+
 import app.alertify.configuration.api.TagResponse;
 
 public record ProcedureResponse(
@@ -20,6 +22,10 @@ public record ProcedureResponse(
     Set<TagResponse> tags,
     List<ProcedureParameterValueResponse> parameters,
     Instant createdAt,
-    Instant updatedAt
+    Instant updatedAt,
+    ExecutionMode executionMode
 ) {
+    public ProcedureResponse(Long id, long version, Long templateId, String templateKey, String templateNameKey, String name, String description, String cronExpression, boolean enabled, boolean allowConcurrentExecutions, Set<TagResponse> tags, List<ProcedureParameterValueResponse> parameters, Instant createdAt, Instant updatedAt) {
+        this(id, version, templateId, templateKey, templateNameKey, name, description, cronExpression, enabled, allowConcurrentExecutions, tags, parameters, createdAt, updatedAt, ExecutionMode.STANDALONE);
+    }
 }

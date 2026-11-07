@@ -7,6 +7,7 @@ import static org.mockito.Mockito.mock;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.charset.StandardCharsets;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -34,8 +35,13 @@ import org.springframework.orm.jpa.SharedEntityManagerCreator;
 import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
 import org.springframework.orm.jpa.vendor.HibernateJpaDialect;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.mock.web.MockMultipartFile;
+import org.hibernate.envers.AuditReaderFactory;
 
 import app.alertify.alerts.template.annotation.AlertParameterSource;
+import app.alertify.alerts.model.ExecutionMode;
+import app.alertify.api.csv.CsvSupport;
+import tools.jackson.databind.json.JsonMapper;
 import app.alertify.api.error.ConflictException;
 import app.alertify.api.error.InvalidProcedureRequestException;
 import app.alertify.api.error.ResourceNotFoundException;
@@ -77,6 +83,8 @@ class ProcedureDefinitionVersionJpaIntegrationTest {
     private TransactionTemplate transactions;
     private EntityManager entityManager;
     private ProcedureManagementService service;
+    private ProcedureCsvService csv;
+    private ProcedureParameterValueRepository parameterRepository;
     private long templateId;
     private long configurationId;
     private long secretId;
@@ -113,6 +121,7 @@ class ProcedureDefinitionVersionJpaIntegrationTest {
         var templates = repositories.getRepository(ProcedureTemplateDefinitionRepository.class);
         var definitions = repositories.getRepository(ProcedureTemplateParameterDefinitionRepository.class);
         var parameters = repositories.getRepository(ProcedureParameterValueRepository.class);
+        parameterRepository = parameters;
         service = new ProcedureManagementService(procedures, templates, definitions, parameters,
                 mock(ProcedureExecutionRepository.class), mock(AlertParameterValueRepository.class),
                 repositories.getRepository(ApplicationConfigurationRepository.class),
@@ -120,6 +129,11 @@ class ProcedureDefinitionVersionJpaIntegrationTest {
                 repositories.getRepository(TagRepository.class), repositories.getRepository(PipeRepository.class),
                 mock(ApplicationEventLogger.class), mock(ProcedureExecutionOrchestrator.class),
                 mock(ProcedureScheduleService.class), entityManager);
+        csv = new ProcedureCsvService(procedures, parameters, templates,
+                repositories.getRepository(ApplicationConfigurationRepository.class),
+                repositories.getRepository(ApplicationSecretRepository.class), repositories.getRepository(PipeRepository.class),
+                repositories.getRepository(TagRepository.class), service,
+                new ProcedureCsvCodec(JsonMapper.builder().build()), mock(ApplicationEventLogger.class));
         templateId = transactions.execute(status -> {
             var template = templates.saveAndFlush(new ProcedureTemplateDefinition("test.DefinitionVersion", "test.name",
                     "test.description", "test/source", WorkerCapability.STANDARD, false, List.of()));
@@ -150,6 +164,68 @@ class ProcedureDefinitionVersionJpaIntegrationTest {
     void closeJpa() {
         if (factory != null)
             factory.destroy();
+    }
+
+    @Test
+    void persistsAndAuditsExecutionModeWithoutResettingItForLegacyUpdates() {
+        var initial = fixture();
+        assertThat(initial.executionMode()).isEqualTo(ExecutionMode.STANDALONE);
+        var marked = update(initial.id(), new ProcedureUpdateRequest(initial.version(), initial.name(), initial.description(), initial.cronExpression(),
+                initial.enabled(), initial.allowConcurrentExecutions(), List.of(text("value", "INITIAL"), text("second", "SECOND")), Set.of(), ExecutionMode.PIPE));
+        assertThat(marked.executionMode()).isEqualTo(ExecutionMode.PIPE);
+        assertThat(read(initial.id()).executionMode()).isEqualTo(ExecutionMode.PIPE);
+        var legacy = update(initial.id(), request(marked, "Legacy edit", List.of(text("value", "INITIAL"), text("second", "SECOND"))));
+        assertThat(legacy.executionMode()).isEqualTo(ExecutionMode.PIPE);
+        assertThat(legacy.cronExpression()).isEqualTo(initial.cronExpression());
+        transactions.executeWithoutResult(status -> {
+            var audit = AuditReaderFactory.get(entityManager);
+            var revisions = audit.getRevisions(Procedure.class, initial.id());
+            assertThat(audit.find(Procedure.class, initial.id(), revisions.getFirst()).getExecutionMode()).isEqualTo(ExecutionMode.STANDALONE);
+            assertThat(audit.find(Procedure.class, initial.id(), revisions.getLast()).getExecutionMode()).isEqualTo(ExecutionMode.PIPE);
+        });
+    }
+
+    @Test
+    void createsAnExplicitPipeProcedureAndPreservesItsModeThroughAnOldAiRequest() {
+        var initial = transactions.execute(status -> service.create(new ProcedureCreateRequest(templateId,
+                "Pipe mode " + UUID.randomUUID(), "", "-", false, false, List.of(text("value", "INITIAL")), Set.of(), ExecutionMode.PIPE)));
+        assertThat(initial.executionMode()).isEqualTo(ExecutionMode.PIPE);
+        var legacyAi = new AiProcedureUpdateRequest(initial.version(), initial.name(), "AI description", "-", false, false,
+                List.of(new AiProcedureParameterValue("value", AiProcedureParameterSource.TEXT, "INITIAL", null, null, null, null)), Set.of());
+        var updated = update(initial.id(), legacyAi.toRequest());
+        assertThat(updated.executionMode()).isEqualTo(ExecutionMode.PIPE);
+    }
+
+    @Test
+    void importsModeOnlyChangesAndPreservesExistingModesInLegacyCsv() {
+        var initial = fixture();
+        var marked = update(initial.id(), new ProcedureUpdateRequest(initial.version(), initial.name(), initial.description(), initial.cronExpression(),
+                initial.enabled(), initial.allowConcurrentExecutions(), List.of(text("value", "INITIAL"), text("second", "SECOND")), Set.of(), ExecutionMode.PIPE));
+        byte[] exported = transactions.execute(status -> {
+            var entity = entityManager.find(Procedure.class, initial.id());
+            return new ProcedureCsvCodec(JsonMapper.builder().build()).write(List.of(entity),
+                    Map.of(initial.id(), parameterRepository.findAllByOwnerIdOrdered(initial.id())));
+        });
+        var oldCsv = new StringBuilder();
+        for (var row : CsvSupport.parseCsv(new String(exported, StandardCharsets.UTF_8).replaceFirst("^\\uFEFF", "")))
+            CsvSupport.appendRow(oldCsv, row.subList(0, row.size() - 1));
+
+        var unchanged = transactions.execute(status -> csv.importCsv(csvFile(oldCsv.toString())));
+        assertThat(unchanged.unchanged()).isEqualTo(1);
+        assertThat(read(marked.id()).executionMode()).isEqualTo(ExecutionMode.PIPE);
+        var explicit = new String(exported, StandardCharsets.UTF_8).replace(",PIPE\r\n", ",STANDALONE\r\n");
+        var changed = transactions.execute(status -> csv.importCsv(csvFile(explicit)));
+        assertThat(changed.updated()).isEqualTo(1);
+        assertThat(read(marked.id()).executionMode()).isEqualTo(ExecutionMode.STANDALONE);
+        var importedName = "Legacy CSV " + UUID.randomUUID();
+        var created = transactions.execute(status -> csv.importCsv(csvFile(oldCsv.toString().replace(initial.name(), importedName))));
+        assertThat(created.created()).isEqualTo(1);
+        transactions.executeWithoutResult(status -> assertThat(service.search(importedName, templateId, Set.of(), false, PageRequest.of(0, 100)))
+                .singleElement().satisfies(procedure -> assertThat(procedure.executionMode()).isEqualTo(ExecutionMode.STANDALONE)));
+    }
+
+    private static MockMultipartFile csvFile(String content) {
+        return new MockMultipartFile("file", "procedures.csv", "text/csv", content.getBytes(StandardCharsets.UTF_8));
     }
 
     @Test
