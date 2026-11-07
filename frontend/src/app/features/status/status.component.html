@@ -14,8 +14,8 @@
       <button
         type="button"
         (click)="refresh()"
-        [disabled]="selectedTab() === 'live' ? loading() || refreshing() : historyLoading() || historyRefreshing()"
-        [attr.aria-busy]="selectedTab() === 'live' ? refreshing() : historyRefreshing()"
+        [disabled]="selectedTab() === 'live' ? loading() || refreshing() || backendRefreshing() : historyLoading() || historyRefreshing()"
+        [attr.aria-busy]="selectedTab() === 'live' ? refreshing() || backendRefreshing() : historyRefreshing()"
       >
         {{ localization.translate('status.refresh') }}
       </button>
@@ -41,6 +41,75 @@
   @if (error()) {
     <p class="status-page__error" role="alert">{{ error() }}</p>
   }
+
+  <article class="worker-card backend-card" [class.worker-card--unavailable]="backendState() === 'offline'">
+    <header class="worker-card__header">
+      <div>
+        <div class="worker-card__identity">
+          <h2>{{ localization.translate('status.backend.title') }}</h2>
+          <span class="availability" aria-live="polite"
+            [class.availability--unavailable]="backendState() === 'offline'"
+            [class.availability--loading]="backendState() === 'loading'">
+            {{ localization.translate(backendState() === 'loading' ? 'status.backend.loading' : backendState() === 'offline' ? 'status.backend.offline' : 'status.available') }}
+          </span>
+        </div>
+        @if (backend(); as status) {
+          <p>{{ status.name }}</p>
+          <div class="worker-card__instance">
+            <code>{{ status.instanceId }}</code>
+            <small>{{ localization.translate('status.workerStartedAt') }}: {{ status.startedAt | date:'medium' }}</small>
+          </div>
+          <small class="backend-card__updated">
+            {{ localization.translate('status.lastUpdated') }} {{ status.sampledAt | date:'medium' }}
+          </small>
+        }
+      </div>
+    </header>
+    @if (backendState() === 'offline') {
+      <p class="worker-card__error" role="status">{{ localization.translate(backend() ? 'status.backend.stale' : 'status.backend.unreachable') }}</p>
+    }
+    @if (backend(); as status) {
+      <dl class="worker-resources" [class.backend-card__stale]="backendState() === 'offline'" [attr.aria-label]="localization.translate('status.backend.resources')">
+        <div>
+          <dt>{{ localization.translate('status.memory') }}</dt>
+          <dd>
+            {{ formatBytes(status.resourceUsage.memoryUsedBytes) }}
+            @if (status.resourceUsage.memoryMaxBytes !== null) {
+              <span class="worker-resources__max">/ {{ formatBytes(status.resourceUsage.memoryMaxBytes) }}</span>
+            }
+          </dd>
+          @if (status.resourceUsage.memoryUsedBytes !== null && status.resourceUsage.memoryMaxBytes !== null) {
+            <span class="worker-resources__meter" role="meter" aria-valuemin="0" aria-valuemax="100"
+              [class.worker-resources__meter--high]="usageRatio(status.resourceUsage.memoryUsedBytes, status.resourceUsage.memoryMaxBytes) >= 90"
+              [attr.aria-valuenow]="usageRatio(status.resourceUsage.memoryUsedBytes, status.resourceUsage.memoryMaxBytes)"
+              [attr.aria-label]="localization.translate('status.memory')">
+              <span [style.width.%]="usageRatio(status.resourceUsage.memoryUsedBytes, status.resourceUsage.memoryMaxBytes)"></span>
+            </span>
+          }
+          <small class="worker-metrics__secondary">
+            {{ localization.translate('status.memoryHeap') }}: {{ formatBytes(status.resourceUsage.heapUsedBytes) }} / {{ formatBytes(status.resourceUsage.heapMaxBytes) }}
+          </small>
+        </div>
+        <div>
+          <dt>{{ localization.translate('status.cpu') }}</dt>
+          <dd>{{ formatPercent(status.resourceUsage.cpuUsage) }}</dd>
+          @if (status.resourceUsage.cpuUsage !== null) {
+            <span class="worker-resources__meter" role="meter" aria-valuemin="0" aria-valuemax="100"
+              [class.worker-resources__meter--high]="cpuPercent(status.resourceUsage.cpuUsage) >= 90"
+              [attr.aria-valuenow]="cpuPercent(status.resourceUsage.cpuUsage)"
+              [attr.aria-label]="localization.translate('status.cpu')">
+              <span [style.width.%]="cpuPercent(status.resourceUsage.cpuUsage)"></span>
+            </span>
+          }
+          <small class="worker-metrics__secondary">{{ status.resourceUsage.availableProcessors }} {{ localization.translate('status.cpuProcessors') }}</small>
+        </div>
+        <div>
+          <dt>{{ localization.translate('status.backend.uptime') }}</dt>
+          <dd>{{ formatDuration(status.uptimeMillis) }}</dd>
+        </div>
+      </dl>
+    }
+  </article>
 
   <div class="status-summary" [attr.aria-label]="localization.translate('status.summary')">
     <article>

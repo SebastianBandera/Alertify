@@ -24,8 +24,10 @@ import {
   WorkerTaskStatus,
 } from '../../core/api/worker-status-api.service';
 import { LocalizationService } from '../../core/i18n/localization.service';
+import { BackendStatus, SystemStatusApiService } from '../../core/api/system-status-api.service';
 
 const REFRESH_INTERVAL_MILLIS = 1_000;
+const BACKEND_TIMEOUT_MILLIS = 5_000;
 const HISTORY_REFRESH_INTERVAL_MILLIS = 60_000;
 const HISTORY_MINUTES = 24 * 60;
 const HISTORY_PLOT_WIDTH_PIXELS = 1_440;
@@ -50,6 +52,7 @@ function workerOrder(worker: WorkerNodeStatus): number {
 export class StatusComponent implements OnInit {
   protected readonly localization = inject(LocalizationService);
   private readonly api = inject(WorkerStatusApiService);
+  private readonly systemApi = inject(SystemStatusApiService);
   private readonly document = inject(DOCUMENT);
   private readonly destroyRef = inject(DestroyRef);
   private readonly route = inject(ActivatedRoute);
@@ -60,6 +63,10 @@ export class StatusComponent implements OnInit {
   protected readonly refreshing = signal(false);
   protected readonly error = signal<string | null>(null);
   protected readonly lastUpdatedAt = signal<Date | null>(null);
+  protected readonly backend = signal<BackendStatus | null>(null);
+  protected readonly backendState = signal<'loading' | 'available' | 'offline'>('loading');
+  protected readonly backendRefreshing = signal(false);
+  private backendRequest: AbortController | null = null;
   protected readonly history = signal<WorkerActivityHistory | null>(null);
   protected readonly historyLoading = signal(false);
   protected readonly historyRefreshing = signal(false);
@@ -117,7 +124,7 @@ export class StatusComponent implements OnInit {
       return;
     }
 
-    void this.load();
+    this.loadLive();
   }
 
   protected selectTab(tab: 'live' | 'history'): void {
@@ -219,14 +226,18 @@ export class StatusComponent implements OnInit {
       return;
     }
 
-    void this.load();
+    this.loadLive();
     this.liveIntervalId = this.document.defaultView?.setInterval(
-      () => void this.load(),
+      () => this.loadLive(),
       REFRESH_INTERVAL_MILLIS,
     ) ?? null;
   }
 
   private stopPolling(): void {
+    const backendRequest = this.backendRequest;
+    this.backendRequest = null;
+    backendRequest?.abort();
+    this.backendRefreshing.set(false);
     if (this.liveIntervalId !== null) {
       this.document.defaultView?.clearInterval(this.liveIntervalId);
       this.liveIntervalId = null;
@@ -234,6 +245,40 @@ export class StatusComponent implements OnInit {
     if (this.historyIntervalId !== null) {
       this.document.defaultView?.clearInterval(this.historyIntervalId);
       this.historyIntervalId = null;
+    }
+  }
+
+  private loadLive(): void {
+    void this.load();
+    void this.loadBackend();
+  }
+
+  private async loadBackend(): Promise<void> {
+    if (this.backendRequest || this.destroyed || this.document.visibilityState !== 'visible' || this.selectedTab() !== 'live') return;
+
+    const controller = new AbortController();
+    this.backendRequest = controller;
+    this.backendRefreshing.set(true);
+    const timeout = setTimeout(() => controller.abort(), BACKEND_TIMEOUT_MILLIS);
+    let rejectAborted!: (reason: Error) => void;
+    const aborted = new Promise<never>((_, reject) => { rejectAborted = reject; });
+    const onAbort = (): void => rejectAborted(new Error('Backend status request cancelled'));
+    controller.signal.addEventListener('abort', onAbort, { once: true });
+    try {
+      const status = await Promise.race([this.systemApi.backend(controller.signal), aborted]);
+      if (this.backendRequest !== controller || this.destroyed) return;
+
+      this.backend.set(status);
+      this.backendState.set('available');
+    } catch {
+      if (this.backendRequest === controller && !this.destroyed) this.backendState.set('offline');
+    } finally {
+      clearTimeout(timeout);
+      controller.signal.removeEventListener('abort', onAbort);
+      if (this.backendRequest === controller) {
+        this.backendRequest = null;
+        this.backendRefreshing.set(false);
+      }
     }
   }
 
