@@ -25,6 +25,8 @@ import { isCompatibleConfigurationValueType, isCompatibleSecretValueType } from 
 import { templateClassName } from '../../core/utils/template-key';
 import { EditorDraftService } from '../../shared/editor-drafts/editor-draft.service';
 import { EditorViewportService } from '../../shared/editor-viewport/editor-viewport.service';
+import { ConfigurationPreviewComponent } from '../../shared/configuration-preview/configuration-preview.component';
+import { ConfigurationPreviewService } from '../../shared/configuration-preview/configuration-preview.service';
 import { ResizableTableDirective } from '../../shared/resizable-table/resizable-table.directive';
 import { SearchableSelectComponent, SearchableSelectOption } from '../../shared/searchable-select/searchable-select.component';
 
@@ -107,11 +109,11 @@ function procedureTab(value: string | null): ProcedureTab {
 
 @Component({
   selector: 'app-procedures',
-  imports: [ResizableTableDirective, DatePipe, FormsModule, RouterLink, SearchableSelectComponent],
+  imports: [ResizableTableDirective, DatePipe, FormsModule, RouterLink, SearchableSelectComponent, ConfigurationPreviewComponent],
   templateUrl: './procedures.component.html',
   styleUrl: './procedures.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  providers: [EditorViewportService],
+  providers: [EditorViewportService, ConfigurationPreviewService],
 })
 export class ProceduresComponent implements OnInit {
   protected readonly localization = inject(LocalizationService);
@@ -123,6 +125,7 @@ export class ProceduresComponent implements OnInit {
   private readonly destroyRef = inject(DestroyRef);
   private readonly events = inject(AdminEventChannelService);
   private readonly editorViewport = inject(EditorViewportService);
+  private readonly configurationPreviews = inject(ConfigurationPreviewService);
   private routeParameters: ParamMap | null = null;
   private routeRequest = 0;
 
@@ -243,6 +246,8 @@ export class ProceduresComponent implements OnInit {
     this.events.on('AI_RESOURCES_INVALIDATED').pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event) => {
       if (event.targets.includes('ALL') || event.targets.includes('PROCEDURES'))
         void this.loadAll(false);
+      else if (event.targets.includes('CONFIGURATIONS'))
+        void this.loadConfigurationBindings();
     });
     this.routeParameters = this.route.snapshot.queryParamMap;
     this.applyRouteFilters(this.routeParameters);
@@ -512,6 +517,7 @@ export class ProceduresComponent implements OnInit {
   }
 
   protected openCreate(template: ProcedureTemplate | null = null): void {
+    this.configurationPreviews.clear();
     this.editing.set(null);
     this.form.set(this.formForTemplate(template));
     this.formError.set(null);
@@ -520,6 +526,7 @@ export class ProceduresComponent implements OnInit {
   }
 
   protected openEdit(procedure: Procedure): void {
+    this.configurationPreviews.clear();
     this.editorViewport.capture(`procedure-${procedure.id}`);
     const template = this.templates().find((candidate) => candidate.id === procedure.templateId) ?? null;
     const form = this.formForTemplate(template);
@@ -572,6 +579,7 @@ export class ProceduresComponent implements OnInit {
   }
 
   protected closeEditor(): void {
+    this.configurationPreviews.clear();
     if (!this.saving()) {
       this.drafts.remove('procedures');
       this.editorOpen.set(false);
@@ -835,7 +843,17 @@ export class ProceduresComponent implements OnInit {
     }
   }
 
+  private async loadConfigurationBindings(): Promise<void> {
+    this.configurationPreviews.clear();
+    try {
+      this.bindings.set(await this.api.bindingOptions());
+    } catch (error) {
+      this.error.set(this.errorMessage(error));
+    }
+  }
+
   private async loadAll(showLoading = true): Promise<void> {
+    this.configurationPreviews.clear();
     if (showLoading) this.loading.set(true);
     try {
       const [templates, tags, bindings] = await Promise.all([

@@ -177,7 +177,18 @@
                 }
               </td>
               <td><span class="type-badge">{{ configuration.valueType }}</span></td>
-              <td><code class="value-preview" [title]="valuePreview(configuration)">{{ valuePreview(configuration) }}</code></td>
+              <td>
+                @if (configuration.valueType === 'EXPRESSION' && valuePreviews().get(configuration.id)?.value === undefined) {
+                  <button type="button" class="value-preview value-preview--action"
+                    [disabled]="valuePreviews().get(configuration.id)?.loading"
+                    (click)="evaluateValuePreview(configuration)">{{ valuePreview(configuration) }}</button>
+                  @if (valuePreviews().get(configuration.id)?.failed) {
+                    <small class="value-preview-error" role="status">{{ localization.translate('configs.preview.error') }}</small>
+                  }
+                } @else {
+                  <code class="value-preview" [class.value-preview--resolved]="configuration.valueType === 'EXPRESSION'" [title]="valuePreview(configuration)">{{ valuePreview(configuration) }}</code>
+                }
+              </td>
               <td>
                 <div class="tag-list">
                   @for (tag of configuration.tags; track tag.id) {

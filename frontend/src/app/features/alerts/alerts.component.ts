@@ -26,6 +26,8 @@ import { isCompatibleConfigurationValueType, isCompatibleSecretValueType } from 
 import { templateClassName } from '../../core/utils/template-key';
 import { EditorDraftService } from '../../shared/editor-drafts/editor-draft.service';
 import { EditorViewportService } from '../../shared/editor-viewport/editor-viewport.service';
+import { ConfigurationPreviewComponent } from '../../shared/configuration-preview/configuration-preview.component';
+import { ConfigurationPreviewService } from '../../shared/configuration-preview/configuration-preview.service';
 import { ResizableTableDirective } from '../../shared/resizable-table/resizable-table.directive';
 import { SearchableSelectComponent, SearchableSelectOption } from '../../shared/searchable-select/searchable-select.component';
 import { PlaywrightWizardComponent } from './playwright-wizard.component';
@@ -110,11 +112,11 @@ function alertTab(value: string | null): AlertTab {
 
 @Component({
   selector: 'app-alerts',
-  imports: [ResizableTableDirective, DatePipe, FormsModule, RouterLink, SearchableSelectComponent, PlaywrightWizardComponent],
+  imports: [ResizableTableDirective, DatePipe, FormsModule, RouterLink, SearchableSelectComponent, PlaywrightWizardComponent, ConfigurationPreviewComponent],
   templateUrl: './alerts.component.html',
   styleUrl: './alerts.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  providers: [EditorViewportService],
+  providers: [EditorViewportService, ConfigurationPreviewService],
 })
 export class AlertsComponent implements OnInit {
   protected readonly localization = inject(LocalizationService);
@@ -127,6 +129,7 @@ export class AlertsComponent implements OnInit {
   private readonly elementRef: ElementRef<HTMLElement> = inject(ElementRef);
   private readonly injector = inject(Injector);
   private readonly editorViewport = inject(EditorViewportService);
+  private readonly configurationPreviews = inject(ConfigurationPreviewService);
   private routeParameters: ParamMap | null = null;
   private routeRequest = 0;
 
@@ -528,6 +531,7 @@ export class AlertsComponent implements OnInit {
   }
 
   protected async loadBindings(): Promise<void> {
+    this.configurationPreviews.clear();
     try {
       this.bindings.set(await this.api.bindingOptions());
     } catch (error) {
@@ -703,6 +707,7 @@ export class AlertsComponent implements OnInit {
   }
 
   protected openCreate(templateId?: number): void {
+    this.configurationPreviews.clear();
     this.editingAlert.set(null);
     const template = templateId === undefined
       ? null
@@ -782,6 +787,7 @@ export class AlertsComponent implements OnInit {
   }
 
   protected openEdit(alert: Alert): void {
+    this.configurationPreviews.clear();
     this.editorViewport.capture(`alert-${alert.id}`);
     const template = this.templates().find((item) => item.id === alert.templateId) ?? null;
     const form = this.formForTemplate(template);
@@ -840,6 +846,7 @@ export class AlertsComponent implements OnInit {
   }
 
   protected closeEditor(): void {
+    this.configurationPreviews.clear();
     if (!this.saving()) {
       this.drafts.remove('alerts');
       this.patchForm({ wizardDraftId: null });

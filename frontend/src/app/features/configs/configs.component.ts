@@ -19,6 +19,7 @@ import { LocalizationService } from '../../core/i18n/localization.service';
 import { AdminEventChannelService } from '../../core/realtime/admin-event-channel.service';
 import { EditorViewportService } from '../../shared/editor-viewport/editor-viewport.service';
 import { ExpressionEditorComponent } from '../../shared/expression-editor/expression-editor.component';
+import { ConfigurationPreviewService } from '../../shared/configuration-preview/configuration-preview.service';
 
 interface ConfigurationForm {
   name: string;
@@ -97,6 +98,9 @@ export class ConfigsComponent implements OnInit {
   private readonly events = inject(AdminEventChannelService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly editorViewport = inject(EditorViewportService);
+  private readonly previews = inject(ConfigurationPreviewService);
+  protected readonly valuePreviews = signal<ReadonlyMap<number, { loading: boolean; value?: string; failed?: boolean }>>(new Map());
+  private previewGeneration = 0;
 
   protected readonly configurations = signal<readonly ApplicationConfiguration[]>([]);
   protected readonly tags = signal<readonly ConfigurationTag[]>([]);
@@ -169,6 +173,8 @@ export class ConfigsComponent implements OnInit {
   }
 
   protected async loadConfigurations(): Promise<void> {
+    this.previewGeneration++;
+    this.valuePreviews.set(new Map());
     this.loading.set(true);
     this.error.set(null);
     try {
@@ -560,9 +566,27 @@ export class ConfigsComponent implements OnInit {
     }
   }
 
+  protected async evaluateValuePreview(configuration: ApplicationConfiguration): Promise<void> {
+    if (this.valuePreviews().get(configuration.id)?.loading || this.valuePreviews().get(configuration.id)?.value !== undefined) return;
+
+    const generation = this.previewGeneration;
+    this.valuePreviews.update((values) => new Map(values).set(configuration.id, { loading: true }));
+    try {
+      const value = await this.previews.resolve(configuration);
+      if (!this.destroyRef.destroyed && generation === this.previewGeneration)
+        this.valuePreviews.update((values) => new Map(values).set(configuration.id, { loading: false, value }));
+    } catch {
+      if (!this.destroyRef.destroyed && generation === this.previewGeneration)
+        this.valuePreviews.update((values) => new Map(values).set(configuration.id, { loading: false, failed: true }));
+    }
+  }
+
   protected valuePreview(configuration: ApplicationConfiguration): string {
     if (configuration.valueType === 'BINARY') return `${configuration.binaryFileName ?? 'binary'} (${this.formatBytes(configuration.binarySize ?? 0)} → ${this.formatBytes(configuration.binaryZipSize ?? 0)})`;
     if (configuration.valueType === 'EXPRESSION') {
+      const preview = this.valuePreviews().get(configuration.id);
+      if (preview?.loading) return this.localization.translate('configs.expression.evaluating');
+      if (preview?.value !== undefined) return preview.value === '' ? this.localization.translate('configs.preview.empty') : preview.value;
       return this.localization.translate('configs.expression.onDemand');
     }
     if (configuration.valueType === 'JSON') return JSON.stringify(configuration.value);

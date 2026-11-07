@@ -172,6 +172,10 @@ export class ConfigurationApiService {
     );
   }
 
+  async getConfiguration(id: number): Promise<ApplicationConfiguration> {
+    return this.request(`/api/configurations/${id}`, { cache: 'no-store' });
+  }
+
   async getConfigurationUsages(id: number): Promise<ConfigurationUsages> {
     return this.request(`/api/configurations/${id}/usages`);
   }

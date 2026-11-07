@@ -654,6 +654,7 @@
                       [emptyLabel]="localization.translate('alerts.form.smartIntervalMissing')"
                       [clearLabel]="localization.translate('alerts.form.selectConfiguration')"
                     />
+                    <app-configuration-preview [configurationId]="form().smartExecutionIntervalConfigurationId" />
                     <small>{{ localization.translate('alerts.form.smartIntervalConfigHelp') }}</small>
                   } @else {
                     <input
@@ -817,6 +818,7 @@
                           @for (option of compatibleConfigurationBindings(parameter); track option.id) { <option [ngValue]="option.id">{{ option.name }}</option> }
                         </select>
                       </label>
+                      <app-configuration-preview [configurationId]="parameterForm(parameter.key).configurationId" />
                     } @else if (parameterForm(parameter.key).source === 'SECRET') {
                       <label class="full">
                         <span>{{ localization.translate('alerts.form.secret') }}</span>

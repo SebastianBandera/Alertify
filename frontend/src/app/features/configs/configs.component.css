@@ -1014,6 +1014,21 @@ td small {
   }
 }
 
+.value-preview--action {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.value-preview--action:hover:not(:disabled),
+.value-preview--action:focus-visible { text-decoration: underline; }
+.value-preview--action:disabled { cursor: wait; }
+.value-preview-error { display: block; color: #b42318; }
+.value-preview--resolved { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 180px; overflow: auto; }
+
 @media (max-width: 600px) {
   .configs__header,
   .configs__toolbar {
