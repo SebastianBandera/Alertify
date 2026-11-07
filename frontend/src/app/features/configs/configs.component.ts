@@ -64,16 +64,16 @@ function readStoredPageSize(): number {
 function readStoredUpdatedAtSort(): SortDirection | null {
   try {
     const storedValue = localStorage.getItem(UPDATED_AT_SORT_STORAGE_KEY);
-    return storedValue === 'asc' || storedValue === 'desc' ? storedValue : null;
+    if (storedValue === 'none') return null;
+    return storedValue === 'asc' || storedValue === 'desc' ? storedValue : 'desc';
   } catch {
-    return null;
+    return 'desc';
   }
 }
 
 function persistUpdatedAtSort(sort: SortDirection | null): void {
   try {
-    if (sort === null) localStorage.removeItem(UPDATED_AT_SORT_STORAGE_KEY);
-    else localStorage.setItem(UPDATED_AT_SORT_STORAGE_KEY, sort);
+    localStorage.setItem(UPDATED_AT_SORT_STORAGE_KEY, sort ?? 'none');
   } catch {
     // The sort still applies to this page when browser storage is unavailable.
   }
