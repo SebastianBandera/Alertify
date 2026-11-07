@@ -50,6 +50,7 @@ describe('PlaywrightWizardComponent', () => {
     request = vi.fn(async (operation: string, payload?: Record<string, unknown>) => {
       if (operation === 'LIST') return [];
       if (operation === 'SAVE') current.document.settings = structuredClone(payload!['settings'] as WizardSettings);
+      if (operation === 'SET_MASK') current = { ...current, maskEnabled: payload!['enabled'] as boolean, attachmentReady: false };
       if (operation === 'APPROVE' || operation === 'REJECT') {
         const next = structuredClone(current);
         if (operation === 'APPROVE') next.document.settings.steps = next.document.proposal!;
@@ -79,6 +80,41 @@ describe('PlaywrightWizardComponent', () => {
   function button(label: string): HTMLButtonElement {
     return [...fixture.nativeElement.querySelectorAll('button')].find((element: HTMLButtonElement) => element.textContent?.trim() === label)!;
   }
+
+  it('changes the view mask only after a manual checkbox action without editing the script', async () => {
+    request.mockClear();
+    const settings = structuredClone(harness.settings());
+    const checkbox = fixture.nativeElement.querySelector('.mask-control input') as HTMLInputElement;
+    expect(checkbox.checked).toBe(true);
+    expect(request).not.toHaveBeenCalled();
+    checkbox.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(request).toHaveBeenCalledExactlyOnceWith('SET_MASK', expect.objectContaining({ id: current.id, enabled: false }));
+    expect(checkbox.checked).toBe(false);
+    expect(harness.settings()).toEqual(settings);
+    request.mockClear();
+    checkbox.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(request).toHaveBeenCalledExactlyOnceWith('SET_MASK', expect.objectContaining({ enabled: true }));
+    expect(checkbox.checked).toBe(true);
+    fixture.destroy();
+  });
+
+  it('blocks attachments while the view is unmasked and locks its control during operations', () => {
+    delete current.document.proposal;
+    harness.update({ ...structuredClone(current), maskEnabled: false });
+    fixture.detectChanges();
+    expect(button('attach').disabled).toBe(true);
+    harness.update({ ...structuredClone(current), maskEnabled: true });
+    fixture.detectChanges();
+    expect(button('attach').disabled).toBe(false);
+    harness.update({ ...structuredClone(current), busy: true });
+    fixture.detectChanges();
+    expect((fixture.nativeElement.querySelector('.mask-control input') as HTMLInputElement).disabled).toBe(true);
+    fixture.destroy();
+  });
 
   it('numbers physical script lines including comments, empty lines and the trailing line without altering the script', async () => {
     const script = '# comment\r\n\r\nWAIT_VISIBLE h1 10s\r\nQUERY h1\r\n';

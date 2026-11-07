@@ -14,6 +14,13 @@ describe('dashboard Pipe execution identity', () => {
     expect(pipeState(card)).toBe('error');
     expect(pipeState({ ...card, execution: null })).toBe('none');
   });
+  it('keeps the last completed severity while the current execution is running', () => {
+    const running = { ...card.execution!, status: 'RUNNING' as const, outcome: null };
+    expect(pipeState({ ...card, execution: running, lastOutcome: 'ERROR' })).toBe('error');
+    expect(pipeState({ ...card, execution: running, lastOutcome: 'WARN' })).toBe('warn');
+    expect(pipeState({ ...card, execution: running, lastOutcome: 'SUCCESS' })).toBe('success');
+    expect(pipeState({ ...card, execution: running, lastOutcome: null })).toBe('none');
+  });
   it('does not ignore a different alert exception', () => {
     const first = { ...card, steps: [{ ...card.steps[0], alertExecution: { status: 'ERROR', errorType: 'Timeout', errorMessage: 'timeout' } as never }] };
     const second = { ...card, steps: [{ ...card.steps[0], alertExecution: { status: 'ERROR', errorType: 'Authentication', errorMessage: 'authentication' } as never }] };

@@ -38,6 +38,7 @@ export interface WizardState {
   errorCode?: string;
   idleRemainingSeconds: number;
   attachmentReady: boolean;
+  maskEnabled?: boolean;
   restartRequired?: boolean;
   selection: { selector: string } | null;
   progress: { completed: number; line: number } | null;

@@ -64,7 +64,7 @@ export class DashboardPipesComponent {
       && terms.every(term => this.normalize([card.name, card.description, ...card.tags.map(tag => tag.name), this.status(card), ...card.steps.map(step => [step.result.resourceName, this.stepStatus(card, step), this.message(step)].join(' '))].join(' ')).includes(term)))
       .sort((a,b) => Number(!!muted[a.id]) - Number(!!muted[b.id])
         || ({ error: 0, warn: 1, success: 2, none: 3 }[pipeState(a)] - { error: 0, warn: 1, success: 2, none: 3 }[pipeState(b)])
-        || Date.parse(b.execution?.startedAt ?? '1970-01-01') - Date.parse(a.execution?.startedAt ?? '1970-01-01') || a.name.localeCompare(b.name));
+        || Date.parse(b.stateChangedAt ?? b.execution?.finishedAt ?? '1970-01-01') - Date.parse(a.stateChangedAt ?? a.execution?.finishedAt ?? '1970-01-01') || a.name.localeCompare(b.name));
   });
 
   readonly visibleCount = computed(() => this.visible().length);

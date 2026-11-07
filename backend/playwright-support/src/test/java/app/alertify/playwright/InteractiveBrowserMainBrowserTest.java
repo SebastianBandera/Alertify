@@ -210,6 +210,38 @@ class InteractiveBrowserMainBrowserTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"chromium", "firefox", "webkit"})
+    void manualViewMaskDoesNotDisableProtectedCapturesOrObservations(String engine) throws Exception {
+        try (var harness = new Harness()) {
+            harness.success("OPEN", settings(engine, "/html", ""));
+            assertMaskPixel(harness.request("SCREENSHOT", Map.of()), true);
+            assertThat(harness.success("SET_MASK", Map.of("enabled", false)).path("maskEnabled").asBoolean()).isFalse();
+            var live = harness.events.stream().map(Event::event).filter(event -> event.getType().equals("FRAME")).reduce((first, second) -> second).orElseThrow();
+            assertThat(JSON.readTree(live.getJson()).path("masked").asBoolean()).isFalse();
+            assertMaskPixel(live, false);
+            var capture = harness.request("SCREENSHOT", Map.of("enabled", false, "masked", false));
+            assertThat(JSON.readTree(capture.getJson()).path("masked").asBoolean()).isTrue();
+            assertMaskPixel(capture, true);
+            assertThat(harness.success("OBSERVE", Map.of()).toString()).doesNotContain("fixture-canary");
+            harness.success("RESET", settings(engine, "/html", ""));
+            harness.success("EXECUTE", settings(engine, "/html", "QUERY h1"));
+            live = harness.events.stream().map(Event::event).filter(event -> event.getType().equals("FRAME")).reduce((first, second) -> second).orElseThrow();
+            assertMaskPixel(live, false);
+            harness.success("SET_MASK", Map.of("enabled", true));
+            live = harness.events.stream().map(Event::event).filter(event -> event.getType().equals("FRAME")).reduce((first, second) -> second).orElseThrow();
+            assertMaskPixel(live, true);
+            assertThat(harness.request("SET_MASK", Map.of("enabled", "false")).getType()).isEqualTo("ERROR");
+        }
+    }
+
+    private static void assertMaskPixel(WizardEvent event, boolean masked) throws Exception {
+        var image = ImageIO.read(new ByteArrayInputStream(event.getImage().toByteArray()));
+        int pixel = image.getRGB(400, 670);
+        boolean magenta = ((pixel >> 16) & 255) > 220 && ((pixel >> 8) & 255) < 60 && (pixel & 255) > 220;
+        assertThat(magenta).isEqualTo(masked);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"chromium", "firefox", "webkit"})
     void displaysRedirectedOriginAndKeepsFillAvailable(String engine) throws Exception {
         try (var harness = new Harness()) {
             harness.success("OPEN", settings(engine, "/redirect", ""));
