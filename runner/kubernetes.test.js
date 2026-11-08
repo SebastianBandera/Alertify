@@ -123,7 +123,8 @@ test('resources isolate secrets, persist databases and discover every worker typ
   assert.match(find('StatefulSet', 'database').spec.template.spec.containers[0].readinessProbe.exec.command[2], /database-migrations-complete/);
   assert.equal(find('Deployment', 'backend').spec.template.spec.containers[0].readinessProbe.httpGet.path, '/alertify/actuator/health');
   assert.deepEqual(find('Service', 'publisher').spec.ports.map((port) => port.port), [8080, 8443]);
-  assert.match(find('ConfigMap', 'identity-initialization').data['realm-template.json'], /"webOrigins": \["\$\{APP_PUBLIC_ORIGIN\}"\]/);
+  const realm = JSON.parse(find('ConfigMap', 'identity-initialization').data['realm-template.json']);
+  assert.deepEqual(realm.clients.find((client) => client.clientId === '${OIDC_FRONTEND_CLIENT_ID}').webOrigins, ['${APP_PUBLIC_ORIGIN}']);
   assert.match(find('ConfigMap', 'identity-initialization').data['configure-permanent-admin.sh'], /webOrigins=\[\\"\$\{APP_PUBLIC_ORIGIN\}\\"\]/);
   assert.match(find('ConfigMap', 'identity-initialization').data['configure-permanent-admin.sh'], /redirectUris=\[\\"\$\{app_public_url\}\/\*\\"\]/);
   const changedTemplates = { ...templates, publisherNginx: `${templates.publisherNginx}\n# updated routing\n`, keycloakAdmin: `${templates.keycloakAdmin}\n# updated admin\n` };
