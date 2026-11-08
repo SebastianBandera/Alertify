@@ -27,6 +27,16 @@ import app.alertify.worker.contract.WorkerCapability;
 class PlaywrightPageAlertTemplateTest {
 
     @Test
+    void enablesAccessibilityWithoutAQueryAndRejectsArguments() throws Exception {
+        FakeBrowserSession session = new FakeBrowserSession();
+        AlertResult result = template("https://example.test", "ENABLE_ACCESSIBILITY\nQUERY button\nENABLE_ACCESSIBILITY\nCHECK COUNT = 1", session).evaluate(new AlertExecutionContext());
+        assertEquals(4, browserResult(result, 0).get("completedCommandCount"));
+        assertEquals(2, session.operations.stream().filter(operation -> operation.equals("enableAccessibility:5000")).count());
+        assertThrows(IllegalArgumentException.class, () -> PlaywrightPageAlertTemplate.parseCommands("ENABLE_ACCESSIBILITY anything"));
+        assertThrows(IllegalArgumentException.class, () -> PlaywrightPageAlertTemplate.parseCommands("ENABLE_ACCESSIBILITY\nUSE"));
+    }
+
+    @Test
     void reportsOnlyOriginsOnSuccessAndFailures() throws Exception {
         for (String phase : List.of("success", "navigate", "reload", "query")) {
             FakeBrowserSession session = new FakeBrowserSession();
@@ -472,6 +482,11 @@ class PlaywrightPageAlertTemplateTest {
         @Override
         public void waitHidden(String selector, long timeoutMillis) {
             operations.add("waitHidden:" + selector + ":" + timeoutMillis);
+        }
+
+        @Override
+        public void enableAccessibility(long timeoutMillis) {
+            operations.add("enableAccessibility:" + timeoutMillis);
         }
 
         @Override

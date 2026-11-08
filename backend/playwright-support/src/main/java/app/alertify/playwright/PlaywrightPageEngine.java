@@ -216,6 +216,10 @@ public class PlaywrightPageEngine implements AlertEvaluator {
                 case "WAIT" -> command = durationCommand(lineNumber, arguments);
                 case "WAIT_VISIBLE" -> command = selectorWaitCommand(lineNumber, CommandType.WAIT_VISIBLE, arguments);
                 case "WAIT_HIDDEN" -> command = selectorWaitCommand(lineNumber, CommandType.WAIT_HIDDEN, arguments);
+                case "ENABLE_ACCESSIBILITY" -> {
+                    requireNoArguments(arguments, lineNumber, keyword);
+                    command = command(lineNumber, CommandType.ENABLE_ACCESSIBILITY);
+                }
                 case RELOAD_COMMAND -> {
                     requireNoArguments(arguments, lineNumber, RELOAD_COMMAND);
                     command = command(lineNumber, CommandType.RELOAD);
@@ -375,6 +379,7 @@ public class PlaywrightPageEngine implements AlertEvaluator {
             case WAIT -> Thread.sleep(command.durationMillis());
             case WAIT_VISIBLE -> session.waitVisible(command.first(), timeout);
             case WAIT_HIDDEN -> session.waitHidden(command.first(), timeout);
+            case ENABLE_ACCESSIBILITY -> session.enableAccessibility(elementTimeoutMillis);
             case CHECK_TEXT -> session.check(() -> session.currentText().contains(command.first()), elementTimeoutMillis);
             case CHECK_COUNT -> session.check(() -> command.countOperator().matches(session.currentCount(), command.count()), elementTimeoutMillis);
             case CHECK_ENABLED -> session.check(session::currentEnabled, elementTimeoutMillis);
@@ -555,6 +560,7 @@ public class PlaywrightPageEngine implements AlertEvaluator {
         WAIT,
         WAIT_VISIBLE,
         WAIT_HIDDEN,
+        ENABLE_ACCESSIBILITY,
         RELOAD,
         CHECK_TEXT,
         CHECK_COUNT,
@@ -659,6 +665,7 @@ public class PlaywrightPageEngine implements AlertEvaluator {
         void select(String value, long timeoutMillis);
         void waitVisible(String selector, long timeoutMillis);
         void waitHidden(String selector, long timeoutMillis);
+        void enableAccessibility(long timeoutMillis);
         void check(BooleanSupplier condition, long timeoutMillis);
         void checkUrl(String glob, long timeoutMillis);
         String currentText();
@@ -799,6 +806,39 @@ public class PlaywrightPageEngine implements AlertEvaluator {
         @Override
         public void waitHidden(String selector, long timeoutMillis) {
             page.locator(selector).first().waitFor(new Locator.WaitForOptions().setState(WaitForSelectorState.HIDDEN).setTimeout((double) timeoutMillis));
+        }
+
+        @Override
+        public void enableAccessibility(long timeoutMillis) {
+            long deadline = System.nanoTime() + Math.multiplyExact(timeoutMillis, 1_000_000);
+            boolean activated = false;
+            Locator placeholder = page.locator("flt-semantics-placeholder");
+            Locator view = page.locator("flutter-view");
+            Locator semantics = view.locator("flt-semantics-host flt-semantics");
+            do {
+                int viewCount = view.count();
+                if (viewCount > 1 || placeholder.count() > 1)
+                    throw new IllegalStateException("Flutter accessibility requires a single unambiguous view");
+
+                if (viewCount == 1 && semantics.count() > 0)
+                    return;
+
+                long remaining = (deadline - System.nanoTime()) / 1_000_000;
+                if (remaining <= 0)
+                    break;
+
+                if (!activated && viewCount == 1 && placeholder.count() == 1) {
+                    // Flutter's desktop activation control is outside the viewport. Only this
+                    // fixed internal operation may invoke it without pointer actionability.
+                    placeholder.evaluate("element => HTMLElement.prototype.click.call(element)", null, new Locator.EvaluateOptions().setTimeout((double) remaining));
+                    activated = true;
+                }
+                remaining = (deadline - System.nanoTime()) / 1_000_000;
+                if (remaining > 0)
+                    page.waitForTimeout(Math.min(POLL_INTERVAL_MILLIS, remaining));
+
+            } while (System.nanoTime() < deadline);
+            throw new TimeoutError("Flutter accessibility did not expose a semantic tree before timeout");
         }
 
         @Override

@@ -324,6 +324,16 @@ class PlaywrightWizardProposalTest {
     }
 
     @Test
+    void accessibilityActivationDefersSelectorChecksUntilSemanticsExist() throws Exception {
+        prepare("ASK");
+        var reply = steps("ENABLE_ACCESSIBILITY\nWAIT_VISIBLE [role=button] 10s\nQUERY [role=button]\nUSE");
+        assertThat(reply.getFailed()).isFalse();
+        assertThat(selectorChecks).isEmpty();
+        assertThat(browserRequests).isEmpty();
+        assertThat(document().path("proposal").asString()).startsWith("ENABLE_ACCESSIBILITY");
+    }
+
+    @Test
     void checksOnlyTheFirstActionWithoutPredictingTheStateAfterHover() throws Exception {
         prepare("ASK");
         var reply = steps("WAIT_VISIBLE #menu 10s\nQUERY #menu\nHOVER\nWAIT_VISIBLE a:text-is(\"Autoridades\") 10s\nQUERY a:text-is(\"Autoridades\")\nUSE");
