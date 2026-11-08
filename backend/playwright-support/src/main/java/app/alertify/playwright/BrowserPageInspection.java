@@ -82,6 +82,15 @@ final class BrowserPageInspection {
         return null;
     }
 
+    /** Shared by selector generation, captured-frame selection and selector diagnostics. */
+    static final String OPEN_SHADOW_PARENT = """
+            const parentAcrossOpenShadow = node => {
+              if (node.parentElement) return node.parentElement;
+              const root = node.getRootNode();
+              return root instanceof ShadowRoot && root.mode === 'open' ? root.host : null;
+            };
+            """;
+
     /**
      * Produces candidates in preference order, without reading input values. Playwright validates
      * visibility, uniqueness and DOM identity, including its own text-selector extensions.
@@ -89,9 +98,11 @@ final class BrowserPageInspection {
      */
     private static final String CANDIDATES = """
             element => {
+            """ + OPEN_SHADOW_PARENT + """
             // The document background is not a useful target for the wizard.
             if (!element || !element.isConnected || element === document.body || element === document.documentElement) return [];
             const candidates = new Set();
+            const add = candidate => { if (candidates.size < 128) candidates.add(candidate); };
             const tag = element.tagName.toLowerCase();
             const attribute = (name, value) => '[' + name + '=' + JSON.stringify(value) + ']';
             const anchors = node => {
@@ -101,7 +112,7 @@ final class BrowserPageInspection {
               if (testId) result.push(attribute('data-testid', testId));
               return result;
             };
-            for (const anchor of anchors(element)) candidates.add(anchor);
+            for (const anchor of anchors(element)) add(anchor);
             const semantic = [];
             const ariaLabel = element.getAttribute('aria-label');
             if (ariaLabel) semantic.push(tag + attribute('aria-label', ariaLabel));
@@ -117,48 +128,37 @@ final class BrowserPageInspection {
               const value = element.getAttribute(name);
               if (value && value.length <= 300) semantic.push(tag + attribute(name, value));
             }
-            for (const candidate of semantic) candidates.add(candidate);
+            for (const candidate of semantic) add(candidate);
             // Disambiguate repeated labels using nearby stable ancestors before using positions.
-            let ancestor = element.parentElement;
+            let ancestor = parentAcrossOpenShadow(element);
             let depth = 0;
             while (ancestor && ancestor !== document.body && depth++ < 8) {
               const scopes = anchors(ancestor);
-              if (ancestor.matches('header,main,nav,section,article,aside,footer,form')) scopes.push(ancestor.tagName.toLowerCase());
+              if (ancestor.shadowRoot || ancestor.matches('header,main,nav,section,article,aside,footer,form')) scopes.push(ancestor.tagName.toLowerCase());
               for (const scope of scopes) {
-                for (const candidate of semantic) candidates.add(scope + ' ' + candidate);
-                candidates.add(scope + ' ' + tag);
+                for (const candidate of semantic) add(scope + ' ' + candidate);
+                add(scope + ' ' + tag);
               }
-              ancestor = ancestor.parentElement;
+              ancestor = parentAcrossOpenShadow(ancestor);
             }
-            // Stop the structural fallback as soon as it uniquely identifies this exact node.
-            const unique = selector => {
-              try { const matches = document.querySelectorAll(selector); return matches.length === 1 && matches[0] === element; }
-              catch { return false; }
-            };
-            const segments = [];
+            // DOM querySelectorAll cannot validate shadow descendants. Java checks these
+            // bounded candidates through Playwright and stops at the first exact match.
+            let suffix = '';
             let current = element;
-            while (current && current !== document.body) {
+            depth = 0;
+            while (current && current !== document.body && depth++ < 32 && candidates.size < 128) {
               const currentTag = current.tagName.toLowerCase();
-              const suffix = segments.length ? ' > ' + segments.join(' > ') : '';
-              for (const anchor of [...anchors(current), currentTag]) {
-                const candidate = anchor + suffix;
-                if (unique(candidate)) {
-                  candidates.add(candidate);
-                  return [...candidates];
-                }
-              }
+              for (const anchor of [...anchors(current), currentTag]) add(anchor + suffix);
               let selector = currentTag;
-              const siblings = current.parentElement ? [...current.parentElement.children].filter(e => e.tagName === current.tagName) : [];
+              const siblings = [...(current.parentNode?.children || [])].filter(e => e.tagName === current.tagName);
               if (siblings.length > 1) selector += ':nth-of-type(' + (siblings.indexOf(current) + 1) + ')';
-              segments.unshift(selector);
-              if (unique(segments.join(' > '))) {
-                candidates.add(segments.join(' > '));
-                return [...candidates];
-              }
-              current = current.parentElement;
+              add(selector + suffix);
+              // A shadow root is not a CSS child of its host. Playwright's descendant
+              // combinator crosses the boundary while ordinary DOM edges stay explicit.
+              suffix = (current.parentElement ? ' > ' : ' ') + selector + suffix;
+              current = parentAcrossOpenShadow(current);
             }
-            const fallback = 'body > ' + segments.join(' > ');
-            if (segments.length && unique(fallback)) candidates.add(fallback);
+            if (current === document.body) add('body' + suffix);
             return [...candidates];
             }
             """;
@@ -172,6 +172,7 @@ final class BrowserPageInspection {
      */
     private static final String INSTALL = """
             (() => {
+            """ + OPEN_SHADOW_PARENT + """
               // Each document owns its state; subframes and repeated installation are skipped.
               if (window !== window.top || window.STATE_KEY) return;
               const frames = new Map();
@@ -189,15 +190,29 @@ final class BrowserPageInspection {
                 return JSON.stringify([element.tagName, ...['id', 'data-testid', 'role', 'name', 'type', 'href', 'aria-label', 'aria-labelledby', 'title', 'disabled'].map(name => element.getAttribute(name)), text,
                   style.display, style.visibility, style.opacity, style.zIndex, style.position, style.transform, style.pointerEvents, style.clipPath, style.overflow]);
               };
-              const unchanged = record => record.element.isConnected && sameBox(record.box, box(record.element)) && record.signature === signature(record.element);
+              const unchanged = record => record.element.isConnected && record.parent === record.element.parentNode && record.slot === record.element.assignedSlot
+                && record.shadow === record.element.shadowRoot && sameBox(record.box, box(record.element)) && record.signature === signature(record.element);
               window.STATE_KEY = {
                 beginFrame(id) {
                   // Snapshot visible DOM candidates immediately before taking the image.
                   const entries = [];
-                  for (const element of document.querySelectorAll('body *')) {
+                  const pending = [];
+                  const enqueue = parent => {
+                    for (const child of parent.children) {
+                      pending.push(child);
+                      if (pending.length > 20000) break;
+                    }
+                  };
+                  if (document.body) enqueue(document.body);
+                  let visited = 0;
+                  while (pending.length) {
+                    if (++visited > 20000 || pending.length > 20000) { entries.length = 0; break; }
+                    const element = pending.pop();
+                    enqueue(element);
+                    if (element.shadowRoot) enqueue(element.shadowRoot);
                     const rect = box(element);
                     if (rect[2] <= 0 || rect[3] <= 0 || rect[0] >= innerWidth || rect[1] >= innerHeight || rect[0] + rect[2] <= 0 || rect[1] + rect[3] <= 0) continue;
-                    entries.push({element, box: rect, signature: signature(element), stable: false});
+                    entries.push({element, parent: element.parentNode, slot: element.assignedSlot, shadow: element.shadowRoot, box: rect, signature: signature(element), stable: false});
                     // Reject selection on oversized documents rather than keep an incomplete map.
                     if (entries.length > 5000) { entries.length = 0; break; }
                   }
@@ -219,8 +234,20 @@ final class BrowserPageInspection {
                     if (contains(candidate.box, x, y) && (!candidate.stable || !unchanged(candidate))) return {error: 'STALE_SELECTION'};
                   }
                   // Resolve the point to its nearest interactive ancestor without activating it.
-                  const hit = document.elementFromPoint(x, y);
-                  const element = hit?.closest('button,a,input,textarea,select,[role]') || hit;
+                  let hit = document.elementFromPoint(x, y);
+                  let depth = 0;
+                  while (hit?.shadowRoot) {
+                    if (++depth > 32) return {error: 'NO_SELECTION'};
+                    const inner = hit.shadowRoot.elementFromPoint(x, y);
+                    if (!inner || inner === hit) break;
+                    hit = inner;
+                  }
+                  let element = hit;
+                  depth = 0;
+                  while (element && !element.matches('button,a,input,textarea,select,[role]') && depth++ < 32)
+                    element = element.assignedSlot || parentAcrossOpenShadow(element);
+                  if (depth > 32) return {error: 'NO_SELECTION'};
+                  if (!element) element = hit;
                   if (!element || element === document.body || element === document.documentElement) return {error: 'NO_SELECTION'};
                   const record = frame.entries.find(candidate => candidate.element === element);
                   if (!record || !record.stable || !unchanged(record)) return {error: 'STALE_SELECTION'};

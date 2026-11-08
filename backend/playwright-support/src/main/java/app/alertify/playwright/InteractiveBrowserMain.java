@@ -385,8 +385,10 @@ public final class InteractiveBrowserMain implements AutoCloseable {
             Locator element = visible.nth(index);
             Object metadata = element.evaluate("""
                     element => {
+                    """ + BrowserPageInspection.OPEN_SHADOW_PARENT + """
                       const regions = [];
-                      for (let parent = element.parentElement; parent && regions.length < 4; parent = parent.parentElement) {
+                      let depth = 0;
+                      for (let parent = parentAcrossOpenShadow(element); parent && regions.length < 4 && depth++ < 32; parent = parentAcrossOpenShadow(parent)) {
                         if (parent.matches('header,main,footer,nav,form,section,[role=navigation],[role=banner],[role=contentinfo]'))
                           regions.push({tag: parent.tagName.toLowerCase(), id: parent.id, label: parent.getAttribute('aria-label') || ''});
                       }
