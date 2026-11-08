@@ -211,7 +211,7 @@ function createResources(compose, environment, namespace, templates) {
     }
     if (name === 'identity') {
       container.lifecycle = { postStart: { exec: { command: ['/bin/bash', '/opt/keycloak/config/configure-permanent-admin.sh'] } } };
-      const realmTemplate = templates.keycloakRealm.replace('"webOrigins": ["${APP_PUBLIC_URL}"]', '"webOrigins": ["${APP_PUBLIC_ORIGIN}"]');
+      const realmTemplate = templates.keycloakRealm.replace(/("webOrigins"\s*:\s*\[\s*)"\$\{APP_PUBLIC_URL\}"/, '$1"${APP_PUBLIC_ORIGIN}"');
       const adminScript = templates.keycloakAdmin.replace('webOrigins=[\\"${app_public_url}\\"]', 'webOrigins=[\\"${APP_PUBLIC_ORIGIN}\\"]');
       mountedConfiguration.push(realmTemplate, adminScript);
       resources.push(render('configmap', { NAME: 'identity-initialization', DATA: {

@@ -120,6 +120,7 @@ public final class InteractiveBrowserMain implements AutoCloseable {
             switch (request.getOperation()) {
                 case "OPEN", "RESET" -> {
                     settings = payload;
+                    progress(request, "OPENING", text(payload, "engine", "chromium"), 0, null);
                     open(text(payload, "engine", "chromium"));
                     result(request, Map.of("completed", 0, "status", "READY"));
                 }
@@ -217,9 +218,11 @@ public final class InteractiveBrowserMain implements AutoCloseable {
             throw new IllegalArgumentException("The script exceeds 500 commands");
 
         AlertExecutionContext context = context(payload);
+        progress(request, "STARTED", activeEngine, 0, commands);
         dirty = true; // Fail closed if an action partially changes the remote site.
         for (int index = completed; index < commands.size(); index++) {
             Command command = commands.get(index);
+            progress(request, "RUNNING", activeEngine, command.lineNumber(), null);
             try {
                 if (command.type() == CommandType.RELOAD) {
                     var navigation = session.reload(loadTimeout());
@@ -235,12 +238,12 @@ public final class InteractiveBrowserMain implements AutoCloseable {
                     PlaywrightPageEngine.execute(context, session, command, elementTimeout(), scriptState);
                 }
             } catch (Exception exception) {
+                progress(request, "FAILED", activeEngine, command.lineNumber(), null);
                 throw new BrowserStepFailure(command, exception);
             }
             completed = index + 1;
             snapshotId++;
-            send(WizardEvent.newBuilder().setRequestId(request.getRequestId()).setType("PROGRESS")
-                    .setJson(json.writeValueAsString(Map.of("line", command.lineNumber(), "completed", completed))).build());
+            progress(request, "COMPLETED", activeEngine, command.lineNumber(), null);
             capture("");
         }
         appliedSteps = steps;
@@ -255,15 +258,28 @@ public final class InteractiveBrowserMain implements AutoCloseable {
         boolean passed = true;
         for (JsonNode engine : payload.path("browsers")) {
             try {
+                progress(request, "OPENING", engine.asString(), 0, null);
                 open(engine.asString());
                 execute(request, payload, false);
                 results.add(Map.of("browser", engine.asString(), "passed", true, "completed", completed));
             } catch (Exception exception) {
                 passed = false;
+                if (!(exception instanceof BrowserStepFailure))
+                    progress(request, "UNAVAILABLE", engine.asString(), 0, null);
+
                 results.add(Map.of("browser", engine.asString(), "passed", false, "completed", completed, "error", sanitize(exception.getMessage())));
             }
         }
         result(request, Map.of("passed", passed && !results.isEmpty(), "browsers", results, "activeEngine", activeEngine == null ? "" : activeEngine));
+    }
+
+    private void progress(WizardRequest request, String phase, String engine, int line, List<Command> commands) throws Exception {
+        ObjectNode progress = json.createObjectNode().put("phase", phase).put("engine", engine == null ? "" : engine)
+                .put("line", line).put("completed", phase.equals("OPENING") || phase.equals("UNAVAILABLE") ? 0 : completed);
+        if (commands != null)
+            progress.set("commandLines", json.valueToTree(commands.stream().map(Command::lineNumber).toList()));
+
+        send(WizardEvent.newBuilder().setRequestId(request.getRequestId()).setType("PROGRESS").setJson(json.writeValueAsString(progress)).build());
     }
 
     private AlertExecutionContext context(JsonNode payload) {
@@ -369,8 +385,10 @@ public final class InteractiveBrowserMain implements AutoCloseable {
             Locator element = visible.nth(index);
             Object metadata = element.evaluate("""
                     element => {
+                    """ + BrowserPageInspection.OPEN_SHADOW_PARENT + """
                       const regions = [];
-                      for (let parent = element.parentElement; parent && regions.length < 4; parent = parent.parentElement) {
+                      let depth = 0;
+                      for (let parent = parentAcrossOpenShadow(element); parent && regions.length < 4 && depth++ < 32; parent = parentAcrossOpenShadow(parent)) {
                         if (parent.matches('header,main,footer,nav,form,section,[role=navigation],[role=banner],[role=contentinfo]'))
                           regions.push({tag: parent.tagName.toLowerCase(), id: parent.id, label: parent.getAttribute('aria-label') || ''});
                       }

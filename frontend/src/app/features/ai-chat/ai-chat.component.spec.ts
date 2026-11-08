@@ -21,6 +21,18 @@ interface ComponentHarness {
   readonly desiredConversationId: WritableSignal<number | null>;
   readonly reasoningEffort: () => string;
   readonly message: WritableSignal<string>;
+  readonly mode: WritableSignal<'READ_ONLY' | 'PLAN' | 'DIRECT'>;
+  readonly approvalPolicy: WritableSignal<'ASK' | 'AUTO'>;
+  readonly open: WritableSignal<boolean>;
+  readonly panelWidth: WritableSignal<number>;
+  minimumPanelWidth(): number;
+  startResize(event: PointerEvent): void;
+  resizeWithKeyboard(event: KeyboardEvent): void;
+  toggle(): Promise<void>;
+  setMode(value: 'READ_ONLY' | 'PLAN' | 'DIRECT'): void;
+  setApprovalPolicy(value: 'ASK' | 'AUTO'): void;
+  selectNewDraft(): void;
+  updateMessage(event: Event): void;
   setReasoningEffort(value: string): void;
   send(): Promise<void>;
   select(id: number, scrollMode?: 'force' | 'follow' | 'none'): Promise<void>;
@@ -75,6 +87,8 @@ describe('AiChatComponent', () => {
     const entry = group.querySelector('.ai-chat__tool') as HTMLDetailsElement;
     expect(group.open).toBe(false);
     expect(entry.open).toBe(false);
+    expect(group.querySelector('summary .ai-chat__latest-tool code')?.textContent).toBe('test_tool_1');
+    expect(group.querySelector('.ai-chat__latest-tool')?.textContent).toContain('RUNNING');
     group.querySelector('summary')!.click();
     entry.querySelector('summary')!.click();
     expect(group.open).toBe(true);
@@ -91,8 +105,54 @@ describe('AiChatComponent', () => {
     expect(group.open).toBe(true);
     expect(entry.open).toBe(true);
     expect(group.querySelectorAll('.ai-chat__tool')).toHaveLength(2);
+    expect(group.querySelector('summary .ai-chat__latest-tool code')?.textContent).toBe('test_tool_2');
     group.querySelector('summary')!.click();
     expect(group.open).toBe(false);
+    fixture.destroy();
+  });
+
+  it('updates the latest tool and its status without opening a collapsed group', async () => {
+    const fixture = TestBed.createComponent(AiChatComponent);
+    fixture.componentRef.setInput('popout', true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const harness = fixture.componentInstance as unknown as ComponentHarness;
+    const first = tool(1, 'SUCCEEDED', '2026-10-11T10:00:01Z');
+    const latest = tool(2, 'RUNNING', '2026-10-11T10:00:02Z');
+    const detail = { ...conversation(1, 'ACTIVE'), turns: [{ ...turn(7, 'RUNNING'), tools: [latest, first] }] };
+    harness.selected.set(detail);
+    fixture.detectChanges();
+    const group = fixture.nativeElement.querySelector('.ai-chat__tools') as HTMLDetailsElement;
+    expect(group.open).toBe(false);
+    expect(group.querySelector('summary .ai-chat__latest-tool code')?.textContent).toBe('test_tool_2');
+    expect(group.querySelector('.ai-chat__latest-tool')?.textContent).toContain('RUNNING');
+    harness.selected.set({ ...detail, turns: [{ ...turn(7, 'FAILED'), tools: [first, { ...latest, status: 'FAILED' }] }] });
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.ai-chat__tools')).toBe(group);
+    expect(group.open).toBe(false);
+    expect(group.querySelector('.ai-chat__latest-tool')?.textContent).toContain('FAILED');
+    harness.selected.set({ ...detail, turns: [{ ...turn(7, 'RUNNING'), tools: [first, latest, tool(3, 'RUNNING', '2026-10-11T10:00:03Z')] }] });
+    fixture.detectChanges();
+    expect(group.open).toBe(false);
+    expect(group.querySelector('summary .ai-chat__latest-tool code')?.textContent).toBe('test_tool_3');
+    fixture.destroy();
+  });
+
+  it('shows the latest tool of each separate group and keeps pending approval separate', async () => {
+    const fixture = TestBed.createComponent(AiChatComponent);
+    fixture.componentRef.setInput('popout', true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const harness = fixture.componentInstance as unknown as ComponentHarness;
+    harness.selected.set({ ...conversation(1, 'ACTIVE'),
+      messages: [{ id: 1, turnId: 7, role: 'ASSISTANT', content: 'Between tools', createdAt: '2026-10-11T10:00:02Z' }],
+      turns: [{ ...turn(7, 'WAITING_APPROVAL'), tools: [tool(1, 'SUCCEEDED', '2026-10-11T10:00:01Z'),
+        tool(2, 'SUCCEEDED', '2026-10-11T10:00:03Z'), tool(3, 'PENDING_APPROVAL', '2026-10-11T10:00:04Z')] }],
+    });
+    fixture.detectChanges();
+    const root: HTMLElement = fixture.nativeElement;
+    expect(Array.from(root.querySelectorAll('.ai-chat__latest-tool code'), element => element.textContent)).toEqual(['test_tool_1', 'test_tool_2']);
+    expect(root.querySelector('.ai-chat__approval code')?.textContent).toBe('test_tool_3');
     fixture.destroy();
   });
 
@@ -348,6 +408,176 @@ describe('AiChatComponent', () => {
 
     expect(component.desiredConversationId()).toBeNull();
     expect(component.selected()).toBeNull();
+  });
+
+  it('restores each conversation draft and the new-chat draft with its local options', async () => {
+    api.conversation.mockImplementation(async (id: number) => conversation(id, 'COMPLETED'));
+    await component.newConversation();
+    component.message.set('new draft\nsecond line');
+    component.setMode('PLAN');
+    await component.select(1, 'none');
+    component.message.set('first draft');
+    component.setMode('DIRECT');
+    component.setApprovalPolicy('AUTO');
+    await component.select(2, 'none');
+    expect(component.message()).toBe('');
+    await component.select(1, 'none');
+    expect(component.message()).toBe('first draft');
+    expect(component.mode()).toBe('DIRECT');
+    expect(component.approvalPolicy()).toBe('AUTO');
+    component.selectNewDraft();
+    expect(component.message()).toBe('new draft\nsecond line');
+    expect(component.mode()).toBe('PLAN');
+    await component.newConversation();
+    expect(component.message()).toBe('');
+  });
+
+  it('does not overwrite local options and text when refreshing conversation details', async () => {
+    api.conversation.mockResolvedValue(conversation(1, 'COMPLETED'));
+    await component.select(1, 'none');
+    component.message.set('unsent');
+    component.setMode('DIRECT');
+    component.setApprovalPolicy('AUTO');
+    await component.select(1, 'none');
+    expect(component.message()).toBe('unsent');
+    expect(component.mode()).toBe('DIRECT');
+    expect(component.approvalPolicy()).toBe('AUTO');
+  });
+
+  it('does not clear another conversation draft when a pending submit finishes', async () => {
+    const fixture = TestBed.createComponent(AiChatComponent);
+    const chat = fixture.componentInstance as unknown as ComponentHarness;
+    fixture.detectChanges();
+    await fixture.whenStable();
+    api.conversation.mockImplementation(async (id: number) => conversation(id, 'COMPLETED'));
+    await chat.select(1, 'none');
+    chat.message.set('submitted from one');
+    const pending = deferred<{ conversationId: number; turnId: number }>();
+    api.submit.mockReturnValueOnce(pending.promise);
+    const sending = chat.send();
+    await chat.select(2, 'none');
+    chat.message.set('draft in two');
+    pending.resolve({ conversationId: 1, turnId: 7 });
+    await sending;
+    expect(chat.desiredConversationId()).toBe(2);
+    expect(chat.message()).toBe('draft in two');
+    await chat.select(1, 'none');
+    expect(chat.message()).toBe('');
+    fixture.destroy();
+  });
+
+  it('migrates text written while sending a new chat without losing it', async () => {
+    const fixture = TestBed.createComponent(AiChatComponent);
+    const chat = fixture.componentInstance as unknown as ComponentHarness;
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const pending = deferred<{ conversationId: number; turnId: number }>();
+    api.submit.mockReturnValueOnce(pending.promise);
+    api.conversation.mockResolvedValue(conversation(1, 'COMPLETED'));
+    chat.message.set('submitted');
+    const sending = chat.send();
+    chat.updateMessage({ target: { value: 'written afterwards' } } as unknown as Event);
+    pending.resolve({ conversationId: 1, turnId: 7 });
+    await sending;
+    expect(chat.desiredConversationId()).toBe(1);
+    expect(chat.message()).toBe('written afterwards');
+    fixture.destroy();
+  });
+
+  function pointer(type: string, clientX: number, pointerId = 1, buttons = 1): PointerEvent {
+    return new PointerEvent(type, { clientX, pointerId, button: 0, buttons, pointerType: 'mouse' });
+  }
+
+  async function openPanel() {
+    const fixture = TestBed.createComponent(AiChatComponent);
+    const chat = fixture.componentInstance as unknown as ComponentHarness;
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await chat.toggle();
+    return { fixture, chat };
+  }
+
+  it.each([6, 5, 4, 0])('only closes during a resize when the pointer is within 5px of the right edge (%s px)', async distance => {
+    const { fixture, chat } = await openPanel();
+    chat.updateMessage({ target: { value: 'resize draft\nsecond line' } } as unknown as Event);
+    chat.setMode('DIRECT');
+    chat.setApprovalPolicy('AUTO');
+    const rightEdge = window.innerWidth;
+    chat.startResize(pointer('pointerdown', rightEdge - 480));
+    window.dispatchEvent(pointer('pointermove', rightEdge - chat.minimumPanelWidth()));
+    expect(chat.panelWidth()).toBe(chat.minimumPanelWidth());
+    expect(chat.open()).toBe(true);
+    window.dispatchEvent(pointer('pointermove', rightEdge - distance));
+    expect(chat.open()).toBe(distance > 5);
+    if (distance <= 5) {
+      expect(localStorage.getItem('alertify.aiChat.panelWidth')).toBe(String(chat.minimumPanelWidth()));
+      expect(document.body.style.cursor).not.toBe('col-resize');
+      expect(document.body.style.userSelect).not.toBe('none');
+      window.dispatchEvent(pointer('pointermove', rightEdge - 600));
+      expect(chat.panelWidth()).toBe(chat.minimumPanelWidth());
+      await chat.toggle();
+      expect(chat.open()).toBe(true);
+      expect(chat.panelWidth()).toBe(chat.minimumPanelWidth());
+      expect(chat.message()).toBe('resize draft\nsecond line');
+      expect(chat.mode()).toBe('DIRECT');
+      expect(chat.approvalPolicy()).toBe('AUTO');
+    }
+    window.dispatchEvent(pointer('pointerup', rightEdge - distance, 1, 0));
+    fixture.destroy();
+  });
+
+  it.each(['pointerup', 'pointercancel'])('ends resizing on %s without closing or responding to later movement', async type => {
+    const { fixture, chat } = await openPanel();
+    chat.startResize(pointer('pointerdown', window.innerWidth - 480));
+    window.dispatchEvent(pointer('pointermove', window.innerWidth - 320));
+    window.dispatchEvent(pointer(type, window.innerWidth - 320, 1, 0));
+    window.dispatchEvent(pointer('pointermove', window.innerWidth));
+    expect(chat.open()).toBe(true);
+    expect(chat.panelWidth()).toBe(chat.minimumPanelWidth());
+    fixture.destroy();
+  });
+
+  it('uses the visible page edge, ignores other pointers, and restores prior body styles', async () => {
+    const { fixture, chat } = await openPanel();
+    const oldCursor = document.body.style.cursor;
+    const oldSelect = document.body.style.userSelect;
+    document.body.style.cursor = 'crosshair';
+    document.body.style.userSelect = 'text';
+    vi.spyOn(document.documentElement, 'clientWidth', 'get').mockReturnValue(window.innerWidth - 17);
+    chat.startResize(pointer('pointerdown', window.innerWidth - 480));
+    window.dispatchEvent(pointer('pointermove', window.innerWidth, 2));
+    expect(chat.open()).toBe(true);
+    window.dispatchEvent(pointer('pointermove', document.documentElement.clientWidth - 5));
+    expect(chat.open()).toBe(false);
+    expect(document.body.style.cursor).toBe('crosshair');
+    expect(document.body.style.userSelect).toBe('text');
+    document.body.style.cursor = oldCursor;
+    document.body.style.userSelect = oldSelect;
+    fixture.destroy();
+  });
+
+  it('does not close for released mouse movement, keyboard shrinking or browser resizing', async () => {
+    const { fixture, chat } = await openPanel();
+    chat.startResize(pointer('pointerdown', window.innerWidth - 480));
+    window.dispatchEvent(pointer('pointermove', window.innerWidth, 1, 0));
+    expect(chat.open()).toBe(true);
+    for (let index = 0; index < 30; index++) chat.resizeWithKeyboard(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+    window.dispatchEvent(new Event('resize'));
+    expect(chat.panelWidth()).toBe(chat.minimumPanelWidth());
+    expect(chat.open()).toBe(true);
+    fixture.destroy();
+  });
+
+  it('does not activate the resize-close gesture in the floating window', async () => {
+    const fixture = TestBed.createComponent(AiChatComponent);
+    fixture.componentRef.setInput('popout', true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const chat = fixture.componentInstance as unknown as ComponentHarness;
+    chat.startResize(pointer('pointerdown', window.innerWidth - 480));
+    window.dispatchEvent(pointer('pointermove', window.innerWidth));
+    expect(chat.open()).toBe(true);
+    fixture.destroy();
   });
 });
 

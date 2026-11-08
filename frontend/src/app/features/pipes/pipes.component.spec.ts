@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
-import { EMPTY } from 'rxjs';
+import { EMPTY, of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { Pipe, PipeApiService, PipeOptions } from '../../core/api/pipe-api.service';
@@ -76,7 +76,7 @@ describe('Pipes compact binding editor', () => {
       providers: [
         { provide: PipeApiService, useValue: api },
         { provide: LocalizationService, useValue: { translateDynamic: (key: string) => key } },
-        { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap: convertToParamMap({}) } } },
+        { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap: convertToParamMap({}) }, queryParamMap: of(convertToParamMap({})) } },
         { provide: Router, useValue: { navigate: vi.fn().mockResolvedValue(true) } },
         { provide: AdminEventChannelService, useValue: { on: () => EMPTY } },
         { provide: EditorDraftService, useValue: drafts },

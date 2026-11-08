@@ -1,7 +1,7 @@
 import { DatePipe, JsonPipe } from '@angular/common';
 import { afterNextRender, afterRenderEffect, ChangeDetectionStrategy, Component, computed, DestroyRef, effect, ElementRef, inject, Injector, input, output, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { AlertMessageService } from '../../../core/alert-messages/alert-message.service';
 import { AuthService } from '../../../core/auth/auth.service';
 import { PipeApiService } from '../../../core/api/pipe-api.service';
@@ -24,7 +24,7 @@ export interface DashboardPipeAlertDetail {
 
 @Component({
   selector: 'app-dashboard-pipes',
-  imports: [DatePipe, JsonPipe],
+  imports: [DatePipe, JsonPipe, RouterLink],
   templateUrl: './dashboard-pipes.component.html',
   styleUrls: ['../dashboard.component.css', './dashboard-pipes.component.css'],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -54,6 +54,7 @@ export class DashboardPipesComponent {
   private opener: HTMLElement | null = null;
   private detailRequest = 0;
   private noticeTimer: number | null = null;
+  private readonly followStates = new Map<number, { followed: string | null; paused: string | null }>();
   private readonly requestedPipe = signal<number | null>(null);
   protected readonly menuCard = computed(() => this.live.cards().find(card => card.id === this.menu()?.id) ?? null);
   protected readonly visible = computed(() => {
@@ -71,14 +72,20 @@ export class DashboardPipesComponent {
 
   constructor() {
     afterRenderEffect((cleanup) => {
-      this.visible(); this.settings();
+      const cards = this.visible(); this.settings(); this.selected();
       const tracks = [...this.host.nativeElement.querySelectorAll<HTMLElement>('.pipe-track')];
-      const observer = new ResizeObserver(() => tracks.forEach(track => {
+      for (const id of this.followStates.keys()) if (!cards.some(card => card.id === id)) this.followStates.delete(id);
+      const update = (track: HTMLElement, resized = false) => {
         const card = this.live.cards().find(value => value.id === Number(track.dataset['pipeId']));
-        if (card) this.range(card, track);
-      }));
+        if (card) { this.range(card, track); this.followStep(card, track, resized); }
+      };
+      const observer = new ResizeObserver(entries => entries.forEach(entry => update(entry.target as HTMLElement, true)));
+      const intersection = typeof IntersectionObserver === 'undefined' ? null : new IntersectionObserver(entries => {
+        entries.forEach(entry => update(entry.target as HTMLElement));
+      });
       tracks.forEach(track => observer.observe(track));
-      cleanup(() => observer.disconnect());
+      tracks.forEach(track => { intersection?.observe(track); update(track); });
+      cleanup(() => { observer.disconnect(); intersection?.disconnect(); });
     });
     this.route.queryParamMap.pipe(takeUntilDestroyed(inject(DestroyRef))).subscribe(params => { this.requestedPipe.set(Number(params.get('pipe')) || null); });
     effect(() => {
@@ -97,15 +104,31 @@ export class DashboardPipesComponent {
       if (this.menu() && !this.menuCard()) this.closeMenu();
     });
     const closeMenu = () => this.closeMenu();
+    const followVisible = () => {
+      for (const track of this.host.nativeElement.querySelectorAll<HTMLElement>('.pipe-track')) {
+        const card = this.live.cards().find(value => value.id === Number(track.dataset['pipeId']));
+        if (card) this.followStep(card, track);
+      }
+    };
     window.addEventListener('resize', closeMenu);
     window.addEventListener('scroll', closeMenu, true);
-    inject(DestroyRef).onDestroy(() => { window.removeEventListener('resize', closeMenu); window.removeEventListener('scroll', closeMenu, true); this.clearNoticeTimer(); });
+    document.addEventListener('visibilitychange', followVisible);
+    inject(DestroyRef).onDestroy(() => { window.removeEventListener('resize', closeMenu); window.removeEventListener('scroll', closeMenu, true); document.removeEventListener('visibilitychange', followVisible); this.followStates.clear(); this.clearNoticeTimer(); });
   }
 
   protected t(key: string): string { return this.localization.translateDynamic('dashboard.pipe.' + key); }
   private normalize(text: string): string { return text.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLocaleLowerCase().trim(); }
   protected status(card: DashboardPipeCard): string { return this.t(card.execution?.status === 'RUNNING' ? 'RUNNING' : card.execution?.outcome ?? 'NONE'); }
   protected state(card: DashboardPipeCard): string { return pipeState(card); }
+  protected headerClasses(card: DashboardPipeCard): string {
+    const state = pipeState(card);
+    const age = this.settings().flatGreens ? 'flat' : this.successAge(card.stateChangedAt ?? card.execution?.finishedAt ?? null);
+    return 'pipe-header alert-card--' + state + (state === 'success' ? ' alert-card--success-' + age : '');
+  }
+  protected totalDuration(card: DashboardPipeCard): string | null {
+    const ms = card.execution?.durationMillis;
+    return ms === null || ms === undefined || !Number.isFinite(ms) ? null : Number((Math.max(0, ms) / 1000).toFixed(1)) + ' s';
+  }
   protected stepStatus(card: DashboardPipeCard, step: DashboardPipeStep): string {
     return this.t(step.result.status === 'PENDING' && card.execution?.status !== 'RUNNING' ? 'NONE' : step.result.status);
   }
@@ -199,7 +222,7 @@ export class DashboardPipesComponent {
     if (event.key === 'Escape') { event.preventDefault(); this.closeDetail(); return; }
     if (event.key !== 'Tab') return;
     const dialog = this.host.nativeElement.querySelector<HTMLElement>('[role=dialog]');
-    const items = [...dialog?.querySelectorAll<HTMLElement>('button:not(:disabled),summary,[tabindex="0"]') ?? []].filter(item=>item.getClientRects().length);
+    const items = [...dialog?.querySelectorAll<HTMLElement>('button:not(:disabled),a[href],summary,[tabindex="0"]') ?? []].filter(item=>item.getClientRects().length);
     const first = items[0], last = items.at(-1);
     if (event.shiftKey && (document.activeElement === first || document.activeElement === dialog)) { event.preventDefault(); last?.focus(); }
     else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
@@ -220,8 +243,51 @@ export class DashboardPipesComponent {
     const visible = steps.map((node,index)=>({index,rect:node.getBoundingClientRect()})).filter(item=>item.rect.right>rect.left+1&&item.rect.left<rect.right-1);
     this.ranges.update(value=>({...value,[card.id]:{first:(visible[0]?.index??0)+1,last:(visible.at(-1)?.index??0)+1,left:track.scrollLeft,max:Math.max(0,track.scrollWidth-track.clientWidth)}}));
   }
-  protected scroll(track: HTMLElement, direction: number): void { track.scrollBy({left:direction*Math.max(240,Math.floor(track.clientWidth/265)*265),behavior:'smooth'}); }
-  protected seek(track: HTMLElement, event: Event): void { track.scrollTo({left:Number((event.target as HTMLInputElement).value),behavior:'instant'}); }
+  private activeStepIdentity(card: DashboardPipeCard): string | null {
+    const step = card.steps.find(step => step.result.status === 'RUNNING');
+    return card.execution?.status === 'RUNNING' && step ? card.execution.executionId + ':' + step.result.key : null;
+  }
+  protected pauseFollow(card: DashboardPipeCard, event?: Event): void {
+    if (event instanceof WheelEvent && !event.deltaX && !event.shiftKey) return;
+    if (event instanceof KeyboardEvent && !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    const state = this.followStates.get(card.id) ?? { followed: null, paused: null };
+    state.paused = this.activeStepIdentity(card);
+    this.followStates.set(card.id, state);
+  }
+  private pauseTrack(track: HTMLElement): void {
+    const card = this.live.cards().find(value => value.id === Number(track.dataset['pipeId']));
+    if (card) this.pauseFollow(card);
+  }
+  private followStep(card: DashboardPipeCard, track: HTMLElement, resized = false): void {
+    const identity = this.activeStepIdentity(card);
+    const state = this.followStates.get(card.id) ?? { followed: null, paused: null };
+    this.followStates.set(card.id, state);
+    if (!identity) { state.followed = null; state.paused = null; return; }
+    const viewport = track.getBoundingClientRect();
+    if (document.visibilityState !== 'visible' || this.selected() || document.querySelector('[role="dialog"][aria-modal="true"]')
+        || viewport.width <= 0 || viewport.bottom <= 0 || viewport.top >= window.innerHeight || viewport.right <= 0 || viewport.left >= window.innerWidth) {
+      state.followed = null;
+      return;
+    }
+    if (state.paused === identity || (!resized && state.followed === identity)) return;
+    const index = card.steps.findIndex(step => step.result.status === 'RUNNING');
+    const next = card.steps.findIndex((step, position) => position > index && step.result.status === 'PENDING');
+    const elements = [...track.querySelectorAll<HTMLElement>('.pipe-step')];
+    const currentRect = elements[index]?.getBoundingClientRect();
+    if (!currentRect) return;
+    const end = elements[next]?.getBoundingClientRect() ?? currentRect;
+    const width = track.clientWidth;
+    const right = viewport.left + width;
+    let left = track.scrollLeft;
+    if (end.right - currentRect.left > width) left += currentRect.left - viewport.left;
+    else if (currentRect.left < viewport.left) left += currentRect.left - viewport.left;
+    else if (end.right > right) left += end.right - right;
+    left = Math.max(0, Math.min(track.scrollWidth - width, left));
+    state.followed = identity;
+    if (Math.abs(left - track.scrollLeft) > 1) track.scrollTo({ left, behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
+  }
+  protected scroll(track: HTMLElement, direction: number): void { this.pauseTrack(track); track.scrollBy({left:direction*Math.max(240,Math.floor(track.clientWidth/265)*265),behavior:'smooth'}); }
+  protected seek(track: HTMLElement, event: Event): void { this.pauseTrack(track); track.scrollTo({left:Number((event.target as HTMLInputElement).value),behavior:'instant'}); }
   private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
     const token = await this.auth.getAccessToken(), response = await fetch(this.base+path,{...init,headers:{Authorization:'Bearer '+token}});
     if (!response.ok) {

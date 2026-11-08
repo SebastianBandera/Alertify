@@ -43,6 +43,19 @@ button.primary { border-color: var(--primary); background: var(--primary); color
 .line-numbers-content { position: absolute; inset: 0 0 auto; }
 .line-numbers pre { max-height: none; margin: 0; padding: 8px; overflow: visible; font: inherit; white-space: pre; }
 .failed-line-number { position: absolute; right: 0; left: 0; height: 20px; padding: 0 8px; background: #fef3f2; color: #b42318; font-weight: 700; }
+.step-line-status { position: absolute; right: 0; left: 0; height: 20px; padding: 0 8px; white-space: pre; font-weight: 650; }
+.step-line-status--completed { background: #ecfdf3; color: #027a48; }
+.step-line-status--running { background: #eff4ff; color: #175cd3; }
+.step-line-status--pending { background: #fffaeb; color: #93370d; }
+.step-line-status--failed { background: #fef3f2; color: #b42318; }
+.script-progress { display: grid; gap: 7px; margin-bottom: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 12px; }
+.script-progress button { justify-self: start; }
+.pending-lines { overflow-wrap: anywhere; }
+.progress-legend { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 11px; }
+.progress-completed { color: #027a48; }
+.progress-running { color: #175cd3; }
+.progress-pending { color: #93370d; }
+.progress-failed { color: #b42318; }
 pre { max-height: 350px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
 .selection { display: grid; gap: 5px; margin-top: 12px; padding: 10px; border-radius: 8px; background: #f4f3ff; font-size: 12px; }
 .selection code { overflow-wrap: anywhere; }

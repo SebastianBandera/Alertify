@@ -3,6 +3,7 @@ import { inject, Injectable } from '@angular/core';
 import { ApiRequestError, BinaryLimits, PageResponse, SortDirection, TagMatchMode, TagWriteRequest } from './configuration-api.service';
 import { AuthService } from '../auth/auth.service';
 import { RUNTIME_CONFIG } from '../config/runtime-config';
+import { UsageAnalysisIssue } from './usage-analysis';
 
 export interface SecretTag {
   readonly id: number;
@@ -107,6 +108,7 @@ export interface ApplicationSecret {
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly usageCount: number;
+  readonly usageAnalysisComplete?: boolean;
 }
 
 export type SecretUsageType = 'ALERT' | 'PROCEDURE' | 'HOOK' | 'SECRET';
@@ -122,6 +124,9 @@ export interface SecretUsages {
   readonly totalCount: number;
   readonly direct: readonly SecretUsage[];
   readonly indirect: readonly SecretUsage[];
+  readonly analysisComplete?: boolean;
+  readonly analysisWarnings?: readonly string[];
+  readonly analysisIssues?: readonly UsageAnalysisIssue[];
 }
 
 export interface SecretCreateRequest {

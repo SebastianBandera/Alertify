@@ -20,6 +20,8 @@ import { AuthService } from '../../core/auth/auth.service';
 import { LocalizationService } from '../../core/i18n/localization.service';
 import { AdminEventChannelService } from '../../core/realtime/admin-event-channel.service';
 import { AiChatMessageComponent } from './ai-chat-message.component';
+import { AiChatSessionService, ChatDraft } from './ai-chat-session.service';
+import { AiChatWindowService } from './ai-chat-window.service';
 
 type AiChatTimelineItem =
   | Readonly<{ kind: 'message'; key: string; message: AiChatMessage }>
@@ -90,6 +92,7 @@ export class AiChatComponent implements OnInit {
   private static readonly PANEL_WIDTH_STORAGE_KEY = 'alertify.aiChat.panelWidth';
   private static readonly DEFAULT_PANEL_WIDTH = 480;
   private static readonly MIN_PANEL_WIDTH = 320;
+  private static readonly CLOSE_EDGE_DISTANCE = 5;
   private static readonly MAX_VIEWPORT_RATIO = 0.9;
   private static readonly AVAILABILITY_REFRESH_MILLISECONDS = 10_000;
   private static readonly BOTTOM_THRESHOLD = 24;
@@ -97,19 +100,21 @@ export class AiChatComponent implements OnInit {
   readonly popout = input(false);
   private readonly api = inject(AiChatApiService);
   private readonly moduleApi = inject(AiModuleApiService);
+  private readonly session = inject(AiChatSessionService);
+  protected readonly windows = inject(AiChatWindowService);
   protected readonly auth = inject(AuthService);
   private readonly events = inject(AdminEventChannelService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly messagesViewport = viewChild<ElementRef<HTMLElement>>('messagesViewport');
   protected readonly localization = inject(LocalizationService);
   protected readonly open = signal(false);
-  protected readonly detached = signal(false);
+  protected readonly detached = this.windows.detached;
   protected readonly conversations = signal<readonly AiConversationSummary[]>([]);
   protected readonly selected = signal<AiConversationDetail | null>(null);
-  protected readonly desiredConversationId = signal<number | null>(null);
-  protected readonly mode = signal<AiChatMode>('READ_ONLY');
-  protected readonly approvalPolicy = signal<AiApprovalPolicy>('ASK');
-  protected readonly message = signal('');
+  protected readonly desiredConversationId = signal<number | null>(this.session.hasSelection ? this.session.selectedId : null);
+  protected readonly mode = signal<AiChatMode>(this.session.read(this.desiredConversationId()).mode);
+  protected readonly approvalPolicy = signal<AiApprovalPolicy>(this.session.read(this.desiredConversationId()).approvalPolicy);
+  protected readonly message = signal(this.session.read(this.desiredConversationId()).message);
   protected readonly busy = signal(false);
   private readonly waitingForModel = signal(false);
   protected readonly error = signal('');
@@ -200,7 +205,6 @@ export class AiChatComponent implements OnInit {
   private availabilityLoading = false;
   private availabilityIntervalId: number | null = null;
   private resizeCleanup: (() => void) | null = null;
-  private popoutWindow: Window | null = null;
   private followLatest = true;
   private autoScrolling = false;
   private scrollAnimationTimeout: number | null = null;
@@ -213,6 +217,10 @@ export class AiChatComponent implements OnInit {
     effect(() => {
       if (this.moduleState() && this.preferredReasoningEffort() !== this.reasoningEffort())
         this.setReasoningEffort('low');
+    });
+    effect(() => {
+      const code = this.windows.error();
+      if (code) this.error.set(this.localization.translateDynamic(code));
     });
   }
 
@@ -234,30 +242,31 @@ export class AiChatComponent implements OnInit {
     window.addEventListener('focus', focusListener);
     window.addEventListener('resize', resizeListener);
     window.addEventListener('storage', storageListener);
+    const awaitingHandoff = this.windows.start(this.popout(), {
+      capture: () => this.captureDraft(),
+      restore: () => { this.open.set(true); void this.restoreSession(); },
+      detached: () => this.open.set(false),
+    });
     if (this.popout()) {
       this.open.set(true);
-      void this.load();
+      if (!awaitingHandoff) void this.load();
     }
     this.events.on('AI_CHAT_UPDATED').pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event) => {
       if (event.status === 'DELETED') {
+        this.session.remove(event.conversationId);
         if (this.desiredConversationId() === event.conversationId) this.resetConversationSelection();
+        this.windows.publish();
         void this.loadConversations();
         return;
       }
-      if (this.desiredConversationId() === event.conversationId)
+      if (!this.detached() && !this.windows.transferring() && this.desiredConversationId() === event.conversationId)
         void this.loadConversation(event.conversationId, 'follow');
 
       void this.loadConversations();
     });
-    const listener = (event: MessageEvent<unknown>) => {
-      if (event.origin === location.origin && (event.data as { type?: string } | null)?.type === 'ALERTIFY_AI_CHAT_REATTACH') {
-        this.detached.set(false);
-        this.open.set(true);
-      }
-    };
-    window.addEventListener('message', listener);
     this.destroyRef.onDestroy(() => {
-      window.removeEventListener('message', listener);
+      this.captureDraft();
+      this.windows.stop();
       window.removeEventListener('focus', focusListener);
       window.removeEventListener('resize', resizeListener);
       window.removeEventListener('storage', storageListener);
@@ -269,6 +278,7 @@ export class AiChatComponent implements OnInit {
   }
 
   protected async toggle(): Promise<void> {
+    if (this.windows.transferring() || this.detached()) return;
     if (this.open()) {
       this.open.set(false);
       return;
@@ -282,15 +292,29 @@ export class AiChatComponent implements OnInit {
   }
 
   protected async newConversation(): Promise<void> {
+    if (this.windows.transferring()) return;
+    this.captureDraft();
+    this.session.resetNew();
     this.resetConversationSelection();
-    this.message.set('');
+    this.windows.publish();
   }
 
-  protected async select(id: number, scrollMode: 'force' | 'follow' | 'none' = 'force'): Promise<void> {
+  protected selectNewDraft(): void {
+    if (this.windows.transferring()) return;
+    this.captureDraft();
+    this.resetConversationSelection();
+    this.windows.publish();
+  }
+
+  protected async select(id: number, scrollMode: 'force' | 'follow' | 'none' = 'force', capturePrevious = true): Promise<void> {
+    if (this.windows.transferring() || this.detached()) return;
+    if (capturePrevious) this.captureDraft();
     this.selectionIntentGeneration++;
     this.desiredConversationId.set(id);
+    this.applyDraft(this.session.select(id));
     this.error.set('');
     if (this.selected()?.id !== id) this.selected.set(null);
+    this.windows.publish();
     await this.loadConversation(id, scrollMode);
   }
 
@@ -301,8 +325,8 @@ export class AiChatComponent implements OnInit {
       if (!this.isCurrentDetailRequest(id, requestGeneration)) return;
 
       this.selected.set(conversation);
-      this.mode.set(conversation.mode);
-      this.approvalPolicy.set(conversation.approvalPolicy);
+      this.applyDraft(this.session.seed(id, conversation.mode, conversation.approvalPolicy));
+      this.windows.publish();
       if (scrollMode === 'force' || (scrollMode === 'follow' && this.followLatest))
         this.scrollToLatest(scrollMode === 'force');
 
@@ -313,7 +337,7 @@ export class AiChatComponent implements OnInit {
 
   protected async send(): Promise<void> {
     const text = this.message().trim();
-    if (!text || this.busy() || !this.chatAvailable() || !this.conversationReady() || !!this.activeTurnId()) return;
+    if (!text || this.busy() || this.windows.transferring() || this.detached() || !this.chatAvailable() || !this.conversationReady() || !!this.activeTurnId()) return;
     this.busy.set(true);
     this.waitingForModel.set(true);
     this.followLatest = true;
@@ -321,13 +345,16 @@ export class AiChatComponent implements OnInit {
     this.error.set('');
     const submittedConversationId = this.desiredConversationId();
     const submittedSelectionGeneration = this.selectionIntentGeneration;
+    const submittedDraft = this.captureDraft();
     try {
       const response = await this.api.submit(submittedConversationId, text, this.mode(), this.approvalPolicy(), this.localization.locale(), this.reasoningEffort());
-      if (this.message().trim() === text) this.message.set('');
+      this.captureDraft();
+      this.session.finishSubmission(submittedConversationId, submittedDraft, response.conversationId);
       if (this.selectionIntentGeneration === submittedSelectionGeneration
           && this.desiredConversationId() === submittedConversationId)
-        await this.select(response.conversationId);
+        await this.select(response.conversationId, 'force', false);
 
+      this.windows.publish();
       await this.loadConversations();
     } catch (error) {
       if (this.selectionIntentGeneration === submittedSelectionGeneration
@@ -353,26 +380,56 @@ export class AiChatComponent implements OnInit {
   }
 
   protected detach(): void {
-    const popup = window.open(new URL('ai-chat', document.baseURI), 'alertify-ai-chat', 'popup,width=560,height=820');
-    if (!popup) return;
-    this.popoutWindow = popup;
-    this.detached.set(true);
-    this.open.set(false);
-    const interval = window.setInterval(() => {
-      if (!this.popoutWindow || !this.popoutWindow.closed) return;
-      window.clearInterval(interval);
-      this.detached.set(false);
-      this.popoutWindow = null;
-    }, 500);
+    if (this.busy()) return;
+    this.error.set('');
+    this.windows.detach();
   }
 
   protected reattach(): void {
-    window.opener?.postMessage({ type: 'ALERTIFY_AI_CHAT_REATTACH' }, location.origin);
-    window.close();
+    if (this.busy()) return;
+    this.error.set('');
+    this.windows.reattach();
   }
 
   protected updateMessage(event: Event): void {
     this.message.set((event.target as HTMLTextAreaElement).value);
+    this.captureDraft();
+    this.windows.publish();
+  }
+
+  protected setMode(value: AiChatMode): void {
+    this.mode.set(value);
+    this.captureDraft();
+    this.windows.publish();
+  }
+
+  protected setApprovalPolicy(value: AiApprovalPolicy): void {
+    this.approvalPolicy.set(value);
+    this.captureDraft();
+    this.windows.publish();
+  }
+
+  private captureDraft(): ChatDraft {
+    if (this.detached()) return this.session.read(this.session.selectedId);
+    return this.session.capture(this.desiredConversationId(), this.message(), this.mode(), this.approvalPolicy());
+  }
+
+  private applyDraft(draft: ChatDraft): void {
+    this.message.set(draft.message);
+    this.mode.set(draft.mode);
+    this.approvalPolicy.set(draft.approvalPolicy);
+  }
+
+  private async restoreSession(): Promise<void> {
+    this.error.set('');
+    this.selectionIntentGeneration++;
+    this.detailRequestGeneration++;
+    const id = this.session.selectedId;
+    this.desiredConversationId.set(id);
+    this.applyDraft(this.session.read(id));
+    if (this.selected()?.id !== id) this.selected.set(null);
+    await this.loadConversations();
+    if (id !== null && this.desiredConversationId() === id) await this.loadConversation(id, 'force');
   }
 
   protected messageAuthor(role: string): string {
@@ -419,28 +476,43 @@ export class AiChatComponent implements OnInit {
   }
 
   protected startResize(event: PointerEvent): void {
-    if (this.popout() || event.button !== 0) return;
+    if (this.popout() || event.button !== 0 || this.windows.transferring()) return;
 
     event.preventDefault();
     this.stopResize();
     const previousCursor = document.body.style.cursor;
     const previousUserSelect = document.body.style.userSelect;
+    const pointerId = event.pointerId;
+    const handle = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+    handle?.setPointerCapture?.(pointerId);
     const move = (moveEvent: PointerEvent) => {
+      if (moveEvent.pointerId !== pointerId) return;
+      if (moveEvent.pointerType === 'mouse' && (moveEvent.buttons & 1) === 0) { stop(moveEvent); return; }
       this.panelWidth.set(this.clampPanelWidth(window.innerWidth - moveEvent.clientX));
+      const rightEdge = document.documentElement.clientWidth || window.innerWidth;
+      if (moveEvent.clientX > event.clientX && this.panelWidth() === this.minimumPanelWidth()
+          && moveEvent.clientX >= rightEdge - AiChatComponent.CLOSE_EDGE_DISTANCE) {
+        this.captureDraft();
+        this.persistPanelWidth();
+        this.stopResize();
+        this.open.set(false);
+      }
     };
-    const stop = () => {
+    const stop = (stopEvent: PointerEvent) => {
+      if (stopEvent.pointerId !== pointerId) return;
       this.persistPanelWidth();
       this.stopResize();
     };
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
     window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', stop, { once: true });
-    window.addEventListener('pointercancel', stop, { once: true });
+    window.addEventListener('pointerup', stop);
+    window.addEventListener('pointercancel', stop);
     this.resizeCleanup = () => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', stop);
       window.removeEventListener('pointercancel', stop);
+      if (handle?.hasPointerCapture?.(pointerId)) handle.releasePointerCapture(pointerId);
       document.body.style.cursor = previousCursor;
       document.body.style.userSelect = previousUserSelect;
       this.resizeCleanup = null;
@@ -502,6 +574,10 @@ export class AiChatComponent implements OnInit {
   }
 
   private async load(): Promise<void> {
+    if (this.session.hasSelection) {
+      await this.restoreSession();
+      return;
+    }
     const initialSelectionGeneration = this.selectionIntentGeneration;
     await this.loadConversations();
     if (this.selectionIntentGeneration !== initialSelectionGeneration) return;
@@ -529,7 +605,7 @@ export class AiChatComponent implements OnInit {
   }
 
   private async toolAction(action: () => Promise<void>, waitsForModel = false): Promise<void> {
-    if (!this.chatAvailable()) return;
+    if (this.windows.transferring() || this.detached() || !this.chatAvailable()) return;
 
     this.busy.set(true);
     this.waitingForModel.set(waitsForModel);
@@ -578,8 +654,7 @@ export class AiChatComponent implements OnInit {
     this.desiredConversationId.set(null);
     this.selected.set(null);
     this.waitingForModel.set(false);
-    this.mode.set('READ_ONLY');
-    this.approvalPolicy.set('ASK');
+    this.applyDraft(this.session.select(null));
   }
 
   private isCurrentDetailRequest(id: number, requestGeneration: number): boolean {

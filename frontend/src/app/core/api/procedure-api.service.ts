@@ -85,6 +85,7 @@ export interface Procedure {
   readonly cronExpression: string;
   readonly enabled: boolean;
   readonly allowConcurrentExecutions: boolean;
+  readonly executionMode?: 'STANDALONE' | 'PIPE';
   readonly tags: readonly ProcedureTag[];
   readonly parameters: readonly ProcedureParameterValue[];
   readonly createdAt: string;
@@ -109,6 +110,7 @@ export interface ProcedureWriteRequest {
   readonly cronExpression: string;
   readonly enabled: boolean;
   readonly allowConcurrentExecutions: boolean;
+  readonly executionMode?: 'STANDALONE' | 'PIPE';
   readonly tagIds: readonly number[];
   readonly parameters: readonly ProcedureParameterWriteRequest[];
 }
@@ -192,6 +194,10 @@ export class ProcedureApiService {
     tagIds.forEach((tagId) => params.append('tagId', String(tagId)));
     if (tagIds.length >= 2) params.set('tagOperator', tagMatchMode);
     return this.request(`/api/procedures?${params}`);
+  }
+
+  async getProcedure(id: number): Promise<Procedure> {
+    return this.request(`/api/procedures/${id}`);
   }
 
   async listTemplates(): Promise<readonly ProcedureTemplate[]> {

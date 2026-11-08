@@ -2,6 +2,7 @@ import { inject, Injectable } from '@angular/core';
 
 import { AuthService } from '../auth/auth.service';
 import { RUNTIME_CONFIG } from '../config/runtime-config';
+import { UsageAnalysisIssue } from './usage-analysis';
 
 export type ConfigurationValueType =
   | 'STRING'
@@ -44,6 +45,7 @@ export interface ApplicationConfiguration {
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly usageCount: number;
+  readonly usageAnalysisComplete?: boolean;
 }
 
 export type ConfigurationUsageType = 'ALERT' | 'PROCEDURE' | 'HOOK' | 'CONFIGURATION' | 'SECRET';
@@ -59,6 +61,9 @@ export interface ConfigurationUsages {
   readonly totalCount: number;
   readonly direct: readonly ConfigurationUsage[];
   readonly indirect: readonly ConfigurationUsage[];
+  readonly analysisComplete?: boolean;
+  readonly analysisWarnings?: readonly string[];
+  readonly analysisIssues?: readonly UsageAnalysisIssue[];
 }
 
 export interface ConfigurationImportResult {
@@ -165,6 +170,10 @@ export class ConfigurationApiService {
     return this.request<PageResponse<ApplicationConfiguration>>(
       `/api/configurations?${params.toString()}`,
     );
+  }
+
+  async getConfiguration(id: number): Promise<ApplicationConfiguration> {
+    return this.request(`/api/configurations/${id}`, { cache: 'no-store' });
   }
 
   async getConfigurationUsages(id: number): Promise<ConfigurationUsages> {

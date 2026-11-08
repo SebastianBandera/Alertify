@@ -78,6 +78,11 @@ public class ProcedureController {
                 "AND".equalsIgnoreCase(tagOperator), pageable);
     }
 
+    @GetMapping("/{id}")
+    public ProcedureResponse get(@PathVariable @Positive Long id) {
+        return service.get(id);
+    }
+
     @GetMapping("/binding-options")
     public ProcedureBindingOptionsResponse bindingOptions() { return catalog.bindingOptions(); }
 

@@ -195,3 +195,6 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; ov
   .binding-editor, .binding-form { padding: 10px; }
   .binding-kind, .finally-timeout { max-width: none; }
 }
+.resource-link { color: inherit; cursor: pointer; text-decoration: none; font-weight: 700; }
+.resource-link:hover, .resource-link:focus-visible { text-decoration: underline; text-underline-offset: 2px; }
+.resource-link:focus-visible { outline: 2px solid var(--primary-strong); outline-offset: 3px; border-radius: 2px; }

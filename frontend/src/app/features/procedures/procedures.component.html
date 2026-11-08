@@ -118,7 +118,7 @@
             @for (procedure of procedures(); track procedure.id) {
               <tr>
                 <td><strong>{{ procedure.name }}</strong><small [title]="procedure.description || null">{{ procedure.description || '—' }}</small></td>
-                <td class="template-cell"><strong>{{ dynamic(procedure.templateNameKey) }}</strong><small class="mono" [title]="procedure.templateKey">{{ templateClassName(procedure.templateKey) }}</small></td>
+                <td class="template-cell"><strong><a class="resource-link" [routerLink]="['/procedures']" [queryParams]="{ tab: 'templates', templateSearch: dynamic(procedure.templateNameKey) }">{{ dynamic(procedure.templateNameKey) }}</a></strong><small class="mono" [title]="procedure.templateKey">{{ templateClassName(procedure.templateKey) }}</small></td>
                 <td>
                   <div class="tag-list">
                     @for (tag of procedure.tags; track tag.id) {
@@ -137,17 +137,22 @@
                 <td class="updated-at" [title]="(procedure.updatedAt | date:'medium') || ''"><span>{{ procedure.updatedAt | date:'mediumDate' }}</span><small>{{ procedure.updatedAt | date:'mediumTime' }}</small></td>
                 <td class="actions">
                   <div class="actions__group">
-                    <button
-                      class="actions__run"
-                      type="button"
-                      (click)="run(procedure)"
-                      [disabled]="runningId() !== null"
-                      [title]="localization.translate('procedures.run')"
-                      [attr.aria-label]="localization.translate('procedures.run')"
-                    >
-                      <span class="actions__run-icon" aria-hidden="true"></span>
-                    </button>
-                    <span class="actions__divider" aria-hidden="true"></span>
+                    @if ((procedure.executionMode ?? 'STANDALONE') === 'STANDALONE') {
+                      <button
+                        class="actions__run"
+                        type="button"
+                        (click)="run(procedure)"
+                        [disabled]="runningId() !== null"
+                        [title]="localization.translate('procedures.run')"
+                        [attr.aria-label]="localization.translate('procedures.run')"
+                      >
+                        <span class="actions__run-icon" aria-hidden="true"></span>
+                      </button>
+                      <span class="actions__divider" aria-hidden="true"></span>
+                    } @else {
+                      <span class="actions__run-spacer" aria-hidden="true"></span>
+                      <span class="actions__divider-spacer" aria-hidden="true"></span>
+                    }
                     <button type="button" [title]="localization.translate('procedures.historyHint')" (click)="showProcedureHistory(procedure)">{{ localization.translate('procedures.history') }}</button>
                     <button type="button" [attr.data-editor-viewport]="'procedure-' + procedure.id" (click)="openEdit(procedure)">{{ localization.translate('procedures.edit') }}</button>
                     <button class="danger" type="button" (click)="remove(procedure)">{{ localization.translate('procedures.delete') }}</button>
@@ -316,12 +321,18 @@
     } @else if (selectedWizard() === 'totp-qr') {
       <div class="wizard-panel">
         <header class="wizard-panel__header">
-          <button type="button" class="button button--secondary" (click)="backToWizardSelector()">
+          <button type="button" class="button button--secondary" [disabled]="wizardStatus() === 'analyzing'" (click)="backToWizardSelector()">
             {{ localization.translate('procedures.wizards.back') }}
           </button>
           <h2>{{ localization.translate('procedures.wizards.totpQr.title') }}</h2>
           <label for="totp-qr-paste">{{ localization.translate('procedures.wizards.totpQr.instructions') }}</label>
         </header>
+        <div class="wizard-panel__upload">
+          <input #totpQrFileInput type="file" accept="image/*" hidden [disabled]="wizardStatus() === 'analyzing'" (change)="onTotpQrFileChange($event)" />
+          <button type="button" class="button button--secondary" [disabled]="wizardStatus() === 'analyzing'" (click)="totpQrFileInput.click()">
+            {{ localization.translate('procedures.wizards.totpQr.selectFile') }}
+          </button>
+        </div>
         <textarea
           id="totp-qr-paste"
           readonly
@@ -478,6 +489,14 @@
             </span>
           </label>
           <label class="full">
+            <span>{{ localization.translate('procedures.form.executionMode') }}</span>
+            <select name="executionMode" [ngModel]="form().executionMode" (ngModelChange)="patchForm({ executionMode: $event })">
+              <option value="STANDALONE">Standalone</option>
+              <option value="PIPE">{{ localization.translate('procedures.form.executionMode.pipe') }}</option>
+            </select>
+            <small>{{ localization.translate('procedures.form.executionMode.help') }}</small>
+          </label>
+          <label class="full">
             <span>{{ localization.translate('procedures.form.description') }}</span>
             <textarea name="description" rows="2" maxlength="2000" [ngModel]="form().description" (ngModelChange)="patchForm({ description: $event })"></textarea>
           </label>
@@ -530,6 +549,7 @@
                       <label><span>{{ localization.translate('procedures.form.value') }}</span><select [name]="'option-' + parameter.id" [ngModel]="parameterForm(parameter.key).textValue" (ngModelChange)="patchParameter(parameter.key, { textValue: $event })">@for (option of parameter.options; track option) { <option [value]="option">{{ option }}</option> }</select></label>
                     } @else if (parameterForm(parameter.key).source === 'CONFIGURATION') {
                       <label><span>{{ localization.translate('procedures.source.configuration') }}</span><select [name]="'configuration-' + parameter.id" [ngModel]="parameterForm(parameter.key).configurationId" (ngModelChange)="patchParameter(parameter.key, { configurationId: $event })"><option [ngValue]="null" disabled>—</option>@for (option of compatibleConfigurationBindings(parameter); track option.id) { <option [ngValue]="option.id">{{ option.name }}</option> }</select></label>
+                      <app-configuration-preview [configurationId]="parameterForm(parameter.key).configurationId" />
                     } @else if (parameterForm(parameter.key).source === 'SECRET') {
                       <label><span>{{ localization.translate('procedures.source.secret') }}</span><select [name]="'secret-' + parameter.id" [ngModel]="parameterForm(parameter.key).secretId" (ngModelChange)="patchParameter(parameter.key, { secretId: $event })"><option [ngValue]="null" disabled>—</option>@for (option of compatibleSecretBindings(parameter); track option.id) { <option [ngValue]="option.id">{{ option.name }}</option> }</select></label>
                     } @else if (parameterForm(parameter.key).source === 'PROCEDURE') {

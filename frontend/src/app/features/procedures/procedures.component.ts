@@ -2,7 +2,7 @@ import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, OnInit, computed, effect, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, ParamMap, Router, RouterLink } from '@angular/router';
 
 import { AlertParameterSource } from '../../core/api/alert-api.service';
 import { ApiRequestError, SortDirection, TagMatchMode } from '../../core/api/configuration-api.service';
@@ -25,6 +25,8 @@ import { isCompatibleConfigurationValueType, isCompatibleSecretValueType } from 
 import { templateClassName } from '../../core/utils/template-key';
 import { EditorDraftService } from '../../shared/editor-drafts/editor-draft.service';
 import { EditorViewportService } from '../../shared/editor-viewport/editor-viewport.service';
+import { ConfigurationPreviewComponent } from '../../shared/configuration-preview/configuration-preview.component';
+import { ConfigurationPreviewService } from '../../shared/configuration-preview/configuration-preview.service';
 import { ResizableTableDirective } from '../../shared/resizable-table/resizable-table.directive';
 import { SearchableSelectComponent, SearchableSelectOption } from '../../shared/searchable-select/searchable-select.component';
 
@@ -63,6 +65,7 @@ interface ProcedureForm {
   cronExpression: string;
   enabled: boolean;
   allowConcurrentExecutions: boolean;
+  executionMode: 'STANDALONE' | 'PIPE';
   tagIds: number[];
   parameters: Readonly<Record<string, ParameterForm>>;
 }
@@ -84,16 +87,16 @@ function readStoredPageSize(): number {
 function readStoredUpdatedAtSort(): SortDirection | null {
   try {
     const storedValue = localStorage.getItem(UPDATED_AT_SORT_STORAGE_KEY);
-    return storedValue === 'asc' || storedValue === 'desc' ? storedValue : null;
+    if (storedValue === 'none') return null;
+    return storedValue === 'asc' || storedValue === 'desc' ? storedValue : 'desc';
   } catch {
-    return null;
+    return 'desc';
   }
 }
 
 function persistUpdatedAtSort(sort: SortDirection | null): void {
   try {
-    if (sort === null) localStorage.removeItem(UPDATED_AT_SORT_STORAGE_KEY);
-    else localStorage.setItem(UPDATED_AT_SORT_STORAGE_KEY, sort);
+    localStorage.setItem(UPDATED_AT_SORT_STORAGE_KEY, sort ?? 'none');
   } catch {
     // The sort still applies to this page when browser storage is unavailable.
   }
@@ -106,11 +109,11 @@ function procedureTab(value: string | null): ProcedureTab {
 
 @Component({
   selector: 'app-procedures',
-  imports: [ResizableTableDirective, DatePipe, FormsModule, SearchableSelectComponent],
+  imports: [ResizableTableDirective, DatePipe, FormsModule, RouterLink, SearchableSelectComponent, ConfigurationPreviewComponent],
   templateUrl: './procedures.component.html',
   styleUrl: './procedures.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  providers: [EditorViewportService],
+  providers: [EditorViewportService, ConfigurationPreviewService],
 })
 export class ProceduresComponent implements OnInit {
   protected readonly localization = inject(LocalizationService);
@@ -122,6 +125,9 @@ export class ProceduresComponent implements OnInit {
   private readonly destroyRef = inject(DestroyRef);
   private readonly events = inject(AdminEventChannelService);
   private readonly editorViewport = inject(EditorViewportService);
+  private readonly configurationPreviews = inject(ConfigurationPreviewService);
+  private routeParameters: ParamMap | null = null;
+  private routeRequest = 0;
 
   protected readonly activeTab = signal<ProcedureTab>('procedures');
   protected readonly procedures = signal<readonly Procedure[]>([]);
@@ -240,20 +246,15 @@ export class ProceduresComponent implements OnInit {
     this.events.on('AI_RESOURCES_INVALIDATED').pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event) => {
       if (event.targets.includes('ALL') || event.targets.includes('PROCEDURES'))
         void this.loadAll(false);
+      else if (event.targets.includes('CONFIGURATIONS'))
+        void this.loadConfigurationBindings();
     });
+    this.routeParameters = this.route.snapshot.queryParamMap;
+    this.applyRouteFilters(this.routeParameters);
     const requestedTab = this.route.snapshot.queryParamMap.get('tab');
     const executionId = this.route.snapshot.queryParamMap.get('executionId');
     this.historyExecutionId.set(executionId);
-    this.activeTab.set(executionId ? 'history' : procedureTab(requestedTab));
-    this.route.queryParamMap
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((parameters) => {
-        const tab = procedureTab(parameters.get('tab'));
-        if (tab === this.activeTab()) return;
-
-        this.activeTab.set(tab);
-        void this.loadTab(tab);
-      });
+    this.activeTab.set(this.routeParameters.has('editProcedureId') ? 'procedures' : executionId ? 'history' : procedureTab(requestedTab));
     if (requestedTab !== this.activeTab()) {
       void this.router.navigate([], {
         relativeTo: this.route,
@@ -264,8 +265,72 @@ export class ProceduresComponent implements OnInit {
     }
     try {
       await this.loadAll();
+      await this.openRouteEditor(this.routeParameters, ++this.routeRequest);
     } finally {
       this.countsLoaded.set(true);
+    }
+    if (!this.destroyRef.destroyed) this.route.queryParamMap
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((parameters) => { void this.handleRoute(parameters); });
+  }
+
+  private applyRouteFilters(parameters: ParamMap): boolean {
+    const previous = this.routeParameters;
+    let reload = false;
+    if (parameters.has('search') || previous?.has('search')) {
+      const search = parameters.get('search') ?? '';
+      if (search !== this.search() || parameters.has('editProcedureId')) {
+        this.search.set(search);
+        this.templateFilterId.set(null);
+        this.procedurePage.set(0);
+        reload = true;
+      }
+    }
+    if (parameters.has('templateSearch') || previous?.has('templateSearch')) {
+      const search = parameters.get('templateSearch') ?? '';
+      if (search !== this.templateListSearch() || parameters.get('tab') !== previous?.get('tab')) {
+        this.templateListSearch.set(search);
+        this.selectedTemplateTagKeys.set([]);
+        this.templateTagMatchMode.set('OR');
+        this.templatePage.set(0);
+      }
+    }
+    return reload;
+  }
+
+  private async handleRoute(parameters: ParamMap): Promise<void> {
+    const previous = this.routeParameters;
+    if (['tab', 'search', 'templateSearch', 'editProcedureId'].every((key) => parameters.get(key) === previous?.get(key))) return;
+    const request = ++this.routeRequest;
+    const reload = this.applyRouteFilters(parameters);
+    this.routeParameters = parameters;
+    const tab = parameters.has('editProcedureId') ? 'procedures' : procedureTab(parameters.get('tab'));
+    const tabChanged = tab !== this.activeTab();
+    this.activeTab.set(tab);
+    try {
+      if (tabChanged || (tab === 'procedures' && reload)) await this.loadTab(tab);
+      await this.openRouteEditor(parameters, request);
+    } catch (error) {
+      if (!this.destroyRef.destroyed && request === this.routeRequest) this.error.set(this.errorMessage(error));
+    }
+  }
+
+  private async openRouteEditor(parameters: ParamMap, request: number): Promise<void> {
+    const value = parameters.get('editProcedureId');
+    if (value === null) return;
+    if (this.destroyRef.destroyed || request !== this.routeRequest || this.route.snapshot.queryParamMap.get('editProcedureId') !== value) return;
+    const id = Number(value);
+    try {
+      if (!Number.isSafeInteger(id) || id <= 0) return;
+      this.editorOpen.set(false);
+      const procedure = await this.api.getProcedure(id);
+      if (!this.destroyRef.destroyed && request === this.routeRequest && this.route.snapshot.queryParamMap.get('editProcedureId') === value) this.openEdit(procedure);
+    } catch (error) {
+      if (!this.destroyRef.destroyed && request === this.routeRequest) this.error.set(this.errorMessage(error));
+    } finally {
+      if (!this.destroyRef.destroyed && this.route.snapshot.queryParamMap.get('editProcedureId') === value) {
+        await this.router.navigate([], { relativeTo: this.route, queryParams: { editProcedureId: null }, queryParamsHandling: 'merge', replaceUrl: true });
+      }
     }
   }
 
@@ -276,6 +341,7 @@ export class ProceduresComponent implements OnInit {
   protected updateTemplateListSearch(value: string): void {
     this.templateListSearch.set(value);
     this.templatePage.set(0);
+    void this.router.navigate([], { relativeTo: this.route, queryParams: { templateSearch: value || null }, queryParamsHandling: 'merge', replaceUrl: true });
   }
 
   protected addTemplateTagFilter(event: Event): void {
@@ -341,6 +407,19 @@ export class ProceduresComponent implements OnInit {
     event.preventDefault();
     const file = imageItem.getAsFile();
     if (!file) return;
+    await this.analyzeTotpQrFile(file);
+  }
+
+  protected async onTotpQrFileChange(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+    await this.analyzeTotpQrFile(file);
+  }
+
+  private async analyzeTotpQrFile(file: File): Promise<void> {
+    if (this.wizardStatus() === 'analyzing') return;
     this.wizardStatus.set('analyzing');
     this.wizardError.set(null);
     try {
@@ -379,6 +458,7 @@ export class ProceduresComponent implements OnInit {
 
   protected async applySearch(): Promise<void> {
     this.procedurePage.set(0);
+    void this.router.navigate([], { relativeTo: this.route, queryParams: { search: this.search() || null }, queryParamsHandling: 'merge', replaceUrl: true });
     await this.loadProcedures();
   }
 
@@ -437,6 +517,7 @@ export class ProceduresComponent implements OnInit {
   }
 
   protected openCreate(template: ProcedureTemplate | null = null): void {
+    this.configurationPreviews.clear();
     this.editing.set(null);
     this.form.set(this.formForTemplate(template));
     this.formError.set(null);
@@ -445,6 +526,7 @@ export class ProceduresComponent implements OnInit {
   }
 
   protected openEdit(procedure: Procedure): void {
+    this.configurationPreviews.clear();
     this.editorViewport.capture(`procedure-${procedure.id}`);
     const template = this.templates().find((candidate) => candidate.id === procedure.templateId) ?? null;
     const form = this.formForTemplate(template);
@@ -470,6 +552,7 @@ export class ProceduresComponent implements OnInit {
       cronExpression: procedure.cronExpression,
       enabled: procedure.enabled,
       allowConcurrentExecutions: procedure.allowConcurrentExecutions,
+      executionMode: procedure.executionMode ?? 'STANDALONE',
       tagIds: procedure.tags.map((tag) => tag.id),
       parameters,
     });
@@ -489,13 +572,14 @@ export class ProceduresComponent implements OnInit {
     const draft = this.drafts.read<ProcedureForm, Procedure>('procedures');
     if (!draft || this.saving()) return;
     this.editorViewport.capture(draft.editing ? `procedure-${draft.editing.id}` : 'procedure-create');
-    this.form.set(draft.form);
+    this.form.set({ ...draft.form, description: draft.form.description ?? '', executionMode: draft.form.executionMode ?? 'STANDALONE' });
     this.editing.set(draft.editing);
     this.formError.set(null);
     this.editorOpen.set(true);
   }
 
   protected closeEditor(): void {
+    this.configurationPreviews.clear();
     if (!this.saving()) {
       this.drafts.remove('procedures');
       this.editorOpen.set(false);
@@ -513,6 +597,7 @@ export class ProceduresComponent implements OnInit {
       cronExpression: current.cronExpression,
       enabled: current.enabled,
       allowConcurrentExecutions: current.allowConcurrentExecutions,
+      executionMode: current.executionMode,
       tagIds: current.tagIds,
     });
   }
@@ -620,6 +705,7 @@ export class ProceduresComponent implements OnInit {
         cronExpression,
         enabled: form.enabled,
         allowConcurrentExecutions: form.allowConcurrentExecutions,
+        executionMode: form.executionMode,
         tagIds: form.tagIds,
         parameters,
       };
@@ -757,7 +843,17 @@ export class ProceduresComponent implements OnInit {
     }
   }
 
+  private async loadConfigurationBindings(): Promise<void> {
+    this.configurationPreviews.clear();
+    try {
+      this.bindings.set(await this.api.bindingOptions());
+    } catch (error) {
+      this.error.set(this.errorMessage(error));
+    }
+  }
+
   private async loadAll(showLoading = true): Promise<void> {
+    this.configurationPreviews.clear();
     if (showLoading) this.loading.set(true);
     try {
       const [templates, tags, bindings] = await Promise.all([
@@ -858,7 +954,7 @@ export class ProceduresComponent implements OnInit {
   }
 
   private emptyForm(): ProcedureForm {
-    return { templateId: null, name: '', description: '', cronExpression: '-', enabled: true, allowConcurrentExecutions: true, tagIds: [], parameters: {} };
+    return { templateId: null, name: '', description: '', cronExpression: '-', enabled: true, allowConcurrentExecutions: true, executionMode: 'STANDALONE', tagIds: [], parameters: {} };
   }
 
   private formForTemplate(template: ProcedureTemplate | null): ProcedureForm {

@@ -222,7 +222,7 @@
             @for (alert of alerts(); track alert.id) {
               <tr>
                 <td><strong>{{ alert.name }}</strong><small [title]="alert.description || null">{{ alert.description || '—' }}</small></td>
-                <td class="template-cell"><strong>{{ dynamic(alert.templateNameKey) }}</strong><small class="mono" [title]="alert.templateKey">{{ templateClassName(alert.templateKey) }}</small></td>
+                <td class="template-cell"><strong><a class="resource-link" [routerLink]="['/alerts']" [queryParams]="{ tab: 'templates', templateSearch: dynamic(alert.templateNameKey) }">{{ dynamic(alert.templateNameKey) }}</a></strong><small class="mono" [title]="alert.templateKey">{{ templateClassName(alert.templateKey) }}</small></td>
                 <td>
                   <div class="tag-list">
                     @for (tag of alert.tags; track tag.id) {
@@ -253,17 +253,22 @@
                 <td class="updated-at" [title]="(alert.updatedAt | date:'medium') || ''"><span>{{ alert.updatedAt | date:'mediumDate' }}</span><small>{{ alert.updatedAt | date:'mediumTime' }}</small></td>
                 <td class="actions">
                   <div class="actions__group">
-                    <button
-                      class="actions__run"
-                      type="button"
-                      [disabled]="runningAlertId() !== null"
-                      [title]="localization.translate(runningAlertId() === alert.id ? 'alerts.runStarting' : 'alerts.runNowHint')"
-                      [attr.aria-label]="localization.translate(runningAlertId() === alert.id ? 'alerts.runStarting' : 'alerts.runNowHint')"
-                      (click)="runAlertNow(alert)"
-                    >
-                      <span class="actions__run-icon" aria-hidden="true"></span>
-                    </button>
-                    <span class="actions__divider" aria-hidden="true"></span>
+                    @if ((alert.executionMode ?? 'STANDALONE') === 'STANDALONE') {
+                      <button
+                        class="actions__run"
+                        type="button"
+                        [disabled]="runningAlertId() !== null"
+                        [title]="localization.translate(runningAlertId() === alert.id ? 'alerts.runStarting' : 'alerts.runNowHint')"
+                        [attr.aria-label]="localization.translate(runningAlertId() === alert.id ? 'alerts.runStarting' : 'alerts.runNowHint')"
+                        (click)="runAlertNow(alert)"
+                      >
+                        <span class="actions__run-icon" aria-hidden="true"></span>
+                      </button>
+                      <span class="actions__divider" aria-hidden="true"></span>
+                    } @else {
+                      <span class="actions__run-spacer" aria-hidden="true"></span>
+                      <span class="actions__divider-spacer" aria-hidden="true"></span>
+                    }
                     <button type="button" [title]="localization.translate('alerts.historyHint')" (click)="showAlertHistory(alert)">{{ localization.translate('alerts.history') }}</button>
                     <button type="button" [attr.data-editor-viewport]="'alert-' + alert.id" (click)="openEdit(alert)">{{ localization.translate('alerts.edit') }}</button>
                     <button class="danger" type="button" (click)="deleteAlert(alert)">{{ localization.translate('alerts.delete') }}</button>
@@ -649,6 +654,7 @@
                       [emptyLabel]="localization.translate('alerts.form.smartIntervalMissing')"
                       [clearLabel]="localization.translate('alerts.form.selectConfiguration')"
                     />
+                    <app-configuration-preview [configurationId]="form().smartExecutionIntervalConfigurationId" />
                     <small>{{ localization.translate('alerts.form.smartIntervalConfigHelp') }}</small>
                   } @else {
                     <input
@@ -812,6 +818,7 @@
                           @for (option of compatibleConfigurationBindings(parameter); track option.id) { <option [ngValue]="option.id">{{ option.name }}</option> }
                         </select>
                       </label>
+                      <app-configuration-preview [configurationId]="parameterForm(parameter.key).configurationId" />
                     } @else if (parameterForm(parameter.key).source === 'SECRET') {
                       <label class="full">
                         <span>{{ localization.translate('alerts.form.secret') }}</span>

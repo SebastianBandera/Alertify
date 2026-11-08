@@ -221,6 +221,12 @@ h1 {
   border-color: #fecdca;
 }
 
+.backend-card { margin-bottom: 18px; }
+.backend-card .worker-resources { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.backend-card__updated { display: block; margin-top: 8px; color: var(--text-muted); font-size: 11px; }
+.backend-card__stale { opacity: 0.65; }
+.availability--loading { background: #f2f4f7; color: #475467; }
+
 .worker-card__header {
   display: flex;
   align-items: flex-start;
@@ -534,7 +540,8 @@ h1 {
     border-bottom: 0;
   }
 
-  .worker-resources {
+  .worker-resources,
+  .backend-card .worker-resources {
     grid-template-columns: 1fr;
   }
 

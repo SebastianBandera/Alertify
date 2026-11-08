@@ -65,7 +65,7 @@ public class ApplicationSecretController {
     public Page<SecretResponse> search(@RequestParam MultiValueMap<String, String> params, @PageableDefault(size = 20, sort = "name") Pageable pageable) {
         Page<SecretResponse> page = service.search(params, pageable);
         var usages = usageService.getForIds(page.getContent().stream().map(SecretResponse::id).toList());
-        return page.map(secret -> secret.withUsageCount(usages.get(secret.id()).totalCount()));
+        return page.map(secret -> secret.withUsages(usages.get(secret.id())));
     }
 
     @GetMapping("/expression-suggestions")
@@ -138,6 +138,6 @@ public class ApplicationSecretController {
     }
 
     private SecretResponse withUsageCount(SecretResponse response) {
-        return response.withUsageCount(usageService.getForIds(List.of(response.id())).get(response.id()).totalCount());
+        return response.withUsages(usageService.getForIds(List.of(response.id())).get(response.id()));
     }
 }

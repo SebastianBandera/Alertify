@@ -151,6 +151,69 @@ class AlertDefinitionVersionJpaIntegrationTest {
     }
 
     @Test
+    void playwrightDslUsagesMergeBindingsAndProcedureDependenciesAndFlagExcludedScripts() {
+        transactions.executeWithoutResult(status -> {
+            status.setRollbackOnly();
+            long playwrightTemplate = jdbc.queryForObject("""
+                    insert into core.alert_templates(template_key, name_key, description_key, required_capability)
+                    values ('app.alertify.alerts.templates.PlaywrightPageAlertTemplate', 'test', 'test', 'PLAYWRIGHT') returning id
+                    """, Long.class);
+            long steps = jdbc.queryForObject("""
+                    insert into core.alert_template_parameters(alert_template_id, parameter_key, label_key, description_key,
+                            java_type, binding_allowed, parameter_order, required)
+                    values (?, 'steps', 'test', 'test', 'java.lang.String', true, 0, true) returning id
+                    """, Long.class, playwrightTemplate);
+            long alert = jdbc.queryForObject("""
+                    insert into core.alerts(alert_template_id, name, cron_expression, enabled)
+                    values (?, 'DSL usage fixture', '-', false) returning id
+                    """, Long.class, playwrightTemplate);
+            jdbc.update("""
+                    insert into core.alert_parameter_values(alert_id, template_parameter_id, source, text_value)
+                    values (?, ?, 'TEXT', ?)
+                    """, alert, steps, "QUERY #input\nFILL configs.Alert definition version configuration\nFILL secrets.Alert definition version secret");
+            long procedureTemplate = jdbc.queryForObject("""
+                    insert into core.procedure_templates(template_key, name_key, description_key, source_path, required_capability)
+                    values ('test.DslProcedure', 'test', 'test', 'test/source', 'STANDARD') returning id
+                    """, Long.class);
+            long parameter = jdbc.queryForObject("""
+                    insert into core.procedure_template_parameters(procedure_template_id, parameter_key, label_key, description_key,
+                            java_type, binding_allowed, parameter_order, required)
+                    values (?, 'input', 'test', 'test', 'java.lang.String', true, 0, true) returning id
+                    """, Long.class, procedureTemplate);
+            long procedure = jdbc.queryForObject("""
+                    insert into core.procedures(procedure_template_id, name) values (?, 'DSL procedure fixture') returning id
+                    """, Long.class, procedureTemplate);
+            jdbc.update("""
+                    insert into core.procedure_parameter_values(owner_procedure_id, template_parameter_id, source, secret_id)
+                    values (?, ?, 'SECRET', ?)
+                    """, procedure, parameter, secretId);
+            var resolver = mock(app.alertify.configuration.service.ConfigurationExpressionService.class);
+            var analyzer = new app.alertify.playwright.PlaywrightUsageAnalyzer(jdbc, resolver);
+            var named = new org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate(jdbc);
+            var configs = new app.alertify.configuration.service.ConfigurationUsageService(named,
+                    repositories.getRepository(ApplicationConfigurationRepository.class), analyzer);
+            var secrets = new app.alertify.services.secret.SecretUsageService(named,
+                    repositories.getRepository(ApplicationSecretRepository.class), analyzer);
+            assertThat(configs.get(configurationId).direct()).anySatisfy(usage -> {
+                assertThat(usage.id()).isEqualTo(alert);
+                assertThat(usage.enabled()).isFalse();
+            });
+            assertThat(secrets.get(secretId).direct()).anySatisfy(usage -> assertThat(usage.id()).isEqualTo(alert));
+            jdbc.update("update core.alert_parameter_values set text_value = ? where alert_id = ?",
+                    "CALL PROCEDURE \"DSL procedure fixture\" POINTER \"/value\" AS result", alert);
+            assertThat(secrets.get(secretId).direct().stream().filter(usage -> usage.type().equals("ALERT"))).noneSatisfy(usage -> assertThat(usage.id()).isEqualTo(alert));
+            assertThat(secrets.get(secretId).indirect()).anySatisfy(usage -> assertThat(usage.id()).isEqualTo(alert));
+            jdbc.update("update core.alert_parameter_values set source = 'SECRET', text_value = null, secret_id = ? where alert_id = ?", secretId, alert);
+            var partial = secrets.get(secretId);
+            assertThat(partial.analysisComplete()).isFalse();
+            assertThat(partial.analysisWarnings()).containsExactly("SECRET_SCRIPT_EXCLUDED");
+            assertThat(partial.direct().stream().filter(usage -> usage.type().equals("ALERT") && usage.id().equals(alert))).hasSize(1);
+            assertThat(configs.get(configurationId).analysisComplete()).isFalse();
+            org.mockito.Mockito.verifyNoInteractions(resolver);
+        });
+    }
+
+    @Test
     void rejectsPendingDescriptionSnapshotAfterMessageOnlyUpdate() {
         var initial = fixture();
         var pending = request(initial, "Description A", List.of(text("message", "QA-INITIAL"), text("second", "SECOND")));
@@ -294,7 +357,8 @@ class AlertDefinitionVersionJpaIntegrationTest {
         assertThat(resolve.apply(other.id())).isEqualTo(2);
         var usages = transactions.execute(status -> new app.alertify.configuration.service.ConfigurationUsageService(
                 new org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate(jdbc),
-                repositories.getRepository(ApplicationConfigurationRepository.class)).get(configId));
+                repositories.getRepository(ApplicationConfigurationRepository.class),
+                new app.alertify.playwright.PlaywrightUsageAnalyzer(jdbc, mock(app.alertify.configuration.service.ConfigurationExpressionService.class))).get(configId));
         assertThat(usages.direct()).extracting(usage -> usage.id()).containsExactlyInAnyOrder(first.id(), second.id());
         jdbc.update("update core.configurations set configuration_value = '2'::jsonb where id = ?", configId);
         assertThat(resolve.apply(first.id())).isEqualTo(2);

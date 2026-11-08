@@ -121,6 +121,8 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monosp
 /* Play triangle drawn with borders, so no glyph can turn into an emoji. */
 .actions__run-icon { flex: none; width: 0; height: 0; border-style: solid; border-width: 4px 0 4px 6px; border-color: transparent transparent transparent currentColor; }
 .actions__divider { flex: none; width: 1px; height: 18px; margin-right: 6px; background: var(--border); }
+.actions__run-spacer { flex: 0 0 32px; height: 32px; margin-right: 6px; pointer-events: none; }
+.actions__divider-spacer { flex: none; width: 1px; height: 18px; margin-right: 6px; pointer-events: none; }
 .template-count { min-width: 30px; padding: 3px 8px; border: 0; border-radius: 7px; background: #f4f3ff; color: var(--primary-strong); cursor: pointer; font: inherit; font-weight: 750; text-decoration: underline; text-underline-offset: 2px; }
 .template-count:hover { background: #ebe9fe; }
 details summary { color: var(--primary-strong); cursor: pointer; font-weight: 700; }
@@ -252,3 +254,6 @@ details summary { color: var(--primary-strong); cursor: pointer; font-weight: 70
   .modal--closure form > footer { padding: 14px 18px; }
   .modal--closure form > footer .button { flex: 1; padding-inline: 8px; }
 }
+.resource-link { color: inherit; cursor: pointer; text-decoration: none; font-weight: 700; }
+.resource-link:hover, .resource-link:focus-visible { text-decoration: underline; text-underline-offset: 2px; }
+.resource-link:focus-visible { outline: 2px solid var(--primary-strong); outline-offset: 3px; border-radius: 2px; }

@@ -29,6 +29,21 @@ class PlaywrightWizardServiceTest {
             mock(ProcedureExecutionOrchestrator.class), mock(ProcedureInvocationRegistry.class), mock(ProcedureRepository.class), mock(WizardAlertPlanService.class), json);
 
     @Test
+    void doesNotReuseAStoredExecutionReceiptAsEvidenceForANewBrowserSession() {
+        var admin = new UsernamePasswordAuthenticationToken("admin-subject", "", List.of(new SimpleGrantedAuthority("ROLE_ADMIN")));
+        var settings = new PlaywrightWizardService.Settings("https://fixture.test/", "# note\nQUERY h1\nCHECK TEXT Ready", "chromium", List.of("chromium"), 10, 5, "ASK");
+        var draft = new WizardDraft("admin-subject", json.writeValueAsString(Map.of("settings", settings, "messages", List.of(),
+                "lastAction", Map.of("operation", "EXECUTE", "status", "SUCCESS", "result", Map.of("completed", 2)))));
+        when(store.load("admin-subject", draft.getId())).thenReturn(draft);
+
+        var state = json.valueToTree(service.request(admin, json.valueToTree(Map.of("operation", "GET", "id", draft.getId()))));
+
+        assertThat(state.path("scriptExecution").path("status").asString()).isEqualTo("NO_SESSION");
+        assertThat(state.path("scriptExecution").path("completed").asInt()).isZero();
+        assertThat(state.path("scriptExecution").path("commandLines").valueStream().map(value -> value.asInt()).toList()).containsExactly(2, 3);
+    }
+
+    @Test
     void normalizesBareAddressesWithoutRewritingExplicitSchemesOrCredentials() {
         var cases = Map.ofEntries(
                 Map.entry(" www.anep.edu.uy/path?q=1#section ", "https://www.anep.edu.uy/path?q=1#section"),

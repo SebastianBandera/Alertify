@@ -37,7 +37,7 @@
     </div>
     @if (stateError()) { <p class="error" role="alert">{{ stateError() }}</p> }
     @if (state()!.open && state()!.idleRemainingSeconds <= 30 && !state()!.busy) { <p class="warning" role="status">{{ t('idleWarning') }} {{ state()!.idleRemainingSeconds }} s <button type="button" (click)="activity()">{{ t('keepAlive') }}</button></p> }
-    @if (state()!.busy) { <p class="working" role="status">{{ t('working') }} @if (state()!.progress; as progress) { · {{ t('line') }} {{ progress.line }} · {{ progress.completed }} {{ t('completed') }} }</p> }
+    @if (state()!.busy) { <p class="working" role="status">{{ t('working') }} @if (state()!.progress; as progress) { @if (progress.line > 0) { · {{ t('line') }} {{ progress.line }} } · {{ progress.completed }} {{ t('completed') }} }</p> }
 
     <div class="workspace">
       <section class="browser-panel">
@@ -92,8 +92,29 @@
 
     <section class="steps-panel">
       <div class="panel-heading"><h3>{{ t('steps') }}</h3><span>{{ t('redaction') }}</span></div>
+      <section class="script-progress" aria-live="polite" [attr.aria-label]="t('progress.title')">
+        @if (executionProgress(); as progress) {
+          @if (progress.status === 'NO_SESSION') { <p>{{ t('progress.noSession') }}</p> }
+          @if (executionBrowser()) { <p>{{ t('activeBrowser') }}: <strong>{{ executionBrowser() }}</strong></p> }
+          @if (!linked('steps') || progress.status !== 'NO_SESSION') {
+            <p><strong>{{ t('progress.completed') }}: {{ progress.completed }} / {{ progress.commandLines.length }}</strong> · {{ t('progress.pending') }}: {{ pendingLines().length }}</p>
+            @if (progress.activeLine) { <p>{{ t('progress.running') }} · {{ t('line') }} {{ progress.activeLine }}</p> }
+            @if (progress.failedLine) { <p>{{ t('progress.failed') }} · {{ t('line') }} {{ progress.failedLine }}</p> }
+            @if (pendingLines().length) {
+              <p class="pending-lines">{{ t('progress.pendingLines') }}: {{ pendingLineRanges() }}</p>
+              @if (!linked('steps')) { <button type="button" [disabled]="busy()" (click)="goToLine(pendingLines()[0])">{{ t('progress.next') }}</button> }
+            }
+          }
+        } @else { <p>{{ t('progress.unverified') }}</p> }
+        <div class="progress-legend" aria-hidden="true">
+          <span class="progress-completed">✓ {{ t('progress.completed') }}</span>
+          <span class="progress-running">▶ {{ t('progress.running') }}</span>
+          <span class="progress-pending">○ {{ t('progress.pending') }}</span>
+          <span class="progress-failed">× {{ t('progress.failed') }}</span>
+        </div>
+      </section>
       @if (linked('steps')) { <p class="edit-help">{{ t('linkedScriptHelp') }}</p> } @else { <div class="code-editor">
-        <div class="line-numbers" aria-hidden="true" [style.width]="stepLineNumberWidth()"><div class="line-numbers-content" [style.transform]="'translateY(' + -stepsScrollTop() + 'px)'"><pre>{{ stepLineNumbers() }}</pre>@if (failedLine(); as line) { <span class="failed-line-number" [style.top.px]="8 + (line - 1) * 20">{{ line }}</span> }</div></div>
+        <div class="line-numbers" aria-hidden="true" [style.width]="stepLineNumberWidth()"><div class="line-numbers-content" [style.transform]="'translateY(' + -stepsScrollTop() + 'px)'"><pre>{{ stepLineNumbers() }}</pre>@for (entry of executionLines(); track entry.line) { <span [class]="'step-line-status step-line-status--' + entry.status" [style.top.px]="8 + (entry.line - 1) * 20" [attr.data-line]="entry.line" [title]="t('line') + ' ' + entry.line + ': ' + t('progress.' + entry.status)">{{ entry.symbol }} {{ entry.line }}</span> }@if (!state()!.scriptExecution && failedLine(); as line) { <span class="failed-line-number" [style.top.px]="8 + (line - 1) * 20">{{ line }}</span> }</div></div>
         <textarea #stepsEditor class="code" rows="10" wrap="off" [ngModel]="settings().steps" (ngModelChange)="patch({ steps: $event })" (scroll)="stepsScrollTop.set(stepsEditor.scrollTop)" [disabled]="busy()" [attr.aria-label]="t('steps')" spellcheck="false"></textarea>
       </div> }
       @if (state()!.document.validationError; as validationError) { <p class="error" role="alert">{{ validationError }}</p> }

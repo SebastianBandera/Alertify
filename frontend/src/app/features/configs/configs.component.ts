@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
 import {
@@ -18,6 +19,7 @@ import { LocalizationService } from '../../core/i18n/localization.service';
 import { AdminEventChannelService } from '../../core/realtime/admin-event-channel.service';
 import { EditorViewportService } from '../../shared/editor-viewport/editor-viewport.service';
 import { ExpressionEditorComponent } from '../../shared/expression-editor/expression-editor.component';
+import { ConfigurationPreviewService } from '../../shared/configuration-preview/configuration-preview.service';
 
 interface ConfigurationForm {
   name: string;
@@ -64,16 +66,16 @@ function readStoredPageSize(): number {
 function readStoredUpdatedAtSort(): SortDirection | null {
   try {
     const storedValue = localStorage.getItem(UPDATED_AT_SORT_STORAGE_KEY);
-    return storedValue === 'asc' || storedValue === 'desc' ? storedValue : null;
+    if (storedValue === 'none') return null;
+    return storedValue === 'asc' || storedValue === 'desc' ? storedValue : 'desc';
   } catch {
-    return null;
+    return 'desc';
   }
 }
 
 function persistUpdatedAtSort(sort: SortDirection | null): void {
   try {
-    if (sort === null) localStorage.removeItem(UPDATED_AT_SORT_STORAGE_KEY);
-    else localStorage.setItem(UPDATED_AT_SORT_STORAGE_KEY, sort);
+    localStorage.setItem(UPDATED_AT_SORT_STORAGE_KEY, sort ?? 'none');
   } catch {
     // The sort still applies to this page when browser storage is unavailable.
   }
@@ -81,7 +83,7 @@ function persistUpdatedAtSort(sort: SortDirection | null): void {
 
 @Component({
   selector: 'app-configs',
-  imports: [FormsModule, ExpressionEditorComponent],
+  imports: [FormsModule, RouterLink, ExpressionEditorComponent],
   templateUrl: './configs.component.html',
   styleUrl: './configs.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -96,6 +98,9 @@ export class ConfigsComponent implements OnInit {
   private readonly events = inject(AdminEventChannelService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly editorViewport = inject(EditorViewportService);
+  private readonly previews = inject(ConfigurationPreviewService);
+  protected readonly valuePreviews = signal<ReadonlyMap<number, { loading: boolean; value?: string; failed?: boolean }>>(new Map());
+  private previewGeneration = 0;
 
   protected readonly configurations = signal<readonly ApplicationConfiguration[]>([]);
   protected readonly tags = signal<readonly ConfigurationTag[]>([]);
@@ -168,6 +173,8 @@ export class ConfigsComponent implements OnInit {
   }
 
   protected async loadConfigurations(): Promise<void> {
+    this.previewGeneration++;
+    this.valuePreviews.set(new Map());
     this.loading.set(true);
     this.error.set(null);
     try {
@@ -404,6 +411,15 @@ export class ConfigsComponent implements OnInit {
     this.usagesLoading.set(false);
   }
 
+  protected usageWarningLabel(code: string): string {
+    switch (code) {
+      case 'SECRET_SCRIPT_EXCLUDED': return this.localization.translate('usages.secretScriptExcluded');
+      case 'INVALID_SCRIPT': return this.localization.translate('usages.invalidScript');
+      case 'SCRIPT_UNAVAILABLE': return this.localization.translate('usages.scriptUnavailable');
+      default: return this.localization.translate('usages.referenceUnavailable');
+    }
+  }
+
   protected usageTypeLabel(type: ConfigurationUsageType): string {
     switch (type) {
       case 'ALERT': return this.localization.translate('configs.usages.type.alert');
@@ -550,9 +566,27 @@ export class ConfigsComponent implements OnInit {
     }
   }
 
+  protected async evaluateValuePreview(configuration: ApplicationConfiguration): Promise<void> {
+    if (this.valuePreviews().get(configuration.id)?.loading || this.valuePreviews().get(configuration.id)?.value !== undefined) return;
+
+    const generation = this.previewGeneration;
+    this.valuePreviews.update((values) => new Map(values).set(configuration.id, { loading: true }));
+    try {
+      const value = await this.previews.resolve(configuration);
+      if (!this.destroyRef.destroyed && generation === this.previewGeneration)
+        this.valuePreviews.update((values) => new Map(values).set(configuration.id, { loading: false, value }));
+    } catch {
+      if (!this.destroyRef.destroyed && generation === this.previewGeneration)
+        this.valuePreviews.update((values) => new Map(values).set(configuration.id, { loading: false, failed: true }));
+    }
+  }
+
   protected valuePreview(configuration: ApplicationConfiguration): string {
     if (configuration.valueType === 'BINARY') return `${configuration.binaryFileName ?? 'binary'} (${this.formatBytes(configuration.binarySize ?? 0)} → ${this.formatBytes(configuration.binaryZipSize ?? 0)})`;
     if (configuration.valueType === 'EXPRESSION') {
+      const preview = this.valuePreviews().get(configuration.id);
+      if (preview?.loading) return this.localization.translate('configs.expression.evaluating');
+      if (preview?.value !== undefined) return preview.value === '' ? this.localization.translate('configs.preview.empty') : preview.value;
       return this.localization.translate('configs.expression.onDemand');
     }
     if (configuration.valueType === 'JSON') return JSON.stringify(configuration.value);

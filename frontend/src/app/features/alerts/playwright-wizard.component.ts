@@ -67,9 +67,39 @@ export class PlaywrightWizardComponent implements OnInit {
   protected readonly stepsScrollTop = signal(0);
   protected readonly stepLineCount = computed(() => this.settings().steps.split(/\r\n?|\n/).length);
   protected readonly stepLineNumbers = computed(() => Array.from({ length: this.stepLineCount() }, (_, index) => index + 1).join('\n'));
-  protected readonly stepLineNumberWidth = computed(() => 'calc(' + Math.max(3, String(this.stepLineCount()).length) + 'ch + 16px)');
+  protected readonly stepLineNumberWidth = computed(() => 'calc(' + (Math.max(3, String(this.stepLineCount()).length) + 2) + 'ch + 16px)');
+  protected readonly executionProgress = computed(() => {
+    const state = this.state();
+    const saved = state?.document.settings;
+    const local = this.settings();
+    const progress = state?.scriptExecution;
+    if (!saved || !progress || progress.status === 'UNVERIFIED' || local.steps !== saved.steps || local.url !== saved.url
+      || local.engine !== saved.engine || local.loadTimeoutSeconds !== saved.loadTimeoutSeconds || local.elementTimeoutSeconds !== saved.elementTimeoutSeconds) return null;
+    return progress;
+  });
+  protected readonly executionBrowser = computed(() => playwrightBrowserLabel(this.executionProgress()?.engine));
+  protected readonly executionLines = computed(() => {
+    const progress = this.executionProgress();
+    return progress?.commandLines.map((line, index) => {
+      const status = index < progress.completed ? 'completed' : line === progress.activeLine ? 'running' : line === progress.failedLine ? 'failed' : 'pending';
+      const symbol = ({ completed: '✓', running: '▶', failed: '×', pending: '○' } as const)[status];
+      return { line, status, symbol };
+    }) ?? [];
+  });
+  protected readonly pendingLines = computed(() => this.executionLines().filter(line => line.status === 'pending').map(line => line.line));
+  protected readonly pendingLineRanges = computed(() => {
+    const ranges: string[] = [];
+    for (const line of this.pendingLines()) {
+      const last = ranges.at(-1);
+      const end = last ? Number(last.split('–').at(-1)) : -1;
+      if (line === end + 1) ranges[ranges.length - 1] = last!.split('–')[0] + '–' + line;
+      else ranges.push(String(line));
+    }
+    return ranges.join(', ');
+  });
   protected readonly failedLine = computed(() => {
     const current = this.state();
+    if (current?.scriptExecution) return this.executionProgress()?.failedLine ?? null;
     const action = current?.document.lastAction;
     const line = action?.result?.failedLine;
     return action?.status === 'FAILED' && this.settings().steps === current?.document.settings.steps && typeof line === 'number' && Number.isInteger(line) && line > 0 && line <= this.stepLineCount() ? line : null;

@@ -3,6 +3,8 @@ package app.alertify.ai.api;
 import java.util.List;
 import java.util.Set;
 
+import app.alertify.alerts.model.ExecutionMode;
+
 import org.springframework.ai.tool.annotation.ToolParam;
 
 import app.alertify.procedures.api.ProcedureCreateRequest;
@@ -20,11 +22,15 @@ public record AiProcedureCreateRequest(
     boolean enabled,
     Boolean allowConcurrentExecutions,
     @ToolParam(description = "Parameter bindings for the selected template. Each parameterKey must appear at most once. Supply all required parameters without defaults and every explicitly requested binding; omission may use a template default. Match each source to its required value or positive reference ID.") @NotNull @Size(max = 100) List<@NotNull @Valid AiProcedureParameterValue> parameters,
-    @NotNull @Size(max = 100) Set<@Positive Long> tagIds
+    @NotNull @Size(max = 100) Set<@Positive Long> tagIds,
+    @ToolParam(required = false, description = "Intended execution context: STANDALONE or PIPE. Omission defaults to STANDALONE. PIPE hides the run button in the resource list; it does not change cron or execution permissions.") ExecutionMode executionMode
 ) {
+    public AiProcedureCreateRequest(Long templateId, String name, String description, String cronExpression, boolean enabled, Boolean allowConcurrentExecutions, List<AiProcedureParameterValue> parameters, Set<Long> tagIds) {
+        this(templateId, name, description, cronExpression, enabled, allowConcurrentExecutions, parameters, tagIds, null);
+    }
 
     public ProcedureCreateRequest toRequest() {
         return new ProcedureCreateRequest(templateId, name, description, cronExpression, enabled,
-                allowConcurrentExecutions, parameters.stream().map(AiProcedureParameterValue::toRequest).toList(), tagIds);
+                allowConcurrentExecutions, parameters.stream().map(AiProcedureParameterValue::toRequest).toList(), tagIds, executionMode);
     }
 }

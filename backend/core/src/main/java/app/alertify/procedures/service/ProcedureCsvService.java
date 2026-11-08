@@ -153,7 +153,7 @@ public class ProcedureCsvService {
                 continue;
             }
             managementService.update(procedure.getId(), new ProcedureUpdateRequest(procedure.getVersion(),
-                    row.name(), row.description(), row.cronExpression(), row.enabled(), row.allowConcurrentExecutions(), parameters, tagIds));
+                    row.name(), row.description(), row.cronExpression(), row.enabled(), row.allowConcurrentExecutions(), parameters, tagIds, row.executionMode()));
             if (!createdIds.contains(procedure.getId())) updated++;
         }
         eventLogger.successAfterCommit("PROCEDURE_IMPORT", Map.of("total", rows.size(), "created", createdIds.size(), "updated", updated, "unchanged", unchanged, "tagsCreated", tagsCreated));
@@ -203,7 +203,8 @@ public class ProcedureCsvService {
         if (!procedure.getName().equals(row.name()) || !Objects.equals(procedure.getDescription(), row.description())
                 || !procedure.getCronExpression().equals(row.cronExpression())
                 || procedure.isEnabled() != row.enabled()
-                || procedure.isConcurrentExecutionAllowed() != row.allowConcurrentExecutions()) return false;
+                || procedure.isConcurrentExecutionAllowed() != row.allowConcurrentExecutions()
+                || (row.executionMode() != null && procedure.getExecutionMode() != row.executionMode())) return false;
 
         Set<Long> currentTags = procedure.getTags().stream().map(Tag::getId)
                 .collect(Collectors.toCollection(TreeSet::new));

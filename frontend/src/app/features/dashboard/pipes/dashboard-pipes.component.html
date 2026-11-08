@@ -3,7 +3,7 @@
   @if (live.error()) { <p role="status">{{ t('loadFailed') }}</p> }
   @for (card of visible(); track card.id) {
     <article class="pipe-card" [class.pipe-card--short]="card.steps.length <= 2" [class.pipe-card--muted]="!!live.muted()[card.id]" [attr.data-pipe-id]="card.id">
-      <header class="pipe-header">
+      <header [class]="headerClasses(card)">
         <div class="pipe-title">
           <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="8" width="5" height="8" rx="1"/><rect x="9" y="8" width="5" height="8" rx="1"/><rect x="17" y="8" width="5" height="8" rx="1"/><path d="M6 12h3m5 0h3"/></svg>
           <span class="pipe-kind">PIPE</span><h2 [title]="card.name">{{ card.name }}</h2>
@@ -22,7 +22,7 @@
           </div>
         }
       </header>
-      <div #track class="pipe-track" [attr.data-pipe-id]="card.id" tabindex="0" [attr.aria-label]="t('stepsRegion') + ' ' + card.name" (scroll)="range(card, track)">
+      <div #track class="pipe-track" [attr.data-pipe-id]="card.id" tabindex="0" [attr.aria-label]="t('stepsRegion') + ' ' + card.name" (scroll)="range(card, track)" (pointerdown)="pauseFollow(card)" (wheel)="pauseFollow(card, $event)" (keydown)="pauseFollow(card, $event)">
         @for (step of card.steps; track step.result.key; let index = $index) {
           @if (index > 0 && step.result.phase !== 'FINALLY') { <span class="pipe-arrow" aria-hidden="true">→</span> }
           <div class="pipe-step-slot" [class.pipe-step-slot--finally]="step.result.phase === 'FINALLY'">
@@ -42,8 +42,17 @@
       @if (ranges()[card.id]; as range) {
         @if (range.max > 1) {
           <input class="pipe-scrollbar" type="range" min="0" [max]="range.max" [value]="range.left" [style.--thumb-width]="(track.clientWidth / track.scrollWidth * 100) + '%'" [attr.aria-label]="t('scroll')" (input)="seek(track, $event)" />
-          <footer class="pipe-overflow"><span>{{ t('scroll') }}</span><div><span>{{ t('step') }} {{ range.first }}–{{ range.last }} / {{ card.steps.length }}</span><button type="button" [disabled]="range.left <= 1" [attr.aria-label]="t('previous')" (click)="scroll(track, -1)">←</button><button type="button" [disabled]="range.left >= range.max - 1" [attr.aria-label]="t('next')" (click)="scroll(track, 1)">→</button></div></footer>
         }
+      }
+      @if ((ranges()[card.id]?.max ?? 0) > 1 || totalDuration(card) !== null) {
+        <footer class="pipe-overflow">
+          @if (ranges()[card.id]; as range) {
+            @if (range.max > 1) {
+              <span>{{ t('scroll') }}</span><div class="pipe-overflow-controls"><span>{{ t('step') }} {{ range.first }}–{{ range.last }} / {{ card.steps.length }}</span><button type="button" [disabled]="range.left <= 1" [attr.aria-label]="t('previous')" (click)="scroll(track, -1)">←</button><button type="button" [disabled]="range.left >= range.max - 1" [attr.aria-label]="t('next')" (click)="scroll(track, 1)">→</button></div>
+            }
+          }
+          @if (totalDuration(card); as duration) { <span class="pipe-total-duration" [title]="t('duration')">{{ duration }}</span> }
+        </footer>
       }
     </article>
   }
@@ -83,7 +92,7 @@
         } @else { <p class="detail-empty">{{ t('NONE') }}</p> }
         <section class="detail-section"><h3>{{ t('stepsRegion') }}</h3><div class="pipe-detail-steps">
           @for (step of card.steps; track step.result.key; let index = $index) {
-            <div class="pipe-detail-step"><button type="button" class="pipe-detail-toggle" [attr.aria-expanded]="expanded() === step.result.key" (click)="expand(card, step)"><span class="pipe-number">{{ index + 1 }}</span><span class="pipe-resource"><strong>{{ step.result.resourceName }}</strong><small>{{ t(step.result.type) }} · {{ step.result.phase === 'FINALLY' ? t('closing') : t('main') }}</small></span><span class="badge">{{ stepStatus(card, step) }}</span><span class="pipe-duration">{{ duration(step) }}</span><span aria-hidden="true">{{ expanded() === step.result.key ? '⌄' : '›' }}</span></button>
+            <div class="pipe-detail-step"><div class="pipe-detail-heading"><button type="button" class="pipe-detail-toggle" [attr.aria-label]="step.result.resourceName + ' · ' + t('detail')" [attr.aria-expanded]="expanded() === step.result.key" (click)="expand(card, step)"></button><span class="pipe-number">{{ index + 1 }}</span><span class="pipe-resource"><strong>@if (auth.isAdmin) { <a class="pipe-resource-link" [routerLink]="step.result.type === 'ALERT' ? '/alerts' : '/procedures'" [queryParams]="step.result.type === 'ALERT' ? { tab: 'alerts', search: step.result.resourceName, editAlertId: step.result.resourceId } : { tab: 'procedures', search: step.result.resourceName, editProcedureId: step.result.resourceId }">{{ step.result.resourceName }}</a> } @else { {{ step.result.resourceName }} }</strong><small>{{ t(step.result.type) }} · {{ step.result.phase === 'FINALLY' ? t('closing') : t('main') }}</small></span><span class="badge">{{ stepStatus(card, step) }}</span><span class="pipe-duration">{{ duration(step) }}</span><span aria-hidden="true">{{ expanded() === step.result.key ? '⌄' : '›' }}</span></div>
               @if (expanded() === step.result.key) {
                 <div class="pipe-step-detail"><p>{{ message(step) || stepStatus(card, step) }}</p>
                   @if (!step.result.resourceExecutionId) { <p>{{ t('noChildExecution') }}</p> }

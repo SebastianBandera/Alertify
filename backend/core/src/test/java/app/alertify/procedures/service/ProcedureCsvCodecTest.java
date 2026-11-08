@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import app.alertify.alerts.template.annotation.AlertParameterSource;
+import app.alertify.alerts.model.ExecutionMode;
 import app.alertify.api.error.InvalidProcedureImportException;
 import app.alertify.jpa.entity.ApplicationSecret;
 import app.alertify.procedures.model.Procedure;
@@ -73,7 +74,27 @@ class ProcedureCsvCodecTest {
 
         assertThatThrownBy(() -> codec.read(csv.getBytes(StandardCharsets.UTF_8)))
                 .isInstanceOf(InvalidProcedureImportException.class)
-                .hasMessage("CSV header must be exactly: name,description,templateKey,cronExpression,enabled,allowConcurrentExecutions,parameters,tags");
+                .hasMessageStartingWith("CSV header must be exactly:")
+                .hasMessageContaining("executionMode");
+    }
+
+    @Test
+    void roundTripsTheExplicitExecutionMode() {
+        var procedure = new Procedure(template(), "Pipe-only", null, "-", true, false, Set.of());
+        procedure.changeExecutionMode(ExecutionMode.PIPE);
+        ReflectionTestUtils.setField(procedure, "id", 7L);
+        byte[] csv = codec.write(List.of(procedure), Map.of());
+        assertThat(codec.read(csv).getFirst().executionMode()).isEqualTo(ExecutionMode.PIPE);
+    }
+
+    @Test
+    void treatsAnAbsentOrBlankModeAsUnspecifiedAndRejectsInvalidModes() {
+        String header = "name,description,templateKey,cronExpression,enabled,allowConcurrentExecutions,parameters,tags";
+        String row = "A,,template.A,-,true,false,[],[]";
+        assertThat(codec.read((header + "\r\n" + row).getBytes(StandardCharsets.UTF_8)).getFirst().executionMode()).isNull();
+        assertThat(codec.read((header + ",executionMode\r\n" + row + ",").getBytes(StandardCharsets.UTF_8)).getFirst().executionMode()).isNull();
+        assertThatThrownBy(() -> codec.read((header + ",executionMode\r\n" + row + ",INVALID").getBytes(StandardCharsets.UTF_8)))
+                .isInstanceOf(InvalidProcedureImportException.class).hasMessageContaining("executionMode must be STANDALONE or PIPE");
     }
 
     private static ProcedureTemplateDefinition template() {

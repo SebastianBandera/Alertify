@@ -50,7 +50,7 @@ final class ProcedureMapper {
                                 tag.getColor(), tag.getCreatedAt(), tag.getUpdatedAt()))
                         .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new)),
                 values.stream().map(ProcedureMapper::toParameterValue).toList(),
-                procedure.getCreatedAt(), procedure.getUpdatedAt()
+                procedure.getCreatedAt(), procedure.getUpdatedAt(), procedure.getExecutionMode()
         );
     }
 

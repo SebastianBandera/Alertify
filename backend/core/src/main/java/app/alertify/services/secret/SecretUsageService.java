@@ -16,6 +16,7 @@ import app.alertify.api.error.ResourceNotFoundException;
 import app.alertify.jpa.repository.ApplicationSecretRepository;
 import app.alertify.secret.api.SecretUsagesResponse;
 import app.alertify.secret.api.SecretUsagesResponse.Usage;
+import app.alertify.playwright.PlaywrightUsageAnalyzer;
 
 /** Resolves consumers from persisted secret bindings and expression dependency edges. */
 @Service
@@ -59,10 +60,12 @@ public class SecretUsageService {
 
     private final NamedParameterJdbcTemplate jdbcTemplate;
     private final ApplicationSecretRepository secretRepository;
+    private final PlaywrightUsageAnalyzer playwright;
 
-    public SecretUsageService(NamedParameterJdbcTemplate jdbcTemplate, ApplicationSecretRepository secretRepository) {
+    public SecretUsageService(NamedParameterJdbcTemplate jdbcTemplate, ApplicationSecretRepository secretRepository, PlaywrightUsageAnalyzer playwright) {
         this.jdbcTemplate = jdbcTemplate;
         this.secretRepository = secretRepository;
+        this.playwright = playwright;
     }
 
     @Transactional(readOnly = true)
@@ -92,12 +95,19 @@ public class SecretUsageService {
             destination.computeIfAbsent(rootId, _ -> new ArrayList<>()).add(usage);
         });
 
+        var analysis = playwright.analyze();
+        for (Long id : ids) {
+            for (var consumer : analysis.consumers("SECRET", id)) {
+                var destination = consumer.direct() ? direct : indirect;
+                destination.computeIfAbsent(id, _ -> new ArrayList<>()).add(new Usage("ALERT", consumer.id(), consumer.name(), consumer.enabled()));
+            }
+        }
         Map<Long, SecretUsagesResponse> responses = new HashMap<>();
         for (Long id : ids) {
-            List<Usage> directUsages = direct.getOrDefault(id, List.of()).stream().sorted(USAGE_ORDER).toList();
-            List<Usage> indirectUsages = indirect.getOrDefault(id, List.of()).stream().sorted(USAGE_ORDER).toList();
+            List<Usage> directUsages = direct.getOrDefault(id, List.of()).stream().distinct().sorted(USAGE_ORDER).toList();
+            List<Usage> indirectUsages = indirect.getOrDefault(id, List.of()).stream().distinct().filter(usage -> !directUsages.contains(usage)).sorted(USAGE_ORDER).toList();
             responses.put(id, new SecretUsagesResponse(
-                    directUsages.size() + indirectUsages.size(), directUsages, indirectUsages));
+                    directUsages.size() + indirectUsages.size(), directUsages, indirectUsages, analysis.complete(), analysis.warnings(), analysis.issues()));
         }
         return responses;
     }

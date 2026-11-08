@@ -93,6 +93,24 @@ class InteractiveBrowserMainBrowserTest {
             </script></body></html>
             """;
 
+    private static final String SHADOW_HTML = """
+            <!doctype html><html><body>
+            <header id=activities><x-toolbar></x-toolbar></header>
+            <footer id=secondary><x-toolbar></x-toolbar></footer><div id=clicks>0</div>
+            <script>
+            for (const toolbar of document.querySelectorAll('x-toolbar')) {
+              toolbar.style.display='block';
+              const root=toolbar.attachShadow({mode:'open'});
+              root.innerHTML='<div><x-action><span slot="icon" style="display:block;width:80px;height:20px"></span></x-action><x-action></x-action></div>';
+              for (const action of root.querySelectorAll('x-action')) {
+                action.style.display='inline-block';
+                action.attachShadow({mode:'open'}).innerHTML='<button style="width:160px;height:40px"><slot name="icon"></slot></button>';
+                action.shadowRoot.querySelector('button').onclick=()=>document.querySelector('#clicks').textContent=String(Number(document.querySelector('#clicks').textContent)+1);
+              }
+            }
+            </script></body></html>
+            """;
+
     @BeforeAll
     static void startFixture() throws Exception {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
@@ -136,7 +154,7 @@ class InteractiveBrowserMainBrowserTest {
                     <footer><a aria-label='selector-private-canary' href='/anep/autoridades?token=selector-private-canary'>Autoridades</a></footer>
                     <nav style='display:none'><a href='/anep/autoridades'>Autoridades</a></nav><input type=password value='selector-private-canary'>
                     </body></html>
-                    """ : HTML;
+                    """ : path.equals("/shadow-controls") ? SHADOW_HTML : HTML;
             byte[] bytes = html.getBytes(StandardCharsets.UTF_8);
             exchange.sendResponseHeaders(once && count > 1 ? 410 : 200, bytes.length);
             exchange.getResponseBody().write(bytes);
@@ -413,6 +431,98 @@ class InteractiveBrowserMainBrowserTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"chromium", "firefox", "webkit"})
+    void resolvesRepeatedControlsAcrossNestedOpenShadowRoots(String engine) {
+        try (var session = PlaywrightBrowserSession.open(BrowserEngine.valueOf(engine.toUpperCase(java.util.Locale.ROOT)))) {
+            var page = session.page();
+            page.setContent(SHADOW_HTML);
+            assertThat(page.locator("button").count()).isEqualTo(4);
+            var target = page.locator("#activities x-action").nth(1).locator("button");
+            String selector = BrowserPageInspection.selector(target);
+            assertThat(selector).contains("#activities", "x-action").doesNotContain(":has(");
+            assertThat(page.locator(selector).count()).isEqualTo(1);
+            assertThat((boolean) page.locator(selector).evaluate("(match, target) => match === target", target.elementHandle())).isTrue();
+            page.locator(selector).click();
+            assertThat(page.locator("#clicks").innerText()).isEqualTo("1");
+
+            // A hidden duplicate does not disqualify a selector for the visible node.
+            page.locator("#secondary").evaluate("element => element.style.display='none'");
+            target = page.locator("#activities x-action").first().locator("button");
+            selector = BrowserPageInspection.selector(target);
+            assertThat(page.locator(selector).filter(new com.microsoft.playwright.Locator.FilterOptions().setVisible(true)).count()).isEqualTo(1);
+            assertThat((boolean) page.locator(selector).filter(new com.microsoft.playwright.Locator.FilterOptions().setVisible(true))
+                    .evaluate("(match, target) => match === target", target.elementHandle())).isTrue();
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"chromium", "firefox", "webkit"})
+    void rejectsUniqueCandidatesForADifferentNodeAndKeepsClosedShadowRootsOpaque(String engine) {
+        try (var session = PlaywrightBrowserSession.open(BrowserEngine.valueOf(engine.toUpperCase(java.util.Locale.ROOT)))) {
+            var page = session.page();
+            page.setContent("<button id=decoy>Other</button><x-action></x-action><x-closed></x-closed>");
+            page.evaluate("""
+                    const root=document.querySelector('x-action').attachShadow({mode:'open'});
+                    root.innerHTML='<button aria-label="Target"></button>';
+                    // The tempting #decoy candidate resolves to exactly one wrong node.
+                    Object.defineProperty(root.querySelector('button'), 'id', {get:()=> 'decoy'});
+                    document.querySelector('x-closed').attachShadow({mode:'closed'}).innerHTML='<button>Private</button>';
+                    """);
+            var target = page.locator("x-action button");
+            String selector = BrowserPageInspection.selector(target);
+            assertThat(selector).isEqualTo("button[aria-label=\"Target\"]");
+            assertThat((boolean) page.locator(selector).evaluate("(match, target) => match === target", target.elementHandle())).isTrue();
+            assertThat(page.locator("x-closed button").count()).isZero();
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"chromium", "firefox", "webkit"})
+    void selectsSlottedControlsFromCapturedFramesAndRejectsReplacedShadowNodes(String engine) {
+        try (var session = PlaywrightBrowserSession.open(BrowserEngine.valueOf(engine.toUpperCase(java.util.Locale.ROOT)))) {
+            var page = session.page();
+            var inspection = new BrowserPageInspection(page, () -> { });
+            session.navigate(origin + "/shadow-controls", 10_000);
+            var target = page.locator("#activities x-action").first().locator("button");
+            var slotContent = page.locator("#activities x-action").first().locator("span").boundingBox();
+            double x = slotContent.x + slotContent.width / 2;
+            double y = slotContent.y + slotContent.height / 2;
+            inspection.beginFrame(1);
+            inspection.finishFrame(1);
+            var selected = inspection.select(1, x, y);
+            assertThat(selected).containsKey("selector");
+            var match = page.locator((String) selected.get("selector"));
+            assertThat((boolean) match.evaluate("(element, target) => element === target", target.elementHandle())).isTrue();
+            assertThat(page.locator("#clicks").innerText()).isEqualTo("0");
+            target.evaluate("element => element.replaceWith(element.cloneNode(true))");
+            assertThat(inspection.select(1, x, y)).containsEntry("error", "STALE_SELECTION");
+
+            inspection.beginFrame(2);
+            inspection.finishFrame(2);
+            page.locator("#activities x-action").first().locator("span").evaluate("element => element.slot='missing'");
+            assertThat(inspection.select(2, x, y)).containsEntry("error", "STALE_SELECTION");
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"chromium", "firefox", "webkit"})
+    void observesShadowControlsAndReportsTheirOuterRegionsWithoutClicking(String engine) throws Exception {
+        try (var harness = new Harness()) {
+            harness.success("OPEN", settings(engine, "/shadow-controls", ""));
+            var observation = harness.success("OBSERVE", Map.of());
+            assertThat(observation.path("controls").size()).isEqualTo(4);
+            var report = harness.success("CHECK_SELECTOR", Map.of("selector", "button"));
+            assertThat(report.path("visibleCount").asInt()).isEqualTo(4);
+            assertThat(report.path("ambiguous").asBoolean()).isTrue();
+            assertThat(report.path("matches").valueStream().map(match -> match.path("regions").get(0).path("id").asString()))
+                    .containsExactly("activities", "activities", "secondary", "secondary");
+            assertThat(report.path("matches").valueStream()).allSatisfy(match -> assertThat(match.path("selector").asString()).isNotBlank());
+            assertThat(report.path("dirty").asBoolean()).isFalse();
+            harness.success("EXECUTE", settings(engine, "/shadow-controls", "QUERY #clicks\nCHECK TEXT 0"));
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"chromium", "firefox", "webkit"})
     void shortensStructuralFallbackAndUsesSemanticSelectorsForCapturedFrames(String engine) {
         try (var session = PlaywrightBrowserSession.open(BrowserEngine.valueOf(engine.toUpperCase(java.util.Locale.ROOT)))) {
             var page = session.page();
@@ -515,6 +625,39 @@ class InteractiveBrowserMainBrowserTest {
             var missing = harness.success("CHECK_SELECTOR", Map.of("selector", "#missing"));
             assertThat(missing.path("visibleCount").asInt()).isZero();
             harness.success("EXECUTE", settings(engine, "/selector-ambiguity", "QUERY #selected\nUSE\nQUERY #count\nCHECK TEXT 1"));
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"chromium", "firefox", "webkit"})
+    void publishesRunningAndCompletedEvidenceBeforeReportingAFailedCommand(String engine) throws Exception {
+        try (var harness = new Harness()) {
+            String script = "# comment\n\nQUERY h1\nCHECK TEXT Public content";
+            ObjectNode settings = settings(engine, "/html", script);
+            settings.put("elementTimeoutSeconds", 1);
+            harness.success("OPEN", settings);
+            var reply = harness.request("EXECUTE", settings);
+            assertThat(reply.getType()).isEqualTo("RESULT");
+            var events = harness.events.stream().map(Event::event)
+                    .filter(event -> event.getType().equals("PROGRESS") && event.getRequestId().equals(reply.getRequestId()))
+                    .map(event -> JSON.readTree(event.getJson())).toList();
+            assertThat(events.stream().map(event -> event.path("phase").asString())).containsExactly("STARTED", "RUNNING", "COMPLETED", "RUNNING", "COMPLETED");
+            assertThat(events.getFirst().path("commandLines").valueStream().map(JsonNode::asInt)).containsExactly(3, 4);
+            assertThat(events.get(1).path("completed").asInt()).isZero();
+            assertThat(events.get(1).path("line").asInt()).isEqualTo(3);
+            assertThat(events.getLast().path("completed").asInt()).isEqualTo(2);
+            assertThat(events).allSatisfy(event -> assertThat(event.path("engine").asString()).isEqualTo(engine));
+            assertThat(events.toString()).doesNotContain("Public content", "QUERY");
+
+            settings.put("steps", script + "\nCHECK TEXT Expected mismatch");
+            var failure = harness.request("EXECUTE", settings);
+            assertThat(failure.getType()).isEqualTo("ERROR");
+            var last = harness.events.stream().map(Event::event)
+                    .filter(event -> event.getType().equals("PROGRESS") && event.getRequestId().equals(failure.getRequestId()))
+                    .map(event -> JSON.readTree(event.getJson())).reduce((first, second) -> second).orElseThrow();
+            assertThat(last.path("phase").asString()).isEqualTo("FAILED");
+            assertThat(last.path("line").asInt()).isEqualTo(5);
+            assertThat(last.path("completed").asInt()).isEqualTo(2);
         }
     }
 
