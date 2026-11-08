@@ -518,6 +518,39 @@ class InteractiveBrowserMainBrowserTest {
         }
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"chromium", "firefox", "webkit"})
+    void publishesRunningAndCompletedEvidenceBeforeReportingAFailedCommand(String engine) throws Exception {
+        try (var harness = new Harness()) {
+            String script = "# comment\n\nQUERY h1\nCHECK TEXT Public content";
+            ObjectNode settings = settings(engine, "/html", script);
+            settings.put("elementTimeoutSeconds", 1);
+            harness.success("OPEN", settings);
+            var reply = harness.request("EXECUTE", settings);
+            assertThat(reply.getType()).isEqualTo("RESULT");
+            var events = harness.events.stream().map(Event::event)
+                    .filter(event -> event.getType().equals("PROGRESS") && event.getRequestId().equals(reply.getRequestId()))
+                    .map(event -> JSON.readTree(event.getJson())).toList();
+            assertThat(events.stream().map(event -> event.path("phase").asString())).containsExactly("STARTED", "RUNNING", "COMPLETED", "RUNNING", "COMPLETED");
+            assertThat(events.getFirst().path("commandLines").valueStream().map(JsonNode::asInt)).containsExactly(3, 4);
+            assertThat(events.get(1).path("completed").asInt()).isZero();
+            assertThat(events.get(1).path("line").asInt()).isEqualTo(3);
+            assertThat(events.getLast().path("completed").asInt()).isEqualTo(2);
+            assertThat(events).allSatisfy(event -> assertThat(event.path("engine").asString()).isEqualTo(engine));
+            assertThat(events.toString()).doesNotContain("Public content", "QUERY");
+
+            settings.put("steps", script + "\nCHECK TEXT Expected mismatch");
+            var failure = harness.request("EXECUTE", settings);
+            assertThat(failure.getType()).isEqualTo("ERROR");
+            var last = harness.events.stream().map(Event::event)
+                    .filter(event -> event.getType().equals("PROGRESS") && event.getRequestId().equals(failure.getRequestId()))
+                    .map(event -> JSON.readTree(event.getJson())).reduce((first, second) -> second).orElseThrow();
+            assertThat(last.path("phase").asString()).isEqualTo("FAILED");
+            assertThat(last.path("line").asInt()).isEqualTo(5);
+            assertThat(last.path("completed").asInt()).isEqualTo(2);
+        }
+    }
+
     private static ObjectNode settings(String engine, String path, String steps) {
         return (ObjectNode) JSON.valueToTree(Map.of("url", origin + path, "engine", engine, "browsers", List.of(engine), "steps", steps, "loadTimeoutSeconds", 10, "elementTimeoutSeconds", 5));
     }

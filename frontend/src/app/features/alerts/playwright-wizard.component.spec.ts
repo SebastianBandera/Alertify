@@ -81,6 +81,84 @@ describe('PlaywrightWizardComponent', () => {
     return [...fixture.nativeElement.querySelectorAll('button')].find((element: HTMLButtonElement) => element.textContent?.trim() === label)!;
   }
 
+  async function showProgress(overrides: Partial<NonNullable<WizardState['scriptExecution']>> = {}): Promise<void> {
+    current.document.settings.steps = '# note\n\nQUERY h1\nCHECK TEXT Ready\n\nWAIT_VISIBLE #next 10s\nQUERY #next';
+    current.scriptExecution = { revision: 'revision', engine: 'chromium', status: 'RUNNING', commandLines: [3, 4, 6, 7], completed: 1, activeLine: 4, failedLine: null, ...overrides };
+    harness.settings.set(structuredClone(current.document.settings));
+    harness.update(structuredClone(current));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+  }
+
+  it('marks command states without counting comments, blanks or a pending proposal', async () => {
+    await showProgress();
+    expect(fixture.nativeElement.querySelectorAll('.step-line-status')).toHaveLength(4);
+    expect(fixture.nativeElement.querySelector('.step-line-status--completed').dataset.line).toBe('3');
+    expect(fixture.nativeElement.querySelector('.step-line-status--running').dataset.line).toBe('4');
+    expect([...fixture.nativeElement.querySelectorAll('.step-line-status--pending')].map((node: HTMLElement) => node.dataset['line'])).toEqual(['6', '7']);
+    const summary = fixture.nativeElement.querySelector('.script-progress');
+    expect(summary.textContent).toContain('1 / 4');
+    expect(summary.querySelector('.pending-lines').textContent).toContain('6–7');
+    expect(fixture.nativeElement.querySelector('.proposal')).not.toBeNull();
+    fixture.destroy();
+  });
+
+  it('distinguishes a failed command from commands not yet executed and locates the next pending one', async () => {
+    await showProgress({ status: 'FAILED', activeLine: null, failedLine: 4 });
+    expect(fixture.nativeElement.querySelector('.step-line-status--failed').dataset.line).toBe('4');
+    expect(fixture.nativeElement.querySelector('.pending-lines').textContent).toContain('6–7');
+    button('progress.next').click();
+    const editor = fixture.nativeElement.querySelector('.code-editor textarea') as HTMLTextAreaElement;
+    expect(document.activeElement).toBe(editor);
+    expect(editor.value.slice(editor.selectionStart, editor.selectionEnd)).toBe('WAIT_VISIBLE #next 10s');
+    fixture.destroy();
+  });
+
+  it('removes marks during local edits and when the server cannot verify the script revision', async () => {
+    await showProgress();
+    harness.settings.update(value => ({ ...value, steps: value.steps.replace('h1', 'h2') }));
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.script-progress').textContent).toContain('progress.unverified');
+    expect(fixture.nativeElement.querySelector('.step-line-status')).toBeNull();
+    await showProgress({ status: 'UNVERIFIED' });
+    expect(fixture.nativeElement.querySelector('.step-line-status')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.failed-line-number')).toBeNull();
+    fixture.destroy();
+  });
+
+  it('resets counts between browsers and never borrows a historical success for a closed session', async () => {
+    await showProgress({ status: 'READY', completed: 4, activeLine: null });
+    expect(fixture.nativeElement.querySelectorAll('.step-line-status--completed')).toHaveLength(4);
+    await showProgress({ engine: 'firefox', completed: 0, activeLine: 3 });
+    expect(fixture.nativeElement.querySelector('.script-progress').textContent).toContain('Firefox');
+    expect(fixture.nativeElement.querySelectorAll('.step-line-status--completed')).toHaveLength(0);
+    await showProgress({ status: 'NO_SESSION', engine: '', completed: 0, activeLine: null });
+    expect(fixture.nativeElement.querySelector('.script-progress').textContent).toContain('progress.noSession');
+    expect(fixture.nativeElement.querySelectorAll('.step-line-status--pending')).toHaveLength(4);
+    fixture.destroy();
+  });
+
+  it('updates the running marker without changing editor selection and keeps linked scripts protected', async () => {
+    await showProgress();
+    const editor = fixture.nativeElement.querySelector('.code-editor textarea') as HTMLTextAreaElement;
+    editor.focus();
+    editor.setSelectionRange(5, 8);
+    current.scriptExecution = { ...current.scriptExecution!, completed: 2, activeLine: 6 };
+    harness.update(structuredClone(current));
+    fixture.detectChanges();
+    expect(editor.selectionStart).toBe(5);
+    expect(editor.selectionEnd).toBe(8);
+    expect(fixture.nativeElement.querySelector('.step-line-status--running').dataset.line).toBe('6');
+    current.document.parameterBindings = { steps: { id: 1, name: 'Protected script', source: 'SECRET', version: 0 } };
+    harness.update(structuredClone(current));
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.code-editor')).toBeNull();
+    expect(button('progress.next')).toBeUndefined();
+    expect(fixture.nativeElement.querySelector('.script-progress').textContent).toContain('2 / 4');
+    fixture.destroy();
+  });
+
   it('changes the view mask only after a manual checkbox action without editing the script', async () => {
     request.mockClear();
     const settings = structuredClone(harness.settings());

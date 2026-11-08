@@ -368,6 +368,10 @@ public class PlaywrightWizardService {
         state.put("selection", session == null ? null : session.selection);
         state.put("observation", session == null ? null : session.observation);
         state.put("progress", session == null ? null : session.progress);
+        String script = document.path("settings").path("steps").asString("");
+        state.put("scriptExecution", session == null || session.closed.get()
+                ? WizardScriptProgress.inactive(script, boundSteps(document))
+                : session.scriptProgress.snapshot(script, boundSteps(document), sameBrowserSettings(readSettings(document.path("settings")), session.progressSettings)));
         state.put("attachmentReady", session != null && session.attachment != null);
         state.put("maskEnabled", session == null || session.maskEnabled);
         state.put("restartRequired", session == null ? document.path("lastAction").path("status").asString().equals("FAILED") : session.restartRequired);
@@ -501,6 +505,7 @@ public class PlaywrightWizardService {
                 ObjectNode latest = document(store.load(session.owner, session.id));
                 Settings visible = settled == null ? settings : new Settings(settings.url(), settings.steps(), settled.engine(), settings.browsers(), settings.loadTimeoutSeconds(), settings.elementTimeoutSeconds(), settings.mode());
                 if (settled != null) latest.set("settings", json.valueToTree(visible));
+                if (settled != null) session.progressSettings = visible;
 
                 latest.set("testReport", report);
                 if (passed) latest.put("testedRevision", revision(visible, bindingStamp));
@@ -692,6 +697,12 @@ public class PlaywrightWizardService {
     private void resetExecutionState(Session session, String operation) {
         session.restartRequired = false;
         session.progress = null;
+        ObjectNode current = document(store.load(session.owner, session.id));
+        String script = readSettings(current.path("settings")).steps();
+        session.scriptProgress.reset(script, session.browserSettings.engine());
+        if (boundSteps(current))
+            session.scriptProgress.begin(script);
+
         session.observation = null;
         session.selection = null;
         recordAction(session, operation, "SUCCESS", json.valueToTree(Map.of("completed", 0)), "");
@@ -1070,6 +1081,9 @@ public class PlaywrightWizardService {
         private volatile JsonNode observation;
         private volatile String currentUrl = "";
         private volatile JsonNode progress;
+        private final WizardScriptProgress scriptProgress = new WizardScriptProgress();
+        private volatile String progressRequestId = "";
+        private volatile Settings progressSettings;
         private volatile WizardEvent frame;
         private volatile WizardEvent attachment;
         private volatile boolean maskEnabled = true;
@@ -1129,7 +1143,13 @@ public class PlaywrightWizardService {
                                 if (recentFrames.size() > 10) recentFrames.keySet().stream().min(Long::compareTo).ifPresent(recentFrames::remove);
                             }
                             case "PAGE_STATE" -> { currentUrl = safe(json.readTree(event.getJson()).path("currentUrl").asString("")); publish(Session.this); }
-                            case "PROGRESS" -> { progress = json.readTree(event.getJson()); publish(Session.this); }
+                            case "PROGRESS" -> {
+                                if (event.getRequestId().equals(progressRequestId) && pending.containsKey(event.getRequestId())) {
+                                    progress = json.readTree(event.getJson());
+                                    scriptProgress.accept(progress);
+                                    publish(Session.this);
+                                }
+                            }
                             case "RESULT", "IMAGE", "ERROR" -> {
                                 var future = pending.remove(event.getRequestId());
                                 if (future != null) {
@@ -1160,6 +1180,12 @@ public class PlaywrightWizardService {
             String requestId = UUID.randomUUID().toString();
             var result = new CompletableFuture<WizardEvent>();
             pending.put(requestId, result);
+            boolean scriptOperation = List.of("OPEN", "RESET", "EXECUTE", "TEST").contains(operation);
+            if (scriptOperation) {
+                progressRequestId = requestId;
+                progressSettings = readSettings(document(store.load(owner, id)).path("settings"));
+                scriptProgress.begin(progressSettings.steps());
+            }
             ObjectNode protectedPayload = (ObjectNode) json.valueToTree(payload);
             if (!sensitive.isEmpty()) protectedPayload.set("protectedValues", json.valueToTree(sensitive));
 
@@ -1169,7 +1195,13 @@ public class PlaywrightWizardService {
                 if (exception.getCause() instanceof IllegalArgumentException invalid) throw invalid;
 
                 throw exception;
-            } finally { pending.remove(requestId); }
+            } finally {
+                pending.remove(requestId);
+                if (scriptOperation && requestId.equals(progressRequestId)) {
+                    progressRequestId = "";
+                    scriptProgress.interrupted();
+                }
+            }
         }
 
         private synchronized void send(WizardRequest request) {

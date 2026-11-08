@@ -15,6 +15,16 @@ export interface WizardBinding { source: 'CONFIGURATION' | 'SECRET' | 'PROCEDURE
 export interface WizardSourceAlert { id: number; version: number; form: Record<string, unknown>; }
 export interface PreparedWizard { id: string; settings: WizardSettings; sourceAlert?: WizardSourceAlert; parameterBindings?: Record<string, WizardBinding>; }
 
+export interface WizardScriptExecution {
+  revision: string;
+  engine: string;
+  status: 'READY' | 'RUNNING' | 'FAILED' | 'UNVERIFIED' | 'NO_SESSION';
+  commandLines: readonly number[];
+  completed: number;
+  activeLine: number | null;
+  failedLine: number | null;
+}
+
 export interface WizardState {
   id: string;
   document: {
@@ -41,7 +51,8 @@ export interface WizardState {
   maskEnabled?: boolean;
   restartRequired?: boolean;
   selection: { selector: string } | null;
-  progress: { completed: number; line: number } | null;
+  progress: { completed: number; line: number; phase?: string; engine?: string } | null;
+  scriptExecution?: WizardScriptExecution;
   observation: { snapshot: string } | null;
   tokens: number;
   modelRequests: number;
