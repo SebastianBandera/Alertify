@@ -398,6 +398,7 @@ export const ES_UY_TRANSLATIONS = {
   'dashboard.run.unavailable': 'No se pudo verificar el límite de ejecuciones. Probá de nuevo en unos segundos.',
   'dashboard.run.disabled': '«{name}» está deshabilitada y no se puede ejecutar desde el tablero.',
   'dashboard.detail.definition': 'Definición',
+  'dashboard.detail.goToDefinition': 'Ir a definición',
   'dashboard.detail.schedule': 'Programación (cron)',
   'dashboard.detail.concurrent': 'Ejecuciones concurrentes',
   'dashboard.detail.yes': 'Permitidas',

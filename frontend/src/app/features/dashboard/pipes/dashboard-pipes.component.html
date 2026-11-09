@@ -106,7 +106,7 @@
         </div></section>
         @if (card.execution; as execution) { <details class="pipe-technical"><summary>{{ t('technical') }}</summary><code>{{ execution.executionId }}</code></details> }
       </div>
-      <footer class="modal__footer"><button type="button" class="button button--secondary" (click)="closeDetail()">{{ t('close') }}</button></footer>
+      <footer class="modal__footer">@if (auth.isAdmin) { <button type="button" class="button button--secondary" (click)="navigate(card, true)">{{ localization.translate('dashboard.detail.goToDefinition') }}</button> }<button type="button" class="button button--secondary" (click)="closeDetail()">{{ t('close') }}</button></footer>
     </section>
   </div>
 }

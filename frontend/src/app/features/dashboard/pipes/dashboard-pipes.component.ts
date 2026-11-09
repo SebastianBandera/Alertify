@@ -198,7 +198,9 @@ export class DashboardPipesComponent {
     this.noticeTimer = null;
   }
   protected navigate(card: DashboardPipeCard, definition: boolean): void {
-    this.closeMenu(); void this.router.navigate(['/pipes'], { queryParams: definition ? { pipeId: card.id } : { tab: 'history', pipeId: card.id } });
+    this.closeMenu();
+    if (this.selected()) this.closeDetail();
+    void this.router.navigate(['/pipes'], { queryParams: definition ? { pipeId: card.id } : { tab: 'history', pipeId: card.id } });
   }
   protected openStep(card: DashboardPipeCard, step: DashboardPipeStep, event: Event): void {
     if (step.result.type !== 'ALERT' || !step.alertExecution) {

@@ -190,7 +190,7 @@ describe('dashboard Pipe menu focus', () => {
     }));
     expect(params.value.get('pipe')).toBeNull();
 
-    (fixture.nativeElement.querySelector('.modal__footer button') as HTMLButtonElement).click();
+    (fixture.nativeElement.querySelector('.modal__footer button:last-child') as HTMLButtonElement).click();
     fixture.detectChanges();
     await fixture.whenStable();
     expect(fixture.nativeElement.querySelector('[role="dialog"]')).toBeNull();
@@ -276,6 +276,32 @@ describe('dashboard Pipe menu focus', () => {
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('.pipe-resource-link')).toBeNull();
     expect(fixture.nativeElement.querySelector('.pipe-detail-toggle')).not.toBeNull();
+  });
+
+  it('opens the current Pipe definition from a historical execution and closes its detail', () => {
+    const card = pipeCard(4, 'Updated Pipe', 'SUCCESS', '2026-11-01T12:00:00Z');
+    const current = { ...card, version: 2, execution: { ...card.execution!, pipeVersion: 1 } };
+    setCards([current]);
+    fixture.componentInstance['openDetail'](current);
+    fixture.detectChanges();
+    const button = fixture.nativeElement.querySelector('.modal__footer button') as HTMLButtonElement;
+    expect(button.textContent?.trim()).toBe('dashboard.detail.goToDefinition');
+    expect(button.type).toBe('button');
+    button.focus();
+    expect(document.activeElement).toBe(button);
+    button.click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[role="dialog"]')).toBeNull();
+    expect(TestBed.inject(Router).navigate).toHaveBeenCalledWith(['/pipes'], { queryParams: { pipeId: 4 } });
+  });
+
+  it('hides the definition action from viewers without removing the close button', () => {
+    Object.assign(TestBed.inject(AuthService), { isAdmin: false });
+    fixture.componentInstance['openDetail'](CARD);
+    fixture.detectChanges();
+    const buttons = fixture.nativeElement.querySelectorAll('.modal__footer button');
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0].textContent?.trim()).toBe('dashboard.pipe.close');
   });
 
   it('follows the running and next pending steps once, pauses for manual scrolling and resumes on the next step', () => {

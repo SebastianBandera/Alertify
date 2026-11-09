@@ -679,6 +679,7 @@ export type TranslationKey =
   | 'dashboard.run.unavailable'
   | 'dashboard.run.disabled'
   | 'dashboard.detail.definition'
+  | 'dashboard.detail.goToDefinition'
   | 'dashboard.detail.schedule'
   | 'dashboard.detail.concurrent'
   | 'dashboard.detail.yes'

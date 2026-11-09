@@ -18,6 +18,8 @@ import { DashboardPipeLiveService } from './pipes/dashboard-pipe-live.service';
 import { DashboardPipeAlertDetail } from './pipes/dashboard-pipes.component';
 
 type Harness = {
+  openCard: DashboardComponent['openCard'];
+  openCardDefinition: DashboardComponent['openCardDefinition'];
   openPipeAlert: DashboardComponent['openPipeAlert'];
   closeCard: DashboardComponent['closeCard'];
   selectedCard: DashboardComponent['selectedCard'];
@@ -140,5 +142,29 @@ describe('dashboard alert detail from a Pipe', () => {
       expect(harness.selectedCard()).toBeNull();
       expect(document.activeElement).toBe(opener);
     } finally { opener.remove(); }
+  });
+
+  it('closes the alert detail and navigates to its current definition by ID', () => {
+    harness.openCard(CARD);
+    harness.openCardDefinition(CARD);
+    expect(harness.selectedCard()).toBeNull();
+    expect(TestBed.inject(Router).navigate).toHaveBeenCalledWith(['/alerts'], {
+      queryParams: { tab: 'alerts', editAlertId: 42 },
+    });
+  });
+
+  it('uses the current definition when navigating from a historical Pipe step execution', async () => {
+    cards.set([{ ...CARD, alert: { ...CARD.alert, version: 2 }, lastExecution: { ...EXECUTION, executionId: 'newer-execution' } }]);
+    harness.openPipeAlert(DETAIL);
+    fixture.detectChanges(); await fixture.whenStable();
+    const selected = harness.selectedCard()!;
+    expect(selected.lastExecution?.executionId).toBe(EXECUTION.executionId);
+    expect(selected.alert.version).toBe(2);
+    harness.openCardDefinition(selected);
+    fixture.detectChanges();
+    expect(harness.selectedCard()).toBeNull();
+    expect(TestBed.inject(Router).navigate).toHaveBeenCalledWith(['/alerts'], {
+      queryParams: { tab: 'alerts', editAlertId: 42 },
+    });
   });
 });

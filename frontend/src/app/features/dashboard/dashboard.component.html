@@ -501,6 +501,9 @@
       </div>
 
       <footer class="modal__footer">
+        @if (isAdmin) {
+          <button type="button" class="button button--secondary" (click)="openCardDefinition(card)">{{ localization.translate('dashboard.detail.goToDefinition') }}</button>
+        }
         <button type="button" class="button button--secondary" (click)="closeCard()">{{ localization.translate('dashboard.detail.close') }}</button>
       </footer>
     </section>

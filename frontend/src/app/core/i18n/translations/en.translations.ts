@@ -398,6 +398,7 @@ export const EN_TRANSLATIONS = {
   'dashboard.run.unavailable': 'The run limit could not be checked. Try again in a few seconds.',
   'dashboard.run.disabled': '"{name}" is disabled and cannot be run from the dashboard.',
   'dashboard.detail.definition': 'Definition',
+  'dashboard.detail.goToDefinition': 'Go to definition',
   'dashboard.detail.schedule': 'Schedule (cron)',
   'dashboard.detail.concurrent': 'Concurrent executions',
   'dashboard.detail.yes': 'Allowed',

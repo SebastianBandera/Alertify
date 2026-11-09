@@ -508,6 +508,7 @@ export class DashboardComponent {
 
   protected openCardDefinition(card: DashboardAlertCard): void {
     this.closeCardMenu();
+    this.closeCard();
     void this.router.navigate(['/alerts'], { queryParams: { tab: 'alerts', editAlertId: card.alert.id } });
   }
 
