@@ -50,7 +50,8 @@ describe('PlaywrightWizardComponent', () => {
     request = vi.fn(async (operation: string, payload?: Record<string, unknown>) => {
       if (operation === 'LIST') return [];
       if (operation === 'SAVE') current.document.settings = structuredClone(payload!['settings'] as WizardSettings);
-      if (operation === 'SET_MASK') current = { ...current, maskEnabled: payload!['enabled'] as boolean, attachmentReady: false };
+      if (operation === 'SET_MASK') current = { ...current, maskEnabled: payload!['enabled'] as boolean, shareUnmaskedWithAi: false, attachmentReady: false };
+      if (operation === 'SET_AI_IMAGE_SHARING') current = { ...current, shareUnmaskedWithAi: payload!['enabled'] as boolean, attachmentReady: false };
       if (operation === 'APPROVE' || operation === 'REJECT') {
         const next = structuredClone(current);
         if (operation === 'APPROVE') next.document.settings.steps = next.document.proposal!;
@@ -180,14 +181,33 @@ describe('PlaywrightWizardComponent', () => {
     fixture.destroy();
   });
 
-  it('blocks attachments while the view is unmasked and locks its control during operations', () => {
+  it('requires explicit image sharing to attach an unmasked view and locks controls during operations', async () => {
     delete current.document.proposal;
+    current.maskEnabled = false;
     harness.update({ ...structuredClone(current), maskEnabled: false });
     fixture.detectChanges();
     expect(button('attach').disabled).toBe(true);
+    request.mockClear();
+    const sharing = fixture.nativeElement.querySelector('.ai-image-sharing input') as HTMLInputElement;
+    expect(sharing.checked).toBe(false);
+    sharing.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(request).toHaveBeenCalledExactlyOnceWith('SET_AI_IMAGE_SHARING', expect.objectContaining({ enabled: true }));
+    expect(button('attach').disabled).toBe(false);
+    request.mockClear();
+    sharing.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(request).toHaveBeenCalledExactlyOnceWith('SET_AI_IMAGE_SHARING', expect.objectContaining({ enabled: false }));
+    expect(button('attach').disabled).toBe(true);
+    harness.update({ ...structuredClone(current), maskEnabled: false, shareUnmaskedWithAi: true, busy: true });
+    fixture.detectChanges();
+    expect((fixture.nativeElement.querySelector('.ai-image-sharing input') as HTMLInputElement).disabled).toBe(true);
     harness.update({ ...structuredClone(current), maskEnabled: true });
     fixture.detectChanges();
     expect(button('attach').disabled).toBe(false);
+    expect(fixture.nativeElement.querySelector('.ai-image-sharing')).toBeNull();
     harness.update({ ...structuredClone(current), busy: true });
     fixture.detectChanges();
     expect((fixture.nativeElement.querySelector('.mask-control input') as HTMLInputElement).disabled).toBe(true);

@@ -321,6 +321,22 @@
     ]
   },
   {
+    "templateKey": "app.alertify.alerts.templates.PlaywrightPageAlertTemplate",
+    "name": "Canvas coordinate click after an explicit delay",
+    "description": "Use a user-requested fixed wait and a verified position for a canvas or Flutter control.",
+    "text": {
+      "url": "http://app.example.test/canvas",
+      "steps": "WAIT 10s\nCLICK 50% 50%"
+    },
+    "bindings": {},
+    "notes": [
+      "Coordinates are illustrative. Resolve the actual target using a fresh screenshot under the user's image sharing policy or coordinates explicitly supplied by the user; never copy this center click without checking the target.",
+      "CLICK x y accepts CSS pixels or 0%-100% per axis, including mixed units and decimals. The viewport is 1440 by 900; CLICK 720 450 and CLICK 50% 50% click the center, and 100% maps to the last visible pixel.",
+      "CLICK needs no QUERY and does not select a field for FILL. Use QUERY on a DOM field before FILL. Coordinate clicks do not perform element actionability waits; verify the expected outcome after clicking.",
+      "WAIT 10s waits ten full seconds. Prefer WAIT_VISIBLE for known DOM readiness conditions; use a fixed delay when explicitly requested."
+    ]
+  },
+  {
     "templateKey": "app.alertify.alerts.templates.ResourceResultObserverAlertTemplate",
     "name": "PIPE execution observer",
     "description": "Observe terminal history of an existing resource without executing it.",

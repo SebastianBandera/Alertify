@@ -15,6 +15,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentMap;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -52,8 +54,20 @@ class PlaywrightWizardProposalTest {
     private Object session;
 
     @Test
+    void coordinateClickProposalsRetainApprovalAndDoNotCheckALaterPageSelector() throws Exception {
+        prepare("ASK");
+        String block = "CLICK 50% 50%\nWAIT_VISIBLE #next 10s\nQUERY #next\nUSE";
+        var reply = steps(block);
+        assertThat(reply.getFailed()).isFalse();
+        assertThat(reply.getOutput()).contains("PENDING_APPROVAL");
+        assertThat(document().path("proposal").asString()).isEqualTo(block);
+        assertThat(selectorChecks).isEmpty();
+        assertThat(browserRequests).isEmpty();
+    }
+
+    @Test
     @SuppressWarnings("unchecked")
-    void manualMaskChangesAreSessionOnlyAndUnmaskedFramesCannotBeAttached() throws Exception {
+    void onlyTheUserCanAuthorizeUnmaskedImagesForTheCurrentSessionAndRevokeThem() throws Exception {
         prepare("ASK");
         ((Map<UUID, Object>) ReflectionTestUtils.getField(service, "sessions")).put(draft.getId(), session);
         var authentication = new UsernamePasswordAuthenticationToken("admin-subject", "", List.of(new SimpleGrantedAuthority("ROLE_ADMIN")));
@@ -61,6 +75,8 @@ class PlaywrightWizardProposalTest {
         doAnswer(invocation -> {
             WizardRequest request = invocation.getArgument(0);
             browserRequests.add(request);
+            boolean masked = json.readTree(request.getJson()).path("enabled").asBoolean();
+            ReflectionTestUtils.setField(session, "frame", WizardEvent.newBuilder().setFrameId(9).setJson("{\"masked\":" + masked + "}").build());
             var pending = (ConcurrentMap<String, CompletableFuture<WizardEvent>>) ReflectionTestUtils.getField(session, "pending");
             pending.get(request.getRequestId()).complete(WizardEvent.newBuilder().setType("RESULT").setJson("{}").build());
             return null;
@@ -78,54 +94,89 @@ class PlaywrightWizardProposalTest {
         assertThat(draft.getDocument()).isEqualTo(original);
         var state = json.valueToTree(service.request(authentication, json.valueToTree(Map.of("operation", "GET", "id", draft.getId()))));
         assertThat(state.path("maskEnabled").asBoolean()).isFalse();
+        assertThat(state.path("shareUnmaskedWithAi").asBoolean()).isFalse();
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.request(authentication,
                 json.valueToTree(Map.of("operation", "ATTACH", "id", draft.getId(), "clientId", "browser-a", "frameId", 7))))
                 .hasMessageContaining("Enable the view mask");
+        service.request(authentication, json.valueToTree(Map.of("operation", "SET_AI_IMAGE_SHARING", "id", draft.getId(), "clientId", "browser-a", "enabled", true)));
+        awaitOperation();
+        assertThat(ReflectionTestUtils.getField(session, "shareUnmaskedWithAi")).isEqualTo(true);
+        state = json.valueToTree(service.request(authentication, json.valueToTree(Map.of("operation", "GET", "id", draft.getId()))));
+        assertThat(state.path("shareUnmaskedWithAi").asBoolean()).isTrue();
+        assertThat(frames).containsKey(9L);
+        service.request(authentication, json.valueToTree(Map.of("operation", "ATTACH", "id", draft.getId(), "clientId", "browser-a", "frameId", 9)));
+        assertThat(ReflectionTestUtils.getField(session, "attachment")).isEqualTo(frames.get(9L));
+        service.request(authentication, json.valueToTree(Map.of("operation", "SET_AI_IMAGE_SHARING", "id", draft.getId(), "clientId", "browser-a", "enabled", false)));
+        awaitOperation();
+        assertThat(ReflectionTestUtils.getField(session, "shareUnmaskedWithAi")).isEqualTo(false);
+        assertThat(ReflectionTestUtils.getField(session, "attachment")).isNull();
+        assertThat(frames).isEmpty();
+        frames.put(8L, WizardEvent.newBuilder().setFrameId(8).setJson("{\"masked\":false}").build());
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.request(authentication,
+                json.valueToTree(Map.of("operation", "ATTACH", "id", draft.getId(), "clientId", "browser-a", "frameId", 8))))
+                .hasMessageContaining("explicitly allow");
+        service.request(authentication, json.valueToTree(Map.of("operation", "SET_AI_IMAGE_SHARING", "id", draft.getId(), "clientId", "browser-a", "enabled", true)));
+        awaitOperation();
         service.request(authentication, json.valueToTree(Map.of("operation", "SET_MASK", "id", draft.getId(), "clientId", "browser-a", "enabled", true)));
         awaitOperation();
         assertThat(ReflectionTestUtils.getField(session, "maskEnabled")).isEqualTo(true);
-        assertThat(browserRequests).extracting(WizardRequest::getOperation).containsExactly("SET_MASK", "SET_MASK");
+        assertThat(ReflectionTestUtils.getField(session, "shareUnmaskedWithAi")).isEqualTo(false);
+        assertThat(browserRequests).allSatisfy(request -> assertThat(request.getOperation()).isEqualTo("SET_MASK"));
+        assertThat(json.readTree(browserRequests.get(1).getJson()).path("shareUnmaskedWithAi").asBoolean()).isTrue();
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.request(authentication,
+                json.valueToTree(Map.of("operation", "SET_AI_IMAGE_SHARING", "id", draft.getId(), "clientId", "browser-a", "enabled", true))))
+                .hasMessageContaining("Disable the view mask");
         assertThat(draft.getDocument()).isEqualTo(original);
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.request(authentication,
                 json.valueToTree(Map.of("operation", "SET_MASK", "id", draft.getId(), "clientId", "other-window", "enabled", false))))
+                .hasMessageContaining("another assistant window");
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.request(authentication,
+                json.valueToTree(Map.of("operation", "SET_AI_IMAGE_SHARING", "id", draft.getId(), "clientId", "other-window", "enabled", true))))
                 .hasMessageContaining("another assistant window");
     }
 
     @Test
     void aiCannotToggleTheMaskThroughToolsOrScriptCommands() throws Exception {
         prepare("AUTO");
-        for (String name : List.of("SET_MASK", "browser_set_mask")) {
+        for (String name : List.of("SET_MASK", "browser_set_mask", "SET_AI_IMAGE_SHARING", "browser_set_ai_image_sharing")) {
             var call = ChatToolCall.newBuilder().setCallId(UUID.randomUUID().toString()).setName(name).setArguments("{\"enabled\":false}").build();
             ReflectionTestUtils.invokeMethod(service, "handleTool", session, call, new CompletableFuture<Void>());
             assertThat(replies.getLast().getFailed()).isTrue();
         }
         assertThat(steps("SET_MASK false").getFailed()).isTrue();
+        assertThat(steps("SET_AI_IMAGE_SHARING true").getFailed()).isTrue();
         assertThat(browserRequests).isEmpty();
         assertThat(ReflectionTestUtils.getField(session, "maskEnabled")).isEqualTo(true);
+        assertThat(ReflectionTestUtils.getField(session, "shareUnmaskedWithAi")).isEqualTo(false);
     }
 
-    @Test
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
     @SuppressWarnings("unchecked")
-    void aiCaptureCannotOverrideProtectionEvenWhenTheUserUnmasksTheView() throws Exception {
+    void aiCaptureUsesOnlyTheUserChosenImagePolicy(boolean share) throws Exception {
         prepare("AUTO");
         ReflectionTestUtils.setField(session, "maskEnabled", false);
+        ReflectionTestUtils.setField(session, "shareUnmaskedWithAi", share);
         StreamObserver<WizardRequest> browser = mock(StreamObserver.class);
         doAnswer(invocation -> {
             WizardRequest request = invocation.getArgument(0);
             browserRequests.add(request);
             var pending = (ConcurrentMap<String, CompletableFuture<WizardEvent>>) ReflectionTestUtils.getField(session, "pending");
-            pending.get(request.getRequestId()).complete(WizardEvent.newBuilder().setType("IMAGE").setImage(com.google.protobuf.ByteString.copyFromUtf8("fixture-image")).build());
+            pending.get(request.getRequestId()).complete(WizardEvent.newBuilder().setType("IMAGE").setJson("{\"masked\":" + !share + "}").setImage(com.google.protobuf.ByteString.copyFromUtf8("fixture-image")).build());
             return null;
         }).when(browser).onNext(any());
         ReflectionTestUtils.setField(session, "requests", browser);
         var call = ChatToolCall.newBuilder().setCallId(UUID.randomUUID().toString()).setName("browser_capture").setArguments("{\"masked\":false,\"enabled\":false}").build();
         ReflectionTestUtils.invokeMethod(service, "handleTool", session, call, new CompletableFuture<Void>());
         assertThat(replies.getLast().getFailed()).isFalse();
+        assertThat(replies.getLast().getOutput()).isEqualTo(share ? "Current screenshot: user authorized sharing without a mask" : "Protected current screenshot");
+        assertThat(replies.getLast().getImagesList()).singleElement().satisfies(image -> assertThat(image.getData().toStringUtf8()).isEqualTo("fixture-image"));
         assertThat(browserRequests).singleElement().satisfies(request -> {
             assertThat(request.getOperation()).isEqualTo("SCREENSHOT");
             assertThat(json.readTree(request.getJson()).isEmpty()).isTrue();
         });
         assertThat(ReflectionTestUtils.getField(session, "maskEnabled")).isEqualTo(false);
+        assertThat(ReflectionTestUtils.getField(session, "shareUnmaskedWithAi")).isEqualTo(share);
     }
 
     @Test
@@ -162,7 +213,7 @@ class PlaywrightWizardProposalTest {
         ReflectionTestUtils.invokeMethod(service, "chat", session, "Current request " + canary, "es-UY");
         assertThat(starts).hasSize(1);
         var start = starts.getFirst();
-        assertThat(start.getInstructions()).doesNotContain(canary).contains("/items/1", "[REDACTED]");
+        assertThat(start.getInstructions()).doesNotContain(canary).contains("/items/1", "[REDACTED]", "CLICK <x> <y>", "CLICK 50% 50%", "Flutter/canvas", "WAIT 10s");
         assertThat(start.getHistoryList()).allSatisfy(message -> assertThat(message.getContent()).doesNotContain(canary));
         assertThat(draft.getDocument()).doesNotContain(canary);
     }
