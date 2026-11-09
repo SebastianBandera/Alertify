@@ -74,6 +74,19 @@ class WizardScriptProgressTest {
     }
 
     @Test
+    void tracksCoordinateClicksAlongsideFlutterAccessibilityWithoutExposingArguments() {
+        String coordinates = "# note\nCLICK 50% 50%\nENABLE_ACCESSIBILITY\nQUERY h1\nCHECK TEXT Ready";
+        progress.reset(coordinates, "chromium");
+        assertThat(snapshot(coordinates).commandLines()).containsExactly(2, 3, 4, 5);
+        progress.accept(json.valueToTree(Map.of("phase", "STARTED", "engine", "chromium", "completed", 0, "line", 0, "commandLines", List.of(2, 3, 4, 5))));
+        progress.accept(json.valueToTree(Map.of("phase", "COMPLETED", "engine", "chromium", "completed", 1, "line", 2)));
+        var state = snapshot(coordinates);
+        assertThat(state.status()).isEqualTo("READY");
+        assertThat(state.completed()).isEqualTo(1);
+        assertThat(json.writeValueAsString(state)).doesNotContain("CLICK", "50%", "ENABLE_ACCESSIBILITY");
+    }
+
+    @Test
     void exposesOnlyMetadataAndHandlesMissingSessionsLinkedScriptsAndInvalidDrafts() {
         String privateScript = "QUERY input\nCHECK ATTRIBUTE data-private fixture-private-canary";
         progress.reset(privateScript, "chromium");

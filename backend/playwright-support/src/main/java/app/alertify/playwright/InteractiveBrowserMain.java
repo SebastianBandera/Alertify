@@ -49,6 +49,7 @@ public final class InteractiveBrowserMain implements AutoCloseable {
     private String activeEngine;
     private boolean capturing;
     private boolean maskEnabled = true;
+    private boolean shareUnmaskedWithAi;
     private JsonNode settings;
     private int completed;
     private String appliedSteps = "";
@@ -153,6 +154,7 @@ public final class InteractiveBrowserMain implements AutoCloseable {
                         throw new IllegalArgumentException("A boolean mask setting is required");
 
                     maskEnabled = payload.path("enabled").booleanValue();
+                    shareUnmaskedWithAi = !maskEnabled && payload.path("shareUnmaskedWithAi").asBoolean(false);
                     capture("");
                     result(request, Map.of("maskEnabled", maskEnabled));
                 }
@@ -434,8 +436,8 @@ public final class InteractiveBrowserMain implements AutoCloseable {
         try {
             rememberPasswords();
             publishUrl();
-            // Explicit captures are always protected; only the user's live view may opt out.
-            boolean masked = maskEnabled || !requestId.isEmpty();
+            // Only a user-authorized session setting can expose images to the assistant.
+            boolean masked = maskEnabled || (!requestId.isEmpty() && !shareUnmaskedWithAi);
             List<Locator> masks = new ArrayList<>();
             if (masked && !sensitive.isEmpty())
                 masks.addAll(protection.componentAndFoldedTextMasks(filter().base64Values()));
@@ -466,7 +468,7 @@ public final class InteractiveBrowserMain implements AutoCloseable {
         } catch (RuntimeException exception) {
             // No raw fallback: a failed mask/capture must never release an unprotected frame.
             if (!requestId.isEmpty())
-                throw new IllegalStateException("A protected screenshot could not be produced");
+                throw new IllegalStateException("A screenshot could not be produced");
         } finally {
             capturing = false;
         }

@@ -155,6 +155,17 @@ class InteractiveBrowserMainBrowserTest {
                     <nav style='display:none'><a href='/anep/autoridades'>Autoridades</a></nav><input type=password value='selector-private-canary'>
                     </body></html>
                     """ : path.equals("/shadow-controls") ? SHADOW_HTML : HTML;
+            if (path.equals("/coordinate-click")) html = """
+                    <!doctype html><html><body style="margin:0">
+                    <canvas id=surface width=1440 height=900 style="position:fixed;inset:0"></canvas>
+                    <button id=control style="position:fixed;left:10px;top:10px" onclick="document.querySelector('#button-count').textContent='1'">Control</button>
+                    <div style="position:fixed;left:300px;top:10px;pointer-events:none"><span id=coordinates>none</span><span id=canvas-count>0</span><span id=button-count>0</span></div>
+                    <script>let clicks=0;document.querySelector('#surface').onclick=event=>{
+                    document.querySelector('#coordinates').textContent=event.clientX+','+event.clientY;
+                    document.querySelector('#canvas-count').textContent=String(++clicks);};</script>
+                    </body></html>
+                    """;
+
             byte[] bytes = html.getBytes(StandardCharsets.UTF_8);
             exchange.sendResponseHeaders(once && count > 1 ? 410 : 200, bytes.length);
             exchange.getResponseBody().write(bytes);
@@ -166,6 +177,52 @@ class InteractiveBrowserMainBrowserTest {
 
     @AfterAll
     static void stopFixture() { if (server != null) server.stop(0); }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"chromium", "firefox", "webkit"})
+    void clicksCanvasPixelsPercentagesAndMixedUnitsWithoutChangingTheQuery(String engine) throws Exception {
+        try (var harness = new Harness()) {
+            String steps = """
+                    WAIT 1ms
+                    CLICK 720 450
+                    QUERY #coordinates
+                    CHECK TEXT 720,450
+                    CLICK 50% 50%
+                    CHECK TEXT 720,450
+                    QUERY #canvas-count
+                    CHECK TEXT 2
+                    CLICK 25% 450
+                    QUERY #coordinates
+                    CHECK TEXT 360,450
+                    CLICK 100% 100%
+                    QUERY #coordinates
+                    CHECK TEXT 1439,899
+                    QUERY #control
+                    CLICK 0% 100%
+                    USE
+                    QUERY #button-count
+                    CHECK TEXT 1
+                    """;
+            var payload = settings(engine, "/coordinate-click", steps);
+            harness.success("OPEN", payload);
+            var result = harness.success("EXECUTE", payload);
+            assertThat(result.path("completed").asInt()).isEqualTo(19);
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"chromium", "firefox", "webkit"})
+    void rejectsClicksOutsideTheViewportBeforeSendingMouseEvents(String engine) throws Exception {
+        try (var session = PlaywrightBrowserSession.open(BrowserEngine.valueOf(engine.toUpperCase(java.util.Locale.ROOT)))) {
+            session.navigate(origin + "/coordinate-click", 10_000);
+            for (double[] point : List.of(new double[]{-1, 0}, new double[]{1440, 450}, new double[]{720, 900}, new double[]{Double.NaN, 0}, new double[]{0, Double.POSITIVE_INFINITY}))
+                org.assertj.core.api.Assertions.assertThatThrownBy(() -> session.clickAt(point[0], point[1])).isInstanceOf(IllegalArgumentException.class);
+
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> session.clickAt(101, 50, true, true)).isInstanceOf(IllegalArgumentException.class);
+            assertThat(session.page().locator("#canvas-count").textContent()).isEqualTo("0");
+            assertThat(session.page().locator("#button-count").textContent()).isEqualTo("0");
+        }
+    }
 
     @ParameterizedTest
     @ValueSource(strings = {"chromium", "firefox", "webkit"})
@@ -228,7 +285,7 @@ class InteractiveBrowserMainBrowserTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"chromium", "firefox", "webkit"})
-    void manualViewMaskDoesNotDisableProtectedCapturesOrObservations(String engine) throws Exception {
+    void unmaskedAiCapturesRequireUserSharingAndRevocationRestoresProtection(String engine) throws Exception {
         try (var harness = new Harness()) {
             harness.success("OPEN", settings(engine, "/html", ""));
             assertMaskPixel(harness.request("SCREENSHOT", Map.of()), true);
@@ -236,14 +293,26 @@ class InteractiveBrowserMainBrowserTest {
             var live = harness.events.stream().map(Event::event).filter(event -> event.getType().equals("FRAME")).reduce((first, second) -> second).orElseThrow();
             assertThat(JSON.readTree(live.getJson()).path("masked").asBoolean()).isFalse();
             assertMaskPixel(live, false);
-            var capture = harness.request("SCREENSHOT", Map.of("enabled", false, "masked", false));
+            var capture = harness.request("SCREENSHOT", Map.of("enabled", false, "masked", false, "shareUnmaskedWithAi", true));
             assertThat(JSON.readTree(capture.getJson()).path("masked").asBoolean()).isTrue();
             assertMaskPixel(capture, true);
+            harness.success("SET_MASK", Map.of("enabled", false, "shareUnmaskedWithAi", true));
+            capture = harness.request("SCREENSHOT", Map.of());
+            assertThat(JSON.readTree(capture.getJson()).path("masked").asBoolean()).isFalse();
+            assertMaskPixel(capture, false);
             assertThat(harness.success("OBSERVE", Map.of()).toString()).doesNotContain("fixture-canary");
             harness.success("RESET", settings(engine, "/html", ""));
             harness.success("EXECUTE", settings(engine, "/html", "QUERY h1"));
             live = harness.events.stream().map(Event::event).filter(event -> event.getType().equals("FRAME")).reduce((first, second) -> second).orElseThrow();
             assertMaskPixel(live, false);
+            assertMaskPixel(harness.request("SCREENSHOT", Map.of()), false);
+            harness.success("SET_MASK", Map.of("enabled", false, "shareUnmaskedWithAi", false));
+            assertMaskPixel(harness.request("SCREENSHOT", Map.of()), true);
+            harness.success("SET_MASK", Map.of("enabled", false, "shareUnmaskedWithAi", true));
+            harness.success("SET_MASK", Map.of("enabled", true));
+            assertMaskPixel(harness.request("SCREENSHOT", Map.of()), true);
+            harness.success("SET_MASK", Map.of("enabled", false));
+            assertMaskPixel(harness.request("SCREENSHOT", Map.of()), true);
             harness.success("SET_MASK", Map.of("enabled", true));
             live = harness.events.stream().map(Event::event).filter(event -> event.getType().equals("FRAME")).reduce((first, second) -> second).orElseThrow();
             assertMaskPixel(live, true);

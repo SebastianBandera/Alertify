@@ -49,6 +49,7 @@ export interface WizardState {
   idleRemainingSeconds: number;
   attachmentReady: boolean;
   maskEnabled?: boolean;
+  shareUnmaskedWithAi?: boolean;
   restartRequired?: boolean;
   selection: { selector: string } | null;
   progress: { completed: number; line: number; phase?: string; engine?: string } | null;

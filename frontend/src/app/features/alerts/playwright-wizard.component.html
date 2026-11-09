@@ -48,6 +48,10 @@
           <label class="current-url">{{ t('currentUrl') }}<input type="text" readonly [value]="state()!.currentUrl ?? ''"></label>
           <label class="check mask-control"><input type="checkbox" [checked]="state()!.maskEnabled !== false" [disabled]="busy()" (change)="command('SET_MASK', { enabled: $any($event.target).checked })">{{ t('maskEnabled') }}</label>
           <small class="mask-help">{{ t('maskHelp') }}</small>
+          @if (state()!.maskEnabled === false) {
+            <label class="check ai-image-sharing"><input type="checkbox" [checked]="state()!.shareUnmaskedWithAi === true" [disabled]="busy()" (change)="command('SET_AI_IMAGE_SHARING', { enabled: $any($event.target).checked })">{{ t('shareUnmaskedWithAi') }}</label>
+            <small class="mask-help">{{ t('shareUnmaskedHelp') }}</small>
+          }
         }
         @if (state()!.open && !detached()) {
           <app-playwright-remote-view [draftId]="state()!.id" [disabled]="busy()" (elementSelected)="command('SELECT', $event)" (scrolled)="command('SCROLL', { delta: $event })" />
@@ -85,7 +89,7 @@
         }
         @if (attachment(); as capture) { <div class="attachment"><img [src]="capture" [alt]="t('capturePreview')"><button type="button" (click)="command('REMOVE_ATTACHMENT')">{{ t('removeCapture') }}</button></div> }
         <textarea rows="3" [ngModel]="message()" (ngModelChange)="message.set($event)" [placeholder]="t(awaitingApproval() ? 'proposalChatPlaceholder' : 'messagePlaceholder')" [attr.aria-label]="t('chat')" [disabled]="busy() || awaitingApproval()" (keydown.control.enter)="send()"></textarea>
-        <div class="actions"><button type="button" [disabled]="busy() || !state()!.open || state()!.maskEnabled === false || detached() || awaitingApproval()" (click)="attach()">{{ t('attach') }}</button><button type="button" class="primary" [disabled]="busy() || !state()!.open || !message().trim() || awaitingApproval()" (click)="send()">{{ t('send') }}</button></div>
+        <div class="actions"><button type="button" [disabled]="busy() || !state()!.open || (state()!.maskEnabled === false && state()!.shareUnmaskedWithAi !== true) || detached() || awaitingApproval()" (click)="attach()">{{ t('attach') }}</button><button type="button" class="primary" [disabled]="busy() || !state()!.open || !message().trim() || awaitingApproval()" (click)="send()">{{ t('send') }}</button></div>
         <small>{{ t('usage') }}: {{ state()!.tokens }} · {{ state()!.modelRequests }} {{ t('requests') }}</small>
       </section>
     </div>

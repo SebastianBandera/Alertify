@@ -1119,6 +1119,8 @@ export type TranslationKey =
   | 'alerts.wizard.redaction'
   | 'alerts.wizard.maskEnabled'
   | 'alerts.wizard.maskHelp'
+  | 'alerts.wizard.shareUnmaskedWithAi'
+  | 'alerts.wizard.shareUnmaskedHelp'
   | 'alerts.wizard.reference'
   | 'alerts.wizard.insertFill'
   | 'alerts.wizard.execute'
