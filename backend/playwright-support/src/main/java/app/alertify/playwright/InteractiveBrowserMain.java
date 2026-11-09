@@ -143,7 +143,7 @@ public final class InteractiveBrowserMain implements AutoCloseable {
                     result(request, Map.of("selector", sanitize(selector)));
                 }
                 case "SCROLL" -> {
-                    session.page().mouse().wheel(0, payload.path("delta").asDouble());
+                    session.scrollBy(0, payload.path("delta").asDouble());
                     snapshotId++;
                     result(request, Map.of("status", "READY"));
                 }

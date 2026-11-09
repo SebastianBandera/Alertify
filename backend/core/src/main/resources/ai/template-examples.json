@@ -337,6 +337,51 @@
     ]
   },
   {
+    "templateKey": "app.alertify.alerts.templates.PlaywrightPageAlertTemplate",
+    "name": "Flutter semantic DOM activation",
+    "description": "Activate a verified semantic button and check the destination URL.",
+    "text": {
+      "url": "http://app.example.test/flutter",
+      "steps": "ENABLE_ACCESSIBILITY\nWAIT_VISIBLE [role=button]:text-is(\"Access\") 10s\nQUERY [role=button]:text-is(\"Access\")\nDOM_CLICK\nCHECK URL **/login"
+    },
+    "bindings": {},
+    "notes": [
+      "Replace illustrative selectors and the destination URL with verified values. Prefer stable semantic role/name selectors over generated Flutter IDs.",
+      "DOM_CLICK takes no arguments and invokes native DOM activation without moving the mouse or checking pointer overlays. USE remains a physical click. Both target the current QUERY; DOM_CLICK requires exactly one visible enabled element and uses the element timeout.",
+      "A successful action alone does not prove navigation. Check a known destination and do not repeat an activation while loading. Approval and image sharing rules are unchanged."
+    ]
+  },
+  {
+    "templateKey": "app.alertify.alerts.templates.PlaywrightPageAlertTemplate",
+    "name": "Keyboard Enter activation",
+    "description": "Focus a verified button, press Enter and check navigation.",
+    "text": {
+      "url": "http://app.example.test/",
+      "steps": "WAIT_VISIBLE button#access 10s\nQUERY button#access\nPRESS Enter\nCHECK URL **/login"
+    },
+    "bindings": {},
+    "notes": [
+      "PRESS accepts exactly Enter. It focuses the current QUERY target, requires one visible enabled element, uses the element timeout and retains the selected locator.",
+      "Use Enter as an alternative to DOM_CLICK or USE, never as a second activation for the same navigation. Replace the illustrative selector and destination with verified values."
+    ]
+  },
+  {
+    "templateKey": "app.alertify.alerts.templates.PlaywrightPageAlertTemplate",
+    "name": "Scroll a canvas panel with repeatable pointer steps",
+    "description": "Position the mouse over a verified panel, scroll and wait for dynamic rendering before verifying its final control.",
+    "text": {
+      "url": "http://app.example.test/terms",
+      "steps": "MOVE 50% 50%\nSCROLL 0 100000\nWAIT 1s\nSCROLL 0 100000\nWAIT 1s\nWAIT_VISIBLE [role=button]:text-is(\"Continue\") 10s\nQUERY [role=button]:text-is(\"Continue\")\nCHECK COUNT = 1\nCHECK ENABLED"
+    },
+    "bindings": {},
+    "notes": [
+      "Coordinates and selectors are illustrative. Find the intended panel in a fresh screenshot under the current image sharing policy or use exact coordinates supplied by the user. Prefer HOVER on a verified DOM panel when available.",
+      "MOVE x y accepts the same CSS pixels, percentages and mixed units as CLICK; MOVE 720 450 and MOVE 50% 50% move to the center of the 1440x900 viewport without clicking. MOVE and SCROLL need no QUERY and preserve its current selection.",
+      "SCROLL deltaX deltaY sends signed finite decimal CSS pixel wheel deltas at the current pointer position. Positive X moves right, positive Y down; negative values move left/up. Percentages are not scroll deltas. SCROLL 0 -600 scrolls up.",
+      "Browsers may round fractional deltas or cap travel per wheel event, so a large delta does not guarantee reaching the bottom, even for static content. Wheel dispatch does not wait for scrolling or loading to finish. Combine SCROLL with condition waits or explicit WAIT as needed for dynamic loading, then verify a known final state. These steps do not accept terms or click Continue."
+    ]
+  },
+  {
     "templateKey": "app.alertify.alerts.templates.ResourceResultObserverAlertTemplate",
     "name": "PIPE execution observer",
     "description": "Observe terminal history of an existing resource without executing it.",

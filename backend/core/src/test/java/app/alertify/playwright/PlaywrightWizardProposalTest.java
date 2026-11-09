@@ -53,6 +53,49 @@ class PlaywrightWizardProposalTest {
     private WizardDraft draft;
     private Object session;
 
+    @ParameterizedTest
+    @ValueSource(strings = { "MOVE 50% 50%", "SCROLL 0 100000" })
+    void pointerNavigationRetainsApprovalWithoutPredictingSelectorsAfterScrolling(String action) throws Exception {
+        prepare("ASK");
+        String block = action + "\nWAIT 1s\nQUERY #revealed\nUSE";
+        var reply = steps(block);
+        assertThat(reply.getFailed()).isFalse();
+        assertThat(reply.getOutput()).contains("PENDING_APPROVAL");
+        assertThat(document().path("proposal").asString()).isEqualTo(block);
+        assertThat(selectorChecks).isEmpty();
+        assertThat(browserRequests).isEmpty();
+        prepare("AUTO");
+        assertThat(steps(block).getFailed()).isTrue();
+        assertThat(browserRequests).hasSize(1);
+        assertThat(ReflectionTestUtils.getField(session, "restartRequired")).isEqualTo(true);
+        steps(block);
+        assertThat(browserRequests).hasSize(1);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = { "DOM_CLICK", "PRESS Enter" })
+    void elementActivationsUseApprovalAndRejectAmbiguityBeforeDispatch(String action) throws Exception {
+        prepare("ASK");
+        String block = "QUERY #access\n" + action + "\nCHECK URL **/destination";
+        assertThat(steps(block).getOutput()).contains("PENDING_APPROVAL");
+        assertThat(document().path("proposal").asString()).isEqualTo(block);
+        assertThat(selectorChecks).containsExactly("#access");
+        assertThat(browserRequests).isEmpty();
+        for (String mode : List.of("ASK", "AUTO")) {
+            prepare(mode);
+            selectorReport = json.valueToTree(Map.of("visibleCount", 2, "ambiguous", true));
+            assertThat(steps(block).getDiagnosticCode()).isEqualTo("PLAYWRIGHT_SELECTOR_AMBIGUOUS");
+            assertThat(browserRequests).isEmpty();
+            assertThat(ReflectionTestUtils.getField(session, "restartRequired")).isEqualTo(false);
+        }
+        prepare("AUTO");
+        assertThat(steps(block).getFailed()).isTrue();
+        assertThat(browserRequests).hasSize(1);
+        assertThat(ReflectionTestUtils.getField(session, "restartRequired")).isEqualTo(true);
+        steps(block);
+        assertThat(browserRequests).hasSize(1);
+    }
+
     @Test
     void coordinateClickProposalsRetainApprovalAndDoNotCheckALaterPageSelector() throws Exception {
         prepare("ASK");
@@ -213,7 +256,7 @@ class PlaywrightWizardProposalTest {
         ReflectionTestUtils.invokeMethod(service, "chat", session, "Current request " + canary, "es-UY");
         assertThat(starts).hasSize(1);
         var start = starts.getFirst();
-        assertThat(start.getInstructions()).doesNotContain(canary).contains("/items/1", "[REDACTED]", "CLICK <x> <y>", "CLICK 50% 50%", "Flutter/canvas", "WAIT 10s");
+        assertThat(start.getInstructions()).doesNotContain(canary).contains("/items/1", "[REDACTED]", "CLICK <x> <y>", "CLICK 50% 50%", "Flutter/canvas", "WAIT 10s", "DOM_CLICK", "PRESS Enter", "exactly one visible enabled element", "Choose one activation", "MOVE <x> <y>", "SCROLL <deltaX> <deltaY>", "SCROLL 0 100000", "manual remote-view wheel operation is not saved");
         assertThat(start.getHistoryList()).allSatisfy(message -> assertThat(message.getContent()).doesNotContain(canary));
         assertThat(draft.getDocument()).doesNotContain(canary);
     }
