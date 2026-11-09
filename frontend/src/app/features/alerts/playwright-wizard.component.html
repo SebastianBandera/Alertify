@@ -28,6 +28,7 @@
         <button type="button" [disabled]="busy()" (click)="command('RESET')">{{ t('restart') }}</button>
       }
       <button type="button" class="primary" [disabled]="busy() || !state()!.open || !settings().browsers.length" (click)="command('TEST')">{{ t('test') }}</button>
+      @for (engine of testEngines; track engine) { <button type="button" [disabled]="busy() || !state()!.open" (click)="command('TEST', { testEngine: engine })">{{ t('test.' + engine) }}</button> }
       @if (state()!.open) {
         <button type="button" (click)="command('CANCEL')">{{ t('stop') }}</button>
         <span class="capacity">{{ t('capacity') }}</span>
@@ -157,9 +158,19 @@
     </section>
     <footer>
       <fieldset><legend>{{ t('testBrowsers') }}</legend>@for (browser of ['chromium', 'firefox', 'webkit']; track browser) { <label class="check"><input type="checkbox" [checked]="settings().browsers.includes(browser)" [disabled]="busy()" (change)="toggleBrowser(browser, $any($event.target).checked)">{{ browser }}</label> }</fieldset>
-      <div class="actions"><button type="button" class="primary" [disabled]="busy() || !state()!.open || !settings().browsers.length" (click)="command('TEST')">{{ t('test') }}</button><button type="button" class="primary" [disabled]="busy() || !canPrepare()" (click)="prepare()">{{ t(state()!.document.sourceAlert ? 'applyExisting' : 'prepare') }}</button><button type="button" [disabled]="busy()" (click)="prepare(true)">{{ t(state()!.document.sourceAlert ? 'applyExistingBypass' : 'bypass') }}</button></div>
+      <div class="actions"><button type="button" class="primary" [disabled]="busy() || !state()!.open || !settings().browsers.length" (click)="command('TEST')">{{ t('test') }}</button>@for (engine of testEngines; track engine) { <button type="button" [disabled]="busy() || !state()!.open" (click)="command('TEST', { testEngine: engine })">{{ t('test.' + engine) }}</button> }<button type="button" class="primary" [disabled]="busy() || !canPrepare()" (click)="prepare()">{{ t(state()!.document.sourceAlert ? 'applyExisting' : 'prepare') }}</button><button type="button" [disabled]="busy()" (click)="prepare(true)">{{ t(state()!.document.sourceAlert ? 'applyExistingBypass' : 'bypass') }}</button></div>
+      <section class="test-report validation-report" [class.passed]="canPrepare()" aria-live="polite">
+        <strong>{{ t(canPrepare() ? 'validationComplete' : 'validationPending') }}</strong>
+        <p>{{ t('validationHelp') }}</p>
+        @for (row of validationRows(); track row.engine) {
+          <div class="validation-row" [attr.data-engine]="row.engine">
+            <p><strong>{{ row.label }}</strong> · {{ t(row.required ? 'validationRequired' : 'validationOptional') }} · {{ row.running ? t('validationRunning') : row.result ? (row.result.passed ? 'SUCCESS' : 'FAIL') : t('validationUntested') }}@if (row.result) { · {{ row.result.completed }} {{ t('completed') }} · <time [attr.datetime]="row.result.testedAt">{{ row.result.testedAt }}</time> }</p>
+            @if (row.result?.error) { <p>{{ row.result!.error }}</p> }
+          </div>
+        }
+      </section>
       @if (state()!.document.testReport; as report) {
-        <div class="test-report" [class.passed]="report.passed && canPrepare()" role="status"><strong>{{ t(canPrepare() ? 'testPassed' : 'testRequired') }}</strong>@for (result of report.browsers; track result.browser) { <p>{{ result.browser }}: {{ result.passed ? 'SUCCESS' : 'FAIL' }} · {{ result.completed }} {{ t('completed') }} @if (result.error) { · {{ result.error }} }</p> }</div>
+        <div class="test-report latest-test-report" [class.passed]="report.passed" role="status"><strong>{{ t('latestTest') }} · {{ report.passed ? 'SUCCESS' : 'FAIL' }}</strong>@for (result of report.browsers; track result.browser) { <p>{{ browserLabel(result.browser) }}: {{ result.passed ? 'SUCCESS' : 'FAIL' }} · {{ result.completed }} {{ t('completed') }} @if (result.error) { · {{ result.error }} }</p> }</div>
       }
     </footer>
   }

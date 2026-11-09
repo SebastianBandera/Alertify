@@ -92,6 +92,58 @@ describe('PlaywrightWizardComponent', () => {
     fixture.detectChanges();
   }
 
+  it('starts each individual clean test without changing the configured browsers', async () => {
+    current.document.settings.browsers = ['chromium', 'firefox', 'webkit'];
+    harness.update(structuredClone(current));
+    fixture.detectChanges();
+    for (const engine of ['chromium', 'firefox', 'webkit']) {
+      button('test.' + engine).click();
+      await fixture.whenStable();
+      expect(request).toHaveBeenCalledWith('TEST', expect.objectContaining({ testEngine: engine }));
+      expect(harness.settings().browsers).toEqual(['chromium', 'firefox', 'webkit']);
+    }
+    current.busy = true;
+    harness.update(structuredClone(current));
+    fixture.detectChanges();
+    expect(button('test.firefox').disabled).toBe(true);
+    current.busy = false;
+    current.open = false;
+    harness.update(structuredClone(current));
+    fixture.detectChanges();
+    expect(button('test.webkit').disabled).toBe(true);
+  });
+
+  it('separates the latest individual success from accumulated validation and hides evidence for edited scripts', () => {
+    current.document.settings.browsers = ['chromium', 'firefox', 'webkit'];
+    current.document.testValidation = { revision: 'r1', results: { chromium: { passed: true, completed: 5, testedAt: '2026-11-09T10:00:00Z' } } };
+    current.document.testReport = { passed: true, browsers: [{ browser: 'chromium', passed: true, completed: 5 }] };
+    harness.update(structuredClone(current));
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.validation-report').textContent).toContain('validationPending');
+    expect(fixture.nativeElement.querySelector('.latest-test-report').textContent).toContain('SUCCESS');
+    expect(fixture.nativeElement.querySelector('[data-engine=firefox]').textContent).toContain('validationUntested');
+    expect(fixture.nativeElement.querySelector('[data-engine=chromium]').textContent).toContain('SUCCESS');
+    harness.settings.set({ ...harness.settings(), steps: 'QUERY changed' });
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-engine=chromium]').textContent).toContain('validationUntested');
+  });
+
+  it('shows accumulated success independently of a failed optional browser and marks targeted tests as running', () => {
+    current.document.testValidation = { revision: 'r1', results: { chromium: { passed: true, completed: 1, testedAt: '2026-11-09T10:00:00Z' }, firefox: { passed: false, completed: 0, testedAt: '2026-11-09T10:01:00Z', error: 'Synthetic failure' } } };
+    current.document.testedRevision = 'approved';
+    current.document.testReport = { passed: false, browsers: [{ browser: 'firefox', passed: false, completed: 0 }] };
+    harness.update(structuredClone(current));
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.validation-report').textContent).toContain('validationComplete');
+    expect(fixture.nativeElement.querySelector('[data-engine=firefox]').textContent).toContain('validationOptional');
+    expect(fixture.nativeElement.querySelector('.latest-test-report').textContent).toContain('FAIL');
+    current.busy = true;
+    current.document.lastAction = { operation: 'TEST', status: 'RUNNING', at: 'now', result: { requestedBrowsers: ['firefox'] } };
+    harness.update(structuredClone(current));
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-engine=firefox]').textContent).toContain('validationRunning');
+  });
+
   it('marks command states without counting comments, blanks or a pending proposal', async () => {
     await showProgress();
     expect(fixture.nativeElement.querySelectorAll('.step-line-status')).toHaveLength(4);

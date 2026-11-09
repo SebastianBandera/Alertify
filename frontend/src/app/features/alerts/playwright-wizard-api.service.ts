@@ -37,7 +37,8 @@ export interface WizardState {
     proposalError?: { diagnosticCode: string; phase: 'VALIDATION'; status: 'FAILED'; error: string; executed: false; retryable: boolean; remainingCorrections: number; at: string };
     validationError?: string;
     testedRevision?: string;
-    lastAction?: { operation: string; status?: 'RUNNING' | 'SUCCESS' | 'FAILED'; error?: string; at: string; result?: { completed?: number; failedLine?: number; failedCommand?: string; failureCode?: string } };
+    lastAction?: { operation: string; status?: 'RUNNING' | 'SUCCESS' | 'FAILED'; error?: string; at: string; result?: { completed?: number; failedLine?: number; failedCommand?: string; failureCode?: string; requestedBrowsers?: string[] } };
+    testValidation?: { revision: string; results: Record<string, { passed: boolean; completed: number; testedAt: string; error?: string }> };
     testReport?: { passed: boolean; browsers: { browser: string; passed: boolean; completed: number; error?: string }[] };
   };
   open: boolean;

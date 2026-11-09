@@ -33,6 +33,21 @@ export class PlaywrightWizardComponent implements OnInit {
   private readonly clientId = crypto.randomUUID();
   protected readonly state = signal<WizardState | null>(null);
   protected readonly activeBrowser = computed(() => playwrightBrowserLabel(this.state()?.activeEngine));
+  protected readonly testEngines = ['chromium', 'firefox', 'webkit'] as const;
+  protected readonly browserLabel = playwrightBrowserLabel;
+  protected readonly validationRows = computed(() => {
+    const state = this.state();
+    const saved = state?.document.settings;
+    const current = this.settings();
+    const sameSubject = saved && normalizeWizardUrl(current.url) === normalizeWizardUrl(saved.url) && current.steps === saved.steps
+      && current.loadTimeoutSeconds === saved.loadTimeoutSeconds && current.elementTimeoutSeconds === saved.elementTimeoutSeconds;
+    return this.testEngines.map(engine => ({
+      engine, label: playwrightBrowserLabel(engine), required: this.settings().browsers.includes(engine),
+      result: sameSubject ? state?.document.testValidation?.results[engine] : undefined,
+      running: state?.busy && state.document.lastAction?.operation === 'TEST' && state.document.lastAction.status === 'RUNNING'
+        && !!state.document.lastAction.result?.requestedBrowsers?.includes(engine),
+    }));
+  });
   protected readonly parameterBindings = computed(() => Object.entries(this.state()?.document.parameterBindings ?? {}).map(([parameter, binding]) => ({ parameter, ...binding })));
   protected linked(parameter: string): boolean { return !!this.state()?.document.parameterBindings?.[parameter]; }
   protected readonly stateError = computed(() => {

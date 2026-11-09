@@ -53,6 +53,99 @@ class PlaywrightWizardProposalTest {
     private WizardDraft draft;
     private Object session;
 
+    @Test
+    @SuppressWarnings("unchecked")
+    void individualCleanTestsAccumulateWithoutChangingTheAlertMatrixAndFailedRetestsReplaceOnlyTheirEngine() throws Exception {
+        prepareReplay("", null);
+        var settings = (tools.jackson.databind.node.ObjectNode) document().path("settings");
+        settings.set("browsers", json.valueToTree(List.of("chromium", "firefox", "webkit")));
+        var doc = (tools.jackson.databind.node.ObjectNode) document();
+        doc.set("settings", settings);
+        draft.update(json.writeValueAsString(doc));
+        var failing = new java.util.HashSet<String>();
+        StreamObserver<WizardRequest> browser = mock(StreamObserver.class);
+        doAnswer(invocation -> {
+            WizardRequest request = invocation.getArgument(0);
+            browserRequests.add(request);
+            JsonNode payload = json.readTree(request.getJson());
+            var engines = payload.path("browsers").valueStream().map(JsonNode::asString).toList();
+            var results = engines.stream().map(engine -> Map.of("browser", engine, "passed", !failing.contains(engine), "completed", 1)).toList();
+            var pending = (ConcurrentMap<String, CompletableFuture<WizardEvent>>) ReflectionTestUtils.getField(session, "pending");
+            pending.get(request.getRequestId()).complete(WizardEvent.newBuilder().setType("RESULT").setJson(json.writeValueAsString(Map.of("passed", engines.stream().noneMatch(failing::contains), "browsers", results, "activeEngine", engines.getLast()))).build());
+            return null;
+        }).when(browser).onNext(any());
+        ReflectionTestUtils.setField(session, "requests", browser);
+        var auth = new UsernamePasswordAuthenticationToken("admin-subject", "", List.of(new SimpleGrantedAuthority("ROLE_ADMIN")));
+        for (String engine : List.of("chromium", "firefox", "webkit")) {
+            service.request(auth, json.valueToTree(Map.of("operation", "TEST", "id", draft.getId(), "clientId", "browser-a", "testEngine", engine)));
+            awaitOperation();
+            assertThat(document().path("testValidation").path("results").path(engine).path("passed").asBoolean()).isTrue();
+            assertThat(document().path("settings").path("browsers").size()).isEqualTo(3);
+            assertThat(document().path("settings").path("engine").asString()).isEqualTo(engine);
+            assertThat(json.readTree(browserRequests.getLast().getJson()).path("browsers").valueStream().map(JsonNode::asString)).containsExactly(engine);
+            assertThat(document().has("testedRevision")).isEqualTo(engine.equals("webkit"));
+        }
+        failing.add("firefox");
+        service.request(auth, json.valueToTree(Map.of("operation", "TEST", "id", draft.getId(), "clientId", "browser-a", "testEngine", "firefox")));
+        awaitOperation();
+        assertThat(document().has("testedRevision")).isFalse();
+        assertThat(document().path("testValidation").path("results").path("webkit").path("passed").asBoolean()).isTrue();
+        var changed = (tools.jackson.databind.node.ObjectNode) document().path("settings");
+        changed.set("browsers", json.valueToTree(List.of("chromium", "webkit")));
+        service.request(auth, json.valueToTree(Map.of("operation", "SAVE", "id", draft.getId(), "clientId", "browser-a", "settings", changed)));
+        assertThat(document().has("testedRevision")).isTrue();
+        assertThat(document().path("testValidation").path("results").size()).isEqualTo(3);
+        assertThat(json.valueToTree(service.request(auth, json.valueToTree(Map.of("operation", "PREPARE", "id", draft.getId(), "clientId", "browser-a")))).path("settings").path("browsers").size()).isEqualTo(2);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void fullTestsRemainSupportedAndTransportFailuresRevokeOnlyTheRequestedEngine() throws Exception {
+        prepareReplay("", null);
+        var doc = (tools.jackson.databind.node.ObjectNode) document();
+        ((tools.jackson.databind.node.ObjectNode) doc.path("settings")).set("browsers", json.valueToTree(List.of("chromium", "firefox")));
+        draft.update(json.writeValueAsString(doc));
+        var transportFailure = new java.util.concurrent.atomic.AtomicBoolean();
+        StreamObserver<WizardRequest> browser = mock(StreamObserver.class);
+        doAnswer(invocation -> {
+            WizardRequest request = invocation.getArgument(0);
+            browserRequests.add(request);
+            var pending = (ConcurrentMap<String, CompletableFuture<WizardEvent>>) ReflectionTestUtils.getField(session, "pending");
+            if (transportFailure.get()) pending.get(request.getRequestId()).completeExceptionally(new IllegalStateException("Synthetic transport failure"));
+            else {
+                var engines = json.readTree(request.getJson()).path("browsers").valueStream().map(JsonNode::asString).toList();
+                var results = engines.stream().map(engine -> Map.of("browser", engine, "passed", true, "completed", 1)).toList();
+                pending.get(request.getRequestId()).complete(WizardEvent.newBuilder().setType("RESULT").setJson(json.writeValueAsString(Map.of("passed", true, "browsers", results, "activeEngine", engines.getLast()))).build());
+            }
+            return null;
+        }).when(browser).onNext(any());
+        ReflectionTestUtils.setField(session, "requests", browser);
+        requestOperation("TEST");
+        awaitOperation();
+        assertThat(json.readTree(browserRequests.getLast().getJson()).path("browsers").valueStream().map(JsonNode::asString)).containsExactly("chromium", "firefox");
+        assertThat(document().has("testedRevision")).isTrue();
+        transportFailure.set(true);
+        var auth = new UsernamePasswordAuthenticationToken("admin-subject", "", List.of(new SimpleGrantedAuthority("ROLE_ADMIN")));
+        service.request(auth, json.valueToTree(Map.of("operation", "TEST", "id", draft.getId(), "clientId", "browser-a", "testEngine", "firefox")));
+        awaitOperation();
+        assertThat(document().path("testValidation").path("results").path("chromium").path("passed").asBoolean()).isTrue();
+        assertThat(document().path("testValidation").path("results").path("firefox").path("passed").asBoolean()).isFalse();
+        assertThat(document().has("testedRevision")).isFalse();
+        assertThat(document().path("testReport").path("browsers").size()).isEqualTo(1);
+        assertThat(document().path("lastAction").path("status").asString()).isEqualTo("FAILED");
+    }
+
+    @Test
+    void invalidTestEnginesAreRejectedBeforeResolvingValuesOrStartingABrowserOperation() throws Exception {
+        prepareReplay("", null);
+        var auth = new UsernamePasswordAuthenticationToken("admin-subject", "", List.of(new SimpleGrantedAuthority("ROLE_ADMIN")));
+        for (Object engine : List.of("invalid", "", 1, List.of("firefox")))
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.request(auth, json.valueToTree(Map.of("operation", "TEST", "id", draft.getId(), "clientId", "browser-a", "testEngine", engine)))).hasMessageContaining("Invalid test browser");
+
+        assertThat(browserRequests).isEmpty();
+        verifyNoInteractions(values);
+    }
+
     @ParameterizedTest
     @ValueSource(strings = { "MOVE 50% 50%", "SCROLL 0 100000" })
     void pointerNavigationRetainsApprovalWithoutPredictingSelectorsAfterScrolling(String action) throws Exception {
