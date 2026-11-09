@@ -101,6 +101,9 @@ fieldset.procedure-values { display: block; min-width: 0; margin: 22px 0 0; padd
 .test-report { padding: 12px; border-radius: 8px; background: #fffaeb; color: #93370d; font-size: 12px; }
 .test-report.passed { background: #ecfdf3; color: #027a48; }
 .test-report p { margin-top: 5px; }
+.validation-row { margin-top: 10px; }
+.validation-row time { overflow-wrap: anywhere; }
+.latest-test-report { margin-top: 12px; }
 .drafts { display: grid; gap: 10px; margin-top: 12px; }
 .drafts button { display: grid; gap: 5px; text-align: left; overflow-wrap: anywhere; }
 @media (max-width: 1000px) { .workspace { grid-template-columns: 1fr; } .settings { grid-template-columns: repeat(2, minmax(0, 1fr)); } .settings .url { grid-column: 1 / -1; } }

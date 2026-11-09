@@ -74,6 +74,43 @@ class WizardScriptProgressTest {
     }
 
     @Test
+    void tracksCoordinateClicksAlongsideFlutterAccessibilityWithoutExposingArguments() {
+        String coordinates = "# note\nCLICK 50% 50%\nENABLE_ACCESSIBILITY\nQUERY h1\nCHECK TEXT Ready";
+        progress.reset(coordinates, "chromium");
+        assertThat(snapshot(coordinates).commandLines()).containsExactly(2, 3, 4, 5);
+        progress.accept(json.valueToTree(Map.of("phase", "STARTED", "engine", "chromium", "completed", 0, "line", 0, "commandLines", List.of(2, 3, 4, 5))));
+        progress.accept(json.valueToTree(Map.of("phase", "COMPLETED", "engine", "chromium", "completed", 1, "line", 2)));
+        var state = snapshot(coordinates);
+        assertThat(state.status()).isEqualTo("READY");
+        assertThat(state.completed()).isEqualTo(1);
+        assertThat(json.writeValueAsString(state)).doesNotContain("CLICK", "50%", "ENABLE_ACCESSIBILITY");
+    }
+
+    @Test
+    void tracksElementActivationsAndTheirFailureByPhysicalLine() {
+        String activation = "# comment\nQUERY button\nDOM_CLICK\nPRESS Enter";
+        progress.reset(activation, "chromium");
+        assertThat(snapshot(activation).commandLines()).containsExactly(2, 3, 4);
+        progress.accept(json.valueToTree(Map.of("phase", "STARTED", "engine", "chromium", "completed", 0, "line", 0, "commandLines", List.of(2, 3, 4))));
+        progress.accept(json.valueToTree(Map.of("phase", "FAILED", "engine", "chromium", "completed", 2, "line", 4)));
+        assertThat(snapshot(activation).failedLine()).isEqualTo(4);
+        assertThat(snapshot(activation).completed()).isEqualTo(2);
+        assertThat(json.writeValueAsString(snapshot(activation))).doesNotContain("DOM_CLICK", "PRESS", "Enter");
+    }
+
+    @Test
+    void tracksSavedMouseMovementAndWheelCommandsWithoutExposingOperands() {
+        String navigation = "# comment\nMOVE 50% 50%\nSCROLL 0 100000\nWAIT 1s\nSCROLL 0 -600";
+        progress.reset(navigation, "chromium");
+        assertThat(snapshot(navigation).commandLines()).containsExactly(2, 3, 4, 5);
+        progress.accept(json.valueToTree(Map.of("phase", "STARTED", "engine", "chromium", "completed", 0, "line", 0, "commandLines", List.of(2, 3, 4, 5))));
+        progress.accept(json.valueToTree(Map.of("phase", "FAILED", "engine", "chromium", "completed", 3, "line", 5)));
+        assertThat(snapshot(navigation).failedLine()).isEqualTo(5);
+        assertThat(snapshot(navigation).completed()).isEqualTo(3);
+        assertThat(json.writeValueAsString(snapshot(navigation))).doesNotContain("MOVE", "SCROLL", "100000", "600");
+    }
+
+    @Test
     void exposesOnlyMetadataAndHandlesMissingSessionsLinkedScriptsAndInvalidDrafts() {
         String privateScript = "QUERY input\nCHECK ATTRIBUTE data-private fixture-private-canary";
         progress.reset(privateScript, "chromium");

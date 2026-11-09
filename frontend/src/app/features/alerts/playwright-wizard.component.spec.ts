@@ -50,7 +50,8 @@ describe('PlaywrightWizardComponent', () => {
     request = vi.fn(async (operation: string, payload?: Record<string, unknown>) => {
       if (operation === 'LIST') return [];
       if (operation === 'SAVE') current.document.settings = structuredClone(payload!['settings'] as WizardSettings);
-      if (operation === 'SET_MASK') current = { ...current, maskEnabled: payload!['enabled'] as boolean, attachmentReady: false };
+      if (operation === 'SET_MASK') current = { ...current, maskEnabled: payload!['enabled'] as boolean, shareUnmaskedWithAi: false, attachmentReady: false };
+      if (operation === 'SET_AI_IMAGE_SHARING') current = { ...current, shareUnmaskedWithAi: payload!['enabled'] as boolean, attachmentReady: false };
       if (operation === 'APPROVE' || operation === 'REJECT') {
         const next = structuredClone(current);
         if (operation === 'APPROVE') next.document.settings.steps = next.document.proposal!;
@@ -90,6 +91,58 @@ describe('PlaywrightWizardComponent', () => {
     await fixture.whenStable();
     fixture.detectChanges();
   }
+
+  it('starts each individual clean test without changing the configured browsers', async () => {
+    current.document.settings.browsers = ['chromium', 'firefox', 'webkit'];
+    harness.update(structuredClone(current));
+    fixture.detectChanges();
+    for (const engine of ['chromium', 'firefox', 'webkit']) {
+      button('test.' + engine).click();
+      await fixture.whenStable();
+      expect(request).toHaveBeenCalledWith('TEST', expect.objectContaining({ testEngine: engine }));
+      expect(harness.settings().browsers).toEqual(['chromium', 'firefox', 'webkit']);
+    }
+    current.busy = true;
+    harness.update(structuredClone(current));
+    fixture.detectChanges();
+    expect(button('test.firefox').disabled).toBe(true);
+    current.busy = false;
+    current.open = false;
+    harness.update(structuredClone(current));
+    fixture.detectChanges();
+    expect(button('test.webkit').disabled).toBe(true);
+  });
+
+  it('separates the latest individual success from accumulated validation and hides evidence for edited scripts', () => {
+    current.document.settings.browsers = ['chromium', 'firefox', 'webkit'];
+    current.document.testValidation = { revision: 'r1', results: { chromium: { passed: true, completed: 5, testedAt: '2026-11-09T10:00:00Z' } } };
+    current.document.testReport = { passed: true, browsers: [{ browser: 'chromium', passed: true, completed: 5 }] };
+    harness.update(structuredClone(current));
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.validation-report').textContent).toContain('validationPending');
+    expect(fixture.nativeElement.querySelector('.latest-test-report').textContent).toContain('SUCCESS');
+    expect(fixture.nativeElement.querySelector('[data-engine=firefox]').textContent).toContain('validationUntested');
+    expect(fixture.nativeElement.querySelector('[data-engine=chromium]').textContent).toContain('SUCCESS');
+    harness.settings.set({ ...harness.settings(), steps: 'QUERY changed' });
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-engine=chromium]').textContent).toContain('validationUntested');
+  });
+
+  it('shows accumulated success independently of a failed optional browser and marks targeted tests as running', () => {
+    current.document.testValidation = { revision: 'r1', results: { chromium: { passed: true, completed: 1, testedAt: '2026-11-09T10:00:00Z' }, firefox: { passed: false, completed: 0, testedAt: '2026-11-09T10:01:00Z', error: 'Synthetic failure' } } };
+    current.document.testedRevision = 'approved';
+    current.document.testReport = { passed: false, browsers: [{ browser: 'firefox', passed: false, completed: 0 }] };
+    harness.update(structuredClone(current));
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.validation-report').textContent).toContain('validationComplete');
+    expect(fixture.nativeElement.querySelector('[data-engine=firefox]').textContent).toContain('validationOptional');
+    expect(fixture.nativeElement.querySelector('.latest-test-report').textContent).toContain('FAIL');
+    current.busy = true;
+    current.document.lastAction = { operation: 'TEST', status: 'RUNNING', at: 'now', result: { requestedBrowsers: ['firefox'] } };
+    harness.update(structuredClone(current));
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-engine=firefox]').textContent).toContain('validationRunning');
+  });
 
   it('marks command states without counting comments, blanks or a pending proposal', async () => {
     await showProgress();
@@ -180,14 +233,33 @@ describe('PlaywrightWizardComponent', () => {
     fixture.destroy();
   });
 
-  it('blocks attachments while the view is unmasked and locks its control during operations', () => {
+  it('requires explicit image sharing to attach an unmasked view and locks controls during operations', async () => {
     delete current.document.proposal;
+    current.maskEnabled = false;
     harness.update({ ...structuredClone(current), maskEnabled: false });
     fixture.detectChanges();
     expect(button('attach').disabled).toBe(true);
+    request.mockClear();
+    const sharing = fixture.nativeElement.querySelector('.ai-image-sharing input') as HTMLInputElement;
+    expect(sharing.checked).toBe(false);
+    sharing.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(request).toHaveBeenCalledExactlyOnceWith('SET_AI_IMAGE_SHARING', expect.objectContaining({ enabled: true }));
+    expect(button('attach').disabled).toBe(false);
+    request.mockClear();
+    sharing.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(request).toHaveBeenCalledExactlyOnceWith('SET_AI_IMAGE_SHARING', expect.objectContaining({ enabled: false }));
+    expect(button('attach').disabled).toBe(true);
+    harness.update({ ...structuredClone(current), maskEnabled: false, shareUnmaskedWithAi: true, busy: true });
+    fixture.detectChanges();
+    expect((fixture.nativeElement.querySelector('.ai-image-sharing input') as HTMLInputElement).disabled).toBe(true);
     harness.update({ ...structuredClone(current), maskEnabled: true });
     fixture.detectChanges();
     expect(button('attach').disabled).toBe(false);
+    expect(fixture.nativeElement.querySelector('.ai-image-sharing')).toBeNull();
     harness.update({ ...structuredClone(current), busy: true });
     fixture.detectChanges();
     expect((fixture.nativeElement.querySelector('.mask-control input') as HTMLInputElement).disabled).toBe(true);

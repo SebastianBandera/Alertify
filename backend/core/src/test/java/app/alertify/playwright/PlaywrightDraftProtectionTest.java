@@ -47,7 +47,7 @@ class PlaywrightDraftProtectionTest {
 
     @Test
     void preservesShortValuesInReferencesNumericOperandsSelectorsAndRevisionMetadata() {
-        String steps = "CALL PROCEDURE \"Procedure1\" POINTER \"/items/1\" AS code1\nQUERY #field1\nFILL vars.code1\nFILL SECRET \"Secret1\" POINTER \"/username\"\nCHECK COUNT = 1\nWAIT 1s\nWAIT_VISIBLE #field1 10s";
+        String steps = "CALL PROCEDURE \"Procedure1\" POINTER \"/items/1\" AS code1\nQUERY #field1\nFILL vars.code1\nFILL SECRET \"Secret1\" POINTER \"/username\"\nCHECK COUNT = 1\nWAIT 1s\nWAIT_VISIBLE #field1 10s\nCLICK 1 1%";
         var document = (tools.jackson.databind.node.ObjectNode) document(steps, "QUERY #field1\nCHECK COUNT >= 1");
         document.put("testedRevision", "ab1234").put("proposalRevision", "hash1").put("proposalClient", "browser1");
         var safe = PlaywrightWizardService.protectedDraft(document, List.of("1"));

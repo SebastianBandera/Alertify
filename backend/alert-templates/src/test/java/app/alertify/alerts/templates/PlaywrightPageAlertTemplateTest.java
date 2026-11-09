@@ -108,6 +108,16 @@ class PlaywrightPageAlertTemplateTest {
     }
 
     @Test
+    void coordinateClickFailuresDoNotPersistTheirArguments() throws Exception {
+        var result = template("https://example.test", "CLICK 123.25 456.75", new FakeBrowserSession()).evaluate(new AlertExecutionContext());
+        assertEquals(AlertExecutionStatus.WARN, result.status());
+        assertEquals("CLICK", browserResult(result, 0).get("failedCommand"));
+        assertEquals(1, browserResult(result, 0).get("failedLine"));
+        assertFalse(result.statusMessage().toString().contains("123.25"));
+        assertFalse(result.statusMessage().toString().contains("456.75"));
+    }
+
+    @Test
     void parsesEveryV1CommandAndKeepsConditionalTimeoutAfterTheSelector() {
         List<PlaywrightPageAlertTemplate.Command> commands = PlaywrightPageAlertTemplate.parseCommands("""
             # complete language sample

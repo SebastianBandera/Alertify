@@ -48,6 +48,8 @@ public class PlaywrightPageEngine implements AlertEvaluator {
     private static final Pattern DURATION = Pattern.compile("^(\\d+)(ms|s)$", Pattern.CASE_INSENSITIVE);
     private static final Pattern SELECTOR_TIMEOUT = Pattern.compile("^(.*\\S)\\s+(\\d+(?:ms|s))$", Pattern.CASE_INSENSITIVE);
     private static final Pattern COUNT_CHECK = Pattern.compile("^(=|!=|>=|<=|>|<)\\s+(\\d+)$");
+    private static final Pattern POINTER_COORDINATES = Pattern.compile("^(\\d+(?:\\.\\d+)?%?)\\s+(\\d+(?:\\.\\d+)?%?)$");
+    private static final Pattern SCROLL_DELTAS = Pattern.compile("^([+-]?\\d+(?:\\.\\d+)?)\\s+([+-]?\\d+(?:\\.\\d+)?)$");
     private static final long POLL_INTERVAL_MILLIS = 50;
 
     private final String url;
@@ -189,6 +191,28 @@ public class PlaywrightPageEngine implements AlertEvaluator {
                     currentElement = true;
                 }
                 case "USE" -> command = currentCommand(lineNumber, CommandType.USE, arguments, currentElement);
+                case "DOM_CLICK" -> command = currentCommand(lineNumber, CommandType.DOM_CLICK, arguments, currentElement);
+                case "PRESS" -> {
+                    requireCurrent(currentElement, lineNumber, keyword);
+                    if (!arguments.equals("Enter"))
+                        throw lineError(lineNumber, "PRESS requires Enter: PRESS Enter");
+
+                    command = command(lineNumber, CommandType.PRESS, "Enter");
+                }
+                case "CLICK", "MOVE" -> {
+                    Matcher coordinates = POINTER_COORDINATES.matcher(arguments);
+                    if (!coordinates.matches() || !validCoordinate(coordinates.group(1)) || !validCoordinate(coordinates.group(2)))
+                        throw lineError(lineNumber, keyword + " requires two finite non-negative pixel coordinates or percentages from 0% to 100%: " + keyword + " x y");
+
+                    command = new Command(lineNumber, CommandType.valueOf(keyword), coordinates.group(1), coordinates.group(2), 0, null, 0, null);
+                }
+                case "SCROLL" -> {
+                    Matcher deltas = SCROLL_DELTAS.matcher(arguments);
+                    if (!deltas.matches() || !Double.isFinite(Double.parseDouble(deltas.group(1))) || !Double.isFinite(Double.parseDouble(deltas.group(2))))
+                        throw lineError(lineNumber, "SCROLL requires two finite signed pixel deltas: SCROLL deltaX deltaY");
+
+                    command = new Command(lineNumber, CommandType.SCROLL, deltas.group(1), deltas.group(2), 0, null, 0, null);
+                }
                 case "DOUBLE_USE" -> command = currentCommand(lineNumber, CommandType.DOUBLE_USE, arguments, currentElement);
                 case "HOVER" -> command = currentCommand(lineNumber, CommandType.HOVER, arguments, currentElement);
                 case "FOCUS" -> command = currentCommand(lineNumber, CommandType.FOCUS, arguments, currentElement);
@@ -328,6 +352,15 @@ public class PlaywrightPageEngine implements AlertEvaluator {
         return new Command(lineNumber, CommandType.WAIT, null, null, parseDurationMillis(duration, lineNumber), null, 0, null);
     }
 
+    private static double coordinateValue(String value) {
+        return Double.parseDouble(value.endsWith("%") ? value.substring(0, value.length() - 1) : value);
+    }
+
+    private static boolean validCoordinate(String value) {
+        double coordinate = coordinateValue(value);
+        return Double.isFinite(coordinate) && (!value.endsWith("%") || coordinate <= 100);
+    }
+
     private static Command selectorWaitCommand(int lineNumber, CommandType type, String arguments) {
         String configured = requireArgument(arguments, lineNumber, type.name());
         Matcher matcher = SELECTOR_TIMEOUT.matcher(configured);
@@ -363,6 +396,11 @@ public class PlaywrightPageEngine implements AlertEvaluator {
         switch (command.type()) {
             case QUERY -> session.query(command.first(), elementTimeoutMillis);
             case USE -> session.click(elementTimeoutMillis);
+            case DOM_CLICK -> session.domClick(elementTimeoutMillis);
+            case PRESS -> session.pressEnter(elementTimeoutMillis);
+            case CLICK -> session.clickAt(coordinateValue(command.first()), coordinateValue(command.second()), command.first().endsWith("%"), command.second().endsWith("%"));
+            case MOVE -> session.moveTo(coordinateValue(command.first()), coordinateValue(command.second()), command.first().endsWith("%"), command.second().endsWith("%"));
+            case SCROLL -> session.scrollBy(Double.parseDouble(command.first()), Double.parseDouble(command.second()));
             case DOUBLE_USE -> session.doubleClick(elementTimeoutMillis);
             case HOVER -> session.hover(elementTimeoutMillis);
             case FOCUS -> session.focus(elementTimeoutMillis);
@@ -550,6 +588,11 @@ public class PlaywrightPageEngine implements AlertEvaluator {
     public enum CommandType {
         QUERY,
         USE,
+        DOM_CLICK,
+        PRESS,
+        CLICK,
+        MOVE,
+        SCROLL,
         DOUBLE_USE,
         HOVER,
         FOCUS,
@@ -658,6 +701,17 @@ public class PlaywrightPageEngine implements AlertEvaluator {
         String url();
         void query(String selector, long timeoutMillis);
         void click(long timeoutMillis);
+        default void domClick(long timeoutMillis) { throw new UnsupportedOperationException("DOM clicks are not supported by this browser session"); }
+        default void pressEnter(long timeoutMillis) { throw new UnsupportedOperationException("Enter is not supported by this browser session"); }
+        default void moveTo(double x, double y, boolean percentageX, boolean percentageY) { throw new UnsupportedOperationException("Coordinate moves are not supported by this browser session"); }
+        default void scrollBy(double deltaX, double deltaY) { throw new UnsupportedOperationException("Scrolling is not supported by this browser session"); }
+        default void clickAt(double x, double y) { throw new UnsupportedOperationException("Coordinate clicks are not supported by this browser session"); }
+        default void clickAt(double x, double y, boolean percentageX, boolean percentageY) {
+            if (percentageX || percentageY)
+                throw new UnsupportedOperationException("Percentage clicks are not supported by this browser session");
+
+            clickAt(x, y);
+        }
         void doubleClick(long timeoutMillis);
         void hover(long timeoutMillis);
         void focus(long timeoutMillis);
@@ -771,6 +825,63 @@ public class PlaywrightPageEngine implements AlertEvaluator {
         @Override
         public void click(long timeoutMillis) {
             current.click(new Locator.ClickOptions().setTimeout((double) timeoutMillis));
+        }
+
+        @Override
+        public void domClick(long timeoutMillis) {
+            long remaining = waitForCurrentEnabled(timeoutMillis);
+            // Fixed activation only: script authors cannot supply JavaScript. Resolve the
+            // strict visible locator once for this action; never retry the click itself.
+            current.evaluate("element => HTMLElement.prototype.click.call(element)", null, new Locator.EvaluateOptions().setTimeout((double) remaining));
+        }
+
+        @Override
+        public void pressEnter(long timeoutMillis) {
+            long remaining = waitForCurrentEnabled(timeoutMillis);
+            current.press("Enter", new Locator.PressOptions().setTimeout((double) remaining));
+        }
+
+        private long waitForCurrentEnabled(long timeoutMillis) {
+            long deadline = System.nanoTime() + Math.multiplyExact(timeoutMillis, 1_000_000);
+            current.waitFor(new Locator.WaitForOptions().setState(WaitForSelectorState.VISIBLE).setTimeout((double) timeoutMillis));
+            check(this::currentEnabled, Math.max(1, (deadline - System.nanoTime()) / 1_000_000));
+            return Math.max(1, (deadline - System.nanoTime()) / 1_000_000);
+        }
+
+        @Override
+        public void clickAt(double x, double y) {
+            clickAt(x, y, false, false);
+        }
+
+        @Override
+        public void clickAt(double x, double y, boolean percentageX, boolean percentageY) {
+            double[] position = pointerPosition(x, y, percentageX, percentageY, "CLICK");
+            page.mouse().click(position[0], position[1]);
+        }
+
+        @Override
+        public void moveTo(double x, double y, boolean percentageX, boolean percentageY) {
+            double[] position = pointerPosition(x, y, percentageX, percentageY, "MOVE");
+            page.mouse().move(position[0], position[1]);
+        }
+
+        @Override
+        public void scrollBy(double deltaX, double deltaY) {
+            if (!Double.isFinite(deltaX) || !Double.isFinite(deltaY))
+                throw new IllegalArgumentException("SCROLL requires finite pixel deltas");
+
+            page.mouse().wheel(deltaX, deltaY);
+        }
+
+        private double[] pointerPosition(double x, double y, boolean percentageX, boolean percentageY, String command) {
+            var viewport = page.viewportSize();
+            if (viewport == null || !Double.isFinite(x) || !Double.isFinite(y) || x < 0 || y < 0
+                    || (percentageX ? x > 100 : x >= viewport.width) || (percentageY ? y > 100 : y >= viewport.height))
+                throw new IllegalArgumentException(command + " coordinates must be inside the current viewport");
+
+            double pixelX = percentageX ? Math.min(x / 100 * viewport.width, viewport.width - 1) : x;
+            double pixelY = percentageY ? Math.min(y / 100 * viewport.height, viewport.height - 1) : y;
+            return new double[]{pixelX, pixelY};
         }
 
         @Override

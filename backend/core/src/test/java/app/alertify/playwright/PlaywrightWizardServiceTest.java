@@ -173,7 +173,9 @@ class PlaywrightWizardServiceTest {
     void savingUnchangedSettingsPreservesThePendingProposalAndSuccessfulTest() {
         var admin = new UsernamePasswordAuthenticationToken("admin-subject", "", List.of(new SimpleGrantedAuthority("ROLE_ADMIN")));
         var settings = new PlaywrightWizardService.Settings("https://example.com/", "QUERY h1", "chromium", List.of("chromium"), 10, 5, "ASK");
-        var document = json.valueToTree(Map.of("settings", settings, "messages", List.of(), "proposal", "QUERY #menu\nHOVER", "proposalRevision", "original-revision", "proposalClient", "browser-a", "testedRevision", "passing-revision"));
+        String testedRevision = org.springframework.test.util.ReflectionTestUtils.invokeMethod(service, "revision", settings);
+        var document = json.valueToTree(Map.of("settings", settings, "messages", List.of(), "proposal", "QUERY #menu\nHOVER", "proposalRevision", "original-revision", "proposalClient", "browser-a", "testedRevision", testedRevision,
+                "testReport", Map.of("passed", true, "activeEngine", "chromium", "browsers", List.of(Map.of("browser", "chromium", "passed", true, "completed", 1)))));
         var draft = new WizardDraft("admin-subject", json.writeValueAsString(document));
         when(store.load("admin-subject", draft.getId())).thenReturn(draft);
         var payload = json.createObjectNode().put("operation", "SAVE").put("id", draft.getId().toString()).put("clientId", "browser-a");
@@ -181,7 +183,10 @@ class PlaywrightWizardServiceTest {
         service.request(admin, payload);
         var saved = org.mockito.ArgumentCaptor.forClass(String.class);
         org.mockito.Mockito.verify(store).save(org.mockito.ArgumentMatchers.eq("admin-subject"), org.mockito.ArgumentMatchers.eq(draft.getId()), saved.capture());
-        assertThat(json.readTree(saved.getValue())).isEqualTo(document);
+        var updated = (tools.jackson.databind.node.ObjectNode) json.readTree(saved.getValue());
+        assertThat(updated.path("testValidation").path("results").path("chromium").path("passed").asBoolean()).isTrue();
+        updated.remove("testValidation");
+        assertThat(updated).isEqualTo(document);
     }
 
     @Test
@@ -204,6 +209,48 @@ class PlaywrightWizardServiceTest {
     }
 
     @Test
+    void cleanTestEvidenceTracksExecutionInputsButSurvivesInteractiveAndBrowserSelectionChanges() {
+        var plans = mock(WizardAlertPlanService.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "alertPlans", plans);
+        when(plans.stamp(org.mockito.ArgumentMatchers.any())).thenReturn("source-v1");
+        var settings = new PlaywrightWizardService.Settings("https://fixture.test/", "QUERY h1", "chromium", List.of("chromium"), 10, 5, "ASK");
+        var original = json.createObjectNode();
+        original.set("settings", json.valueToTree(settings));
+        original.set("parameterBindings", json.valueToTree(Map.of("url", Map.of("source", "CONFIG", "id", 1))));
+        original.set("allowedProcedureIds", json.valueToTree(List.of(7L)));
+        org.springframework.test.util.ReflectionTestUtils.invokeMethod(service, "refreshValidation", original);
+        WizardTestValidation.record((tools.jackson.databind.node.ObjectNode) original.path("testValidation"), json.valueToTree(Map.of("browsers", List.of(Map.of("browser", "chromium", "passed", true, "completed", 1)))));
+        org.springframework.test.util.ReflectionTestUtils.invokeMethod(service, "refreshValidation", original);
+        assertThat(original.has("testedRevision")).isTrue();
+
+        var selection = original.deepCopy();
+        selection.set("settings", json.valueToTree(new PlaywrightWizardService.Settings(settings.url(), settings.steps(), "firefox", List.of("chromium", "webkit"), 10, 5, "AUTO")));
+        org.springframework.test.util.ReflectionTestUtils.invokeMethod(service, "refreshValidation", selection);
+        assertThat(selection.path("testValidation")).isEqualTo(original.path("testValidation"));
+        assertThat(selection.has("testedRevision")).isFalse();
+
+        for (var changed : List.of(
+                new PlaywrightWizardService.Settings("https://other.test/", settings.steps(), "chromium", settings.browsers(), 10, 5, "ASK"),
+                settings.withSteps("QUERY h2"),
+                new PlaywrightWizardService.Settings(settings.url(), settings.steps(), "chromium", settings.browsers(), 11, 5, "ASK"),
+                new PlaywrightWizardService.Settings(settings.url(), settings.steps(), "chromium", settings.browsers(), 10, 6, "ASK"))) {
+            var document = original.deepCopy();
+            document.set("settings", json.valueToTree(changed));
+            org.springframework.test.util.ReflectionTestUtils.invokeMethod(service, "refreshValidation", document);
+            assertThat(document.path("testValidation").path("results").isEmpty()).isTrue();
+            assertThat(document.has("testedRevision")).isFalse();
+        }
+        var permissionChange = original.deepCopy();
+        permissionChange.set("allowedProcedureIds", json.valueToTree(List.of(8L)));
+        org.springframework.test.util.ReflectionTestUtils.invokeMethod(service, "refreshValidation", permissionChange);
+        assertThat(permissionChange.path("testValidation").path("results").isEmpty()).isTrue();
+        when(plans.stamp(org.mockito.ArgumentMatchers.any())).thenReturn("source-v2");
+        org.springframework.test.util.ReflectionTestUtils.invokeMethod(service, "refreshValidation", original);
+        assertThat(original.path("testValidation").path("results").isEmpty()).isTrue();
+        assertThat(original.has("testedRevision")).isFalse();
+    }
+
+    @Test
     void savingClientSettingsNeverAcceptsAForgedPassingTest() {
         var admin = new UsernamePasswordAuthenticationToken("admin-subject", "", List.of(new SimpleGrantedAuthority("ROLE_ADMIN")));
         var settings = new PlaywrightWizardService.Settings("https://example.com/", "", "chromium", List.of("chromium"), 10, 5, "ASK");
@@ -212,6 +259,7 @@ class PlaywrightWizardServiceTest {
         var settingsNode = json.valueToTree(settings);
         var payload = json.createObjectNode().put("operation", "SAVE").put("id", draft.getId().toString()).put("clientId", "browser-a").put("testedRevision", "forged");
         payload.set("settings", settingsNode);
+        payload.set("testValidation", json.valueToTree(Map.of("revision", "forged", "results", Map.of("chromium", Map.of("passed", true)))));
         service.request(admin, payload);
         org.mockito.Mockito.verify(store).save(org.mockito.ArgumentMatchers.eq("admin-subject"), org.mockito.ArgumentMatchers.eq(draft.getId()), org.mockito.ArgumentMatchers.argThat(value -> !value.contains("forged")));
     }
