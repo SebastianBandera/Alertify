@@ -11,7 +11,12 @@
           @if (!card.enabled) { <span class="pipe-disabled">{{ t('disabled') }}</span> }
         </div>
         <div class="pipe-header-actions">
-          <small>{{ counts(card) }}</small>
+          <div class="pipe-header-summary">
+            @if (card.execution?.status !== 'RUNNING' && card.execution?.finishedAt; as finishedAt) {
+              <time class="alert-card__time pipe-execution-time" [attr.datetime]="finishedAt" [title]="finishedAt">{{ time.relativeTime(finishedAt) }}</time>
+            }
+            <small>{{ counts(card) }}</small>
+          </div>
           <button type="button" class="pipe-kebab" aria-haspopup="menu" [attr.aria-expanded]="menu()?.id === card.id" [attr.aria-label]="t('options') + ' ' + card.name" (click)="openMenu($event, card)">⋮</button>
         </div>
         @if (card.tags.length || (card.execution && card.execution.pipeVersion !== card.version) || live.muted()[card.id]) {

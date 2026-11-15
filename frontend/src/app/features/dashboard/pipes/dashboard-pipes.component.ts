@@ -9,6 +9,7 @@ import { ApiRequestError } from '../../../core/api/configuration-api.service';
 import { RUNTIME_CONFIG } from '../../../core/config/runtime-config';
 import { LocalizationService } from '../../../core/i18n/localization.service';
 import { DashboardViewSettings, DEFAULT_VIEW_SETTINGS } from '../dashboard-view-settings';
+import { DashboardTimeService } from '../dashboard-time.service';
 import { DashboardPipeCard, DashboardPipeStep, pipeState } from './dashboard-pipe';
 import { DashboardPipeLiveService } from './dashboard-pipe-live.service';
 
@@ -36,6 +37,7 @@ export class DashboardPipesComponent {
   protected readonly live = inject(DashboardPipeLiveService);
   protected readonly localization = inject(LocalizationService);
   protected readonly auth = inject(AuthService);
+  protected readonly time = inject(DashboardTimeService);
   private readonly api = inject(PipeApiService);
   private readonly messages = inject(AlertMessageService);
   private readonly router = inject(Router);

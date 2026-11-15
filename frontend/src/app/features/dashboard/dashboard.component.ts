@@ -40,6 +40,7 @@ import { DashboardPipeLiveService } from './pipes/dashboard-pipe-live.service';
 import { DashboardDeck } from './dashboard-deck';
 import { DashboardChange, DashboardLiveService } from './dashboard-live.service';
 import { DashboardMuteService } from './dashboard-mute.service';
+import { DashboardTimeService } from './dashboard-time.service';
 import { CardState, hasVisibleTag, readStoredViewSettings, storeViewSettings } from './dashboard-view-settings';
 import { DashboardConnectionOverlayComponent } from './connection-overlay/dashboard-connection-overlay.component';
 import { DashboardRibbonComponent } from './ribbon/dashboard-ribbon.component';
@@ -138,6 +139,7 @@ const TRIGGER_LABEL_KEYS: Readonly<Record<ExecutionTrigger, TranslationKey>> = {
 @Component({
   selector: 'app-dashboard',
   imports: [DashboardPipesComponent, AlertChartComponent, DatePipe, FormsModule, NgTemplateOutlet, DragScrollDirective, DashboardRibbonComponent, DashboardConnectionOverlayComponent],
+  providers: [DashboardTimeService],
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -154,6 +156,7 @@ export class DashboardComponent {
   private readonly sessionActions = inject(SessionActionsService);
   private readonly alertApi = inject(AlertApiService);
   private readonly alertMessages = inject(AlertMessageService);
+  private readonly time = inject(DashboardTimeService);
   protected readonly mute = inject(DashboardMuteService);
   protected readonly isAdmin = this.authService.isAdmin;
   protected readonly canRunFromDashboard = this.authService.canRunFromDashboard;
@@ -810,24 +813,6 @@ export class DashboardComponent {
   }
 
   protected relativeTime(timestamp: string): string {
-    const elapsedSeconds = Math.floor(Math.max(0, Date.now() - Date.parse(timestamp)) / 1_000);
-    let value: number;
-    let unit: Intl.RelativeTimeFormatUnit;
-    if (elapsedSeconds < 60) {
-      value = elapsedSeconds;
-      unit = 'second';
-    } else if (elapsedSeconds < 3_600) {
-      value = Math.floor(elapsedSeconds / 60);
-      unit = 'minute';
-    } else if (elapsedSeconds < 86_400) {
-      value = Math.floor(elapsedSeconds / 3_600);
-      unit = 'hour';
-    } else {
-      value = Math.floor(elapsedSeconds / 86_400);
-      unit = 'day';
-    }
-
-    return new Intl.RelativeTimeFormat(this.localization.locale(), { numeric: 'always' })
-      .format(-value, unit);
+    return this.time.relativeTime(timestamp);
   }
 }
