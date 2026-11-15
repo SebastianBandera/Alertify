@@ -158,7 +158,7 @@ class PlaywrightDraftProtectionTest {
                 .isInstanceOf(PlaywrightDraftProtection.SensitiveContentFailure.class)
                 .hasMessageContaining(PlaywrightDraftProtection.CODE)
                 .satisfies(failure -> assertThat(failure.getMessage()).doesNotContain(sensitive.toArray(String[]::new)));
-        assertThat(original.toString()).isEqualTo(unchanged);
+        assertThat(original).hasToString(unchanged);
     }
 
     private static JsonNode document(String steps, String proposal) {

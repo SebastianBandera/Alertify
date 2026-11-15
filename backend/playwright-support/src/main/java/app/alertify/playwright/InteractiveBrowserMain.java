@@ -75,11 +75,8 @@ public final class InteractiveBrowserMain implements AutoCloseable {
     }
 
     public static void main(String[] arguments) throws Exception {
-        InteractiveBrowserMain browser = new InteractiveBrowserMain();
-        try {
+        try (InteractiveBrowserMain browser = new InteractiveBrowserMain()) {
             browser.run();
-        } finally {
-            browser.close();
         }
     }
 

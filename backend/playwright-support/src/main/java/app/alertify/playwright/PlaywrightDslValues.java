@@ -36,10 +36,11 @@ public final class PlaywrightDslValues {
     }
 
     private static int quotedEnd(String value, int start) {
-        for (int index = start + 1; index < value.length(); index++) {
-            char character = value.charAt(index);
+        int index = start + 1;
+        while (index < value.length()) {
+            char character = value.charAt(index++);
             if (character == '\\') index++;
-            else if (character == '"') return index + 1;
+            else if (character == '"') return index;
         }
 
         throw new IllegalArgumentException("Invalid command syntax");

@@ -116,26 +116,27 @@ final class PlaywrightDraftProtection {
             if (end == selector.length()) {
                 incomplete = true;
                 index++;
-                continue;
+            } else {
+                String token = selector.substring(index, end + 1);
+                check(decodeQuotedLiteral(token), location);
+                index = end + 1;
             }
-            String token = selector.substring(index, end + 1);
-            check(decodeQuotedLiteral(token), location);
-            index = end + 1;
         }
         if (incomplete) check(selector, location);
     }
 
     private static String decodeQuotedLiteral(String token) {
         try { return token.charAt(0) == '"' ? JSON.readTree(token).asString() : decodeCss(token.substring(1, token.length() - 1)); }
-        catch (RuntimeException failure) { return decodeCss(token.substring(1, token.length() - 1)); }
+        catch (RuntimeException _) { return decodeCss(token.substring(1, token.length() - 1)); }
     }
 
     /** Each delimiter's closing cursor only advances, including recovery from an unfinished outer quote. */
     private static int closingQuote(String text, char quote, int from) {
-        for (int index = from; index < text.length(); index++) {
-            char character = text.charAt(index);
+        int index = from;
+        while (index < text.length()) {
+            char character = text.charAt(index++);
             if (character == '\\') index++;
-            else if (character == quote) return index;
+            else if (character == quote) return index - 1;
         }
         return text.length();
     }
