@@ -2158,6 +2158,7 @@ export const ES_UY_TRANSLATIONS = {
   'ai.chat.error.turnActive': 'Esta conversación ya está procesando otro mensaje.',
   'ai.chat.tools.title': 'herramientas',
   'ai.chat.tools.latest': 'Última herramienta',
+  'ai.chat.tools.mayModify': 'Puede modificar',
   'ai.chat.tools.arguments': 'Argumentos',
   'ai.chat.tools.result': 'Resultado',
   'ai.chat.tools.reviewReason': 'Motivo de revisión',

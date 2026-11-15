@@ -111,6 +111,78 @@ describe('AiChatComponent', () => {
     fixture.destroy();
   });
 
+  it.each(['SUCCEEDED', 'FAILED', 'REJECTED'])('marks modifying tools in mixed %s history without emphasizing the group', async (status) => {
+    const fixture = TestBed.createComponent(AiChatComponent);
+    fixture.componentRef.setInput('popout', true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const harness = fixture.componentInstance as unknown as ComponentHarness;
+    harness.selected.set({ ...conversation(1, 'ACTIVE'), turns: [{ ...turn(7, 'COMPLETED'), tools: [
+      tool(1, status, '2026-10-11T10:00:01Z'),
+      { ...tool(2, status, '2026-10-11T10:00:02Z'), readOnly: false },
+    ] }] });
+    fixture.detectChanges();
+    const group = fixture.nativeElement.querySelector('.ai-chat__tools') as HTMLDetailsElement;
+    const entries = group.querySelectorAll('.ai-chat__tool');
+    expect(group.className).toBe('ai-chat__tools');
+    expect(entries[0].querySelector('.ai-chat__write-label')).toBeNull();
+    expect(entries[0].classList.contains('ai-chat__tool--writable')).toBe(false);
+    expect(entries[1].classList.contains('ai-chat__tool--writable')).toBe(true);
+    expect(entries[1].querySelector('summary .ai-chat__write-label')?.textContent).toBe('ai.chat.tools.mayModify');
+    expect(group.querySelector('.ai-chat__latest-tool--writable .ai-chat__write-label')?.textContent).toBe('ai.chat.tools.mayModify');
+    expect(group.open).toBe(false);
+    fixture.destroy();
+  });
+
+  it('updates modifying emphasis when the latest live tool becomes read-only', async () => {
+    const fixture = TestBed.createComponent(AiChatComponent);
+    fixture.componentRef.setInput('popout', true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const harness = fixture.componentInstance as unknown as ComponentHarness;
+    const modifying = { ...tool(1, 'RUNNING', '2026-10-11T10:00:01Z'), readOnly: false };
+    const detail = { ...conversation(1, 'ACTIVE'), turns: [{ ...turn(7, 'RUNNING'), tools: [modifying] }] };
+    harness.selected.set(detail);
+    fixture.detectChanges();
+    const group = fixture.nativeElement.querySelector('.ai-chat__tools') as HTMLDetailsElement;
+    expect(group.querySelector('.ai-chat__latest-tool--writable')).not.toBeNull();
+    group.querySelector('summary')!.click();
+    harness.selected.set({ ...detail, turns: [{ ...turn(7, 'RUNNING'), tools: [
+      { ...modifying, status: 'SUCCEEDED' }, tool(2, 'RUNNING', '2026-10-11T10:00:02Z'),
+    ] }] });
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.ai-chat__tools')).toBe(group);
+    expect(group.open).toBe(true);
+    expect(group.querySelector('.ai-chat__latest-tool--writable')).toBeNull();
+    expect(group.querySelector('.ai-chat__latest-tool .ai-chat__write-label')).toBeNull();
+    expect(group.querySelectorAll('.ai-chat__tool--writable')).toHaveLength(1);
+    fixture.destroy();
+  });
+
+  it.each([false, true])('marks pending modifying approval in popout=%s while keeping controls available', async (popout) => {
+    const fixture = TestBed.createComponent(AiChatComponent);
+    fixture.componentRef.setInput('popout', popout);
+    const harness = fixture.componentInstance as unknown as ComponentHarness;
+    harness.open.set(true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const detail = { ...conversation(1, 'ACTIVE'), turns: [{ ...turn(7, 'WAITING_APPROVAL'), tools: [
+      { ...tool(1, 'PENDING_APPROVAL'), readOnly: false },
+    ] }] };
+    harness.selected.set(detail);
+    fixture.detectChanges();
+    const approval = fixture.nativeElement.querySelector('.ai-chat__approval') as HTMLElement;
+    expect(approval.classList.contains('ai-chat__approval--writable')).toBe(true);
+    expect(approval.querySelector('.ai-chat__write-label')?.textContent).toBe('ai.chat.tools.mayModify');
+    expect(approval.closest('details')).toBeNull();
+    expect(approval.querySelectorAll('button')).toHaveLength(2);
+    harness.selected.set({ ...detail, turns: [{ ...turn(7, 'WAITING_APPROVAL'), tools: [tool(1, 'PENDING_APPROVAL')] }] });
+    fixture.detectChanges();
+    expect(approval.classList.contains('ai-chat__approval--writable')).toBe(false);
+    expect(approval.querySelector('.ai-chat__write-label')).toBeNull();
+    fixture.destroy();
+  });
+
   it('updates the latest tool and its status without opening a collapsed group', async () => {
     const fixture = TestBed.createComponent(AiChatComponent);
     fixture.componentRef.setInput('popout', true);

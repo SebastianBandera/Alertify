@@ -116,12 +116,12 @@
             <summary>
               <span>{{ toolGroupSummary(item.tools) }}</span>
               @if (item.tools.at(-1); as latest) {
-                <span class="ai-chat__latest-tool">{{ localization.translateDynamic('ai.chat.tools.latest') }}: <code>{{ latest.toolName }}</code> · {{ toolStatus(latest.status) }}</span>
+                <span class="ai-chat__latest-tool" [class.ai-chat__latest-tool--writable]="latest.readOnly === false">{{ localization.translateDynamic('ai.chat.tools.latest') }}: <code>{{ latest.toolName }}</code> · {{ toolStatus(latest.status) }}@if (latest.readOnly === false) { <span class="ai-chat__write-label">{{ localization.translateDynamic('ai.chat.tools.mayModify') }}</span> }</span>
               }
             </summary>
             @for (tool of item.tools; track tool.id) {
-              <details class="ai-chat__tool">
-                <summary><code>{{ tool.toolName }}</code> <span>{{ toolStatus(tool.status) }}</span></summary>
+              <details class="ai-chat__tool" [class.ai-chat__tool--writable]="tool.readOnly === false">
+                <summary><code>{{ tool.toolName }}</code> <span>{{ toolStatus(tool.status) }}</span>@if (tool.readOnly === false) { <span class="ai-chat__write-label">{{ localization.translateDynamic('ai.chat.tools.mayModify') }}</span> }</summary>
                 <dl>
                   <dt>{{ localization.translateDynamic('ai.chat.tools.approval') }}</dt><dd>{{ toolApprovalDecision(tool) }}</dd>
                   @if (tool.approvalActorType) {
@@ -153,9 +153,10 @@
             }
           </details>
         } @else if (item.kind === 'approval') {
-          <article class="ai-chat__approval">
+          <article class="ai-chat__approval" [class.ai-chat__approval--writable]="item.tool.readOnly === false">
             <strong>{{ localization.translateDynamic('ai.chat.approvalRequired') }}</strong>
             <code>{{ item.tool.toolName }}</code>
+            @if (item.tool.readOnly === false) { <span class="ai-chat__write-label">{{ localization.translateDynamic('ai.chat.tools.mayModify') }}</span> }
             <pre>{{ toolContent(item.tool.arguments) }}</pre>
             <div>
               <button type="button" [disabled]="busy() || windows.transferring() || !chatAvailable()" (click)="approve(item.tool)">{{ localization.translateDynamic('ai.chat.approve') }}</button>

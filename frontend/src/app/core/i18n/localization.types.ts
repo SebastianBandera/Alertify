@@ -2150,6 +2150,7 @@ export type TranslationKey =
   | 'ai.chat.error.turnActive'
   | 'ai.chat.tools.title'
   | 'ai.chat.tools.latest'
+  | 'ai.chat.tools.mayModify'
   | 'ai.chat.tools.arguments'
   | 'ai.chat.tools.result'
   | 'ai.chat.tools.reviewReason'

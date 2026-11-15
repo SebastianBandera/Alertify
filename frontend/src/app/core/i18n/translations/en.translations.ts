@@ -2157,6 +2157,7 @@ export const EN_TRANSLATIONS = {
   'ai.chat.error.turnActive': 'This conversation is already processing another message.',
   'ai.chat.tools.title': 'tools',
   'ai.chat.tools.latest': 'Latest tool',
+  'ai.chat.tools.mayModify': 'May modify',
   'ai.chat.tools.arguments': 'Arguments',
   'ai.chat.tools.result': 'Result',
   'ai.chat.tools.reviewReason': 'Review reason',
