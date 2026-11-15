@@ -13,11 +13,11 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
-import { AlertTag } from '../../../core/api/alert-api.service';
 import { LocalizationService } from '../../../core/i18n/localization.service';
 import { TranslationKey } from '../../../core/i18n/localization.types';
 import { DragScrollDirective } from '../../../shared/drag-scroll/drag-scroll.directive';
 import { CARD_STATE_ORDER, CardState, DashboardViewSettings } from '../dashboard-view-settings';
+import { DashboardTagGroup, tagGroupVisibility, toggleTagGroup } from '../dashboard-tags';
 
 type RibbonMenu = 'states' | 'tags' | 'advanced';
 type AdvancedOption = 'ungroupGreens' | 'minified' | 'flatGreens' | 'hideIgnored';
@@ -51,17 +51,14 @@ export class DashboardRibbonComponent {
   protected readonly localization = inject(LocalizationService);
   private readonly injector = inject(Injector);
   readonly settings = model.required<DashboardViewSettings>();
-  readonly tags = input.required<readonly AlertTag[]>();
+  readonly tags = input.required<readonly DashboardTagGroup[]>();
   readonly searchText = model.required<string>();
   protected readonly openMenu = signal<RibbonMenu | null>(null);
   protected readonly searchOpen = signal(false);
   protected readonly states = CARD_STATE_ORDER;
   protected readonly advancedOptions = ADVANCED_OPTIONS;
   protected readonly visibleStateCount = computed(() => this.states.length - this.settings().hiddenStates.length);
-  protected readonly visibleTagCount = computed(() => {
-    const hidden = new Set(this.settings().hiddenTagIds);
-    return this.tags().filter((tag) => !hidden.has(tag.id)).length;
-  });
+  protected readonly visibleTagCount = computed(() => this.tags().filter(tag => this.tagVisibility(tag) === true).length);
   protected readonly activeAdvancedCount = computed(() =>
     this.advancedOptions.filter((option) => this.settings()[option.key]).length);
   private readonly searchInput = viewChild<ElementRef<HTMLInputElement>>('searchInput');
@@ -87,17 +84,12 @@ export class DashboardRibbonComponent {
     }));
   }
 
-  protected isTagVisible(tag: AlertTag): boolean {
-    return !this.settings().hiddenTagIds.includes(tag.id);
+  protected tagVisibility(tag: DashboardTagGroup): boolean | 'mixed' {
+    return tagGroupVisibility(tag, this.settings());
   }
 
-  protected toggleTag(tag: AlertTag): void {
-    this.settings.update((settings) => ({
-      ...settings,
-      hiddenTagIds: settings.hiddenTagIds.includes(tag.id)
-        ? settings.hiddenTagIds.filter((hidden) => hidden !== tag.id)
-        : [...settings.hiddenTagIds, tag.id],
-    }));
+  protected toggleTag(tag: DashboardTagGroup): void {
+    this.settings.update(settings => toggleTagGroup(tag, settings));
   }
 
   protected toggleAdvanced(option: AdvancedOption): void {

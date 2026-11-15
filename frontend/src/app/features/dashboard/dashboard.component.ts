@@ -19,7 +19,7 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 
 import { AlertMessageService } from '../../core/alert-messages/alert-message.service';
-import { AlertApiService, AlertExecution, AlertExecutionStatus, AlertTag } from '../../core/api/alert-api.service';
+import { AlertApiService, AlertExecution, AlertExecutionStatus } from '../../core/api/alert-api.service';
 import { ApiRequestError } from '../../core/api/configuration-api.service';
 import { AuthService } from '../../core/auth/auth.service';
 import { SessionActionsService } from '../../core/auth/session-actions.service';
@@ -41,7 +41,8 @@ import { DashboardDeck } from './dashboard-deck';
 import { DashboardChange, DashboardLiveService } from './dashboard-live.service';
 import { DashboardMuteService } from './dashboard-mute.service';
 import { DashboardTimeService } from './dashboard-time.service';
-import { CardState, hasVisibleTag, readStoredViewSettings, storeViewSettings } from './dashboard-view-settings';
+import { CardState, readStoredViewSettings, storeViewSettings } from './dashboard-view-settings';
+import { groupDashboardTags, hasVisibleTags } from './dashboard-tags';
 import { DashboardConnectionOverlayComponent } from './connection-overlay/dashboard-connection-overlay.component';
 import { DashboardRibbonComponent } from './ribbon/dashboard-ribbon.component';
 
@@ -171,18 +172,16 @@ export class DashboardComponent {
   protected readonly sortedCards = computed(() => [...this.cards()].sort((left, right) => compareDashboardCards(left, right, this.pendingOf)));
   protected readonly settings = signal(readStoredViewSettings());
   protected readonly searchText = signal('');
-  protected readonly availableTags = computed<readonly AlertTag[]>(() => {
-    const tags = new Map<number, AlertTag>();
-    for (const card of this.cards()) for (const tag of card.alert.tags) tags.set(tag.id, tag);
-    for (const card of this.pipeLive.cards()) for (const tag of card.tags) tags.set(tag.id, { ...tag, scope: 'ALERT' });
-    return [...tags.values()].sort((left, right) => left.name.localeCompare(right.name));
-  });
+  protected readonly availableTags = computed(() => groupDashboardTags([
+    ...this.cards().flatMap(card => card.alert.tags),
+    ...this.pipeLive.cards().flatMap(card => card.tags),
+  ]));
   protected readonly visibleCards = computed(() => {
-    const { hiddenStates, hiddenTagIds } = this.settings();
+    const settings = this.settings();
     const searchTerms = this.normalizeSearch(this.searchText()).split(' ').filter(Boolean);
     return this.sortedCards().filter((card) =>
-      !hiddenStates.includes(this.cardState(card))
-      && hasVisibleTag(card, hiddenTagIds)
+      !settings.hiddenStates.includes(this.cardState(card))
+      && hasVisibleTags(card.alert.tags, settings)
       && this.matchesSearch(card, searchTerms));
   });
   /* Ignored and silenced alerts leave the regular flow and always close the board as their own deck. */

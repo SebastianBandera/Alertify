@@ -11,7 +11,8 @@ import { AdminEventChannelService } from '../../core/realtime/admin-event-channe
 import { ViewerEventChannelService } from '../../core/realtime/viewer-event-channel.service';
 import { DashboardAlertCard } from './dashboard-card';
 import { DashboardMuteService } from './dashboard-mute.service';
-import { hasVisibleTag, readStoredViewSettings } from './dashboard-view-settings';
+import { readStoredViewSettings } from './dashboard-view-settings';
+import { hasVisibleTags } from './dashboard-tags';
 
 const PAGE_SIZE = 12;
 const PAGE_REQUEST = 'DASHBOARD_PAGE';
@@ -186,7 +187,7 @@ export class DashboardLiveService {
   private notify(card: DashboardAlertCard): void {
     if (card.alert.executionMode === 'PIPE') return;
     if (this.mute.isMuted(card.alert.id)) return;
-    if (!hasVisibleTag(card, readStoredViewSettings().hiddenTagIds)) return;
+    if (!hasVisibleTags(card.alert.tags, readStoredViewSettings())) return;
     const boardVisible = this.document.visibilityState === 'visible' && this.document.hasFocus() && this.router.url.startsWith('/dashboard');
     if (!boardVisible) this.notifications.notifyAlert(card);
   }

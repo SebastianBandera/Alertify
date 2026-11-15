@@ -271,6 +271,19 @@ describe('dashboard Pipe menu focus', () => {
     expect(fixture.nativeElement.querySelector('.pipe-header-actions small')).not.toBeNull();
   });
 
+  it('filters Pipe tags by a saved group name, including a newly discovered ID and OR alternatives', () => {
+    const shared = { id: 100, version: 1, name: ' SHARED ', color: '#112233', scope: 'PIPE' as const, createdAt: '', updatedAt: '' };
+    const card = { ...CARD, tags: [shared] };
+    fixture.componentRef.setInput('settings', { ...DEFAULT_VIEW_SETTINGS, tagVisibilityByName: { shared: false } });
+    setCards([card]);
+    expect(fixture.nativeElement.querySelector('.pipe-card')).toBeNull();
+    setCards([{ ...card, tags: [...card.tags, { ...shared, id: 101, name: 'Other' }] }]);
+    expect(fixture.nativeElement.querySelector('.pipe-card')).not.toBeNull();
+    fixture.componentRef.setInput('settings', { ...DEFAULT_VIEW_SETTINGS, hiddenTagIds: [100], tagVisibilityByName: { shared: true } });
+    setCards([card]);
+    expect(fixture.nativeElement.querySelector('.pipe-card')).not.toBeNull();
+  });
+
   it.each(['SUCCESS', 'WARN', 'ERROR'] as const)('colors the header for the global %s state', (outcome) => {
     setCards([pipeCard(4, 'State Pipe', outcome, '2026-11-01T12:00:00Z')]);
     expect(fixture.nativeElement.querySelector('.pipe-header').classList.contains('alert-card--' + outcome.toLowerCase())).toBe(true);

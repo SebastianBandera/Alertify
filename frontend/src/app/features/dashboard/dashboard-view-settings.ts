@@ -1,5 +1,3 @@
-import { DashboardAlertCard } from './dashboard-card';
-
 /** Visual state of a tile, derived from the last execution result. */
 export type CardState = 'error' | 'warn' | 'success' | 'none';
 
@@ -12,6 +10,8 @@ export const CARD_STATE_ORDER: readonly CardState[] = ['error', 'warn', 'success
 export interface DashboardViewSettings {
   readonly hiddenStates: readonly CardState[];
   readonly hiddenTagIds: readonly number[];
+  /** Explicit group choices override legacy IDs, including members discovered later. */
+  readonly tagVisibilityByName?: Readonly<Record<string, boolean>>;
   readonly ungroupGreens: boolean;
   readonly minified: boolean;
   readonly flatGreens: boolean;
@@ -34,16 +34,11 @@ function isCardState(value: unknown): value is CardState {
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function booleanOr(value: unknown, fallback: boolean): boolean {
   return typeof value === 'boolean' ? value : fallback;
-}
-
-/** An alert without tags always shows; one with tags shows while any of them is visible. */
-export function hasVisibleTag(card: DashboardAlertCard, hiddenTagIds: readonly number[]): boolean {
-  return card.alert.tags.length === 0 || card.alert.tags.some((tag) => !hiddenTagIds.includes(tag.id));
 }
 
 export function readStoredViewSettings(): DashboardViewSettings {
@@ -57,6 +52,9 @@ export function readStoredViewSettings(): DashboardViewSettings {
     return {
       hiddenStates,
       hiddenTagIds,
+      ...(isRecord(stored['tagVisibilityByName']) ? { tagVisibilityByName: Object.fromEntries(
+        Object.entries(stored['tagVisibilityByName']).filter((entry): entry is [string, boolean] => typeof entry[1] === 'boolean'),
+      ) } : {}),
       ungroupGreens: booleanOr(stored['ungroupGreens'], DEFAULT_VIEW_SETTINGS.ungroupGreens),
       minified: booleanOr(stored['minified'], DEFAULT_VIEW_SETTINGS.minified),
       flatGreens: booleanOr(stored['flatGreens'], DEFAULT_VIEW_SETTINGS.flatGreens),
