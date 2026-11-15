@@ -16,6 +16,9 @@ final class BrowserStepFailure extends IllegalArgumentException {
     }
 
     private static String code(Exception cause) {
+        if (cause instanceof WizardOperationDeadline.Expired)
+            return "PLAYWRIGHT_OPERATION_TIMEOUT";
+
         if (cause instanceof ConfirmationFailure confirmation)
             return confirmation.code;
 
@@ -27,6 +30,7 @@ final class BrowserStepFailure extends IllegalArgumentException {
 
     private static String message(PlaywrightPageEngine.Command step, Exception cause) {
         String detail = switch (code(cause)) {
+            case "PLAYWRIGHT_OPERATION_TIMEOUT" -> "the browser operation deadline was reached";
             case "CONFIRM_MISMATCH" -> "the dialog did not match the single authorized confirmation";
             case "CONFIRM_NOT_SHOWN" -> "the expected confirmation was not shown before the action timeout";
             case "AMBIGUOUS_SELECTOR" -> "more than one element matches; refine the preceding QUERY selector";

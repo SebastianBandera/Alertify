@@ -9,6 +9,8 @@ import { AiChatMessageComponent } from '../ai-chat/ai-chat-message.component';
 import { PlaywrightWizardApiService, PreparedWizard, WizardSettings, WizardState, normalizeWizardUrl, playwrightBrowserLabel } from './playwright-wizard-api.service';
 import { PlaywrightRemoteViewComponent } from './playwright-remote-view.component';
 
+const SCRIPT_LINE_BREAKS = /\r\n|[\n\v\f\r\u0085\u2028\u2029]/g;
+
 @Component({
   selector: 'app-playwright-wizard',
   imports: [FormsModule, AiChatMessageComponent, PlaywrightRemoteViewComponent, SearchableSelectComponent],
@@ -80,7 +82,7 @@ export class PlaywrightWizardComponent implements OnInit {
   protected readonly selectedReferenceId = computed(() => { const index = this.references().indexOf(this.selectedReference()); return index < 0 ? null : index; });
   protected readonly settings = signal<WizardSettings>({ url: '', steps: '', engine: 'chromium', browsers: ['chromium'], loadTimeoutSeconds: 10, elementTimeoutSeconds: 5, mode: 'ASK' });
   protected readonly stepsScrollTop = signal(0);
-  protected readonly stepLineCount = computed(() => this.settings().steps.split(/\r\n?|\n/).length);
+  protected readonly stepLineCount = computed(() => this.settings().steps.split(SCRIPT_LINE_BREAKS).length);
   protected readonly stepLineNumbers = computed(() => Array.from({ length: this.stepLineCount() }, (_, index) => index + 1).join('\n'));
   protected readonly stepLineNumberWidth = computed(() => 'calc(' + (Math.max(3, String(this.stepLineCount()).length) + 2) + 'ch + 16px)');
   protected readonly executionProgress = computed(() => {
@@ -130,7 +132,17 @@ export class PlaywrightWizardComponent implements OnInit {
       return entry.role === other.role && entry.content === other.content && entry.hasImage === other.hasImage && entry.at === other.at;
     }),
   });
-  protected readonly awaitingApproval = computed(() => !!this.state()?.document.proposal);
+  protected readonly awaitingApproval = computed(() => !!(this.state()?.document.scriptProposal || this.state()?.document.proposal));
+  protected readonly canApproveProposal = computed(() => {
+    const state = this.state();
+    const action = state?.document.scriptProposal?.action.type;
+    return !this.busy() && !this.changed() && !!state?.open && (!state.restartRequired || action === 'RESTART' || action === 'REPLAY');
+  });
+  protected readonly proposalBrowsers = computed(() => {
+    const current = this.state();
+    const proposal = current?.document.scriptProposal;
+    return (proposal?.action.engines ?? [current?.activeEngine ?? proposal?.settings.engine ?? '']).map(playwrightBrowserLabel).filter(Boolean).join(', ');
+  });
   protected readonly canPrepare = computed(() => !this.changed() && !!this.state()?.document.testedRevision);
   private active = false;
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -140,6 +152,9 @@ export class PlaywrightWizardComponent implements OnInit {
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
   private saveTask: Promise<void> | null = null;
   private stateVersion = 0;
+  private commandGeneration = 0;
+  private saveEpoch = 0;
+  private cancelling = false;
 
   constructor() {
     afterRenderEffect(() => {
@@ -231,11 +246,25 @@ export class PlaywrightWizardComponent implements OnInit {
   }
 
   protected async create(): Promise<void> {
-    await this.perform(async () => { await this.flushSave(); await this.closeBrowser(); this.state.set(null); this.update(await this.api.request('CREATE')); });
+    await this.perform(async generation => {
+      await this.flushSave();
+      if (generation !== this.commandGeneration) return;
+      await this.closeBrowser();
+      if (generation !== this.commandGeneration) return;
+      const next = await this.api.request('CREATE');
+      if (generation === this.commandGeneration) this.update(next);
+    });
   }
 
   protected async restore(id: string): Promise<void> {
-    await this.perform(async () => { await this.flushSave(); await this.closeBrowser(); this.state.set(null); this.update(await this.api.request('GET', { id })); });
+    await this.perform(async generation => {
+      await this.flushSave();
+      if (generation !== this.commandGeneration) return;
+      await this.closeBrowser();
+      if (generation !== this.commandGeneration) return;
+      const next = await this.api.request('GET', { id });
+      if (generation === this.commandGeneration) this.update(next);
+    });
   }
 
   protected normalizeUrl(): void {
@@ -248,11 +277,13 @@ export class PlaywrightWizardComponent implements OnInit {
   protected goToLine(line: number): void {
     const editor = this.stepsEditor()?.nativeElement;
     if (!editor || this.busy()) return;
-    const lines = editor.value.split('\n');
-    const index = Math.min(lines.length, Math.max(1, line)) - 1;
-    const start = lines.slice(0, index).reduce((offset, value) => offset + value.length + 1, 0);
+    const breaks = [...editor.value.matchAll(SCRIPT_LINE_BREAKS)];
+    const index = Math.min(breaks.length + 1, Math.max(1, line)) - 1;
+    const previous = breaks[index - 1];
+    const start = previous ? previous.index! + previous[0].length : 0;
+    const end = breaks[index]?.index ?? editor.value.length;
     editor.focus();
-    editor.setSelectionRange(start, start + lines[index].length);
+    editor.setSelectionRange(start, end);
     const style = getComputedStyle(editor);
     const lineHeight = parseFloat(style.lineHeight) || 20;
     const paddingTop = parseFloat(style.paddingTop) || 8;
@@ -277,9 +308,10 @@ export class PlaywrightWizardComponent implements OnInit {
 
   protected async save(): Promise<void> {
     if (this.busy()) return;
+    const epoch = this.saveEpoch;
     this.error.set('');
     try { await this.flushSave(); }
-    catch (error) { if (!this.destroyed) this.error.set(error instanceof Error ? error.message : this.t('requestFailed')); }
+    catch (error) { if (!this.destroyed && epoch === this.saveEpoch) this.error.set(error instanceof Error ? error.message : this.t('requestFailed')); }
   }
 
   private flushSave(): Promise<void> {
@@ -287,6 +319,7 @@ export class PlaywrightWizardComponent implements OnInit {
     if (this.saveTask) return this.saveTask;
     if (!this.state() || !this.changed()) return Promise.resolve();
     const id = this.state()!.id;
+    const epoch = this.saveEpoch;
     this.saving.set(true);
     this.saveTask = (async () => {
       let edited: boolean;
@@ -294,7 +327,7 @@ export class PlaywrightWizardComponent implements OnInit {
         const snapshot = structuredClone(this.settings());
         const settings = { ...snapshot, url: normalizeWizardUrl(snapshot.url) };
         const next = await this.api.request('SAVE', { id, clientId: this.clientId, settings });
-        if (this.state()?.id !== id) return;
+        if (this.state()?.id !== id || epoch !== this.saveEpoch) return;
         edited = !sameSettings(this.settings(), snapshot);
         if (!this.destroyed) {
           this.state.set(next);
@@ -302,29 +335,57 @@ export class PlaywrightWizardComponent implements OnInit {
           if (!edited) this.syncSettings(next.document.settings);
         }
       } while (edited);
-    })().finally(() => { this.saveTask = null; this.saving.set(false); });
+    })().catch(error => { if (epoch === this.saveEpoch) throw error; }).finally(() => {
+      if (epoch === this.saveEpoch) { this.saveTask = null; this.saving.set(false); }
+    });
     return this.saveTask;
   }
 
   protected async command(operation: string, payload: Record<string, unknown> = {}): Promise<void> {
-    await this.perform(async () => {
+    if (operation === 'CANCEL') { await this.cancel(); return; }
+    await this.perform(async generation => {
       this.normalizeUrl();
       await this.flushSave();
+      if (generation !== this.commandGeneration) return;
       let next = await this.api.request(operation, this.payload(payload));
+      if (generation !== this.commandGeneration) return;
       if (next.parameterConfirmation) {
         const details = next.parameterConfirmation.procedures.map(value => value.name + ' (' + value.parameter + ')').join('\n');
         if (!confirm(this.t('confirmParameterProcedures') + '\n' + details)) return;
         next = await this.api.request(operation, this.payload({ ...payload, parameterConfirmationToken: next.parameterConfirmation.token }));
       }
-      this.update(next);
+      if (generation === this.commandGeneration) this.update(next);
     });
+  }
+
+  private async cancel(): Promise<void> {
+    if (this.cancelling || !this.state()) return;
+    this.cancelling = true;
+    const generation = ++this.commandGeneration;
+    this.saveEpoch++;
+    this.saveTask = null;
+    this.saving.set(false);
+    if (this.saveTimer) { clearTimeout(this.saveTimer); this.saveTimer = null; }
+    const id = this.state()!.id;
+    this.pending.set(true);
+    this.error.set('');
+    try {
+      const next = await this.api.request('CANCEL', this.payload());
+      if (generation === this.commandGeneration && this.state()?.id === id) this.update(next);
+    } catch (error) {
+      if (!this.destroyed && generation === this.commandGeneration) this.error.set(error instanceof Error ? error.message : this.t('requestFailed'));
+    } finally {
+      this.cancelling = false;
+      if (!this.destroyed && generation === this.commandGeneration) this.pending.set(false);
+    }
   }
 
   protected async send(): Promise<void> {
     if (!this.message().trim() || this.awaitingApproval()) return;
     const message = this.message();
+    const generation = this.commandGeneration + 1;
     await this.command('CHAT', { message, locale: this.localization.locale() });
-    if (!this.error()) this.message.set('');
+    if (!this.error() && generation === this.commandGeneration) this.message.set('');
   }
 
   protected attach(): void {
@@ -377,20 +438,29 @@ export class PlaywrightWizardComponent implements OnInit {
 
   protected async prepare(bypass = false): Promise<void> {
     if (bypass && !confirm(this.t('bypassConfirm'))) return;
-    await this.perform(async () => {
+    await this.perform(async generation => {
       this.normalizeUrl();
       await this.flushSave();
+      if (generation !== this.commandGeneration) return;
       const result = await this.api.request<PreparedWizard>('PREPARE', this.payload({ bypass }));
-      this.prepared.emit(result);
+      if (generation === this.commandGeneration) this.prepared.emit(result);
     });
   }
 
   protected async remove(): Promise<void> {
     if (!confirm(this.t('deleteConfirm'))) return;
-    await this.perform(async () => { await this.api.request('DELETE', this.payload()); this.state.set(null); await this.refreshDrafts(); });
+    await this.perform(async generation => { await this.api.request('DELETE', this.payload()); if (generation !== this.commandGeneration) return; this.state.set(null); await this.refreshDrafts(); });
   }
 
-  protected async back(): Promise<void> { await this.perform(async () => { await this.flushSave(); await this.closeBrowser(); this.returned.emit(this.state()); this.dismissed.emit(); }); }
+  protected async back(): Promise<void> {
+    await this.perform(async generation => {
+      await this.flushSave();
+      if (generation !== this.commandGeneration) return;
+      await this.closeBrowser();
+      if (generation !== this.commandGeneration) return;
+      this.returned.emit(this.state()); this.dismissed.emit();
+    });
+  }
 
   private async saveBeforeLeaving(): Promise<void> {
     if (!this.state() || this.state()!.busy) return;
@@ -403,13 +473,14 @@ export class PlaywrightWizardComponent implements OnInit {
     catch { /* The independent backend and worker lease closes disconnected sessions. */ }
   }
 
-  private async perform(action: () => Promise<void>): Promise<void> {
+  private async perform(action: (generation: number) => Promise<void>): Promise<void> {
     if (this.pending()) return;
+    const generation = ++this.commandGeneration;
     this.pending.set(true);
     this.error.set('');
-    try { if (this.saveTask) await this.saveTask; await action(); }
-    catch (error) { if (!this.destroyed) this.error.set(error instanceof Error ? error.message : this.t('requestFailed')); }
-    finally { if (!this.destroyed) this.pending.set(false); }
+    try { if (this.saveTask) await this.saveTask; if (generation === this.commandGeneration) await action(generation); }
+    catch (error) { if (!this.destroyed && generation === this.commandGeneration) this.error.set(error instanceof Error ? error.message : this.t('requestFailed')); }
+    finally { if (!this.destroyed && generation === this.commandGeneration) this.pending.set(false); }
   }
 }
 

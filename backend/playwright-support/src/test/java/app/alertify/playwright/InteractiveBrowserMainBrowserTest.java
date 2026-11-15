@@ -883,15 +883,89 @@ class InteractiveBrowserMainBrowserTest {
         return (ObjectNode) JSON.valueToTree(Map.of("url", origin + path, "engine", engine, "browsers", List.of(engine), "steps", steps, "loadTimeoutSeconds", 10, "elementTimeoutSeconds", 5));
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = { "chromium", "firefox", "webkit" })
+    void partialExecutionKeepsFullCommandLinesAndLeavesTheSuffixPending(String engine) throws Exception {
+        try (var harness = new Harness()) {
+            String script = "# Prefix\nQUERY h1\nCHECK TEXT Public content\n# Stop\nQUERY #before\nUSE\n# End";
+            ObjectNode settings = settings(engine, "/html", script);
+            harness.success("OPEN", settings);
+            settings.put("untilLine", 4);
+            var partial = harness.success("EXECUTE", settings);
+            assertThat(partial.path("scope").asString()).isEqualTo("PARTIAL");
+            assertThat(partial.path("untilLine").asInt()).isEqualTo(4);
+            assertThat(partial.path("completed").asInt()).isEqualTo(2);
+            assertThat(partial.path("lastExecutedLine").asInt()).isEqualTo(3);
+            var started = harness.events.stream().map(Event::event).filter(event -> event.getType().equals("PROGRESS"))
+                    .map(event -> JSON.readTree(event.getJson())).filter(event -> event.path("phase").asString().equals("STARTED")).findFirst().orElseThrow();
+            assertThat(started.path("commandLines").valueStream().map(JsonNode::asInt)).containsExactly(2, 3, 5, 6);
+            assertThat(harness.success("OBSERVE", Map.of()).path("snapshot").asString()).contains("Clock");
+            settings.put("untilLine", 7);
+            var full = harness.success("EXECUTE", settings);
+            assertThat(full.path("scope").asString()).isEqualTo("FULL");
+            assertThat(full.path("completed").asInt()).isEqualTo(4);
+            assertThat(full.path("lastExecutedLine").asInt()).isEqualTo(6);
+            settings.remove("untilLine");
+            harness.success("RESET", settings);
+            assertThat(harness.success("EXECUTE", settings).path("untilLine").isNull()).isTrue();
+            settings.put("steps", "").put("untilLine", 1);
+            harness.success("RESET", settings);
+            var empty = harness.success("EXECUTE", settings);
+            assertThat(empty.path("scope").asString()).isEqualTo("FULL");
+            assertThat(empty.path("lastExecutedLine").isNull()).isTrue();
+        }
+    }
+
+    @Test
+    void testRejectsAConfirmationCutBeforeOpeningAnyBrowser() throws Exception {
+        try (var harness = new Harness()) {
+            ObjectNode settings = settings("chromium", "/html", "CONFIRM ACCEPT \"Confirm?\"\nCLICK 10 10");
+            settings.put("untilLine", 1);
+            assertThat(harness.request("TEST", settings).getType()).isEqualTo("ERROR");
+            assertThat(harness.events).noneMatch(event -> event.event().getType().equals("PROGRESS"));
+            settings.put("untilLine", new java.math.BigInteger("18446744073709551617"));
+            assertThat(harness.request("TEST", settings).getType()).isEqualTo("ERROR");
+            assertThat(harness.events).noneMatch(event -> event.event().getType().equals("PROGRESS"));
+        }
+    }
+
+    @Test
+    void oneControlledDeadlineStopsRemainingCommandsAndDoesNotRestartForAnotherEngine() throws Exception {
+        var nano = new java.util.concurrent.atomic.AtomicLong();
+        var clock = java.time.Clock.fixed(java.time.Instant.ofEpochMilli(1000), java.time.ZoneOffset.UTC);
+        try (var harness = new Harness(clock, nano::get)) {
+            ObjectNode settings = settings("chromium", "/html", "QUERY h1\nCHECK TEXT Public content");
+            settings.set("browsers", JSON.valueToTree(List.of("chromium", "firefox", "webkit")));
+            settings.put("deadlineEpochMillis", 1000 + WizardOperationDeadline.MAX_MILLIS);
+            harness.hook = event -> {
+                if (event.getType().equals("PROGRESS") && JSON.readTree(event.getJson()).path("phase").asString().equals("COMPLETED"))
+                    nano.set(TimeUnit.MILLISECONDS.toNanos(WizardOperationDeadline.MAX_MILLIS));
+            };
+            var report = harness.success("TEST", settings);
+            assertThat(report.path("passed").asBoolean()).isFalse();
+            assertThat(report.path("browsers")).hasSize(3);
+            assertThat(report.path("browsers").get(0).path("completed").asInt()).isEqualTo(1);
+            assertThat(report.path("browsers").get(1).path("completed").asInt()).isZero();
+            assertThat(report.path("browsers").valueStream().map(browser -> browser.path("failureCode").asString())).containsOnly("PLAYWRIGHT_OPERATION_TIMEOUT");
+            assertThat(harness.events.stream().map(Event::event).filter(event -> event.getType().equals("PROGRESS"))
+                    .map(event -> JSON.readTree(event.getJson())).filter(event -> event.path("phase").asString().equals("OPENING"))).hasSize(1);
+        }
+    }
+
     private record Event(WizardEvent event, long at) { }
 
     private static final class Harness implements AutoCloseable {
         private final List<Event> events = new ArrayList<>();
-        private final InteractiveBrowserMain child = new InteractiveBrowserMain(this::event);
+        private final InteractiveBrowserMain child;
         private String procedureResult;
+        private java.util.function.Consumer<WizardEvent> hook = event -> { };
+
+        private Harness() { child = new InteractiveBrowserMain(this::event); }
+        private Harness(java.time.Clock clock, java.util.function.LongSupplier nanoTime) { child = new InteractiveBrowserMain(this::event, clock, nanoTime); }
 
         private void event(WizardEvent event) {
             events.add(new Event(event, System.nanoTime()));
+            hook.accept(event);
             if (event.getType().equals("PROCEDURE_CALL")) {
                 CompletableFuture.delayedExecutor(3, TimeUnit.SECONDS).execute(() -> child.procedureReply(WizardRequest.newBuilder()
                         .setOperation("PROCEDURE_REPLY").setRequestId(event.getRequestId()).setJson(JSON.writeValueAsString(Map.of("value", procedureResult))).build()));

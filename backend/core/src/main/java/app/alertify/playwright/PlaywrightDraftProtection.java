@@ -30,6 +30,15 @@ final class PlaywrightDraftProtection {
         validateUrl(document.path("settings").path("url").asString(""), "URL");
         validateSteps(document.path("settings").path("steps").asString(""), "script");
         validateSteps(document.path("proposal").asString(""), "proposal");
+        JsonNode proposal = document.path("scriptProposal");
+        if (proposal.isObject()) {
+            validateUrl(proposal.path("settings").path("url").asString(""), "proposed URL");
+            validateSteps(proposal.path("settings").path("steps").asString(""), "proposed script");
+            for (JsonNode change : proposal.path("changes")) {
+                validateSteps(change.path("before").asString(""), "removed lines");
+                validateSteps(change.path("after").asString(""), "replacement lines");
+            }
+        }
     }
 
     void validateSteps(String steps, String field) {

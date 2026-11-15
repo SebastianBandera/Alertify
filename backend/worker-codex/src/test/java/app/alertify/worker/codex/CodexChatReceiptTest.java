@@ -44,6 +44,24 @@ class CodexChatReceiptTest {
     @TempDir Path directory;
 
     @Test
+    @Timeout(30)
+    void browserTurnsAllow128IterationsWhileGeneralChatStillStopsAt64() throws Exception {
+        for (boolean browser : List.of(false, true)) {
+            Exchange exchange = exchange("Unused", browser, false, true);
+            int limit = browser ? 128 : 64;
+            for (int index = 0; index < limit; index++) {
+                ChatToolCall call = exchange.calls.poll(5, TimeUnit.SECONDS);
+                assertThat(call).as("tool %s of %s", index + 1, limit).isNotNull();
+                exchange.client.onNext(ChatClientMessage.newBuilder().setToolResult(ChatToolResult.newBuilder().setCallId(call.getCallId()).setOutput("Completed")).build());
+            }
+            assertThat(exchange.finished.await(5, TimeUnit.SECONDS)).isTrue();
+            assertThat(exchange.requests).hasSize(limit);
+            assertThat(exchange.calls).isEmpty();
+            assertThat(exchange.frames.stream().filter(ChatWorkerMessage::hasFailure).map(frame -> frame.getFailure().getCode())).containsExactly("AI_STEP_LIMIT");
+        }
+    }
+
+    @Test
     @Timeout(10)
     void successfulReceiptPreservesTheOriginalResultAndAddsTrustedExecutionMetadata() throws Exception {
         Exchange exchange = exchange("Esperando tarjeta siguiente");
@@ -168,13 +186,17 @@ class CodexChatReceiptTest {
     }
 
     private Exchange exchange(String finalText, boolean browserSession, boolean correctAfterReminder) {
+        return exchange(finalText, browserSession, correctAfterReminder, false);
+    }
+
+    private Exchange exchange(String finalText, boolean browserSession, boolean correctAfterReminder, boolean repeatedTools) {
         var requests = new CopyOnWriteArrayList<JsonNode>();
         CodexHttpTransport transport = request -> {
             if (request.uri().getPath().endsWith("/models"))
                 return CompletableFuture.completedFuture(new Response(request, 200, "{\"data\":[{\"id\":\"synthetic-model\"}]}"));
 
             requests.add(JSON.readTree(body(request)));
-            Object output = requests.size() == 1 || (correctAfterReminder && requests.size() == 3)
+            Object output = repeatedTools || requests.size() == 1 || (correctAfterReminder && requests.size() == 3)
                     ? Map.of("type", "function_call", "call_id", requests.size() == 1 ? "synthetic-call" : "corrected-call", "name", browserSession ? "browser_steps" : "fixture_update", "arguments", "{}")
                     : Map.of("type", "message", "role", "assistant", "content", List.of(Map.of("type", "output_text", "text", finalText)));
             String event = JSON.writeValueAsString(Map.of("type", "response.completed", "response", Map.of("output", List.of(output))));

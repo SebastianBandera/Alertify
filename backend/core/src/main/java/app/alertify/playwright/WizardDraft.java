@@ -33,6 +33,7 @@ public class WizardDraft {
     void update(String value) { document = value; updatedAt = Instant.now(); }
     public UUID getId() { return id; }
     public String getOwnerSubject() { return ownerSubject; }
+    public long getVersion() { return version; }
     public String getDocument() { return document; }
     public Instant getUpdatedAt() { return updatedAt; }
 }

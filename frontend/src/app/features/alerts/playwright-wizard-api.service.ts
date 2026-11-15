@@ -15,7 +15,23 @@ export interface WizardBinding { source: 'CONFIGURATION' | 'SECRET' | 'PROCEDURE
 export interface WizardSourceAlert { id: number; version: number; form: Record<string, unknown>; }
 export interface PreparedWizard { id: string; settings: WizardSettings; sourceAlert?: WizardSourceAlert; parameterBindings?: Record<string, WizardBinding>; }
 
-export interface WizardScriptExecution {
+export interface WizardExecutionMetadata {
+  scope?: 'FULL' | 'PARTIAL';
+  untilLine?: number | null;
+  lastExecutedLine?: number | null;
+  attempt?: number;
+}
+
+export interface WizardScriptProposal {
+  expectedRevision: string;
+  resultRevision: string;
+  settings: WizardSettings;
+  changes: { type: 'INSERT' | 'REPLACE' | 'DELETE'; fromLine: number; toLine: number | null; before: string; after: string }[];
+  action: { type: 'NONE' | 'RESTART' | 'REPLAY'; untilLine: number | null; engines: string[] | null };
+  messageId: string;
+}
+
+export interface WizardScriptExecution extends WizardExecutionMetadata {
   revision: string;
   engine: string;
   status: 'READY' | 'RUNNING' | 'FAILED' | 'UNVERIFIED' | 'NO_SESSION';
@@ -34,10 +50,11 @@ export interface WizardState {
     allowedProcedureIds?: number[];
     messages: { role: string; content: string; hasImage: boolean; at: string }[];
     proposal?: string;
+    scriptProposal?: WizardScriptProposal;
     proposalError?: { diagnosticCode: string; phase: 'VALIDATION'; status: 'FAILED'; error: string; executed: false; retryable: boolean; remainingCorrections: number; at: string };
     validationError?: string;
     testedRevision?: string;
-    lastAction?: { operation: string; status?: 'RUNNING' | 'SUCCESS' | 'FAILED'; error?: string; at: string; result?: { completed?: number; failedLine?: number; failedCommand?: string; failureCode?: string; requestedBrowsers?: string[] } };
+    lastAction?: { operation: string; status?: 'RUNNING' | 'SUCCESS' | 'FAILED'; error?: string; at: string; result?: WizardExecutionMetadata & { completed?: number; failedLine?: number; failedCommand?: string; failureCode?: string; requestedBrowsers?: string[]; applied?: boolean; revision?: string; restartRequired?: boolean; changes?: WizardScriptProposal['changes'] } };
     testValidation?: { revision: string; results: Record<string, { passed: boolean; completed: number; testedAt: string; error?: string }> };
     testReport?: { passed: boolean; browsers: { browser: string; passed: boolean; completed: number; error?: string }[] };
   };
@@ -53,8 +70,9 @@ export interface WizardState {
   shareUnmaskedWithAi?: boolean;
   restartRequired?: boolean;
   selection: { selector: string } | null;
-  progress: { completed: number; line: number; phase?: string; engine?: string } | null;
+  progress: (WizardExecutionMetadata & { completed: number; line: number; phase?: string; engine?: string }) | null;
   scriptExecution?: WizardScriptExecution;
+  messageBudget?: { messageId: string; replaysUsed: number; maxReplays: number; expiresAt: string };
   observation: { snapshot: string; lastDialog?: { type: string; message: string; accepted: boolean; dismissed: boolean; truncated?: boolean } } | null;
   tokens: number;
   modelRequests: number;

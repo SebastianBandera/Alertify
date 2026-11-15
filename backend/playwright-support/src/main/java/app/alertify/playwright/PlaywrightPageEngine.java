@@ -613,8 +613,16 @@ public class PlaywrightPageEngine implements AlertEvaluator {
 
     /** Returns the read-only values that must be prepared before worker dispatch. */
     public static List<ValueReference> requiredValues(String configured) {
+        return requiredValues(configured, null);
+    }
+
+    public static List<ValueReference> requiredValues(String configured, Integer untilLine) {
         Map<String, ValueReference> references = new LinkedHashMap<>();
-        for (Command command : parseCommands(configured)) {
+        ScriptScope scope = scriptScope(configured, untilLine);
+        for (Command command : scope.commands()) {
+            if (command.lineNumber() > scope.targetLine())
+                break;
+
             if (command.type() != CommandType.FILL && command.type() != CommandType.CALL)
                 continue;
 
@@ -623,6 +631,25 @@ public class PlaywrightPageEngine implements AlertEvaluator {
         }
         return List.copyOf(references.values());
     }
+
+    /** Retains the entire parsed script; the target only limits browser execution. */
+    public static ScriptScope scriptScope(String configured, Integer untilLine) {
+        String script = configured == null ? "" : configured;
+        int lineCount = script.split("\\R", -1).length;
+        if (untilLine != null && (untilLine < 1 || untilLine > lineCount))
+            throw new IllegalArgumentException("untilLine must identify a physical script line");
+
+        List<Command> commands = parseCommands(script);
+        int target = untilLine == null ? lineCount : untilLine;
+        for (int index = 0; index < commands.size() - 1; index++) {
+            Command command = commands.get(index);
+            if (command.type() == CommandType.CONFIRM_ACCEPT && command.lineNumber() <= target && commands.get(index + 1).lineNumber() > target)
+                throw new IllegalArgumentException("untilLine cannot separate CONFIRM ACCEPT from its activation");
+        }
+        return new ScriptScope(target == lineCount ? "FULL" : "PARTIAL", untilLine, lineCount, target, commands);
+    }
+
+    public record ScriptScope(String scope, Integer untilLine, int lineCount, int targetLine, List<Command> commands) { }
 
     private static long elapsedMillis(long startedNanos) {
         return Math.max(0, (System.nanoTime() - startedNanos) / 1_000_000);

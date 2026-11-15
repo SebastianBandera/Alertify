@@ -124,6 +124,21 @@ class WizardScriptProgressTest {
         assertThat(snapshot("BROKEN").status()).isEqualTo("UNVERIFIED");
     }
 
+    @Test
+    void aPartialReplayKeepsTheFullCommandMapAndItsUnexecutedSuffix() {
+        progress.begin(script);
+        progress.accept(json.valueToTree(Map.of("phase", "STARTED", "engine", "chromium", "completed", 0, "line", 0, "commandLines", List.of(3, 4, 6), "scope", "PARTIAL", "untilLine", 4)));
+        progress.accept(json.valueToTree(Map.of("phase", "COMPLETED", "engine", "chromium", "completed", 2, "line", 4, "scope", "PARTIAL", "untilLine", 4, "lastExecutedLine", 4)));
+        var state = snapshot(script);
+        assertThat(state.scope()).isEqualTo("PARTIAL");
+        assertThat(state.untilLine()).isEqualTo(4);
+        assertThat(state.lastExecutedLine()).isEqualTo(4);
+        assertThat(state.commandLines()).containsExactly(3, 4, 6);
+        assertThat(state.completed()).isEqualTo(2);
+        progress.reset(script, "chromium");
+        assertThat(snapshot(script).lastExecutedLine()).isNull();
+    }
+
     private WizardScriptProgress.Snapshot snapshot(String script) {
         return progress.snapshot(script, false, true);
     }
