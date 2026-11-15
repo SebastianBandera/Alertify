@@ -51,14 +51,15 @@ final class PlaywrightDraftProtection {
             PlaywrightPageEngine.Command command;
             try {
                 // Parse each line with a current element so unfinished drafts can still be saved.
-                command = PlaywrightPageEngine.parseCommands("QUERY #draft-validation\n" + line).getLast();
+                String activation = line.matches("(?i)CONFIRM\\s+.*") ? "\nUSE" : "";
+                command = PlaywrightPageEngine.parseCommands("QUERY #draft-validation\n" + line + activation).get(1);
             } catch (IllegalArgumentException failure) {
                 check(line, location);
                 continue;
             }
             switch (command.type()) {
                 case QUERY, WAIT_VISIBLE, WAIT_HIDDEN -> validateSelector(command.first(), location);
-                case CHECK_TEXT, SELECT -> check(command.first(), location);
+                case CHECK_TEXT, SELECT, CONFIRM_ACCEPT -> check(command.first(), location);
                 case CHECK_ATTRIBUTE -> {
                     check(command.second(), location);
                     checkIdentifier(command.first(), location);

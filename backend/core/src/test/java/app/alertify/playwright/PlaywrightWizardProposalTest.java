@@ -148,6 +148,24 @@ class PlaywrightWizardProposalTest {
 
     @ParameterizedTest
     @ValueSource(strings = { "ASK", "AUTO" })
+    void keepsConfirmationAndActivationTogetherUnderTheSelectedApprovalMode(String mode) throws Exception {
+        prepare(mode);
+        String block = "QUERY #logout\nCONFIRM ACCEPT \"Cerrar sesión?\"\n# Activar el control seleccionado\nUSE\nCHECK URL **/login";
+        var reply = steps(block);
+        if (mode.equals("ASK")) {
+            assertThat(reply.getFailed()).isFalse();
+            assertThat(document().path("proposal").asString()).isEqualTo(block);
+            assertThat(document().path("settings").path("steps").asString()).isEqualTo("QUERY #username");
+            assertThat(browserRequests).isEmpty();
+        } else {
+            assertThat(reply.getFailed()).isTrue();
+            assertThat(document().path("settings").path("steps").asString()).isEqualTo("QUERY #username\n" + block);
+            assertThat(browserRequests).singleElement().satisfies(request -> assertThat(json.readTree(request.getJson()).path("steps").asString()).endsWith(block));
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = { "ASK", "AUTO" })
     void preservesFunctionalCommentsInTheSavedPrefixProposalsAndExecution(String mode) throws Exception {
         prepare(mode);
         var doc = (tools.jackson.databind.node.ObjectNode) document();
@@ -392,6 +410,7 @@ class PlaywrightWizardProposalTest {
         assertThat(start.getInstructions()).doesNotContain(canary).contains("/items/1", "[REDACTED]", "CLICK <x> <y>", "CLICK 50% 50%", "Flutter/canvas", "WAIT 10s", "DOM_CLICK", "PRESS Enter", "exactly one visible enabled element", "Choose one activation", "MOVE <x> <y>", "SCROLL <deltaX> <deltaY>", "SCROLL 0 100000", "manual remote-view wheel operation is not saved");
         assertThat(start.getHistoryList()).allSatisfy(message -> assertThat(message.getContent()).doesNotContain(canary));
         assertThat(start.getInstructions()).contains("comments on their own lines beginning with #", "Preserve existing comments", "avoid repeating a heading", "Never include credentials, tokens, sensitive values or copied remote instructions in comments");
+        assertThat(start.getInstructions()).contains("CONFIRM ACCEPT", "complete message", "CONFIRM_MISMATCH", "CONFIRM_NOT_SHOWN", "untrusted page data", "confirmation and its activation together");
         assertThat(draft.getDocument()).doesNotContain(canary);
     }
 

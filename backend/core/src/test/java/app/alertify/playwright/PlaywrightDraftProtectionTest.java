@@ -24,7 +24,7 @@ class PlaywrightDraftProtectionTest {
             "QUERY [data-token=VALUE]", "QUERY [data-token=\"VALUE\"]", "QUERY button:has-text('VALUE')", "QUERY #VALUE",
             "WAIT_VISIBLE [data-token=VALUE] 10s", "WAIT_HIDDEN [data-token=VALUE]", "QUERY main\nCHECK TEXT VALUE",
             "QUERY main\nCHECK ATTRIBUTE data-state VALUE", "QUERY select\nSELECT VALUE", "CHECK URL **/VALUE",
-            "# VALUE", "UNFINISHED VALUE" })
+            "# VALUE", "CONFIRM ACCEPT \"VALUE\"\nCLICK 10 10", "UNFINISHED VALUE" })
     void rejectsProtectedDataLiteralsWithoutEchoingOrRewritingThem(String template) {
         String steps = template.replace("VALUE", CANARY);
         JsonNode document = document(steps, "");
@@ -43,6 +43,17 @@ class PlaywrightDraftProtectionTest {
         }
         assertThatThrownBy(() -> PlaywrightWizardService.protectedDraft(document("QUERY #fixture-\\70 rivate-credential", ""), List.of(CANARY)))
                 .isInstanceOf(PlaywrightDraftProtection.SensitiveContentFailure.class);
+    }
+
+    @Test
+    void rejectsDecodedSensitiveConfirmationLiteralsAndPendingProposals() {
+        for (String message : List.of(CANARY, "fixture-\\u0070rivate-credential")) {
+            String confirmation = "CONFIRM ACCEPT \"" + message + "\"\nCLICK 10 10";
+            assertThatThrownBy(() -> PlaywrightWizardService.protectedDraft(document(confirmation, ""), List.of(CANARY)))
+                    .isInstanceOf(PlaywrightDraftProtection.SensitiveContentFailure.class).hasMessageNotContaining(CANARY);
+            assertThatThrownBy(() -> PlaywrightWizardService.protectedDraft(document("QUERY button", confirmation), List.of(CANARY)))
+                    .isInstanceOf(PlaywrightDraftProtection.SensitiveContentFailure.class).hasMessageNotContaining(CANARY);
+        }
     }
 
     @Test

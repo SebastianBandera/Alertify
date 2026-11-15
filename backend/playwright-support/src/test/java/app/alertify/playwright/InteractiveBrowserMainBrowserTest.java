@@ -86,6 +86,10 @@ class InteractiveBrowserMainBrowserTest {
             let count=0; document.querySelector('#before').onclick=()=>document.querySelector('#clock').textContent=String(++count);
             if(location.pathname==='/wait')setTimeout(()=>{const e=document.createElement('div');e.id='ready';e.textContent='Ready';document.body.append(e)},4000);
             if(location.pathname.startsWith('/once/'))document.querySelector('h1').textContent=document.cookie.includes('fixture=present')?'Cookie kept':'Cookie missing';
+            if(location.pathname.startsWith('/confirmation'))document.querySelector('#before').onclick=()=>{
+              const message=location.pathname==='/confirmation-private'?document.querySelector('#password').value:location.pathname==='/confirmation-long'?'A'.repeat(4090)+document.querySelector('#password').value+'Z'.repeat(5000):location.pathname==='/confirmation-surrogate'?'A'.repeat(4095)+String.fromCodePoint(0x1f600)+'Z':'Cerrar sesión?';
+              if(confirm(message)){document.querySelector('h1').textContent='Sesión cerrada';location.hash='login';}
+            };
             if(location.pathname==='/tampered-selection'){
               const key=Object.keys(window).find(value=>value.startsWith('__alertifyInspection_'));
               window[key].select=()=>({error:document.querySelector('#input').value});
@@ -824,6 +828,54 @@ class InteractiveBrowserMainBrowserTest {
             assertThat(last.path("phase").asString()).isEqualTo("FAILED");
             assertThat(last.path("line").asInt()).isEqualTo(5);
             assertThat(last.path("completed").asInt()).isEqualTo(2);
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = { "chromium", "firefox", "webkit" })
+    void reportsRedactedDialogsAndClearsConfirmationStateOnReset(String engine) throws Exception {
+        try (var harness = new Harness()) {
+            ObjectNode privateSettings = settings(engine, "/confirmation-private", "QUERY #before\nUSE");
+            privateSettings.set("protectedValues", JSON.valueToTree(List.of("fixture-canary")));
+            harness.success("OPEN", privateSettings);
+            harness.success("EXECUTE", privateSettings);
+            var observation = harness.success("OBSERVE", Map.of());
+            assertThat(observation.path("lastDialog").path("type").asString()).isEqualTo("confirm");
+            assertThat(observation.path("lastDialog").path("message").asString()).isEqualTo("[REDACTED]");
+            assertThat(observation.path("lastDialog").path("dismissed").asBoolean()).isTrue();
+            assertThat(observation.toString()).doesNotContain("fixture-canary");
+
+            ObjectNode longSettings = settings(engine, "/confirmation-long", "QUERY #before\nUSE");
+            longSettings.set("protectedValues", JSON.valueToTree(List.of("fixture-canary")));
+            harness.success("RESET", longSettings);
+            harness.success("EXECUTE", longSettings);
+            var longDialog = harness.success("OBSERVE", Map.of()).path("lastDialog");
+            assertThat(longDialog.path("message").asString()).hasSize(4096).startsWith("A".repeat(4090) + "[REDAC");
+            assertThat(longDialog.path("truncated").asBoolean()).isTrue();
+            assertThat(longDialog.toString()).doesNotContain("fixture");
+
+            ObjectNode unicodeSettings = settings(engine, "/confirmation-surrogate", "QUERY #before\nUSE");
+            harness.success("RESET", unicodeSettings);
+            harness.success("EXECUTE", unicodeSettings);
+            var unicodeDialog = harness.success("OBSERVE", Map.of()).path("lastDialog");
+            assertThat(unicodeDialog.path("message").asString()).isEqualTo("A".repeat(4095));
+            assertThat(unicodeDialog.path("truncated").asBoolean()).isTrue();
+
+            ObjectNode publicSettings = settings(engine, "/confirmation-public", "QUERY #before\nCONFIRM ACCEPT \"Cerrar sesión?\"\nUSE\nCHECK URL **#login");
+            harness.success("RESET", publicSettings);
+            assertThat(harness.success("OBSERVE", Map.of()).has("lastDialog")).isFalse();
+            harness.success("EXECUTE", publicSettings);
+            assertThat(harness.success("OBSERVE", Map.of()).path("lastDialog").path("accepted").asBoolean()).isTrue();
+
+            publicSettings.put("steps", "QUERY #before\nCONFIRM ACCEPT \"Different private expected\"\nUSE");
+            harness.success("RESET", publicSettings);
+            var failure = harness.request("EXECUTE", publicSettings);
+            assertThat(failure.getType()).isEqualTo("ERROR");
+            var diagnostic = JSON.readTree(failure.getJson());
+            assertThat(diagnostic.path("failureCode").asString()).isEqualTo("CONFIRM_MISMATCH");
+            assertThat(diagnostic.path("failedLine").asInt()).isEqualTo(3);
+            assertThat(diagnostic.path("failedCommand").asString()).isEqualTo("USE");
+            assertThat(diagnostic.toString()).doesNotContain("Different private expected", "Cerrar sesión?");
         }
     }
 

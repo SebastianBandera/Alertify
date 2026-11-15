@@ -348,7 +348,18 @@ public final class InteractiveBrowserMain implements AutoCloseable {
             Object metadata = element.evaluate("element => ({tag: element.tagName.toLowerCase(), type: element.getAttribute('type') || '', label: (element.getAttribute('aria-label') || element.labels?.[0]?.innerText || element.getAttribute('placeholder') || element.innerText || '').slice(0, 200)})");
             controls.add(Map.of("selector", sanitize(selector), "metadata", filter().sanitize(json.valueToTree(metadata))));
         }
-        return Map.of("snapshot", safe.substring(0, Math.min(safe.length(), 40_000)), "controls", controls, "snapshotId", snapshotId, "completed", completed, "dirty", dirty);
+        Map<String, Object> observation = new java.util.LinkedHashMap<>(Map.of("snapshot", safe.substring(0, Math.min(safe.length(), 40_000)), "controls", controls, "snapshotId", snapshotId, "completed", completed, "dirty", dirty));
+        var dialog = session.lastDialog();
+        if (dialog != null) {
+            String message = sanitize(dialog.message());
+            int end = Math.min(message.length(), 4096);
+            if (end < message.length() && end > 0 && Character.isHighSurrogate(message.charAt(end - 1)) && Character.isLowSurrogate(message.charAt(end)))
+                end--;
+
+            observation.put("lastDialog", Map.of("type", dialog.type(), "message", message.substring(0, end), "truncated", end < message.length(), "accepted", dialog.accepted(), "dismissed", dialog.dismissed()));
+        }
+
+        return observation;
     }
 
     private List<Map<String, Object>> find(JsonNode payload) {

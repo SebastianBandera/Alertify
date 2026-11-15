@@ -55,7 +55,7 @@ export interface WizardState {
   selection: { selector: string } | null;
   progress: { completed: number; line: number; phase?: string; engine?: string } | null;
   scriptExecution?: WizardScriptExecution;
-  observation: { snapshot: string } | null;
+  observation: { snapshot: string; lastDialog?: { type: string; message: string; accepted: boolean; dismissed: boolean; truncated?: boolean } } | null;
   tokens: number;
   modelRequests: number;
   parameterConfirmation?: { token: string; procedures: { parameter: string; name: string }[] };
