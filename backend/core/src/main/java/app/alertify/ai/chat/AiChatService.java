@@ -40,6 +40,7 @@ import app.alertify.api.error.ConflictException;
 import app.alertify.api.error.InvalidAiChatReasoningEffortException;
 import app.alertify.api.error.ResourceNotFoundException;
 import app.alertify.codex.AiWorkerClient;
+import app.alertify.codex.AiWorkerException;
 import app.alertify.logging.ApplicationEventLogger;
 import app.alertify.realtime.AdminEventPublisher;
 import app.alertify.worker.ai.grpc.AiSettings;
@@ -118,7 +119,7 @@ public class AiChatService {
         requireMessage(request.message());
         String mode = enumValue(request.mode(), Set.of(MODE_READ_ONLY, "PLAN", MODE_DIRECT), MODE_READ_ONLY);
         String approval = enumValue(request.approvalPolicy(), Set.of("ASK", "AUTO"), "ASK");
-        String locale = localization.resolveLocale(request.locale());
+        String locale = requestLocale(request.locale());
         if (request.conversationId() != null && activeTurns.values().stream()
                 .anyMatch(active -> active.conversationId.equals(request.conversationId())))
             throw new ConflictException("AI_CHAT_TURN_ACTIVE", "The conversation already has an active turn", Map.of());
@@ -1275,6 +1276,16 @@ public class AiChatService {
             return "El usuario rechazó la acción solicitada " + emphasizedToolName + ".";
 
         return "The user rejected the requested action " + emphasizedToolName + ".";
+    }
+
+    private String requestLocale(String locale) {
+        try {
+            return localization.resolveLocale(locale);
+        } catch (IllegalArgumentException failure) {
+            AiWorkerException invalid = new AiWorkerException("AI_INVALID_REQUEST", "Unsupported frontend locale");
+            invalid.initCause(failure);
+            throw invalid;
+        }
     }
 
     private static void requireMessage(String message) {
