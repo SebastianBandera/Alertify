@@ -16,6 +16,28 @@ import tools.jackson.databind.json.JsonMapper;
 
 class PlaywrightDslValuesTest {
     @Test
+    void tokenizesLongQuotedValuesAndPreservesEscapesAndUnicode() {
+        var json = JsonMapper.builder().build();
+        String value = "Texto \"exacto\" \\ \t 😀 ".repeat(3000);
+        String literal = json.writeValueAsString(value);
+        assertThat(PlaywrightDslValues.tokens(" \tACCEPT\t" + literal + "\r\n")).containsExactly("ACCEPT", literal);
+        assertThat(PlaywrightDslValues.quoted(literal)).isEqualTo(value);
+        var commands = PlaywrightPageEngine.parseCommands("CONFIRM ACCEPT " + literal + "\nCLICK 10 10");
+        assertThat(commands.getFirst().first()).isEqualTo(value);
+        assertThat(commands).hasSize(2);
+    }
+
+    @Test
+    void rejectsUnterminatedOrAdjacentQuotedArgumentsWithoutOverflow() {
+        String longValue = "a".repeat(100_000);
+        for (String input : List.of("\"" + longValue, "\"" + longValue + "\\", "\"first\"\"second\"", "\"first\"suffix"))
+            assertThatThrownBy(() -> PlaywrightDslValues.tokens(input)).isInstanceOf(IllegalArgumentException.class);
+
+        assertThat(PlaywrightDslValues.tokens("CALL\fPROCEDURE\u000b\"Name\" POINTER \"/code\" AS result"))
+                .containsExactly("CALL", "PROCEDURE", "\"Name\"", "POINTER", "\"/code\"", "AS", "result");
+    }
+
+    @Test
     void selectsEveryJsonTypeAndDistinguishesNullFromMissing() {
         var json = JsonMapper.builder().build();
         var value = json.readTree("{\"code\":\"001234\",\"n\":42,\"ok\":true,\"object\":{\"k\":1},\"list\":[1,2],\"nil\":null,\"a/b\":\"escaped\"}");

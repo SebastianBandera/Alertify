@@ -14,7 +14,6 @@ import tools.jackson.databind.json.JsonMapper;
 final class PlaywrightDraftProtection {
     static final String CODE = "PLAYWRIGHT_DRAFT_SENSITIVE_CONTENT";
     private static final JsonMapper JSON = JsonMapper.builder().build();
-    private static final Pattern QUOTED = Pattern.compile("\"(?:\\\\.|[^\"\\\\])*\"|'(?:\\\\.|[^'\\\\])*'");
     private final SecretValueSanitizer.Protection values;
     private final SecretValueSanitizer.Protection identifiers;
 
@@ -80,17 +79,7 @@ final class PlaywrightDraftProtection {
     }
 
     private void validateSelector(String selector, String location) {
-        Matcher matcher = QUOTED.matcher(selector);
-        while (matcher.find()) {
-            String token = matcher.group();
-            String literal;
-            try { literal = token.startsWith("\"") ? JSON.readTree(token).asString() : decodeCss(token.substring(1, token.length() - 1)); }
-            catch (RuntimeException failure) { literal = decodeCss(token.substring(1, token.length() - 1)); }
-            check(literal, location);
-        }
-        String unquoted = QUOTED.matcher(selector).replaceAll("");
-        if (unquoted.indexOf('"') >= 0 || unquoted.indexOf('\'') >= 0)
-            check(selector, location);
+        validateQuotedLiterals(selector, location);
 
         int textEngine = selector.indexOf("text=");
         if (textEngine >= 0)
@@ -106,6 +95,49 @@ final class PlaywrightDraftProtection {
 
         Matcher attributes = Pattern.compile("\\[[^\\]=]+\\s*=\\s*([^\\]\"'\\s]+)").matcher(selector);
         while (attributes.find()) check(decodeCss(attributes.group(1)), location);
+    }
+
+    private void validateQuotedLiterals(String selector, String location) {
+        int[] closing = { -1, -1 };
+        boolean incomplete = false;
+        int index = 0;
+        while (index < selector.length()) {
+            char quote = selector.charAt(index);
+            if (quote != '"' && quote != '\'') {
+                index++;
+                continue;
+            }
+            int delimiter = quote == '"' ? 0 : 1;
+            int end = closing[delimiter];
+            if (end <= index) {
+                end = closingQuote(selector, quote, index + 1);
+                closing[delimiter] = end;
+            }
+            if (end == selector.length()) {
+                incomplete = true;
+                index++;
+                continue;
+            }
+            String token = selector.substring(index, end + 1);
+            check(decodeQuotedLiteral(token), location);
+            index = end + 1;
+        }
+        if (incomplete) check(selector, location);
+    }
+
+    private static String decodeQuotedLiteral(String token) {
+        try { return token.charAt(0) == '"' ? JSON.readTree(token).asString() : decodeCss(token.substring(1, token.length() - 1)); }
+        catch (RuntimeException failure) { return decodeCss(token.substring(1, token.length() - 1)); }
+    }
+
+    /** Each delimiter's closing cursor only advances, including recovery from an unfinished outer quote. */
+    private static int closingQuote(String text, char quote, int from) {
+        for (int index = from; index < text.length(); index++) {
+            char character = text.charAt(index);
+            if (character == '\\') index++;
+            else if (character == quote) return index;
+        }
+        return text.length();
     }
 
     private void validateUrl(String url, String location) {
