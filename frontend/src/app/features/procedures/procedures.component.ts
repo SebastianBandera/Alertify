@@ -346,12 +346,15 @@ export class ProceduresComponent implements OnInit {
 
   protected addTemplateTagFilter(event: Event): void {
     const select = event.target as HTMLSelectElement;
-    const nameKey = select.value;
+    this.addTemplateTagFilterByKey(select.value);
+    select.value = '';
+  }
+
+  protected addTemplateTagFilterByKey(nameKey: string): void {
     if (nameKey && !this.selectedTemplateTagKeys().includes(nameKey)) {
       this.selectedTemplateTagKeys.set([...this.selectedTemplateTagKeys(), nameKey]);
       this.templatePage.set(0);
     }
-    select.value = '';
   }
 
   protected removeTemplateTagFilter(nameKey: string): void {

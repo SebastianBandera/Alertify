@@ -226,7 +226,7 @@
                 <td>
                   <div class="tag-list">
                     @for (tag of alert.tags; track tag.id) {
-                      <span class="tag" [style.--tag-color]="tag.color">{{ tag.name }}</span>
+                      <button class="tag tag--filter" type="button" [style.--tag-color]="tag.color" [title]="localization.translate('alerts.addTagFilter') + ': ' + tag.name" [attr.aria-label]="localization.translate('alerts.addTagFilter') + ': ' + tag.name" (click)="$event.stopPropagation(); addTagFilterById(tag.id)">{{ tag.name }}</button>
                     } @empty {
                       <span class="muted">—</span>
                     }
@@ -358,7 +358,7 @@
                   <td>
                     <div class="tag-list">
                       @for (tag of template.tags; track tag.nameKey) {
-                        <span class="tag" [style.--tag-color]="templateTagColor(tag)">{{ dynamic(tag.nameKey) }}</span>
+                        <button class="tag tag--filter" type="button" [style.--tag-color]="templateTagColor(tag)" [title]="localization.translate('alerts.addTagFilter') + ': ' + dynamic(tag.nameKey)" [attr.aria-label]="localization.translate('alerts.addTagFilter') + ': ' + dynamic(tag.nameKey)" (click)="$event.stopPropagation(); addTemplateTagFilterByKey(tag.nameKey)">{{ dynamic(tag.nameKey) }}</button>
                       } @empty {
                         <span class="muted">—</span>
                       }

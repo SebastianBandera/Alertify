@@ -192,7 +192,7 @@
               <td>
                 <div class="tag-list">
                   @for (tag of configuration.tags; track tag.id) {
-                    <span class="tag" [style.--tag-color]="tag.color">{{ tag.name }}</span>
+                    <button class="tag tag--filter" type="button" [style.--tag-color]="tag.color" [title]="localization.translate('configs.addTagFilter') + ': ' + tag.name" [attr.aria-label]="localization.translate('configs.addTagFilter') + ': ' + tag.name" (click)="$event.stopPropagation(); addTagFilterById(tag.id)">{{ tag.name }}</button>
                   }
                   @if (configuration.tags.length === 0) {
                     <span class="muted">—</span>

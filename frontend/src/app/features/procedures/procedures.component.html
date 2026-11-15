@@ -243,7 +243,7 @@
                 <td>
                   <div class="tag-list">
                     @for (tag of template.tags; track tag.nameKey) {
-                      <span class="tag" [style.--tag-color]="tag.color || '#7C3AED'">{{ dynamic(tag.nameKey) }}</span>
+                      <button class="tag tag--filter" type="button" [style.--tag-color]="tag.color || '#7C3AED'" [title]="localization.translate('procedures.templates.addTagFilter') + ': ' + dynamic(tag.nameKey)" [attr.aria-label]="localization.translate('procedures.templates.addTagFilter') + ': ' + dynamic(tag.nameKey)" (click)="$event.stopPropagation(); addTemplateTagFilterByKey(tag.nameKey)">{{ dynamic(tag.nameKey) }}</button>
                     } @empty {
                       <span class="muted">—</span>
                     }

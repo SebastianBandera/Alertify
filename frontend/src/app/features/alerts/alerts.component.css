@@ -107,6 +107,9 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monosp
 .badge--error { background: #fef3f2; color: #b42318; }
 .tag-list, .tag-options { display: flex; flex-wrap: wrap; gap: 6px; }
 .tag { --tag-color: #6d5dfc; display: inline-flex; align-items: center; padding: 5px 8px; border: 1px solid color-mix(in srgb, var(--tag-color) 38%, white); border-radius: 999px; background: color-mix(in srgb, var(--tag-color) 12%, white); color: color-mix(in srgb, var(--tag-color) 76%, #101828); font-size: 11px; font-weight: 700; white-space: nowrap; }
+.tag--filter { appearance: none; font-family: inherit; line-height: inherit; cursor: pointer; }
+.tag--filter:hover { border-color: var(--tag-color); }
+.tag--filter:focus-visible { outline: 2px solid var(--primary-strong); outline-offset: 2px; }
 .muted { color: var(--text-muted); font-size: 12px; }
 .actions { white-space: nowrap; }
 .actions__group { display: flex; align-items: center; gap: 2px; }
