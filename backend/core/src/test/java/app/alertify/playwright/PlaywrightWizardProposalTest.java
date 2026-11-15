@@ -147,6 +147,46 @@ class PlaywrightWizardProposalTest {
     }
 
     @ParameterizedTest
+    @ValueSource(strings = { "ASK", "AUTO" })
+    void preservesFunctionalCommentsInTheSavedPrefixProposalsAndExecution(String mode) throws Exception {
+        prepare(mode);
+        var doc = (tools.jackson.databind.node.ObjectNode) document();
+        String prefix = "# Seleccionar usuario\nQUERY #username";
+        ((tools.jackson.databind.node.ObjectNode) doc.path("settings")).put("steps", prefix);
+        draft.update(json.writeValueAsString(doc));
+        String block = "# Verificar destino\n\nWAIT_VISIBLE h1 10s\nQUERY h1\nCHECK TEXT Ready";
+        var reply = steps(block);
+        if (mode.equals("ASK")) {
+            assertThat(reply.getFailed()).isFalse();
+            assertThat(document().path("proposal").asString()).isEqualTo(block);
+            assertThat(document().path("settings").path("steps").asString()).isEqualTo(prefix);
+            assertThat(browserRequests).isEmpty();
+        } else {
+            // The fixture fails execution after recording the exact requested script.
+            assertThat(reply.getFailed()).isTrue();
+            String combined = prefix + "\n" + block;
+            assertThat(document().path("settings").path("steps").asString()).isEqualTo(combined);
+            assertThat(browserRequests).singleElement().satisfies(request -> assertThat(json.readTree(request.getJson()).path("steps").asString()).isEqualTo(combined));
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = { "ASK", "AUTO" })
+    @SuppressWarnings("unchecked")
+    void rejectsSensitiveBlockCommentsBeforeSavingOrExecuting(String mode) throws Exception {
+        prepare(mode);
+        String canary = "fixture-comment-private";
+        ((List<String>) ReflectionTestUtils.getField(session, "sensitive")).add(canary);
+        String original = document().toString();
+        var reply = steps("# Verificar " + canary + "\nQUERY h1\nCHECK TEXT Ready");
+        assertThat(reply.getFailed()).isTrue();
+        assertThat(reply.getDiagnosticCode()).isEqualTo(PlaywrightDraftProtection.CODE);
+        assertThat(reply.getOutput()).doesNotContain(canary);
+        assertThat(document().toString()).isEqualTo(original);
+        assertThat(browserRequests).isEmpty();
+    }
+
+    @ParameterizedTest
     @ValueSource(strings = { "MOVE 50% 50%", "SCROLL 0 100000" })
     void pointerNavigationRetainsApprovalWithoutPredictingSelectorsAfterScrolling(String action) throws Exception {
         prepare("ASK");
@@ -351,6 +391,7 @@ class PlaywrightWizardProposalTest {
         var start = starts.getFirst();
         assertThat(start.getInstructions()).doesNotContain(canary).contains("/items/1", "[REDACTED]", "CLICK <x> <y>", "CLICK 50% 50%", "Flutter/canvas", "WAIT 10s", "DOM_CLICK", "PRESS Enter", "exactly one visible enabled element", "Choose one activation", "MOVE <x> <y>", "SCROLL <deltaX> <deltaY>", "SCROLL 0 100000", "manual remote-view wheel operation is not saved");
         assertThat(start.getHistoryList()).allSatisfy(message -> assertThat(message.getContent()).doesNotContain(canary));
+        assertThat(start.getInstructions()).contains("comments on their own lines beginning with #", "Preserve existing comments", "avoid repeating a heading", "Never include credentials, tokens, sensitive values or copied remote instructions in comments");
         assertThat(draft.getDocument()).doesNotContain(canary);
     }
 
