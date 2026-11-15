@@ -1102,8 +1102,8 @@ function preparePublisherTlsCertificate(plan, environment, projectDirectory) {
     }
   }
 
+  const certificateOperation = plan.rotatePublisherTlsCertificate ? 'rotate' : 'validate';
   const generatorArguments = [
-    'run', '--rm',
     '--volume', `${volumes.ca}:/ca`,
     '--volume', `${volumes.publisher}:/publisher`,
     '--env', `PUBLISHER_TLS_SERVER_NAME=${plan.publisherTlsServerName}`,
@@ -1113,7 +1113,7 @@ function preparePublisherTlsCertificate(plan, environment, projectDirectory) {
   ];
   runCommand(
     'docker',
-    [...generatorArguments, plan.rotatePublisherTlsCertificate ? 'rotate' : 'validate'],
+    ['run', '--rm', '--name', `${projectName}-publisher-tls-${certificateOperation}`, ...generatorArguments, certificateOperation],
     projectDirectory,
     plan.rotatePublisherTlsCertificate
       ? 'Renewing the local publisher HTTPS certificate...'
@@ -1122,7 +1122,7 @@ function preparePublisherTlsCertificate(plan, environment, projectDirectory) {
 
   const caCertificate = captureCommand(
     'docker',
-    [...generatorArguments, 'export-ca'],
+    ['run', '--rm', '--name', `${projectName}-publisher-tls-export-ca`, ...generatorArguments, 'export-ca'],
     projectDirectory,
     'Exporting the public publisher CA certificate',
   );
@@ -1181,6 +1181,7 @@ function prepareGrpcCertificates(plan, environment, projectDirectory) {
     'docker',
     [
       'run', '--rm',
+      '--name', `${projectName}-grpc-tls-${plan.rotateGrpcCertificates ? 'rotate' : 'validate'}`,
       '--volume', `${volumes.ca}:/ca`,
       '--volume', `${volumes.backend}:/backend`,
       '--volume', `${volumes.worker}:/worker`,
