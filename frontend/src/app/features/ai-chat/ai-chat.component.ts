@@ -122,6 +122,11 @@ export class AiChatComponent implements OnInit {
     const conversation = this.selected();
     return conversation ? buildAiChatTimeline(conversation.messages, conversation.turns) : [];
   });
+  protected readonly objectives = computed(() => {
+    const objective = this.selected()?.objective;
+    return objective ? [objective] : [];
+  });
+  protected readonly verifiedObjectiveSteps = computed(() => this.selected()?.objective?.steps.filter((step) => step.status === 'VERIFIED').length ?? 0);
   protected readonly panelWidth = signal(this.restorePanelWidth());
   protected readonly chatAvailable = computed(() => this.chatUnavailableReason() === '');
   protected readonly conversationReady = computed(() => this.desiredConversationId() === null

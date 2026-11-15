@@ -2,7 +2,7 @@ import { inject, Injectable, signal } from '@angular/core';
 
 import { AuthService } from '../auth/auth.service';
 import { RUNTIME_CONFIG } from '../config/runtime-config';
-import { AiApprovalPolicy, AiChatMessage, AiChatMode, AiChatTurn, AiUsageTotals } from './ai-chat-api.service';
+import { AiApprovalPolicy, AiChatMessage, AiChatMode, AiChatTurn, AiConversationObjective, AiUsageTotals } from './ai-chat-api.service';
 
 export interface AiManagedConversationSummary {
   readonly id: number;
@@ -20,6 +20,7 @@ export interface AiManagedConversationDetail extends AiManagedConversationSummar
   readonly messages: readonly AiChatMessage[];
   readonly turns: readonly AiChatTurn[];
   readonly usage: AiUsageTotals;
+  readonly objective?: AiConversationObjective | null;
 }
 
 export interface AiManagedMemorySummary {

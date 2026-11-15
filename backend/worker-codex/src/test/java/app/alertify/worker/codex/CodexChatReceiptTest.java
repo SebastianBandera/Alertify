@@ -44,11 +44,11 @@ class CodexChatReceiptTest {
     @TempDir Path directory;
 
     @Test
-    @Timeout(30)
-    void browserTurnsAllow128IterationsWhileGeneralChatStillStopsAt64() throws Exception {
+    @Timeout(60)
+    void browserTurnsAllow128IterationsAndGeneralChatStopsAt512() throws Exception {
         for (boolean browser : List.of(false, true)) {
             Exchange exchange = exchange("Unused", browser, false, true);
-            int limit = browser ? 128 : 64;
+            int limit = browser ? 128 : 512;
             for (int index = 0; index < limit; index++) {
                 ChatToolCall call = exchange.calls.poll(5, TimeUnit.SECONDS);
                 assertThat(call).as("tool %s of %s", index + 1, limit).isNotNull();

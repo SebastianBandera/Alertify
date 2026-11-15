@@ -84,6 +84,7 @@ class AiChatPersistenceTest {
         AiToolInvocation running = mock(AiToolInvocation.class);
         AiToolInvocation pending = mock(AiToolInvocation.class);
         AiTurn turn = mock(AiTurn.class);
+        when(turn.getConversation()).thenReturn(new AiConversation("subject-1", "tester", "Historical conversation", "DIRECT", "ASK"));
         when(invocations.findAllByTurn_IdAndStatusIn(9L, List.of("PENDING_APPROVAL", "RUNNING")))
                 .thenReturn(List.of(running, pending));
         when(turns.findById(9L)).thenReturn(Optional.of(turn));
@@ -104,6 +105,7 @@ class AiChatPersistenceTest {
         AiToolInvocationRepository invocations = mock(AiToolInvocationRepository.class);
         AiToolInvocation running = mock(AiToolInvocation.class);
         AiTurn turn = mock(AiTurn.class);
+        when(turn.getConversation()).thenReturn(new AiConversation("subject-1", "tester", "Historical conversation", "DIRECT", "ASK"));
         when(invocations.findAllByTurn_IdAndStatusIn(10L, List.of("PENDING_APPROVAL", "RUNNING")))
                 .thenReturn(List.of(running));
         when(turns.findById(10L)).thenReturn(Optional.of(turn));

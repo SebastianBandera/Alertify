@@ -8,6 +8,7 @@ import {
   AiChatMessage,
   AiChatTurn,
   AiConversationDetail,
+  AiConversationObjective,
   AiToolInvocation,
 } from '../../core/api/ai-chat-api.service';
 import { AiModuleApiService, AiModuleState } from '../../core/api/ai-module-api.service';
@@ -69,6 +70,103 @@ describe('AiChatComponent', () => {
       ],
     }).compileComponents();
     component = TestBed.createComponent(AiChatComponent).componentInstance as unknown as ComponentHarness;
+  });
+
+  it.each([undefined, null])('keeps historical conversations without an objective unchanged (%s)', async (objective) => {
+    const fixture = TestBed.createComponent(AiChatComponent);
+    fixture.componentRef.setInput('popout', true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const harness = fixture.componentInstance as unknown as ComponentHarness;
+    harness.selected.set({ ...conversation(1, 'ACTIVE'), objective });
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.ai-chat__objective')).toBeNull();
+    fixture.destroy();
+  });
+
+  it.each([false, true])('shows verified progress and pending verification in popout=%s', async (popout) => {
+    const fixture = TestBed.createComponent(AiChatComponent);
+    fixture.componentRef.setInput('popout', popout);
+    const harness = fixture.componentInstance as unknown as ComponentHarness;
+    harness.open.set(true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    harness.selected.set({ ...conversation(1, 'ACTIVE'), objective: objective() });
+    fixture.detectChanges();
+    const entry = fixture.nativeElement.querySelector('.ai-chat__objective') as HTMLDetailsElement;
+    expect(entry.open).toBe(false);
+    expect(entry.querySelector('summary')?.textContent).toContain('ai.chat.objective.status.ACTIVE');
+    expect(entry.querySelector('.ai-chat__objective-progress')?.textContent).toContain('1 / 3');
+    expect(entry.querySelectorAll('.ai-chat__objective-step--verified')).toHaveLength(1);
+    expect(entry.textContent).toContain('ai.chat.objective.step.APPLIED');
+    expect(entry.textContent).toContain('ai.chat.objective.step.PENDING');
+    expect(entry.querySelector('.ai-chat__objective-evidence')?.textContent).toContain('31, 32');
+    expect(entry.querySelector('.ai-chat__objective-source')?.textContent).toContain('11, 12');
+    expect(entry.querySelectorAll('button')).toHaveLength(0);
+    fixture.destroy();
+  });
+
+  it('keeps objective disclosure open across progress updates and renders task content literally', async () => {
+    const fixture = TestBed.createComponent(AiChatComponent);
+    fixture.componentRef.setInput('popout', true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const harness = fixture.componentInstance as unknown as ComponentHarness;
+    const task = { ...objective(), summary: '<img src=x onerror="alert(1)">', reason: '<a href="https://example.test">reason</a>' };
+    harness.selected.set({ ...conversation(1, 'ACTIVE'), objective: task });
+    fixture.detectChanges();
+    const entry = fixture.nativeElement.querySelector('.ai-chat__objective') as HTMLDetailsElement;
+    entry.querySelector('summary')!.click();
+    expect(entry.open).toBe(true);
+    expect(entry.querySelector('img, a')).toBeNull();
+    expect(entry.textContent).toContain(task.summary);
+    expect(entry.textContent).toContain(task.reason);
+    harness.selected.set({ ...conversation(1, 'ACTIVE'), objective: { ...task, revision: 2,
+      steps: task.steps.map((step) => ({ ...step, status: 'VERIFIED' as const })) } });
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.ai-chat__objective')).toBe(entry);
+    expect(entry.open).toBe(true);
+    expect(entry.querySelector('.ai-chat__objective-progress')?.textContent).toContain('3 / 3');
+    harness.selected.set({ ...conversation(2, 'ACTIVE'), objective: { ...task, id: 'another-objective' } });
+    fixture.detectChanges();
+    const next = fixture.nativeElement.querySelector('.ai-chat__objective') as HTMLDetailsElement;
+    expect(next).not.toBe(entry);
+    expect(next.open).toBe(false);
+    fixture.destroy();
+  });
+
+  it('shows explicit-resume and reconciliation states without submitting a message or performing an action', async () => {
+    const fixture = TestBed.createComponent(AiChatComponent);
+    fixture.componentRef.setInput('popout', true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const harness = fixture.componentInstance as unknown as ComponentHarness;
+    harness.selected.set({ ...conversation(1, 'ACTIVE'), objective: { ...objective(), status: 'INTERRUPTED', needsReconciliation: true } });
+    fixture.detectChanges();
+    const entry = fixture.nativeElement.querySelector('.ai-chat__objective') as HTMLDetailsElement;
+    expect(entry.querySelector('summary')?.textContent).toContain('ai.chat.objective.status.INTERRUPTED');
+    expect(entry.querySelector('.ai-chat__objective-resume')?.textContent).toBe('ai.chat.objective.resumeHelp');
+    harness.selected.set({ ...conversation(1, 'ACTIVE'), objective: { ...objective(), needsReconciliation: true } });
+    fixture.detectChanges();
+    expect(entry.querySelector('.ai-chat__objective-resume')?.textContent).toBe('ai.chat.objective.reconciliationHelp');
+    expect(api.submit).not.toHaveBeenCalled();
+    fixture.destroy();
+  });
+
+  it('keeps a cancelled task visible without suggesting automatic resumption or marking pending steps verified', async () => {
+    const fixture = TestBed.createComponent(AiChatComponent);
+    fixture.componentRef.setInput('popout', true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const harness = fixture.componentInstance as unknown as ComponentHarness;
+    harness.selected.set({ ...conversation(1, 'ACTIVE'), objective: { ...objective(), status: 'CANCELLED' } });
+    fixture.detectChanges();
+    const entry = fixture.nativeElement.querySelector('.ai-chat__objective') as HTMLDetailsElement;
+    expect(entry.querySelector('summary')?.textContent).toContain('ai.chat.objective.status.CANCELLED');
+    expect(entry.querySelector('.ai-chat__objective-resume')).toBeNull();
+    expect(entry.querySelector('.ai-chat__objective-progress')?.textContent).toContain('1 / 3');
+    expect(entry.querySelectorAll('.ai-chat__objective-step--verified')).toHaveLength(1);
+    fixture.destroy();
   });
 
   it('keeps native disclosures open across refreshes and renders tool content as literal text', async () => {
@@ -712,6 +810,18 @@ describe('buildAiChatTimeline', () => {
     ]);
   });
 });
+
+function objective(): AiConversationObjective {
+  return {
+    id: 'objective-1', revision: 1, summary: 'Prepare and verify two resources', status: 'ACTIVE',
+    sourceMessageIds: [11, 12], reason: '', needsReconciliation: false, updatedAt: '2026-11-15T10:00:00Z',
+    steps: [
+      { id: 'step-1', title: 'Read the current configuration', status: 'VERIFIED', evidenceInvocationIds: [31, 32] },
+      { id: 'step-2', title: 'Apply the requested configuration', status: 'APPLIED', evidenceInvocationIds: [33] },
+      { id: 'step-3', title: 'Verify the resulting configuration', status: 'PENDING', evidenceInvocationIds: [] },
+    ],
+  };
+}
 
 function tool(id: number, status: string, createdAt = '2026-10-11T10:00:01Z'): AiToolInvocation {
   return {

@@ -14,6 +14,7 @@ import static org.mockito.Mockito.when;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
 import org.junit.jupiter.api.Test;
@@ -230,6 +231,7 @@ class AiChatReceiptTest {
 
         when(fixture.persistence.start(any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(new AiChatPersistence.StartedTurn(7L, 9L));
         fixture.service.submit(fixture.authentication, new AiChatService.SubmitRequest(7L, "Correct this action", "DIRECT", "AUTO", "en"));
+        AiChatTestAssessment.simpleWork(fixture.service, 9L);
         fixture.call();
         assertThat(fixture.result().getDiagnosticCode()).isEqualTo("REVIEW_REJECTED");
         verify(fixture.persistence, never()).failed(org.mockito.ArgumentMatchers.eq(9L), any(), any());
@@ -352,13 +354,17 @@ class AiChatReceiptTest {
         var descriptor = new AiToolDescriptor(callback, "alertify_configuration_update", "synthetic update", false,
                 DefaultToolCallResultConverter.class, false, false, false, false, Set.of());
         when(catalog.descriptorsFor(any(), any())).thenReturn(List.of(descriptor));
-        var turn = mock(AiTurn.class);
-        when(turn.getId()).thenReturn(8L);
-        var invocation = new AiToolInvocation(turn,1,"synthetic-call","alertify_configuration_update",
-                "{\"id\":10,\"value\":\"PRIVATE-ARG\"}","DOMAIN",true,true,false,false,false,false,"",true);
-        ReflectionTestUtils.setField(invocation,"id",99L);
+        var invocationIds = new AtomicLong(99);
         when(persistence.tool(any(),anyLong(),any(),any(),any(),any(),anyBoolean(),anyBoolean(),anyBoolean(),
-                anyBoolean(),anyBoolean(),anyBoolean(),any(),anyBoolean())).thenReturn(invocation);
+                anyBoolean(),anyBoolean(),anyBoolean(),any(),anyBoolean())).thenAnswer(call -> {
+                    var turn = mock(AiTurn.class);
+                    when(turn.getId()).thenReturn(call.getArgument(0));
+                    var invocation = new AiToolInvocation(turn, call.getArgument(1), call.getArgument(2), call.getArgument(3), call.getArgument(4),
+                            call.getArgument(5), call.getArgument(6), call.getArgument(7), call.getArgument(8), call.getArgument(9),
+                            call.getArgument(10), call.getArgument(11), call.getArgument(12), call.getArgument(13));
+                    ReflectionTestUtils.setField(invocation, "id", invocationIds.getAndIncrement());
+                    return invocation;
+                });
         when(persistence.approvalIsValid(99L,"subject-1")).thenReturn(true);
         var handle = mock(AiWorkerClient.ChatHandle.class);
         List<Consumer<ChatWorkerMessage>> consumers = new ArrayList<>();
@@ -371,6 +377,7 @@ class AiChatReceiptTest {
                 mock(AiMessageRepository.class),mock(AiToolInvocationRepository.class),localization,events,
                 mock(ApplicationEventLogger.class),JSON,mock(AiConversationHistory.class),mock(app.alertify.ai.memory.AiMemoryService.class), mock(AiPatchReadback.class));
         service.submit(authentication,new AiChatService.SubmitRequest(null,userRequest,mode,approval,"en"));
+        AiChatTestAssessment.simpleWork(service, 8L);
         return new Fixture(service,persistence,authentication,callback,consumers.getFirst(),handle,worker,events,consumers);
     }
 
