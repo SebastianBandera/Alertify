@@ -5,11 +5,13 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -35,6 +37,7 @@ import app.alertify.realtime.AdminEventPublisher;
 import app.alertify.worker.ai.grpc.ChatClientMessage;
 import app.alertify.worker.ai.grpc.ChatToolCall;
 import app.alertify.worker.ai.grpc.ChatWorkerMessage;
+import app.alertify.worker.ai.grpc.ReviewToolCallResponse;
 import tools.jackson.databind.json.JsonMapper;
 
 class AiChatReceiptTest {
@@ -142,6 +145,97 @@ class AiChatReceiptTest {
         verify(fixture.callback, never()).call(any());
         verify(fixture.persistence).toolReviewRejected(99L, "PRIVATE-REVIEW", "model");
         fixture.service.cancel(fixture.authentication, 8L);
+    }
+
+    @Test
+    void automaticReviewAllowsTwentyNineCorrectionsAndStopsOnTheThirtiethRejection() {
+        var fixture = fixture("DIRECT", "AUTO");
+        when(fixture.worker.review(any())).thenReturn(ReviewToolCallResponse.newBuilder().setAllowed(false).setReason("Requires correction").build());
+        for (int rejection = 1; rejection <= 29; rejection++) {
+            fixture.call();
+            assertThat(fixture.result().getDiagnosticCode()).isEqualTo("REVIEW_REJECTED");
+        }
+        verify(fixture.persistence, never()).failed(any(), any(), any());
+        fixture.call();
+        verify(fixture.persistence).failed(8L, "AI_REVIEW_LIMIT", "The automatic reviewer rejected 30 proposed actions");
+        verify(fixture.handle).close();
+        verify(fixture.callback, never()).call(any());
+        // A late tool request from the closed generation must not reach review or execution.
+        fixture.call();
+        verify(fixture.worker, org.mockito.Mockito.times(30)).review(any());
+    }
+
+    @Test
+    void anApprovalBetweenAutomaticRejectionsDoesNotResetTheirTurnBudget() {
+        var fixture = fixture("DIRECT", "AUTO");
+        var rejected = ReviewToolCallResponse.newBuilder().setAllowed(false).build();
+        when(fixture.worker.review(any())).thenReturn(rejected);
+        for (int rejection = 0; rejection < 14; rejection++) fixture.call();
+
+        when(fixture.worker.review(any())).thenReturn(ReviewToolCallResponse.newBuilder().setAllowed(true).build());
+        when(fixture.callback.call(any())).thenReturn("{\"id\":10}");
+        fixture.call();
+        assertThat(fixture.result().getFailed()).isFalse();
+        when(fixture.worker.review(any())).thenReturn(rejected);
+        for (int rejection = 0; rejection < 15; rejection++) fixture.call();
+
+        verify(fixture.persistence, never()).failed(any(), any(), any());
+        fixture.call();
+        verify(fixture.persistence).failed(8L, "AI_REVIEW_LIMIT", "The automatic reviewer rejected 30 proposed actions");
+        verify(fixture.callback, org.mockito.Mockito.times(1)).call(any());
+    }
+
+    @Test
+    void reviewerServiceFailureDoesNotConsumeAnAutomaticRejection() {
+        var fixture = fixture("DIRECT", "AUTO");
+        var rejected = ReviewToolCallResponse.newBuilder().setAllowed(false).build();
+        when(fixture.worker.review(any())).thenReturn(rejected);
+        for (int rejection = 0; rejection < 29; rejection++) fixture.call();
+
+        when(fixture.worker.review(any())).thenThrow(new IllegalStateException("PRIVATE-REVIEWER-ERROR"));
+        fixture.call();
+        assertThat(fixture.result().getDiagnosticCode()).isEqualTo("REVIEW_FAILED");
+        assertThat(fixture.result().getOutput()).doesNotContain("PRIVATE");
+        verify(fixture.persistence, never()).failed(any(), any(), any());
+        doReturn(rejected).when(fixture.worker).review(any());
+        fixture.call();
+        verify(fixture.persistence).failed(8L, "AI_REVIEW_LIMIT", "The automatic reviewer rejected 30 proposed actions");
+        verify(fixture.callback, never()).call(any());
+    }
+
+    @Test
+    void automaticRejectionsRemainAccumulatedAfterAReasoningUpgrade() {
+        var fixture = fixture("DIRECT", "AUTO", "medium");
+        when(fixture.worker.review(any())).thenReturn(ReviewToolCallResponse.newBuilder().setAllowed(false).build());
+        for (int rejection = 0; rejection < 15; rejection++) fixture.call();
+
+        fixture.consumer.accept(ChatWorkerMessage.newBuilder().setToolCall(ChatToolCall.newBuilder().setCallId("upgrade")
+                .setName("alertify_request_reasoning_upgrade").setArguments("{\"reason\":\"complex request\"}")).build());
+        verify(fixture.persistence).upgraded(8L, "medium");
+        verify(fixture.worker, org.mockito.Mockito.times(2)).chat(any(), any(), any());
+        for (int rejection = 0; rejection < 14; rejection++) fixture.call();
+
+        verify(fixture.persistence, never()).failed(any(), any(), any());
+        fixture.call();
+        verify(fixture.persistence).failed(8L, "AI_REVIEW_LIMIT", "The automatic reviewer rejected 30 proposed actions");
+        verify(fixture.worker, org.mockito.Mockito.times(30)).review(any());
+        verify(fixture.callback, never()).call(any());
+    }
+
+    @Test
+    void aNewTurnStartsWithAnEmptyAutomaticRejectionBudget() {
+        var fixture = fixture("DIRECT", "AUTO");
+        when(fixture.worker.review(any())).thenReturn(ReviewToolCallResponse.newBuilder().setAllowed(false).build());
+        for (int rejection = 0; rejection < 30; rejection++) fixture.call();
+
+        when(fixture.persistence.start(any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(new AiChatPersistence.StartedTurn(7L, 9L));
+        fixture.service.submit(fixture.authentication, new AiChatService.SubmitRequest(7L, "Correct this action", "DIRECT", "AUTO", "en"));
+        fixture.call();
+        assertThat(fixture.result().getDiagnosticCode()).isEqualTo("REVIEW_REJECTED");
+        verify(fixture.persistence, never()).failed(org.mockito.ArgumentMatchers.eq(9L), any(), any());
+        verify(fixture.worker, org.mockito.Mockito.times(31)).review(any());
+        verify(fixture.callback, never()).call(any());
+        fixture.service.cancel(fixture.authentication, 9L);
     }
 
     private Fixture fixture(String mode, String approval) {
@@ -267,20 +361,23 @@ class AiChatReceiptTest {
                 anyBoolean(),anyBoolean(),anyBoolean(),any(),anyBoolean())).thenReturn(invocation);
         when(persistence.approvalIsValid(99L,"subject-1")).thenReturn(true);
         var handle = mock(AiWorkerClient.ChatHandle.class);
-        ArgumentCaptor<Consumer<ChatWorkerMessage>> consumer = ArgumentCaptor.forClass(Consumer.class);
-        when(worker.chat(consumer.capture(),any(),any())).thenReturn(handle);
+        List<Consumer<ChatWorkerMessage>> consumers = new ArrayList<>();
+        when(worker.chat(any(),any(),any())).thenAnswer(call -> {
+            consumers.add(call.getArgument(0));
+            return handle;
+        });
         var events = mock(AdminEventPublisher.class);
         var service = new AiChatService(worker,catalog,persistence,mock(AiConversationRepository.class),mock(AiTurnRepository.class),
                 mock(AiMessageRepository.class),mock(AiToolInvocationRepository.class),localization,events,
                 mock(ApplicationEventLogger.class),JSON,mock(AiConversationHistory.class),mock(app.alertify.ai.memory.AiMemoryService.class), mock(AiPatchReadback.class));
         service.submit(authentication,new AiChatService.SubmitRequest(null,userRequest,mode,approval,"en"));
-        return new Fixture(service,persistence,authentication,callback,consumer.getValue(),handle,worker,events);
+        return new Fixture(service,persistence,authentication,callback,consumers.getFirst(),handle,worker,events,consumers);
     }
 
     private record Fixture(AiChatService service, AiChatPersistence persistence, Authentication authentication,
-            ToolCallback callback, Consumer<ChatWorkerMessage> consumer, AiWorkerClient.ChatHandle handle, AiWorkerClient worker, AdminEventPublisher events) {
+            ToolCallback callback, Consumer<ChatWorkerMessage> consumer, AiWorkerClient.ChatHandle handle, AiWorkerClient worker, AdminEventPublisher events, List<Consumer<ChatWorkerMessage>> consumers) {
         void call() {
-            consumer.accept(ChatWorkerMessage.newBuilder().setToolCall(ChatToolCall.newBuilder().setCallId("synthetic-call")
+            consumers.getLast().accept(ChatWorkerMessage.newBuilder().setToolCall(ChatToolCall.newBuilder().setCallId("synthetic-call")
                     .setName("alertify_configuration_update").setArguments("{\"id\":10,\"value\":\"PRIVATE-ARG\"}")).build());
         }
 

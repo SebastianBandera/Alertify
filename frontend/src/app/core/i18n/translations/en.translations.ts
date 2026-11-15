@@ -92,7 +92,7 @@ export const EN_TRANSLATIONS = {
   'ai.conversations.noTurns': 'This conversation has no turns.',
   'ai.conversations.reasoning': 'Reasoning effort',
   'ai.conversations.reasoningUpgraded': 'Reasoning upgraded',
-  'ai.conversations.rejections': 'Automatic rejections',
+  'ai.conversations.rejections': 'Rejections',
   'ai.conversations.errorCode': 'Error code',
   'ai.conversations.error': 'Error detail',
   'ai.conversations.tools': 'Tool invocations',

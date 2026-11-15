@@ -92,7 +92,7 @@ export const ES_UY_TRANSLATIONS = {
   'ai.conversations.noTurns': 'Esta conversación no tiene turnos.',
   'ai.conversations.reasoning': 'Esfuerzo de razonamiento',
   'ai.conversations.reasoningUpgraded': 'Razonamiento aumentado',
-  'ai.conversations.rejections': 'Rechazos automáticos',
+  'ai.conversations.rejections': 'Rechazos',
   'ai.conversations.errorCode': 'Código de error',
   'ai.conversations.error': 'Detalle del error',
   'ai.conversations.tools': 'Invocaciones de tools',

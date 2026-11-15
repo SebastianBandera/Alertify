@@ -66,6 +66,7 @@ public class AiChatService {
     private static final int MAX_TOOL_ARGUMENT_BYTES = 128 * 1024;
     private static final int MAX_TOOL_OUTPUT_BYTES = 128 * 1024;
     private static final int MAX_LOCALIZATION_TOOL_OUTPUT_BYTES = 512 * 1024;
+    private static final int MAX_AUTO_REJECTIONS = 30;
     private static final String REASONING_TOOL = "alertify_request_reasoning_upgrade";
     private static final String LOAD_GROUP_TOOL = "alertify_load_tool_group";
     private static final String RESTORATION_HISTORY_TOOL = "alertify_restoration_history";
@@ -429,8 +430,8 @@ public class AiChatService {
             if (!review.getAllowed()) {
                 persistence.toolReviewRejected(invocation.getId(), review.getReason(), reviewerModel(active.settings));
                 publish(active, STATUS_TOOL_RESULT, invocation.getId());
-                if (++active.autoRejections >= 3) {
-                    fail(active, "AI_REVIEW_LIMIT", "The automatic reviewer rejected three proposed actions");
+                if (++active.autoRejections >= MAX_AUTO_REJECTIONS) {
+                    fail(active, "AI_REVIEW_LIMIT", "The automatic reviewer rejected " + MAX_AUTO_REJECTIONS + " proposed actions");
                     return;
                 }
                 sendResult(active, invocation, callId, "Failed: the automatic reviewer rejected this action. Choose a safer alternative. Reason: " + review.getReason(), true, "REVIEW_REJECTED", "REVIEW", "AUTO_REJECTED", "REJECTED", List.of());
