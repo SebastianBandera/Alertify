@@ -6,7 +6,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
-import java.util.regex.Pattern;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -19,7 +18,7 @@ public class AiLocalizationSourceService {
 
 
     private static final long MAX_TOTAL_BYTES = 448L * 1024;
-    private static final Pattern LOCALE = Pattern.compile("[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*");
+    private static final int MAX_LOCALE_LENGTH = 64;
     private static final Path REPOSITORY_ROOT = Path.of("frontend", "src", "app", "core", "i18n");
     private static final Path BACKEND_ROOT = Path.of("..", "frontend", "src", "app", "core", "i18n");
 
@@ -31,7 +30,7 @@ public class AiLocalizationSourceService {
 
     public String resolveLocale(String requestedLocale) {
         String locale = requestedLocale == null || requestedLocale.isBlank() ? "en" : requestedLocale.strip();
-        if (!LOCALE.matcher(locale).matches())
+        if (locale.length() > MAX_LOCALE_LENGTH || !validLocale(locale))
             throw new IllegalArgumentException("Unsupported frontend locale");
 
         String fileLocale = locale.toLowerCase(Locale.ROOT);
@@ -40,6 +39,23 @@ public class AiLocalizationSourceService {
         requireFile(root, root.resolve(TRANSLATIONS_DIRECTORY).resolve(fileLocale + ".translations.ts"));
         requireFile(root, root.resolve(TRANSLATIONS_DIRECTORY).resolve(fileLocale + ".extended.translations.ts"));
         return locale;
+    }
+
+    private static boolean validLocale(String locale) {
+        boolean segmentEmpty = true;
+        for (int index = 0; index < locale.length(); index++) {
+            char character = locale.charAt(index);
+            if (character == '-') {
+                if (segmentEmpty) return false;
+
+                segmentEmpty = true;
+            } else if ((character >= 'A' && character <= 'Z') || (character >= 'a' && character <= 'z') || (character >= '0' && character <= '9')) {
+                segmentEmpty = false;
+            } else {
+                return false;
+            }
+        }
+        return !segmentEmpty;
     }
 
     public AiLocalizationSources sources(String requestedLocale) {

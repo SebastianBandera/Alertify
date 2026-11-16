@@ -57,6 +57,9 @@ final class WizardTestValidation {
     }
 
     static void record(ObjectNode validation, JsonNode report) {
+        if (report.path("scope").asString().equals("PARTIAL"))
+            throw new IllegalArgumentException("A partial reproduction cannot grant full clean-test validation");
+
         ObjectNode results = (ObjectNode) validation.path("results");
         for (JsonNode result : report.path("browsers")) {
             ObjectNode entry = JSON.createObjectNode().put("passed", result.path("passed").asBoolean()).put("completed", result.path("completed").asInt()).put("testedAt", Instant.now().toString());
@@ -95,6 +98,13 @@ final class WizardTestValidation {
         if (!original.isObject() || !safe.isObject()) return;
 
         ObjectNode target = (ObjectNode) safe;
+        String scope = original.path("scope").asString();
+        if (List.of("FULL", "PARTIAL").contains(scope)) target.put("scope", scope);
+        for (String field : List.of("untilLine", "lastExecutedLine", "attempt")) {
+            JsonNode value = original.path(field);
+            if (value.isNull()) target.putNull(field);
+            else if (value.isIntegralNumber() && value.canConvertToInt() && value.asInt() >= 0) target.put(field, value.asInt());
+        }
         if (original.path("requestedBrowsers").isArray() && original.path("requestedBrowsers").valueStream().allMatch(value -> ENGINES.contains(value.asString())))
             target.set("requestedBrowsers", original.path("requestedBrowsers").deepCopy());
 
@@ -103,8 +113,10 @@ final class WizardTestValidation {
 
         for (int index = 0; index < original.path("browsers").size(); index++) {
             String engine = original.path("browsers").get(index).path("browser").asString();
-            if (ENGINES.contains(engine) && target.path("browsers").path(index).isObject())
+            if (ENGINES.contains(engine) && target.path("browsers").path(index).isObject()) {
                 ((ObjectNode) target.path("browsers").path(index)).put("browser", engine);
+                preserveReportMetadata(original.path("browsers").get(index), target.path("browsers").path(index));
+            }
         }
     }
 }

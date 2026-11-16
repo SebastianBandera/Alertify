@@ -131,6 +131,12 @@ message ChatStart {
   string mode = 8;
   string approval_policy = 9;
   bool ephemeral_browser_session = 10;
+  string objective_json = 11;
+  int64 turn_deadline_epoch_millis = 12;
+  int32 remaining_model_requests = 13;
+  bool require_objective_assessment = 14;
+  string objective_user_context_json = 15;
+  bool objective_protocol = 16;
 }
 
 message ChatToolResult {
@@ -149,6 +155,8 @@ message ChatClientMessage {
     ChatStart start = 1;
     ChatToolResult tool_result = 2;
     bool cancel = 3;
+    ChatCompletionDecision completion_decision = 4;
+    ChatRequestPermitDecision request_permit_decision = 5;
   }
 }
 
@@ -196,6 +204,31 @@ message ChatFailure {
   string message = 2;
 }
 
+// Backend decisions are control metadata, never page/model authorization.
+message ChatCompletionCheck {
+  string request_id = 1;
+  string candidate_text = 2;
+}
+
+message ChatCompletionDecision {
+  string request_id = 1;
+  bool finish = 2;
+  string instruction = 3;
+  string objective_json = 4;
+}
+
+message ChatRequestPermitCheck {
+  string request_id = 1;
+}
+
+message ChatRequestPermitDecision {
+  string request_id = 1;
+  bool allowed = 2;
+  string diagnostic_code = 3;
+  int32 remaining_requests = 4;
+  int64 deadline_epoch_millis = 5;
+}
+
 message ChatWorkerMessage {
   oneof payload {
     string output_text = 1;
@@ -203,6 +236,8 @@ message ChatWorkerMessage {
     ChatCompleted completed = 3;
     ChatFailure failure = 4;
     ChatUsageUpdate usage = 5;
+    ChatCompletionCheck completion_check = 6;
+    ChatRequestPermitCheck request_permit_check = 7;
   }
 }
 

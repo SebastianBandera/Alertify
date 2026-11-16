@@ -518,6 +518,22 @@ td small {
   white-space: nowrap;
 }
 
+.tag--filter {
+  appearance: none;
+  font-family: inherit;
+  line-height: inherit;
+  cursor: pointer;
+}
+
+.tag--filter:hover {
+  border-color: var(--tag-color);
+}
+
+.tag--filter:focus-visible {
+  outline: 2px solid var(--primary-strong);
+  outline-offset: 2px;
+}
+
 .date-cell {
   color: #475467;
   white-space: nowrap;

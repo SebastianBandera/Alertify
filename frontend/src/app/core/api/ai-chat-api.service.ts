@@ -120,6 +120,28 @@ export interface AiChatTurn {
   readonly tools: readonly AiToolInvocation[];
 }
 
+export type AiObjectiveStatus = 'ACTIVE' | 'COMPLETED' | 'NEEDS_DECISION' | 'BLOCKED' | 'INTERRUPTED' | 'CANCELLED';
+export type AiObjectiveStepStatus = 'PENDING' | 'APPLIED' | 'VERIFIED';
+
+export interface AiObjectiveStep {
+  readonly id: string;
+  readonly title: string;
+  readonly status: AiObjectiveStepStatus;
+  readonly evidenceInvocationIds: readonly number[];
+}
+
+export interface AiConversationObjective {
+  readonly id: string;
+  readonly revision: number;
+  readonly summary: string;
+  readonly status: AiObjectiveStatus;
+  readonly sourceMessageIds: readonly number[];
+  readonly steps: readonly AiObjectiveStep[];
+  readonly reason: string;
+  readonly needsReconciliation: boolean;
+  readonly updatedAt: string;
+}
+
 export interface AiConversationDetail {
   readonly id: number;
   readonly title: string;
@@ -129,6 +151,7 @@ export interface AiConversationDetail {
   readonly messages: readonly AiChatMessage[];
   readonly turns: readonly AiChatTurn[];
   readonly usage: AiUsageTotals;
+  readonly objective?: AiConversationObjective | null;
 }
 
 @Injectable({ providedIn: 'root' })

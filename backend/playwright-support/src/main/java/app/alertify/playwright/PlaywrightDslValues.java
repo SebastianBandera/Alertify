@@ -3,7 +3,6 @@ package app.alertify.playwright;
 import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
-import java.util.regex.Pattern;
 
 import tools.jackson.core.JsonPointer;
 import tools.jackson.databind.JsonNode;
@@ -12,24 +11,50 @@ import tools.jackson.databind.json.JsonMapper;
 /** Parsing and conversion shared by browser execution and backend value preparation. */
 public final class PlaywrightDslValues {
     private static final JsonMapper JSON = JsonMapper.builder().build();
-    private static final Pattern TOKEN = Pattern.compile("\"(?:\\\\.|[^\"\\\\])*\"|\\S+");
 
     private PlaywrightDslValues() { }
 
     public static List<String> tokens(String value) {
         List<String> result = new ArrayList<>();
-        var matcher = TOKEN.matcher(value);
         int end = 0;
-        while (matcher.find()) {
-            if (!value.substring(end, matcher.start()).isBlank())
-                throw new IllegalArgumentException("Invalid command syntax");
+        while (end < value.length()) {
+            while (end < value.length() && tokenWhitespace(value.charAt(end))) end++;
 
-            result.add(matcher.group());
-            end = matcher.end();
+            if (end == value.length()) break;
+
+            int start = end;
+            if (value.charAt(start) == '"') {
+                end = quotedEnd(value, start);
+            } else {
+                end = unquotedEnd(value, start);
+            }
+            result.add(value.substring(start, end));
             if (end < value.length() && !Character.isWhitespace(value.charAt(end)))
                 throw new IllegalArgumentException("Command arguments must be separated by whitespace");
         }
         return List.copyOf(result);
+    }
+
+    private static int quotedEnd(String value, int start) {
+        int index = start + 1;
+        while (index < value.length()) {
+            char character = value.charAt(index++);
+            if (character == '\\') index++;
+            else if (character == '"') return index;
+        }
+
+        throw new IllegalArgumentException("Invalid command syntax");
+    }
+
+    private static int unquotedEnd(String value, int start) {
+        int end = start;
+        while (end < value.length() && !tokenWhitespace(value.charAt(end))) end++;
+
+        return end;
+    }
+
+    private static boolean tokenWhitespace(char value) {
+        return value == ' ' || value == '\t' || value == '\n' || value == '\u000b' || value == '\f' || value == '\r';
     }
 
     public static String quoted(String token) {

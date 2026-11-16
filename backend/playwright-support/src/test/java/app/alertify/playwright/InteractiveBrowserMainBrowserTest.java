@@ -86,6 +86,10 @@ class InteractiveBrowserMainBrowserTest {
             let count=0; document.querySelector('#before').onclick=()=>document.querySelector('#clock').textContent=String(++count);
             if(location.pathname==='/wait')setTimeout(()=>{const e=document.createElement('div');e.id='ready';e.textContent='Ready';document.body.append(e)},4000);
             if(location.pathname.startsWith('/once/'))document.querySelector('h1').textContent=document.cookie.includes('fixture=present')?'Cookie kept':'Cookie missing';
+            if(location.pathname.startsWith('/confirmation'))document.querySelector('#before').onclick=()=>{
+              const message=location.pathname==='/confirmation-private'?document.querySelector('#password').value:location.pathname==='/confirmation-long'?'A'.repeat(4090)+document.querySelector('#password').value+'Z'.repeat(5000):location.pathname==='/confirmation-surrogate'?'A'.repeat(4095)+String.fromCodePoint(0x1f600)+'Z':'Cerrar sesión?';
+              if(confirm(message)){document.querySelector('h1').textContent='Sesión cerrada';location.hash='login';}
+            };
             if(location.pathname==='/tampered-selection'){
               const key=Object.keys(window).find(value=>value.startsWith('__alertifyInspection_'));
               window[key].select=()=>({error:document.querySelector('#input').value});
@@ -827,19 +831,141 @@ class InteractiveBrowserMainBrowserTest {
         }
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = { "chromium", "firefox", "webkit" })
+    void reportsRedactedDialogsAndClearsConfirmationStateOnReset(String engine) throws Exception {
+        try (var harness = new Harness()) {
+            ObjectNode privateSettings = settings(engine, "/confirmation-private", "QUERY #before\nUSE");
+            privateSettings.set("protectedValues", JSON.valueToTree(List.of("fixture-canary")));
+            harness.success("OPEN", privateSettings);
+            harness.success("EXECUTE", privateSettings);
+            var observation = harness.success("OBSERVE", Map.of());
+            assertThat(observation.path("lastDialog").path("type").asString()).isEqualTo("confirm");
+            assertThat(observation.path("lastDialog").path("message").asString()).isEqualTo("[REDACTED]");
+            assertThat(observation.path("lastDialog").path("dismissed").asBoolean()).isTrue();
+            assertThat(observation.toString()).doesNotContain("fixture-canary");
+
+            ObjectNode longSettings = settings(engine, "/confirmation-long", "QUERY #before\nUSE");
+            longSettings.set("protectedValues", JSON.valueToTree(List.of("fixture-canary")));
+            harness.success("RESET", longSettings);
+            harness.success("EXECUTE", longSettings);
+            var longDialog = harness.success("OBSERVE", Map.of()).path("lastDialog");
+            assertThat(longDialog.path("message").asString()).hasSize(4096).startsWith("A".repeat(4090) + "[REDAC");
+            assertThat(longDialog.path("truncated").asBoolean()).isTrue();
+            assertThat(longDialog.toString()).doesNotContain("fixture");
+
+            ObjectNode unicodeSettings = settings(engine, "/confirmation-surrogate", "QUERY #before\nUSE");
+            harness.success("RESET", unicodeSettings);
+            harness.success("EXECUTE", unicodeSettings);
+            var unicodeDialog = harness.success("OBSERVE", Map.of()).path("lastDialog");
+            assertThat(unicodeDialog.path("message").asString()).isEqualTo("A".repeat(4095));
+            assertThat(unicodeDialog.path("truncated").asBoolean()).isTrue();
+
+            ObjectNode publicSettings = settings(engine, "/confirmation-public", "QUERY #before\nCONFIRM ACCEPT \"Cerrar sesión?\"\nUSE\nCHECK URL **#login");
+            harness.success("RESET", publicSettings);
+            assertThat(harness.success("OBSERVE", Map.of()).has("lastDialog")).isFalse();
+            harness.success("EXECUTE", publicSettings);
+            assertThat(harness.success("OBSERVE", Map.of()).path("lastDialog").path("accepted").asBoolean()).isTrue();
+
+            publicSettings.put("steps", "QUERY #before\nCONFIRM ACCEPT \"Different private expected\"\nUSE");
+            harness.success("RESET", publicSettings);
+            var failure = harness.request("EXECUTE", publicSettings);
+            assertThat(failure.getType()).isEqualTo("ERROR");
+            var diagnostic = JSON.readTree(failure.getJson());
+            assertThat(diagnostic.path("failureCode").asString()).isEqualTo("CONFIRM_MISMATCH");
+            assertThat(diagnostic.path("failedLine").asInt()).isEqualTo(3);
+            assertThat(diagnostic.path("failedCommand").asString()).isEqualTo("USE");
+            assertThat(diagnostic.toString()).doesNotContain("Different private expected", "Cerrar sesión?");
+        }
+    }
+
     private static ObjectNode settings(String engine, String path, String steps) {
         return (ObjectNode) JSON.valueToTree(Map.of("url", origin + path, "engine", engine, "browsers", List.of(engine), "steps", steps, "loadTimeoutSeconds", 10, "elementTimeoutSeconds", 5));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = { "chromium", "firefox", "webkit" })
+    void partialExecutionKeepsFullCommandLinesAndLeavesTheSuffixPending(String engine) throws Exception {
+        try (var harness = new Harness()) {
+            String script = "# Prefix\nQUERY h1\nCHECK TEXT Public content\n# Stop\nQUERY #before\nUSE\n# End";
+            ObjectNode settings = settings(engine, "/html", script);
+            harness.success("OPEN", settings);
+            settings.put("untilLine", 4);
+            var partial = harness.success("EXECUTE", settings);
+            assertThat(partial.path("scope").asString()).isEqualTo("PARTIAL");
+            assertThat(partial.path("untilLine").asInt()).isEqualTo(4);
+            assertThat(partial.path("completed").asInt()).isEqualTo(2);
+            assertThat(partial.path("lastExecutedLine").asInt()).isEqualTo(3);
+            var started = harness.events.stream().map(Event::event).filter(event -> event.getType().equals("PROGRESS"))
+                    .map(event -> JSON.readTree(event.getJson())).filter(event -> event.path("phase").asString().equals("STARTED")).findFirst().orElseThrow();
+            assertThat(started.path("commandLines").valueStream().map(JsonNode::asInt)).containsExactly(2, 3, 5, 6);
+            assertThat(harness.success("OBSERVE", Map.of()).path("snapshot").asString()).contains("Clock");
+            settings.put("untilLine", 7);
+            var full = harness.success("EXECUTE", settings);
+            assertThat(full.path("scope").asString()).isEqualTo("FULL");
+            assertThat(full.path("completed").asInt()).isEqualTo(4);
+            assertThat(full.path("lastExecutedLine").asInt()).isEqualTo(6);
+            settings.remove("untilLine");
+            harness.success("RESET", settings);
+            assertThat(harness.success("EXECUTE", settings).path("untilLine").isNull()).isTrue();
+            settings.put("steps", "").put("untilLine", 1);
+            harness.success("RESET", settings);
+            var empty = harness.success("EXECUTE", settings);
+            assertThat(empty.path("scope").asString()).isEqualTo("FULL");
+            assertThat(empty.path("lastExecutedLine").isNull()).isTrue();
+        }
+    }
+
+    @Test
+    void testRejectsAConfirmationCutBeforeOpeningAnyBrowser() throws Exception {
+        try (var harness = new Harness()) {
+            ObjectNode settings = settings("chromium", "/html", "CONFIRM ACCEPT \"Confirm?\"\nCLICK 10 10");
+            settings.put("untilLine", 1);
+            assertThat(harness.request("TEST", settings).getType()).isEqualTo("ERROR");
+            assertThat(harness.events).noneMatch(event -> event.event().getType().equals("PROGRESS"));
+            settings.put("untilLine", new java.math.BigInteger("18446744073709551617"));
+            assertThat(harness.request("TEST", settings).getType()).isEqualTo("ERROR");
+            assertThat(harness.events).noneMatch(event -> event.event().getType().equals("PROGRESS"));
+        }
+    }
+
+    @Test
+    void oneControlledDeadlineStopsRemainingCommandsAndDoesNotRestartForAnotherEngine() throws Exception {
+        var nano = new java.util.concurrent.atomic.AtomicLong();
+        var clock = java.time.Clock.fixed(java.time.Instant.ofEpochMilli(1000), java.time.ZoneOffset.UTC);
+        try (var harness = new Harness(clock, nano::get)) {
+            ObjectNode settings = settings("chromium", "/html", "QUERY h1\nCHECK TEXT Public content");
+            settings.set("browsers", JSON.valueToTree(List.of("chromium", "firefox", "webkit")));
+            settings.put("deadlineEpochMillis", 1000 + WizardOperationDeadline.MAX_MILLIS);
+            harness.hook = event -> {
+                if (event.getType().equals("PROGRESS") && JSON.readTree(event.getJson()).path("phase").asString().equals("COMPLETED"))
+                    nano.set(TimeUnit.MILLISECONDS.toNanos(WizardOperationDeadline.MAX_MILLIS));
+            };
+            var report = harness.success("TEST", settings);
+            assertThat(report.path("passed").asBoolean()).isFalse();
+            assertThat(report.path("browsers")).hasSize(3);
+            assertThat(report.path("browsers").get(0).path("completed").asInt()).isEqualTo(1);
+            assertThat(report.path("browsers").get(1).path("completed").asInt()).isZero();
+            assertThat(report.path("browsers").valueStream().map(browser -> browser.path("failureCode").asString())).containsOnly("PLAYWRIGHT_OPERATION_TIMEOUT");
+            assertThat(harness.events.stream().map(Event::event).filter(event -> event.getType().equals("PROGRESS"))
+                    .map(event -> JSON.readTree(event.getJson())).filter(event -> event.path("phase").asString().equals("OPENING"))).hasSize(1);
+        }
     }
 
     private record Event(WizardEvent event, long at) { }
 
     private static final class Harness implements AutoCloseable {
         private final List<Event> events = new ArrayList<>();
-        private final InteractiveBrowserMain child = new InteractiveBrowserMain(this::event);
+        private final InteractiveBrowserMain child;
         private String procedureResult;
+        private java.util.function.Consumer<WizardEvent> hook = event -> { };
+
+        private Harness() { child = new InteractiveBrowserMain(this::event); }
+        private Harness(java.time.Clock clock, java.util.function.LongSupplier nanoTime) { child = new InteractiveBrowserMain(this::event, clock, nanoTime); }
 
         private void event(WizardEvent event) {
             events.add(new Event(event, System.nanoTime()));
+            hook.accept(event);
             if (event.getType().equals("PROCEDURE_CALL")) {
                 CompletableFuture.delayedExecutor(3, TimeUnit.SECONDS).execute(() -> child.procedureReply(WizardRequest.newBuilder()
                         .setOperation("PROCEDURE_REPLY").setRequestId(event.getRequestId()).setJson(JSON.writeValueAsString(Map.of("value", procedureResult))).build()));

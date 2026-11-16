@@ -39,6 +39,7 @@
     @if (stateError()) { <p class="error" role="alert">{{ stateError() }}</p> }
     @if (state()!.open && state()!.idleRemainingSeconds <= 30 && !state()!.busy) { <p class="warning" role="status">{{ t('idleWarning') }} {{ state()!.idleRemainingSeconds }} s <button type="button" (click)="activity()">{{ t('keepAlive') }}</button></p> }
     @if (state()!.busy) { <p class="working" role="status">{{ t('working') }} @if (state()!.progress; as progress) { @if (progress.line > 0) { · {{ t('line') }} {{ progress.line }} } · {{ progress.completed }} {{ t('completed') }} }</p> }
+    @if (state()!.busy && state()!.progress; as progress) { <p class="operation-details">@if (progress.engine) { {{ browserLabel(progress.engine) }} · }@if (progress.attempt) { {{ t('attempt') }} {{ progress.attempt }} · }@if (progress.scope) { {{ t(progress.scope === 'PARTIAL' ? 'scopePartial' : 'scopeFull') }} }@if (progress.untilLine) { · {{ t('targetLine') }} {{ progress.untilLine }} }</p> }
 
     <div class="workspace">
       <section class="browser-panel">
@@ -75,9 +76,23 @@
           <section class="proposal-error" role="alert"><strong>{{ t('proposalFailed') }}</strong><p>{{ failure.error }}</p><p>{{ t('proposalFailedHelp') }}</p></section>
         }
         @if (state()!.document.lastAction; as action) {
-          @if ((action.operation === 'EXECUTE' || action.operation === 'TEST' || action.status === 'FAILED') && action.status !== 'RUNNING' && (action.status === 'FAILED' || (!state()!.document.proposalError && !awaitingApproval()))) {
-            <div class="execution-receipt" [class.failed]="action.status === 'FAILED'" role="status">
-              <strong>{{ t(action.status === 'FAILED' ? 'executionFailed' : 'executionCompleted') }}</strong>
+          @if ((action.operation === 'EXECUTE' || action.operation === 'TEST' || action.operation === 'REPLAY' || action.operation === 'RESET' || action.operation === 'SCRIPT_EDIT' || action.result?.scope || action.status === 'FAILED') && action.status !== 'RUNNING' && (action.status === 'FAILED' || (!state()!.document.proposalError && !awaitingApproval()))) {
+            <div class="execution-receipt" [class.failed]="action.status === 'FAILED'" [class.partial]="action.status !== 'FAILED' && action.result?.scope === 'PARTIAL'" role="status">
+              <strong>{{ t(action.status === 'FAILED' ? 'executionFailed' : action.operation === 'SCRIPT_EDIT' ? 'editsApplied' : action.operation === 'RESET' ? 'restartCompleted' : action.result?.scope === 'PARTIAL' ? 'executionPartial' : 'executionCompleted') }}</strong>
+              @if (action.result?.applied && action.operation !== 'SCRIPT_EDIT') { <p class="applied-edits">{{ t('editsApplied') }}</p> }
+              @if (action.result?.applied && action.result?.changes?.length) {
+                <details class="applied-diff"><summary>{{ t('proposalBefore') }} / {{ t('proposalAfter') }}</summary>
+                  @for (change of action.result!.changes!; track $index) {
+                    <section class="proposal-change"><h4>{{ t('line') }} {{ change.fromLine }}@if (change.toLine !== null && change.toLine >= change.fromLine && change.toLine !== change.fromLine) { –{{ change.toLine }} }</h4><div class="proposal-diff"><div><strong>{{ t('proposalBefore') }}</strong><pre>{{ change.before || t('proposalEmpty') }}</pre></div><div><strong>{{ t('proposalAfter') }}</strong><pre>{{ change.after || t('proposalEmpty') }}</pre></div></div></section>
+                  }
+                </details>
+              }
+              @if (action.result?.scope; as scope) { <p>{{ t(scope === 'PARTIAL' ? 'scopePartial' : 'scopeFull') }}</p> }
+              @if (action.result?.attempt) { <p>{{ t('attempt') }} {{ action.result!.attempt }}</p> }
+              @if (action.result?.requestedBrowsers?.length) { <p>{{ t('browser') }}: @for (engine of action.result!.requestedBrowsers!; track engine; let last = $last) { {{ browserLabel(engine) }}@if (!last) { , } }</p> }
+              @if (action.result?.untilLine) { <p>{{ t('targetLine') }} {{ action.result!.untilLine }}</p> }
+              @if (action.result?.lastExecutedLine) { <p>{{ t('lastExecutedLine') }} {{ action.result!.lastExecutedLine }}</p> }
+              @if (action.result?.scope === 'PARTIAL') { <p>{{ t('partialValidationHelp') }}</p> }
               @if (action.result?.completed !== undefined) { <p>{{ action.result!.completed }} {{ t('completed') }}</p> }
               @if (action.error) { <p>{{ action.error }}</p> }
               @if (failedLine(); as line) { <button type="button" [disabled]="busy()" (click)="goToLine(line)">{{ t('line') }} {{ line }}</button> }
@@ -85,8 +100,20 @@
             </div>
           }
         }
-        @if (state()!.document.proposal; as proposal) {
-          <section class="proposal" aria-labelledby="wizard-proposal-title"><h3 id="wizard-proposal-title">{{ t('proposal') }}</h3><p class="proposal-help">{{ t('proposalHelp') }}</p><pre>{{ proposal }}</pre><div class="actions"><button type="button" class="primary" [disabled]="busy() || changed() || !state()!.open || !!state()!.restartRequired" (click)="command('APPROVE')">{{ t('approve') }}</button><button type="button" [disabled]="busy() || !state()!.open" (click)="command('REJECT')">{{ t('reject') }}</button></div></section>
+        @if (state()!.document.scriptProposal; as proposal) {
+          <section class="proposal" aria-labelledby="wizard-proposal-title">
+            <h3 id="wizard-proposal-title">{{ t('proposal') }}</h3><p class="proposal-help">{{ t('proposalHelp') }}</p>
+            @if (proposal.settings.url !== state()!.document.settings.url) { <div class="proposal-url"><strong>{{ t('proposalUrl') }}</strong><p>{{ t('proposalBefore') }}: <code>{{ state()!.document.settings.url }}</code></p><p>{{ t('proposalAfter') }}: <code>{{ proposal.settings.url }}</code></p></div> }
+            @for (change of proposal.changes; track $index) {
+              <section class="proposal-change"><h4>{{ t('line') }} {{ change.fromLine }}@if (change.toLine !== null && change.toLine >= change.fromLine && change.toLine !== change.fromLine) { –{{ change.toLine }} }</h4><div class="proposal-diff"><div><strong>{{ t('proposalBefore') }}</strong><pre>{{ change.before || t('proposalEmpty') }}</pre></div><div><strong>{{ t('proposalAfter') }}</strong><pre>{{ change.after || t('proposalEmpty') }}</pre></div></div></section>
+            }
+            <p class="proposal-action"><strong>{{ t('proposalAction') }}:</strong> {{ t(proposal.action.type === 'REPLAY' ? 'restartAndReplay' : proposal.action.type === 'RESTART' ? 'restart' : 'proposalSaveOnly') }}</p>
+            @if (proposal.action.type !== 'NONE') { <p>{{ t('browser') }}: {{ proposalBrowsers() }}</p> }
+            @if (proposal.action.type === 'REPLAY') { <p>{{ proposal.action.untilLine === null ? t('scopeFull') : t('targetLine') + ' ' + proposal.action.untilLine }}</p>@if (state()!.messageBudget; as budget) { <p>{{ t('attempt') }} {{ budget.replaysUsed + 1 }} / {{ budget.maxReplays }}</p> } }
+            <div class="actions"><button type="button" class="primary" [disabled]="!canApproveProposal()" (click)="command('APPROVE')">{{ t('approve') }}</button><button type="button" [disabled]="busy() || !state()!.open" (click)="command('REJECT')">{{ t('reject') }}</button></div>
+          </section>
+        } @else if (state()!.document.proposal; as proposal) {
+          <section class="proposal" aria-labelledby="wizard-proposal-title"><h3 id="wizard-proposal-title">{{ t('proposal') }}</h3><p class="proposal-help">{{ t('proposalHelp') }}</p><pre>{{ proposal }}</pre><div class="actions"><button type="button" class="primary" [disabled]="!canApproveProposal()" (click)="command('APPROVE')">{{ t('approve') }}</button><button type="button" [disabled]="busy() || !state()!.open" (click)="command('REJECT')">{{ t('reject') }}</button></div></section>
         }
         @if (attachment(); as capture) { <div class="attachment"><img [src]="capture" [alt]="t('capturePreview')"><button type="button" (click)="command('REMOVE_ATTACHMENT')">{{ t('removeCapture') }}</button></div> }
         <textarea rows="3" [ngModel]="message()" (ngModelChange)="message.set($event)" [placeholder]="t(awaitingApproval() ? 'proposalChatPlaceholder' : 'messagePlaceholder')" [attr.aria-label]="t('chat')" [disabled]="busy() || awaitingApproval()" (keydown.control.enter)="send()"></textarea>
@@ -101,6 +128,10 @@
         @if (executionProgress(); as progress) {
           @if (progress.status === 'NO_SESSION') { <p>{{ t('progress.noSession') }}</p> }
           @if (executionBrowser()) { <p>{{ t('activeBrowser') }}: <strong>{{ executionBrowser() }}</strong></p> }
+          @if (progress.scope) { <p>{{ t(progress.scope === 'PARTIAL' ? 'scopePartial' : 'scopeFull') }}@if (progress.untilLine) { · {{ t('targetLine') }} {{ progress.untilLine }} }</p> }
+          @if (progress.attempt) { <p>{{ t('attempt') }} {{ progress.attempt }}</p> }
+          @if (progress.lastExecutedLine) { <p>{{ t('lastExecutedLine') }} {{ progress.lastExecutedLine }}</p> }
+          @if (progress.scope === 'PARTIAL') { <p>{{ t('partialValidationHelp') }}</p> }
           @if (!linked('steps') || progress.status !== 'NO_SESSION') {
             <p><strong>{{ t('progress.completed') }}: {{ progress.completed }} / {{ progress.commandLines.length }}</strong> · {{ t('progress.pending') }}: {{ pendingLines().length }}</p>
             @if (progress.activeLine) { <p>{{ t('progress.running') }} · {{ t('line') }} {{ progress.activeLine }}</p> }

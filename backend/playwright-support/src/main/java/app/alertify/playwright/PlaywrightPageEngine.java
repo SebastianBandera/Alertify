@@ -16,6 +16,7 @@ import java.util.regex.Pattern;
 import com.microsoft.playwright.Browser;
 import com.microsoft.playwright.BrowserContext;
 import com.microsoft.playwright.BrowserType;
+import com.microsoft.playwright.Dialog;
 import com.microsoft.playwright.Locator;
 import com.microsoft.playwright.Page;
 import com.microsoft.playwright.Playwright;
@@ -154,6 +155,9 @@ public class PlaywrightPageEngine implements AlertEvaluator {
                         execute(context, session, command, elementTimeoutMillis, scriptState);
                     } catch (RuntimeException exception) {
                         warn(statusMessage, "commandFailure", command, command.keyword());
+                        if (exception instanceof ConfirmationFailure confirmation)
+                            statusMessage.put("failureCode", confirmation.code);
+
                         return false;
                     }
                 }
@@ -173,6 +177,7 @@ public class PlaywrightPageEngine implements AlertEvaluator {
 
         List<Command> commands = new ArrayList<>();
         boolean currentElement = false;
+        Command pendingConfirmation = null;
         java.util.Set<String> aliases = new java.util.HashSet<>();
         String[] lines = configured.split("\\R", -1);
         for (int index = 0; index < lines.length; index++) {
@@ -186,6 +191,17 @@ public class PlaywrightPageEngine implements AlertEvaluator {
             String arguments = tokens.length == 2 ? tokens[1].trim() : "";
             Command command;
             switch (keyword) {
+                case "CONFIRM" -> {
+                    try {
+                        List<String> parts = PlaywrightDslValues.tokens(arguments);
+                        if (parts.size() != 2 || !parts.getFirst().equalsIgnoreCase("ACCEPT"))
+                            throw new IllegalArgumentException("Invalid confirmation syntax");
+
+                        command = command(lineNumber, CommandType.CONFIRM_ACCEPT, PlaywrightDslValues.quoted(parts.get(1)));
+                    } catch (IllegalArgumentException failure) {
+                        throw lineError(lineNumber, "CONFIRM requires ACCEPT followed by an exact message in double quotes");
+                    }
+                }
                 case "QUERY" -> {
                     command = command(lineNumber, CommandType.QUERY, requireArgument(arguments, lineNumber, "QUERY"));
                     currentElement = true;
@@ -252,8 +268,15 @@ public class PlaywrightPageEngine implements AlertEvaluator {
                 case CHECK_COMMAND -> command = checkCommand(lineNumber, arguments, currentElement);
                 default -> throw lineError(lineNumber, "Unsupported command '" + tokens[0] + "'");
             }
+            if (pendingConfirmation != null && !confirmationAction(command.type()))
+                throw lineError(lineNumber, "CONFIRM ACCEPT must be followed by USE, DOM_CLICK, CLICK or PRESS Enter");
+
+            pendingConfirmation = command.type() == CommandType.CONFIRM_ACCEPT ? command : null;
             commands.add(command);
         }
+        if (pendingConfirmation != null)
+            throw lineError(pendingConfirmation.lineNumber(), "CONFIRM ACCEPT requires a following activation command");
+
         return List.copyOf(commands);
     }
 
@@ -392,8 +415,18 @@ public class PlaywrightPageEngine implements AlertEvaluator {
     }
 
     public static void execute(AlertExecutionContext context, BrowserSession session, Command command, long elementTimeoutMillis, ScriptState scriptState) throws InterruptedException {
+        if (scriptState.confirmation != null) {
+            String expected = scriptState.confirmation;
+            scriptState.confirmation = null;
+            if (!confirmationAction(command.type()))
+                throw new IllegalArgumentException("CONFIRM ACCEPT must be followed by an activation command");
+
+            session.withExpectedConfirmation(expected, elementTimeoutMillis, () -> activate(session, command, elementTimeoutMillis));
+            return;
+        }
         long timeout = command.durationMillis() > 0 ? command.durationMillis() : elementTimeoutMillis;
         switch (command.type()) {
+            case CONFIRM_ACCEPT -> scriptState.confirmation = command.first();
             case QUERY -> session.query(command.first(), elementTimeoutMillis);
             case USE -> session.click(elementTimeoutMillis);
             case DOM_CLICK -> session.domClick(elementTimeoutMillis);
@@ -427,6 +460,20 @@ public class PlaywrightPageEngine implements AlertEvaluator {
             case CHECK_ATTRIBUTE -> session.check(() -> Objects.equals(command.second(), session.currentAttribute(command.first())), elementTimeoutMillis);
             case CHECK_URL -> session.checkUrl(command.first(), elementTimeoutMillis);
             case RELOAD -> throw new IllegalStateException("RELOAD must be executed by the navigation path");
+        }
+    }
+
+    private static boolean confirmationAction(CommandType type) {
+        return type == CommandType.USE || type == CommandType.DOM_CLICK || type == CommandType.CLICK || type == CommandType.PRESS;
+    }
+
+    private static void activate(BrowserSession session, Command command, long timeoutMillis) {
+        switch (command.type()) {
+            case USE -> session.click(timeoutMillis);
+            case DOM_CLICK -> session.domClick(timeoutMillis);
+            case PRESS -> session.pressEnter(timeoutMillis);
+            case CLICK -> session.clickAt(coordinateValue(command.first()), coordinateValue(command.second()), command.first().endsWith("%"), command.second().endsWith("%"));
+            default -> throw new IllegalArgumentException("Unsupported confirmation activation");
         }
     }
 
@@ -566,8 +613,16 @@ public class PlaywrightPageEngine implements AlertEvaluator {
 
     /** Returns the read-only values that must be prepared before worker dispatch. */
     public static List<ValueReference> requiredValues(String configured) {
+        return requiredValues(configured, null);
+    }
+
+    public static List<ValueReference> requiredValues(String configured, Integer untilLine) {
         Map<String, ValueReference> references = new LinkedHashMap<>();
-        for (Command command : parseCommands(configured)) {
+        ScriptScope scope = scriptScope(configured, untilLine);
+        for (Command command : scope.commands()) {
+            if (command.lineNumber() > scope.targetLine())
+                break;
+
             if (command.type() != CommandType.FILL && command.type() != CommandType.CALL)
                 continue;
 
@@ -576,6 +631,25 @@ public class PlaywrightPageEngine implements AlertEvaluator {
         }
         return List.copyOf(references.values());
     }
+
+    /** Retains the entire parsed script; the target only limits browser execution. */
+    public static ScriptScope scriptScope(String configured, Integer untilLine) {
+        String script = configured == null ? "" : configured;
+        int lineCount = script.split("\\R", -1).length;
+        if (untilLine != null && (untilLine < 1 || untilLine > lineCount))
+            throw new IllegalArgumentException("untilLine must identify a physical script line");
+
+        List<Command> commands = parseCommands(script);
+        int target = untilLine == null ? lineCount : untilLine;
+        for (int index = 0; index < commands.size() - 1; index++) {
+            Command command = commands.get(index);
+            if (command.type() == CommandType.CONFIRM_ACCEPT && command.lineNumber() <= target && commands.get(index + 1).lineNumber() > target)
+                throw new IllegalArgumentException("untilLine cannot separate CONFIRM ACCEPT from its activation");
+        }
+        return new ScriptScope(target == lineCount ? "FULL" : "PARTIAL", untilLine, lineCount, target, commands);
+    }
+
+    public record ScriptScope(String scope, Integer untilLine, int lineCount, int targetLine, List<Command> commands) { }
 
     private static long elapsedMillis(long startedNanos) {
         return Math.max(0, (System.nanoTime() - startedNanos) / 1_000_000);
@@ -586,6 +660,7 @@ public class PlaywrightPageEngine implements AlertEvaluator {
     }
 
     public enum CommandType {
+        CONFIRM_ACCEPT,
         QUERY,
         USE,
         DOM_CLICK,
@@ -655,6 +730,7 @@ public class PlaywrightPageEngine implements AlertEvaluator {
 
         public String keyword() {
             return switch (type) {
+                case CONFIRM_ACCEPT -> "CONFIRM";
                 case CHECK_TEXT, CHECK_COUNT, CHECK_ENABLED, CHECK_DISABLED, CHECK_CHECKED, CHECK_UNCHECKED, CHECK_ATTRIBUTE, CHECK_URL -> CHECK_COMMAND;
                 default -> type.name();
             };
@@ -668,6 +744,7 @@ public class PlaywrightPageEngine implements AlertEvaluator {
 
     public static final class ScriptState {
         private final Map<String, String> variables = new LinkedHashMap<>();
+        private String confirmation;
     }
 
     public record Navigation(Integer statusCode, String contentType) {
@@ -696,6 +773,7 @@ public class PlaywrightPageEngine implements AlertEvaluator {
     }
 
     public interface BrowserSession extends AutoCloseable {
+        default void withExpectedConfirmation(String expected, long timeoutMillis, Runnable action) { throw new UnsupportedOperationException("Explicit confirmations are not supported by this browser session"); }
         Navigation navigate(String url, long timeoutMillis);
         Navigation reload(long timeoutMillis);
         String url();
@@ -737,13 +815,78 @@ public class PlaywrightPageEngine implements AlertEvaluator {
         private final BrowserContext context;
         private final Page page;
         private Locator current;
+        private ConfirmationExpectation confirmation;
+        private DialogObservation lastDialog;
 
         private PlaywrightBrowserSession(Playwright playwright, Browser browser, BrowserContext context, Page page) {
             this.playwright = playwright;
             this.browser = browser;
             this.context = context;
             this.page = page;
+            page.onDialog(this::handleDialog);
         }
+
+        private void handleDialog(Dialog dialog) {
+            ConfirmationExpectation expected = confirmation;
+            boolean expired = expected != null && System.nanoTime() - expected.deadline > 0;
+            boolean accepted = expected != null && !expired && !expected.seen && dialog.type().equals("confirm") && dialog.message().equals(expected.message);
+            if (expected != null) {
+                expected.seen = true;
+                expected.expired |= expired;
+                expected.mismatch |= !expired && !accepted;
+            }
+            lastDialog = new DialogObservation(dialog.type(), dialog.message(), accepted, !accepted);
+            if (accepted)
+                dialog.accept();
+            else
+                dialog.dismiss();
+        }
+
+        @Override
+        public void withExpectedConfirmation(String expected, long timeoutMillis, Runnable action) {
+            long deadline = System.nanoTime() + Math.multiplyExact(timeoutMillis, 1_000_000);
+            ConfirmationExpectation pending = new ConfirmationExpectation(expected, deadline);
+            confirmation = pending;
+            try {
+                action.run();
+                if (!pending.seen) {
+                    long remaining = Math.max(1, (deadline - System.nanoTime()) / 1_000_000);
+                    try { page.waitForCondition(() -> pending.seen, new Page.WaitForConditionOptions().setTimeout((double) remaining)); }
+                    catch (TimeoutError timeout) { throw new ConfirmationFailure("CONFIRM_NOT_SHOWN"); }
+                }
+                if (pending.mismatch)
+                    throw new ConfirmationFailure("CONFIRM_MISMATCH");
+
+                if (pending.expired)
+                    throw new ConfirmationFailure("CONFIRM_NOT_SHOWN");
+
+            } catch (RuntimeException failure) {
+                if (pending.mismatch)
+                    throw new ConfirmationFailure("CONFIRM_MISMATCH");
+
+                throw failure;
+            } finally {
+                confirmation = null;
+            }
+        }
+
+        public DialogObservation lastDialog() { return lastDialog; }
+
+        private static final class ConfirmationExpectation {
+            private final String message;
+            private final long deadline;
+            private boolean seen;
+            private boolean mismatch;
+            private boolean expired;
+
+            private ConfirmationExpectation(String message, long deadline) {
+                this.message = message;
+                this.deadline = deadline;
+            }
+        }
+
+        /** Raw page data stays in this session; callers must redact before exposing it. */
+        public record DialogObservation(String type, String message, boolean accepted, boolean dismissed) { }
 
         // The returned session owns all four Playwright resources and closes them together.
         @SuppressWarnings("java:S2095")
@@ -997,6 +1140,8 @@ public class PlaywrightPageEngine implements AlertEvaluator {
 
         @Override
         public void close() {
+            confirmation = null;
+            lastDialog = null;
             RuntimeException failure = null;
             try {
                 page.close();

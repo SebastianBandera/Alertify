@@ -105,6 +105,35 @@
       (touchstart)="noteManualScrollIntent()"
       (keydown)="noteManualScrollIntent()"
     >
+      @for (objective of objectives(); track objective.id) {
+        <details class="ai-chat__objective">
+          <summary>
+            <strong>{{ localization.translateDynamic('ai.chat.objective.title') }}</strong>
+            <span class="ai-chat__objective-status">{{ localization.translateDynamic('ai.chat.objective.status.' + objective.status) }}</span>
+            <span class="ai-chat__objective-progress">{{ localization.translateDynamic('ai.chat.objective.verified') }}: {{ verifiedObjectiveSteps() }} / {{ objective.steps.length }}</span>
+            <span class="ai-chat__objective-summary">{{ objective.summary }}</span>
+          </summary>
+          <p class="ai-chat__objective-description">{{ objective.summary }}</p>
+          @if (objective.reason) { <p>{{ objective.reason }}</p> }
+          @if (objective.status === 'INTERRUPTED') {
+            <p class="ai-chat__objective-resume">{{ localization.translateDynamic('ai.chat.objective.resumeHelp') }}</p>
+          } @else if (objective.needsReconciliation) {
+            <p class="ai-chat__objective-resume">{{ localization.translateDynamic('ai.chat.objective.reconciliationHelp') }}</p>
+          }
+          <ol class="ai-chat__objective-steps">
+            @for (step of objective.steps; track step.id) {
+              <li [class.ai-chat__objective-step--verified]="step.status === 'VERIFIED'">
+                <span>{{ step.title }}</span>
+                <small class="ai-chat__objective-step-status">{{ localization.translateDynamic('ai.chat.objective.step.' + step.status) }}</small>
+                @if (step.evidenceInvocationIds.length) {
+                  <small class="ai-chat__objective-evidence">{{ localization.translateDynamic('ai.chat.objective.evidence') }}: {{ step.evidenceInvocationIds.join(', ') }}</small>
+                }
+              </li>
+            }
+          </ol>
+          <small class="ai-chat__objective-source">{{ localization.translateDynamic('ai.chat.objective.sourceMessages') }}: {{ objective.sourceMessageIds.join(', ') }} · {{ localization.translateDynamic('ai.chat.objective.revision') }} {{ objective.revision }}</small>
+        </details>
+      }
       @for (item of timeline(); track item.key) {
         @if (item.kind === 'message') {
           <article [class.ai-chat__message--user]="item.message.role === 'USER'" class="ai-chat__message">
@@ -116,12 +145,12 @@
             <summary>
               <span>{{ toolGroupSummary(item.tools) }}</span>
               @if (item.tools.at(-1); as latest) {
-                <span class="ai-chat__latest-tool">{{ localization.translateDynamic('ai.chat.tools.latest') }}: <code>{{ latest.toolName }}</code> · {{ toolStatus(latest.status) }}</span>
+                <span class="ai-chat__latest-tool" [class.ai-chat__latest-tool--writable]="latest.readOnly === false">{{ localization.translateDynamic('ai.chat.tools.latest') }}: <code>{{ latest.toolName }}</code> · {{ toolStatus(latest.status) }}@if (latest.readOnly === false) { <span class="ai-chat__write-label">{{ localization.translateDynamic('ai.chat.tools.mayModify') }}</span> }</span>
               }
             </summary>
             @for (tool of item.tools; track tool.id) {
-              <details class="ai-chat__tool">
-                <summary><code>{{ tool.toolName }}</code> <span>{{ toolStatus(tool.status) }}</span></summary>
+              <details class="ai-chat__tool" [class.ai-chat__tool--writable]="tool.readOnly === false">
+                <summary><code>{{ tool.toolName }}</code> <span>{{ toolStatus(tool.status) }}</span>@if (tool.readOnly === false) { <span class="ai-chat__write-label">{{ localization.translateDynamic('ai.chat.tools.mayModify') }}</span> }</summary>
                 <dl>
                   <dt>{{ localization.translateDynamic('ai.chat.tools.approval') }}</dt><dd>{{ toolApprovalDecision(tool) }}</dd>
                   @if (tool.approvalActorType) {
@@ -153,9 +182,10 @@
             }
           </details>
         } @else if (item.kind === 'approval') {
-          <article class="ai-chat__approval">
+          <article class="ai-chat__approval" [class.ai-chat__approval--writable]="item.tool.readOnly === false">
             <strong>{{ localization.translateDynamic('ai.chat.approvalRequired') }}</strong>
             <code>{{ item.tool.toolName }}</code>
+            @if (item.tool.readOnly === false) { <span class="ai-chat__write-label">{{ localization.translateDynamic('ai.chat.tools.mayModify') }}</span> }
             <pre>{{ toolContent(item.tool.arguments) }}</pre>
             <div>
               <button type="button" [disabled]="busy() || windows.transferring() || !chatAvailable()" (click)="approve(item.tool)">{{ localization.translateDynamic('ai.chat.approve') }}</button>

@@ -16,11 +16,19 @@ import { DashboardChange, DashboardLiveService } from './dashboard-live.service'
 import { DashboardMuteService } from './dashboard-mute.service';
 import { DashboardPipeLiveService } from './pipes/dashboard-pipe-live.service';
 import { DashboardPipeAlertDetail } from './pipes/dashboard-pipes.component';
+import { DashboardViewSettings, DEFAULT_VIEW_SETTINGS } from './dashboard-view-settings';
+import { DashboardTagGroup } from './dashboard-tags';
+import { DashboardPipeCard } from './pipes/dashboard-pipe';
 
 type Harness = {
+  openCard: DashboardComponent['openCard'];
+  openCardDefinition: DashboardComponent['openCardDefinition'];
   openPipeAlert: DashboardComponent['openPipeAlert'];
   closeCard: DashboardComponent['closeCard'];
   selectedCard: DashboardComponent['selectedCard'];
+  availableTags: () => readonly DashboardTagGroup[];
+  visibleCards: () => readonly DashboardAlertCard[];
+  settings: ReturnType<typeof signal<DashboardViewSettings>>;
 };
 
 const EXECUTION: AlertExecution = {
@@ -92,6 +100,24 @@ describe('dashboard alert detail from a Pipe', () => {
     fixture.destroy(); vi.restoreAllMocks(); vi.unstubAllGlobals();
   });
 
+  it('groups Alert and Pipe names while keeping standalone filtering and scopes intact', () => {
+    const tag = { id: 3, version: 1, name: 'Shared', color: '#112233', scope: 'ALERT' as const, createdAt: '', updatedAt: '' };
+    const alert = { ...CARD, alert: { ...CARD.alert, executionMode: 'STANDALONE' as const, tags: [tag] } };
+    cards.set([alert]);
+    const pipes = TestBed.inject(DashboardPipeLiveService).cards as ReturnType<typeof signal<DashboardPipeCard[]>>;
+    pipes.set([{
+      id: 1, version: 1, name: 'Pipe', description: null, enabled: true, allowConcurrentExecutions: false,
+      tags: [{ id: 12, version: 1, name: ' SHARED ', color: '#334455', scope: 'PIPE', createdAt: '', updatedAt: '' }],
+      execution: null, lastOutcome: null, stateChangedAt: null, steps: [], observedAt: '',
+    }]);
+    expect(harness.availableTags()).toEqual([{ key: 'shared', name: 'Shared', memberIds: [3, 12], color: '#667085' }]);
+    harness.settings.set({ ...DEFAULT_VIEW_SETTINGS, tagVisibilityByName: { shared: false } });
+    expect(harness.visibleCards()).toEqual([]);
+    harness.settings.set({ ...DEFAULT_VIEW_SETTINGS, hiddenTagIds: [3], tagVisibilityByName: { shared: true } });
+    expect(harness.visibleCards()).toEqual([alert]);
+    expect(tag.scope).toBe('ALERT');
+  });
+
   it('opens the complete card context even when PIPE mode excludes its standalone tile', async () => {
     harness.openPipeAlert(DETAIL);
     fixture.detectChanges(); await fixture.whenStable();
@@ -140,5 +166,29 @@ describe('dashboard alert detail from a Pipe', () => {
       expect(harness.selectedCard()).toBeNull();
       expect(document.activeElement).toBe(opener);
     } finally { opener.remove(); }
+  });
+
+  it('closes the alert detail and navigates to its current definition by ID', () => {
+    harness.openCard(CARD);
+    harness.openCardDefinition(CARD);
+    expect(harness.selectedCard()).toBeNull();
+    expect(TestBed.inject(Router).navigate).toHaveBeenCalledWith(['/alerts'], {
+      queryParams: { tab: 'alerts', editAlertId: 42 },
+    });
+  });
+
+  it('uses the current definition when navigating from a historical Pipe step execution', async () => {
+    cards.set([{ ...CARD, alert: { ...CARD.alert, version: 2 }, lastExecution: { ...EXECUTION, executionId: 'newer-execution' } }]);
+    harness.openPipeAlert(DETAIL);
+    fixture.detectChanges(); await fixture.whenStable();
+    const selected = harness.selectedCard()!;
+    expect(selected.lastExecution?.executionId).toBe(EXECUTION.executionId);
+    expect(selected.alert.version).toBe(2);
+    harness.openCardDefinition(selected);
+    fixture.detectChanges();
+    expect(harness.selectedCard()).toBeNull();
+    expect(TestBed.inject(Router).navigate).toHaveBeenCalledWith(['/alerts'], {
+      queryParams: { tab: 'alerts', editAlertId: 42 },
+    });
   });
 });

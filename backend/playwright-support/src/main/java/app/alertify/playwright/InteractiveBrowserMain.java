@@ -60,13 +60,24 @@ public final class InteractiveBrowserMain implements AutoCloseable {
     private final Map<Long, Long> frameRevisions = new java.util.LinkedHashMap<>();
     private volatile boolean inputClosed;
     private ScriptState scriptState = new ScriptState();
+    private WizardOperationDeadline operationDeadline;
+    private PlaywrightPageEngine.ScriptScope operationScope;
+    private final java.time.Clock clock;
+    private final java.util.function.LongSupplier nanoTime;
     private final ConcurrentMap<String, CompletableFuture<JsonNode>> valueReplies = new ConcurrentHashMap<>();
 
     public InteractiveBrowserMain() { this(null); }
-    InteractiveBrowserMain(Consumer<WizardEvent> output) { this.output = output; }
+    InteractiveBrowserMain(Consumer<WizardEvent> output) { this(output, java.time.Clock.systemUTC(), System::nanoTime); }
+    InteractiveBrowserMain(Consumer<WizardEvent> output, java.time.Clock clock, java.util.function.LongSupplier nanoTime) {
+        this.output = output;
+        this.clock = clock;
+        this.nanoTime = nanoTime;
+    }
 
     public static void main(String[] arguments) throws Exception {
-        new InteractiveBrowserMain().run();
+        try (InteractiveBrowserMain browser = new InteractiveBrowserMain()) {
+            browser.run();
+        }
     }
 
     private void run() throws Exception {
@@ -111,8 +122,22 @@ public final class InteractiveBrowserMain implements AutoCloseable {
     }
 
     void handle(WizardRequest request) throws Exception {
+        operationScope = null;
         try {
             JsonNode payload = json.readTree(request.getJson());
+            JsonNode deadline = payload.path("deadlineEpochMillis");
+            if (!deadline.isMissingNode() && !deadline.isNull() && (!deadline.isIntegralNumber() || !deadline.canConvertToLong()))
+                throw new IllegalArgumentException("Invalid browser operation deadline");
+
+            operationDeadline = WizardOperationDeadline.fromEpochMillis(deadline.isIntegralNumber() ? deadline.asLong() : null, clock, nanoTime);
+            checkOperation();
+            Integer untilLine = untilLine(payload);
+            if (List.of("EXECUTE", "TEST").contains(request.getOperation()) || untilLine != null) {
+                operationScope = PlaywrightPageEngine.scriptScope(payload.path("steps").asString(""), untilLine);
+                if (operationScope.commands().size() > 500)
+                    throw new IllegalArgumentException("The script exceeds 500 commands");
+            }
+
             for (JsonNode value : payload.path("protectedValues")) if (value.isString()) remember(value.asString());
 
             if (session != null && List.of("OBSERVE", "FIND", "SELECT", "RESOLVE_REF", "CHECK_SELECTOR").contains(request.getOperation()))
@@ -171,12 +196,37 @@ public final class InteractiveBrowserMain implements AutoCloseable {
             if (exception instanceof SelectionFailure selection)
                 failure.put("failureCode", selection.code);
 
+            if (exception instanceof WizardOperationDeadline.Expired)
+                failure.put("failureCode", "PLAYWRIGHT_OPERATION_TIMEOUT");
+
+            scopeMetadata(failure);
+
             send(WizardEvent.newBuilder().setRequestId(request.getRequestId()).setType("ERROR")
                     .setJson(json.writeValueAsString(failure)).build());
-        }
+        } finally { operationDeadline = null; }
+    }
+
+    private static Integer untilLine(JsonNode payload) {
+        JsonNode value = payload.path("untilLine");
+        if (value.isMissingNode() || value.isNull())
+            return null;
+
+        if (!value.isIntegralNumber() || !value.canConvertToInt() || value.asInt() < 1)
+            throw new IllegalArgumentException("untilLine must identify a physical script line");
+
+        return value.asInt();
+    }
+
+    private void checkOperation() {
+        if (inputClosed || Thread.currentThread().isInterrupted())
+            throw new IllegalArgumentException("Browser operation cancelled");
+
+        if (operationDeadline != null)
+            operationDeadline.remainingMillis();
     }
 
     private void open(String engine) {
+        checkOperation();
         closeBrowser();
         completed = 0;
         appliedSteps = "";
@@ -193,6 +243,7 @@ public final class InteractiveBrowserMain implements AutoCloseable {
             inspection = new BrowserPageInspection(page, this::captureIfDue);
             protection = new BrowserSecretProtection(page);
             var navigation = session.navigate(uri.toString(), loadTimeout());
+            checkOperation();
             String type = navigation.contentType().split(";", 2)[0].strip().toLowerCase(java.util.Locale.ROOT);
             if (navigation.statusCode() == null || navigation.statusCode() < 200 || navigation.statusCode() >= 300 || !(type.equals("text/html") || type.equals("application/xhtml+xml")))
                 throw new IllegalArgumentException("The URL must return successful HTML content");
@@ -201,6 +252,9 @@ public final class InteractiveBrowserMain implements AutoCloseable {
             snapshotId++;
         } catch (RuntimeException failure) {
             closeBrowser();
+            if (operationDeadline != null && operationDeadline.expired())
+                throw new WizardOperationDeadline.Expired();
+
             throw failure;
         }
     }
@@ -215,17 +269,25 @@ public final class InteractiveBrowserMain implements AutoCloseable {
         if (dirty || (!appliedSteps.isEmpty() && !steps.equals(appliedSteps) && !steps.startsWith(appliedSteps + "\n")))
             throw new IllegalArgumentException("Restart and replay the script after changing executed steps or a failed action");
 
-        List<Command> commands = PlaywrightPageEngine.parseCommands(steps);
+        PlaywrightPageEngine.ScriptScope scope = operationScope == null ? PlaywrightPageEngine.scriptScope(steps, untilLine(payload)) : operationScope;
+        List<Command> commands = scope.commands();
         if (commands.size() > 500)
             throw new IllegalArgumentException("The script exceeds 500 commands");
+
+        if (completed > 0 && commands.get(completed - 1).lineNumber() > scope.targetLine())
+            throw new IllegalArgumentException("Restart before replaying an earlier script prefix");
 
         AlertExecutionContext context = context(payload);
         progress(request, "STARTED", activeEngine, 0, commands);
         dirty = true; // Fail closed if an action partially changes the remote site.
         for (int index = completed; index < commands.size(); index++) {
             Command command = commands.get(index);
+            if (command.lineNumber() > scope.targetLine())
+                break;
+
             progress(request, "RUNNING", activeEngine, command.lineNumber(), null);
             try {
+                checkOperation();
                 if (command.type() == CommandType.RELOAD) {
                     var navigation = session.reload(loadTimeout());
                     if (navigation.statusCode() != null && navigation.statusCode() >= 400)
@@ -233,15 +295,17 @@ public final class InteractiveBrowserMain implements AutoCloseable {
                 } else if (command.type() == CommandType.WAIT) {
                     long until = System.nanoTime() + command.durationMillis() * 1_000_000;
                     while (System.nanoTime() < until) {
+                        checkOperation();
                         capture("");
-                        session.page().waitForTimeout(Math.min(200, command.durationMillis()));
+                        session.page().waitForTimeout(operationDeadline.capTimeout(Math.min(200, Math.max(1, (until - System.nanoTime() + 999_999) / 1_000_000))));
                     }
                 } else {
                     PlaywrightPageEngine.execute(context, session, command, elementTimeout(), scriptState);
                 }
+                checkOperation();
             } catch (Exception exception) {
                 progress(request, "FAILED", activeEngine, command.lineNumber(), null);
-                throw new BrowserStepFailure(command, exception);
+                throw new BrowserStepFailure(command, operationDeadline != null && operationDeadline.expired() ? new WizardOperationDeadline.Expired() : exception);
             }
             completed = index + 1;
             snapshotId++;
@@ -251,25 +315,35 @@ public final class InteractiveBrowserMain implements AutoCloseable {
         appliedSteps = steps;
         dirty = false;
         if (terminal)
-            result(request, Map.of("completed", completed, "status", "READY"));
+            result(request, executionReport());
     }
 
     private void test(WizardRequest request, JsonNode payload) throws Exception {
         settings = payload;
-        List<Map<String, Object>> results = new ArrayList<>();
+        List<JsonNode> results = new ArrayList<>();
         boolean passed = true;
         for (JsonNode engine : payload.path("browsers")) {
+            completed = 0;
             try {
+                checkOperation();
                 progress(request, "OPENING", engine.asString(), 0, null);
                 open(engine.asString());
                 execute(request, payload, false);
-                results.add(Map.of("browser", engine.asString(), "passed", true, "completed", completed));
+                ObjectNode report = executionReport().put("browser", engine.asString()).put("passed", true);
+                results.add(report);
             } catch (Exception exception) {
                 passed = false;
                 if (!(exception instanceof BrowserStepFailure))
                     progress(request, "UNAVAILABLE", engine.asString(), 0, null);
 
-                results.add(Map.of("browser", engine.asString(), "passed", false, "completed", completed, "error", sanitize(exception.getMessage())));
+                ObjectNode report = executionReport().put("browser", engine.asString()).put("passed", false).put("error", sanitize(exception.getMessage()));
+                if (exception instanceof WizardOperationDeadline.Expired)
+                    report.put("failureCode", "PLAYWRIGHT_OPERATION_TIMEOUT");
+
+                if (exception instanceof BrowserStepFailure step)
+                    report.put("failedLine", step.line).put("failedCommand", step.command).put("failureCode", step.code);
+
+                results.add(report);
             }
         }
         result(request, Map.of("passed", passed && !results.isEmpty(), "browsers", results, "activeEngine", activeEngine == null ? "" : activeEngine));
@@ -281,7 +355,29 @@ public final class InteractiveBrowserMain implements AutoCloseable {
         if (commands != null)
             progress.set("commandLines", json.valueToTree(commands.stream().map(Command::lineNumber).toList()));
 
+        scopeMetadata(progress);
+        if (phase.equals("OPENING") || phase.equals("UNAVAILABLE"))
+            progress.putNull("lastExecutedLine");
+
         send(WizardEvent.newBuilder().setRequestId(request.getRequestId()).setType("PROGRESS").setJson(json.writeValueAsString(progress)).build());
+    }
+
+    private ObjectNode executionReport() {
+        ObjectNode report = json.createObjectNode().put("completed", completed).put("status", "READY");
+        scopeMetadata(report);
+        return report;
+    }
+
+    private void scopeMetadata(ObjectNode target) {
+        if (operationScope == null)
+            return;
+
+        target.put("scope", operationScope.scope());
+        if (operationScope.untilLine() == null) target.putNull("untilLine");
+        else target.put("untilLine", operationScope.untilLine());
+
+        if (completed > 0 && completed <= operationScope.commands().size()) target.put("lastExecutedLine", operationScope.commands().get(completed - 1).lineNumber());
+        else target.putNull("lastExecutedLine");
     }
 
     private AlertExecutionContext context(JsonNode payload) {
@@ -300,7 +396,7 @@ public final class InteractiveBrowserMain implements AutoCloseable {
         valueReplies.put(id, reply);
         try {
             send(WizardEvent.newBuilder().setType("PROCEDURE_CALL").setRequestId(id).setJson(json.writeValueAsString(Map.of("token", token))).build());
-            session.page().waitForCondition(reply::isDone, new Page.WaitForConditionOptions().setTimeout(175_000));
+            session.page().waitForCondition(reply::isDone, new Page.WaitForConditionOptions().setTimeout((double) operationDeadline.remainingMillis()));
             JsonNode value = reply.get(0, TimeUnit.SECONDS);
             if (value.has("error"))
                 throw new IllegalArgumentException(value.path("error").asString());
@@ -314,6 +410,9 @@ public final class InteractiveBrowserMain implements AutoCloseable {
         } catch (IllegalArgumentException failure) {
             throw failure;
         } catch (Exception failure) {
+            if (operationDeadline != null && operationDeadline.expired())
+                throw new WizardOperationDeadline.Expired();
+
             throw new IllegalArgumentException("Procedure transport failed");
         } finally { valueReplies.remove(id); }
     }
@@ -348,7 +447,18 @@ public final class InteractiveBrowserMain implements AutoCloseable {
             Object metadata = element.evaluate("element => ({tag: element.tagName.toLowerCase(), type: element.getAttribute('type') || '', label: (element.getAttribute('aria-label') || element.labels?.[0]?.innerText || element.getAttribute('placeholder') || element.innerText || '').slice(0, 200)})");
             controls.add(Map.of("selector", sanitize(selector), "metadata", filter().sanitize(json.valueToTree(metadata))));
         }
-        return Map.of("snapshot", safe.substring(0, Math.min(safe.length(), 40_000)), "controls", controls, "snapshotId", snapshotId, "completed", completed, "dirty", dirty);
+        Map<String, Object> observation = new java.util.LinkedHashMap<>(Map.of("snapshot", safe.substring(0, Math.min(safe.length(), 40_000)), "controls", controls, "snapshotId", snapshotId, "completed", completed, "dirty", dirty));
+        var dialog = session.lastDialog();
+        if (dialog != null) {
+            String message = sanitize(dialog.message());
+            int end = Math.min(message.length(), 4096);
+            if (end < message.length() && end > 0 && Character.isHighSurrogate(message.charAt(end - 1)) && Character.isLowSurrogate(message.charAt(end)))
+                end--;
+
+            observation.put("lastDialog", Map.of("type", dialog.type(), "message", message.substring(0, end), "truncated", end < message.length(), "accepted", dialog.accepted(), "dismissed", dialog.dismissed()));
+        }
+
+        return observation;
     }
 
     private List<Map<String, Object>> find(JsonNode payload) {
@@ -538,23 +648,32 @@ public final class InteractiveBrowserMain implements AutoCloseable {
     }
 
     private String sanitize(String text) { return filter().sanitize(text == null ? "" : text); }
-    private long loadTimeout() { return settings.path("loadTimeoutSeconds").asInt(10) * 1000L; }
-    private long elementTimeout() { return settings.path("elementTimeoutSeconds").asInt(5) * 1000L; }
+    private long loadTimeout() { return limitedTimeout(settings.path("loadTimeoutSeconds").asInt(10) * 1000L); }
+    private long elementTimeout() { return limitedTimeout(settings.path("elementTimeoutSeconds").asInt(5) * 1000L); }
+    private long limitedTimeout(long configured) { return operationDeadline == null ? configured : operationDeadline.capTimeout(configured); }
     private static String text(JsonNode value, String name, String fallback) { return value.path(name).asString(fallback); }
 
     private void result(WizardRequest request, Object value) throws Exception {
         JsonNode document = json.valueToTree(value);
+        if (document.isObject()) scopeMetadata((ObjectNode) document);
         JsonNode safe = filter().sanitize(document);
+        for (String field : List.of("scope", "untilLine", "lastExecutedLine"))
+            if (document.has(field)) ((ObjectNode) safe).set(field, document.path(field));
+
         if (request.getOperation().equals("TEST")) {
             // Engine identities are declared metadata, never resolved values.
             ((ObjectNode) safe).set("activeEngine", document.path("activeEngine"));
             for (int index = 0; index < document.path("browsers").size(); index++)
-                ((ObjectNode) safe.path("browsers").get(index)).set("browser", document.path("browsers").get(index).path("browser"));
+                for (String field : List.of("browser", "scope", "untilLine", "lastExecutedLine"))
+                    if (document.path("browsers").get(index).has(field)) ((ObjectNode) safe.path("browsers").get(index)).set(field, document.path("browsers").get(index).path(field));
         }
         send(WizardEvent.newBuilder().setRequestId(request.getRequestId()).setType("RESULT").setJson(json.writeValueAsString(safe)).build());
     }
 
     private void send(WizardEvent event) throws Exception {
+        if (inputClosed)
+            return;
+
         if (output != null) {
             output.accept(event);
             return;
@@ -580,7 +699,12 @@ public final class InteractiveBrowserMain implements AutoCloseable {
             try { closing.close(); } catch (RuntimeException ignored) { /* The supervisor still owns the process tree. */ }
     }
 
-    @Override public void close() { closeBrowser(); }
+    @Override public void close() {
+        inputClosed = true;
+        valueReplies.values().forEach(reply -> reply.completeExceptionally(new IllegalStateException("Browser stream closed")));
+        valueReplies.clear();
+        closeBrowser();
+    }
 
     private static final class SelectionFailure extends IllegalArgumentException {
         private final String code;

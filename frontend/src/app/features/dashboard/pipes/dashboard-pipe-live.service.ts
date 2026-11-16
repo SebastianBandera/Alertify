@@ -10,6 +10,7 @@ import { PageResponse } from '../../../core/api/configuration-api.service';
 import { LocalizationService } from '../../../core/i18n/localization.service';
 import { AlertMessageService } from '../../../core/alert-messages/alert-message.service';
 import { readStoredViewSettings } from '../dashboard-view-settings';
+import { hasVisibleTags } from '../dashboard-tags';
 import { DashboardPipeCard, pipeIdentity, pipeState } from './dashboard-pipe';
 
 interface Mute { readonly kind: 'ignored' | 'silenced' | 'state'; readonly identity?: string; }
@@ -114,7 +115,7 @@ export class DashboardPipeLiveService {
   private notify(card: DashboardPipeCard): void {
     const settings = readStoredViewSettings();
     if (settings.hiddenStates.includes(pipeState(card))) return;
-    if (card.tags.length && card.tags.every(tag => settings.hiddenTagIds.includes(tag.id))) return;
+    if (!hasVisibleTags(card.tags, settings)) return;
     if (this.document.visibilityState === 'visible' && this.document.hasFocus() && this.router.url.startsWith('/dashboard')) return;
     const window = this.document.defaultView;
     if (!window || !('Notification' in window) || window.Notification.permission !== 'granted') return;

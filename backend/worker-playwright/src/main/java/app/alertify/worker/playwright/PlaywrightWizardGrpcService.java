@@ -15,16 +15,19 @@ import org.springframework.stereotype.Component;
 import app.alertify.worker.runtime.WorkerExecutionTracker;
 import app.alertify.worker.runtime.WorkerGrpcExtension;
 import app.alertify.worker.runtime.WorkerRuntimeProperties;
+import app.alertify.playwright.WizardOperationDeadline;
 import app.alertify.worker.wizard.grpc.PlaywrightWizardServiceGrpc;
 import app.alertify.worker.wizard.grpc.WizardEvent;
 import app.alertify.worker.wizard.grpc.WizardRequest;
 import io.grpc.BindableService;
 import io.grpc.stub.ServerCallStreamObserver;
 import io.grpc.stub.StreamObserver;
+import tools.jackson.databind.json.JsonMapper;
 
 /** A child JVM makes cancellation independent of a blocked Playwright call. */
 @Component
 public class PlaywrightWizardGrpcService extends PlaywrightWizardServiceGrpc.PlaywrightWizardServiceImplBase implements WorkerGrpcExtension, AutoCloseable {
+    private static final JsonMapper JSON = JsonMapper.builder().build();
     private final WorkerExecutionTracker tracker;
     private final WorkerRuntimeProperties properties;
     private final Set<Session> sessions = ConcurrentHashMap.newKeySet();
@@ -64,6 +67,7 @@ public class PlaywrightWizardGrpcService extends PlaywrightWizardServiceGrpc.Pla
         private AutoCloseable permit;
         private volatile long heartbeat = System.nanoTime();
         private volatile long operationStarted;
+        private volatile WizardOperationDeadline operationDeadline;
         private volatile String pendingId = "";
 
         private Session(StreamObserver<WizardEvent> observer) { this.observer = observer; }
@@ -82,6 +86,21 @@ public class PlaywrightWizardGrpcService extends PlaywrightWizardServiceGrpc.Pla
                 return;
             }
             try {
+                if (!pendingId.isEmpty() && request.getOperation().equals("PROCEDURE_REPLY")) {
+                    request.writeDelimitedTo(input);
+                    input.flush();
+                    return;
+                }
+
+                if (!pendingId.isEmpty())
+                    throw new IllegalStateException("Another browser operation is running");
+
+                var deadline = JSON.readTree(request.getJson()).path("deadlineEpochMillis");
+                if (!deadline.isMissingNode() && !deadline.isNull() && (!deadline.isIntegralNumber() || !deadline.canConvertToLong()))
+                    throw new IllegalArgumentException("Invalid browser operation deadline");
+
+                WizardOperationDeadline budget = WizardOperationDeadline.fromEpochMillis(deadline.isIntegralNumber() ? deadline.asLong() : null);
+                budget.remainingMillis();
                 if (process == null) {
                     if (!request.getOperation().equals("OPEN"))
                         throw new IllegalStateException("Open a session first");
@@ -97,17 +116,9 @@ public class PlaywrightWizardGrpcService extends PlaywrightWizardServiceGrpc.Pla
                     input = process.getOutputStream();
                     Thread.ofVirtual().name("playwright-wizard-output").start(this::read);
                 }
-                if (!pendingId.isEmpty() && request.getOperation().equals("PROCEDURE_REPLY")) {
-                    request.writeDelimitedTo(input);
-                    input.flush();
-                    return;
-                }
-
-                if (!pendingId.isEmpty())
-                    throw new IllegalStateException("Another browser operation is running");
-
                 pendingId = request.getRequestId();
                 operationStarted = System.nanoTime();
+                operationDeadline = budget;
                 request.writeDelimitedTo(input);
                 input.flush();
             } catch (Exception exception) {
@@ -125,6 +136,7 @@ public class PlaywrightWizardGrpcService extends PlaywrightWizardServiceGrpc.Pla
                     if ((event.getType().equals("RESULT") || event.getType().equals("ERROR") || event.getType().equals("IMAGE")) && event.getRequestId().equals(pendingId)) {
                         pendingId = "";
                         operationStarted = 0;
+                        operationDeadline = null;
                     }
                     emit(event);
                 }
@@ -151,7 +163,8 @@ public class PlaywrightWizardGrpcService extends PlaywrightWizardServiceGrpc.Pla
                 current.descendants().forEach(children::add);
 
             long now = System.nanoTime();
-            if (now - heartbeat > TimeUnit.SECONDS.toNanos(30) || (operationStarted != 0 && now - operationStarted > TimeUnit.MINUTES.toNanos(3)))
+            WizardOperationDeadline budget = operationDeadline;
+            if (now - heartbeat > TimeUnit.SECONDS.toNanos(30) || (operationStarted != 0 && (now - operationStarted > TimeUnit.MINUTES.toNanos(20) || (budget != null && budget.expired()))))
                 close();
         }
 

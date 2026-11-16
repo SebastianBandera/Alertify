@@ -266,13 +266,16 @@ export class SecretsComponent implements OnInit {
 
   protected addTagFilter(event: Event): void {
     const select = event.target as HTMLSelectElement;
-    const tagId = Number(select.value);
+    this.addTagFilterById(Number(select.value));
+    select.value = '';
+  }
+
+  protected addTagFilterById(tagId: number): void {
     if (tagId && !this.selectedTagIds().includes(tagId)) {
       this.selectedTagIds.set([...this.selectedTagIds(), tagId]);
       this.pageIndex.set(0);
       void this.loadSecrets();
     }
-    select.value = '';
   }
 
   protected removeTagFilter(tagId: number): void {

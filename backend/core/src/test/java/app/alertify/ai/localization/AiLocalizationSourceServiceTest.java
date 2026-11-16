@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Locale;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -40,6 +42,9 @@ class AiLocalizationSourceServiceTest {
                 "frontend/src/app/core/i18n/translations/en.translations.ts",
                 "frontend/src/app/core/i18n/translations/en.extended.translations.ts");
         assertThat(english.files().get(1).content()).contains("Test");
+        assertThat(service.resolveLocale(null)).isEqualTo("en");
+        assertThat(service.resolveLocale(" \t ")).isEqualTo("en");
+        assertThat(service.resolveLocale(" es-UY ")).isEqualTo("es-UY");
     }
 
     @Test
@@ -52,6 +57,21 @@ class AiLocalizationSourceServiceTest {
         assertThatThrownBy(() -> service.resolveLocale("%2e%2e%2fsecret")).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> service.resolveLocale("en/../../secret")).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> service.resolveLocale("fr-FR")).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void acceptsAsciiSubtagsThroughTheLengthBoundaryAndRejectsLongOrMalformedInput() throws IOException {
+        write("localization.types.ts", "types");
+        AiLocalizationSourceService service = new AiLocalizationSourceService(temporaryDirectory.toString());
+        String boundary = "en" + "-a".repeat(31);
+        for (String locale : List.of("es-419", "zh-Hant-TW", boundary)) {
+            String fileLocale = locale.toLowerCase(Locale.ROOT);
+            write("translations/" + fileLocale + ".translations.ts", "translations");
+            write("translations/" + fileLocale + ".extended.translations.ts", "extended");
+            assertThat(service.resolveLocale(locale)).isEqualTo(locale);
+        }
+        for (String locale : List.of(boundary + "a", "a-".repeat(15000) + "a", "a".repeat(100_000), "-en", "en-", "en--US", "es_UY", "es-ñ", "en-😀"))
+            assertThatThrownBy(() -> service.resolveLocale(locale)).isInstanceOf(IllegalArgumentException.class).hasMessage("Unsupported frontend locale");
     }
 
     private void write(String relativePath, String content) throws IOException {

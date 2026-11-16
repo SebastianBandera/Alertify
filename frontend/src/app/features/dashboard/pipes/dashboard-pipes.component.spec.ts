@@ -13,6 +13,7 @@ import { DashboardPipeCard } from './dashboard-pipe';
 import { DashboardPipeLiveService } from './dashboard-pipe-live.service';
 import { DashboardPipesComponent } from './dashboard-pipes.component';
 import { DEFAULT_VIEW_SETTINGS } from '../dashboard-view-settings';
+import { DashboardTimeService } from '../dashboard-time.service';
 
 const CARD: DashboardPipeCard = {
   id: 4, version: 1, name: 'Mixed Pipe', description: null, enabled: true,
@@ -38,8 +39,9 @@ describe('dashboard Pipe menu focus', () => {
     await TestBed.configureTestingModule({
       imports: [DashboardPipesComponent],
       providers: [
+        DashboardTimeService,
         { provide: DashboardPipeLiveService, useValue: { cards: signal([CARD]), muted: signal({}), loading: signal(false), error: signal(false), mute: vi.fn() } },
-        { provide: LocalizationService, useValue: { translateDynamic: (key: string) => key, translate: (key: string) => key } },
+        { provide: LocalizationService, useValue: { locale: signal('en'), translateDynamic: (key: string) => key, translate: (key: string) => key } },
         { provide: AuthService, useValue: { isAdmin: true, canRunPipesFromDashboard: false } },
         { provide: PipeApiService, useValue: { run: vi.fn() } },
         { provide: AlertMessageService, useValue: { tileMessage: () => '' } },
@@ -190,7 +192,7 @@ describe('dashboard Pipe menu focus', () => {
     }));
     expect(params.value.get('pipe')).toBeNull();
 
-    (fixture.nativeElement.querySelector('.modal__footer button') as HTMLButtonElement).click();
+    (fixture.nativeElement.querySelector('.modal__footer button:last-child') as HTMLButtonElement).click();
     fixture.detectChanges();
     await fixture.whenStable();
     expect(fixture.nativeElement.querySelector('[role="dialog"]')).toBeNull();
@@ -228,6 +230,58 @@ describe('dashboard Pipe menu focus', () => {
     const card = pipeCard(4, 'Running Pipe', 'WARN', '2026-11-01T12:00:00Z');
     setCards([{ ...card, execution: { ...card.execution!, status: 'RUNNING', durationMillis: null } }]);
     expect(fixture.nativeElement.querySelector('.pipe-total-duration')).toBeNull();
+  });
+
+  it.each([false, true])('shows the Pipe finish age in its upper-right header in minified=%s view', (minified) => {
+    const finishedAt = new Date(Date.now() - 2 * 3_600_000 - 1_000).toISOString();
+    const card = pipeCard(4, 'Timed Pipe', 'SUCCESS', new Date(Date.now() - 10 * 86_400_000).toISOString());
+    fixture.componentRef.setInput('settings', { ...DEFAULT_VIEW_SETTINGS, minified });
+    setCards([{ ...card, execution: { ...card.execution!, finishedAt, durationMillis: 4300 } }]);
+    const time = fixture.nativeElement.querySelector('.pipe-header-actions .pipe-execution-time') as HTMLTimeElement;
+    expect(time.textContent?.trim()).toBe('2 hours ago');
+    expect(time.getAttribute('datetime')).toBe(finishedAt);
+    expect(time.getAttribute('title')).toBe(finishedAt);
+    expect(fixture.nativeElement.querySelector('.pipe-header-actions small')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.pipe-kebab')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.pipe-total-duration')?.textContent.trim()).toBe('4.3 s');
+    expect(fixture.nativeElement.querySelector('.pipe-track .pipe-execution-time')).toBeNull();
+  });
+
+  it('updates the Pipe age when the language changes', () => {
+    const finishedAt = new Date(Date.now() - 2 * 3_600_000 - 1_000).toISOString();
+    setCards([pipeCard(4, 'Timed Pipe', 'SUCCESS', finishedAt)]);
+    TestBed.inject(LocalizationService).locale.set('es-UY');
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.pipe-execution-time')?.textContent.trim()).toBe('hace 2 horas');
+  });
+
+  it('hides the finish age during execution and restores it when the Pipe finishes', () => {
+    const finishedAt = new Date(Date.now() - 2 * 3_600_000 - 1_000).toISOString();
+    const card = pipeCard(4, 'Timed Pipe', 'WARN', finishedAt);
+    setCards([{ ...card, execution: { ...card.execution!, status: 'RUNNING' } }]);
+    expect(fixture.nativeElement.querySelector('.pipe-execution-time')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.pipe-header .running')).not.toBeNull();
+    setCards([card]);
+    expect(fixture.nativeElement.querySelector('.pipe-execution-time')?.textContent.trim()).toBe('2 hours ago');
+  });
+
+  it('keeps the not-executed badge without inventing a completion age', () => {
+    expect(fixture.nativeElement.querySelector('.pipe-execution-time')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.pipe-header .badge')?.textContent.trim()).toBe('dashboard.pipe.NONE');
+    expect(fixture.nativeElement.querySelector('.pipe-header-actions small')).not.toBeNull();
+  });
+
+  it('filters Pipe tags by a saved group name, including a newly discovered ID and OR alternatives', () => {
+    const shared = { id: 100, version: 1, name: ' SHARED ', color: '#112233', scope: 'PIPE' as const, createdAt: '', updatedAt: '' };
+    const card = { ...CARD, tags: [shared] };
+    fixture.componentRef.setInput('settings', { ...DEFAULT_VIEW_SETTINGS, tagVisibilityByName: { shared: false } });
+    setCards([card]);
+    expect(fixture.nativeElement.querySelector('.pipe-card')).toBeNull();
+    setCards([{ ...card, tags: [...card.tags, { ...shared, id: 101, name: 'Other' }] }]);
+    expect(fixture.nativeElement.querySelector('.pipe-card')).not.toBeNull();
+    fixture.componentRef.setInput('settings', { ...DEFAULT_VIEW_SETTINGS, hiddenTagIds: [100], tagVisibilityByName: { shared: true } });
+    setCards([card]);
+    expect(fixture.nativeElement.querySelector('.pipe-card')).not.toBeNull();
   });
 
   it.each(['SUCCESS', 'WARN', 'ERROR'] as const)('colors the header for the global %s state', (outcome) => {
@@ -276,6 +330,32 @@ describe('dashboard Pipe menu focus', () => {
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('.pipe-resource-link')).toBeNull();
     expect(fixture.nativeElement.querySelector('.pipe-detail-toggle')).not.toBeNull();
+  });
+
+  it('opens the current Pipe definition from a historical execution and closes its detail', () => {
+    const card = pipeCard(4, 'Updated Pipe', 'SUCCESS', '2026-11-01T12:00:00Z');
+    const current = { ...card, version: 2, execution: { ...card.execution!, pipeVersion: 1 } };
+    setCards([current]);
+    fixture.componentInstance['openDetail'](current);
+    fixture.detectChanges();
+    const button = fixture.nativeElement.querySelector('.modal__footer button') as HTMLButtonElement;
+    expect(button.textContent?.trim()).toBe('dashboard.detail.goToDefinition');
+    expect(button.type).toBe('button');
+    button.focus();
+    expect(document.activeElement).toBe(button);
+    button.click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[role="dialog"]')).toBeNull();
+    expect(TestBed.inject(Router).navigate).toHaveBeenCalledWith(['/pipes'], { queryParams: { pipeId: 4 } });
+  });
+
+  it('hides the definition action from viewers without removing the close button', () => {
+    Object.assign(TestBed.inject(AuthService), { isAdmin: false });
+    fixture.componentInstance['openDetail'](CARD);
+    fixture.detectChanges();
+    const buttons = fixture.nativeElement.querySelectorAll('.modal__footer button');
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0].textContent?.trim()).toBe('dashboard.pipe.close');
   });
 
   it('follows the running and next pending steps once, pauses for manual scrolling and resumes on the next step', () => {

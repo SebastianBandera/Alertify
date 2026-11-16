@@ -222,6 +222,7 @@ docker build \
   "$script_directory/runner"
 
 exec docker run --rm $docker_tty_flags \
+  --name monitoring-bootstrap-runner \
   --env DOCKER_HOST=unix:///var/run/docker.sock \
   --env HOME=/tmp \
   --user "$host_uid:$host_gid" \

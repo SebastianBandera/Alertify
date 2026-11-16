@@ -54,6 +54,264 @@ class PlaywrightWizardProposalTest {
     private Object session;
 
     @Test
+    void scriptReadKeepsPhysicalBlankAndCommentLinesAndRejectsOverflowRanges() throws Exception {
+        prepare("AUTO");
+        var doc = (tools.jackson.databind.node.ObjectNode) document();
+        ((tools.jackson.databind.node.ObjectNode) doc.path("settings")).put("steps", "# block\n\nQUERY h1\n");
+        draft.update(json.writeValueAsString(doc));
+        var read = json.readTree(tool("browser_script_read", "{}").getOutput());
+        assertThat(read.path("totalLines").asInt()).isEqualTo(4);
+        assertThat(read.path("lines").get(1).path("text").asString()).isEmpty();
+        assertThat(read.path("lines").get(3).path("number").asInt()).isEqualTo(4);
+        assertThat(read.path("revision").asString()).isNotBlank();
+        assertThat(tool("browser_script_read", "{\"fromLine\":4294967297}").getFailed()).isTrue();
+        assertThat(browserRequests).isEmpty();
+    }
+
+    @Test
+    void oneAskApprovalAppliesSeveralEditsWithoutRunningTheBrowser() throws Exception {
+        prepare("ASK");
+        String revision = readRevision();
+        var reply = tool("browser_script_edit", "{\"expectedRevision\":\"" + revision + "\",\"edits\":[{\"type\":\"REPLACE\",\"fromLine\":1,\"toLine\":1,\"text\":\"QUERY h1\"},{\"type\":\"INSERT\",\"fromLine\":2,\"toLine\":null,\"text\":\"# Verify\\nCHECK TEXT Ready\"}],\"after\":null}");
+        assertThat(reply.getFailed()).isFalse();
+        assertThat(document().path("settings").path("steps").asString()).isEqualTo("QUERY #username");
+        assertThat(document().path("scriptProposal").path("changes").size()).isEqualTo(2);
+        assertThat(browserRequests).isEmpty();
+        requestOperation("APPROVE");
+        awaitOperation();
+        assertThat(document().path("settings").path("steps").asString()).isEqualTo("QUERY h1\n# Verify\nCHECK TEXT Ready");
+        assertThat(document().has("scriptProposal")).isFalse();
+        assertThat(document().has("testedRevision")).isFalse();
+        assertThat(document().path("lastAction").path("operation").asString()).isEqualTo("SCRIPT_EDIT");
+        assertThat(ReflectionTestUtils.getField(session, "restartRequired")).isEqualTo(true);
+        assertThat(browserRequests).isEmpty();
+    }
+
+    @Test
+    void discardingAStructuredProposalLeavesTheScriptUntouchedAndRequiresANewApprovalForTheNextBatch() throws Exception {
+        prepare("ASK");
+        String request = "{\"expectedRevision\":\"" + readRevision() + "\",\"edits\":[{\"type\":\"REPLACE\",\"fromLine\":1,\"toLine\":1,\"text\":\"QUERY h1\"}],\"after\":null}";
+        assertThat(tool("browser_script_edit", request).getFailed()).isFalse();
+        requestOperation("REJECT");
+        assertThat(document().has("scriptProposal")).isFalse();
+        assertThat(document().path("settings").path("steps").asString()).isEqualTo("QUERY #username");
+        assertThat(tool("browser_script_edit", request).getFailed()).isFalse();
+        assertThat(document().has("scriptProposal")).isTrue();
+        assertThat(document().path("settings").path("steps").asString()).isEqualTo("QUERY #username");
+        assertThat(browserRequests).isEmpty();
+    }
+
+    @Test
+    void aModeOrPermissionChangeInvalidatesTheExpectedRevisionBeforeAnyMutation() throws Exception {
+        prepare("AUTO");
+        String revision = readRevision();
+        var doc = (tools.jackson.databind.node.ObjectNode) document();
+        doc.set("allowedProcedureIds", json.valueToTree(List.of(7L)));
+        draft.update(json.writeValueAsString(doc));
+        var reply = tool("browser_restart", "{\"expectedRevision\":\"" + revision + "\",\"url\":null}");
+        assertThat(reply.getFailed()).isTrue();
+        assertThat(reply.getOutput()).contains("stale");
+        assertThat(readRevision()).isNotEqualTo(revision);
+        String permissionRevision = readRevision();
+        ((tools.jackson.databind.node.ObjectNode) doc.path("settings")).put("mode", "ASK");
+        draft.update(json.writeValueAsString(doc));
+        assertThat(readRevision()).isNotEqualTo(permissionRevision);
+        assertThat(browserRequests).isEmpty();
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void directEditsSaveWithoutExecutingAndSensitiveDiffsNeverReachTheDraft() throws Exception {
+        prepare("AUTO");
+        String revision = readRevision();
+        assertThat(tool("browser_script_edit", "{\"expectedRevision\":\"" + revision + "\",\"edits\":[{\"type\":\"REPLACE\",\"fromLine\":1,\"toLine\":1,\"text\":\"QUERY h1\"}],\"after\":null}").getFailed()).isFalse();
+        assertThat(document().path("settings").path("steps").asString()).isEqualTo("QUERY h1");
+        assertThat(browserRequests).isEmpty();
+        String canary = "fixture-private-edit";
+        ((List<String>) ReflectionTestUtils.getField(session, "sensitive")).add(canary);
+        String original = draft.getDocument();
+        var reply = tool("browser_script_edit", "{\"expectedRevision\":\"" + readRevision() + "\",\"edits\":[{\"type\":\"INSERT\",\"fromLine\":2,\"toLine\":null,\"text\":\"# " + canary + "\"}],\"after\":null}");
+        assertThat(reply.getFailed()).isTrue();
+        assertThat(reply.getDiagnosticCode()).isEqualTo(PlaywrightDraftProtection.CODE);
+        assertThat(reply.getOutput()).doesNotContain(canary);
+        assertThat(draft.getDocument()).isEqualTo(original);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void opaqueLocallyGeneratedRevisionsSurviveSensitiveSubstringCollisions() throws Exception {
+        prepare("AUTO");
+        var initial = json.readTree(tool("browser_script_read", "{}").getOutput());
+        String revision = initial.path("revision").asString();
+        String executionRevision = initial.path("execution").path("revision").asString();
+        String canary = revision.substring(8, 20);
+        List<String> sensitive = (List<String>) ReflectionTestUtils.getField(session, "sensitive");
+        sensitive.add(canary);
+        sensitive.add(executionRevision.substring(8, 20));
+        var read = json.readTree(tool("browser_script_read", "{}").getOutput());
+        assertThat(read.path("revision").asString()).isEqualTo(revision);
+        assertThat(read.path("execution").path("revision").asString()).isEqualTo(executionRevision);
+        var edited = tool("browser_script_edit", "{\"expectedRevision\":\"" + revision + "\",\"edits\":[{\"type\":\"REPLACE\",\"fromLine\":1,\"toLine\":1,\"text\":\"QUERY h1\"}],\"after\":null}");
+        assertThat(edited.getFailed()).isFalse();
+        Object output = Map.of("revision", revision, "lines", List.of(Map.of("number", 1, "text", canary)), "changes", List.of(Map.of("before", canary, "after", canary)), "lastAction", Map.of("result", Map.of("revision", revision, "remote", canary)));
+        String sanitized = ReflectionTestUtils.invokeMethod(service, "safeScriptToolOutput", json.writeValueAsString(output), session);
+        var safe = json.readTree(sanitized);
+        assertThat(safe.path("revision").asString()).isEqualTo(revision);
+        assertThat(safe.path("lastAction").path("result").path("revision").asString()).isEqualTo(revision);
+        assertThat(safe.path("lines").toString()).doesNotContain(canary);
+        assertThat(safe.path("changes").toString()).doesNotContain(canary);
+        assertThat(safe.path("lastAction").path("result").path("remote").asString()).isEqualTo("[REDACTED]");
+    }
+
+    @Test
+    void aFailedReplayPreservesTheAppliedEditAndReportsTheActualFailure() throws Exception {
+        prepare("AUTO");
+        String request = "{\"expectedRevision\":\"" + readRevision() + "\",\"edits\":[{\"type\":\"REPLACE\",\"fromLine\":1,\"toLine\":1,\"text\":\"QUERY h1\\nCHECK TEXT Ready\"}],\"after\":{\"type\":\"REPLAY\",\"untilLine\":null,\"engines\":null}}";
+        var failure = tool("browser_script_edit", request);
+        assertThat(failure.getFailed()).isTrue();
+        var receipt = json.readTree(failure.getOutput());
+        assertThat(receipt.path("applied").asBoolean()).isTrue();
+        assertThat(receipt.path("changes").size()).isEqualTo(1);
+        assertThat(receipt.path("lastAction").path("status").asString()).isEqualTo("FAILED");
+        assertThat(document().path("settings").path("steps").asString()).isEqualTo("QUERY h1\nCHECK TEXT Ready");
+        assertThat(document().path("lastAction").path("operation").asString()).isEqualTo("REPLAY");
+        assertThat(document().path("lastAction").path("status").asString()).isEqualTo("FAILED");
+        assertThat(ReflectionTestUtils.getField(session, "restartRequired")).isEqualTo(true);
+        assertThat(browserRequests).singleElement().satisfies(requestFrame -> assertThat(requestFrame.getOperation()).isEqualTo("TEST"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void repairingAKnownContaminatedLegacyLineNeverStoresOrReturnsItsSecretInTheDiff() throws Exception {
+        prepare("AUTO");
+        String canary = "fixture-legacy-private";
+        ((List<String>) ReflectionTestUtils.getField(session, "sensitive")).add(canary);
+        var doc = (tools.jackson.databind.node.ObjectNode) document();
+        ((tools.jackson.databind.node.ObjectNode) doc.path("settings")).put("steps", "# " + canary + "\nQUERY #username");
+        draft.update(json.writeValueAsString(doc));
+        var read = json.readTree(tool("browser_script_read", "{}").getOutput());
+        assertThat(read.path("redacted").asBoolean()).isTrue();
+        assertThat(read.toString()).doesNotContain(canary);
+        var reply = tool("browser_script_edit", "{\"expectedRevision\":\"" + read.path("revision").asString() + "\",\"edits\":[{\"type\":\"DELETE\",\"fromLine\":1,\"toLine\":1,\"text\":null}],\"after\":null}");
+        assertThat(reply.getFailed()).isFalse();
+        assertThat(reply.getOutput()).doesNotContain(canary).contains("[REDACTED]");
+        assertThat(draft.getDocument()).doesNotContain(canary);
+        assertThat(document().path("settings").path("steps").asString()).isEqualTo("QUERY #username");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void partialReplaysKeepTheWholeScriptPendingAndTwentyReplaysShareTheMessageBudget() throws Exception {
+        prepare("AUTO");
+        String full = "QUERY h1\nCHECK TEXT Ready\n# Pending footer\nQUERY footer\nCHECK TEXT Footer";
+        var doc = (tools.jackson.databind.node.ObjectNode) document();
+        ((tools.jackson.databind.node.ObjectNode) doc.path("settings")).put("steps", full);
+        draft.update(json.writeValueAsString(doc));
+        ReflectionTestUtils.setField(session, "useMessageBudget", true);
+        StreamObserver<WizardRequest> browser = mock(StreamObserver.class);
+        doAnswer(invocation -> {
+            WizardRequest request = invocation.getArgument(0);
+            browserRequests.add(request);
+            JsonNode payload = json.readTree(request.getJson());
+            assertThat(payload.path("steps").asString()).isEqualTo(full);
+            assertThat(payload.path("untilLine").asInt()).isEqualTo(2);
+            assertThat(payload.path("deadlineEpochMillis").asLong()).isPositive();
+            var pending = (ConcurrentMap<String, CompletableFuture<WizardEvent>>) ReflectionTestUtils.getField(session, "pending");
+            pending.get(request.getRequestId()).complete(WizardEvent.newBuilder().setType("RESULT").setJson(json.writeValueAsString(Map.of("scope", "PARTIAL", "untilLine", 2, "lastExecutedLine", 2, "passed", true, "activeEngine", "chromium", "browsers", List.of(Map.of("browser", "chromium", "passed", true, "completed", 2))))).build());
+            return null;
+        }).when(browser).onNext(any());
+        ReflectionTestUtils.setField(session, "requests", browser);
+        for (int attempt = 1; attempt <= 20; attempt++) {
+            var reply = tool("browser_replay", "{\"expectedRevision\":\"" + readRevision() + "\",\"untilLine\":2,\"engines\":null}");
+            assertThat(reply.getFailed()).isFalse();
+            assertThat(document().path("lastAction").path("result").path("attempt").asInt()).isEqualTo(attempt);
+            assertThat(document().has("testedRevision")).isFalse();
+            assertThat(document().path("testValidation").path("results").path("chromium").path("passed").asBoolean()).isFalse();
+            assertThat(document().path("settings").path("steps").asString()).isEqualTo(full);
+        }
+        var rejected = tool("browser_replay", "{\"expectedRevision\":\"" + readRevision() + "\",\"untilLine\":2,\"engines\":null}");
+        assertThat(rejected.getFailed()).isTrue();
+        assertThat(rejected.getOutput()).contains("PLAYWRIGHT_REPLAY_LIMIT");
+        assertThat(browserRequests).hasSize(20);
+        assertThat(ReflectionTestUtils.getField(session, "messageStopped")).isEqualTo(true);
+        int sent = replies.size();
+        String saved = draft.getDocument();
+        tool("browser_script_read", "{}");
+        tool("browser_script_edit", "{}");
+        assertThat(replies).hasSize(sent);
+        assertThat(draft.getDocument()).isEqualTo(saved);
+    }
+
+    @Test
+    void aSixtyMinuteExpiryStopsTheMessageWithoutAnyBrowserActionOrLateEdit() throws Exception {
+        prepare("AUTO");
+        ReflectionTestUtils.setField(session, "useMessageBudget", true);
+        var clock = mock(java.time.Clock.class);
+        when(clock.instant()).thenReturn(java.time.Instant.EPOCH);
+        var budget = new WizardActionBudget(clock);
+        when(clock.instant()).thenReturn(java.time.Instant.EPOCH.plusSeconds(3601));
+        ReflectionTestUtils.setField(session, "budget", budget);
+        var finished = new CompletableFuture<Void>();
+        var call = ChatToolCall.newBuilder().setCallId("expired").setName("browser_script_read").setArguments("{}").build();
+        ReflectionTestUtils.invokeMethod(service, "handleTool", session, call, finished);
+        assertThat(replies.getLast().getDiagnosticCode()).isEqualTo("PLAYWRIGHT_CHAT_TIMEOUT");
+        assertThat(finished).isCompleted();
+        assertThat(ReflectionTestUtils.getField(session, "messageStopped")).isEqualTo(true);
+        var visible = json.valueToTree(service.request(new UsernamePasswordAuthenticationToken("admin-subject", "", List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))), json.valueToTree(Map.of("operation", "GET", "id", draft.getId()))));
+        assertThat(visible.path("errorCode").asString()).isEqualTo("PLAYWRIGHT_CHAT_TIMEOUT");
+        assertThat(visible.path("error").asString()).contains("60").doesNotContain("PRIVATE");
+        assertThat(browserRequests).isEmpty();
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void expiredDeadlinesAndSendFailuresDoNotLeakPendingBrowserRequests() throws Exception {
+        prepare("AUTO");
+        ReflectionTestUtils.setField(session, "browserDeadline", java.time.Instant.EPOCH);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(session, "call", "EXECUTE", json.createObjectNode())).hasMessageContaining("PLAYWRIGHT_OPERATION_TIMEOUT");
+        assertThat((Map<?, ?>) ReflectionTestUtils.getField(session, "pending")).isEmpty();
+        assertThat(browserRequests).isEmpty();
+        ReflectionTestUtils.setField(session, "browserDeadline", null);
+        StreamObserver<WizardRequest> browser = mock(StreamObserver.class);
+        org.mockito.Mockito.doThrow(new IllegalStateException("Synthetic send failure")).when(browser).onNext(any());
+        ReflectionTestUtils.setField(session, "requests", browser);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(session, "call", "EXECUTE", json.createObjectNode())).hasMessageContaining("Synthetic send failure");
+        assertThat((Map<?, ?>) ReflectionTestUtils.getField(session, "pending")).isEmpty();
+        assertThat(ReflectionTestUtils.getField(session, "progressRequestId")).isEqualTo("");
+    }
+
+    @Test
+    void rejectingWhileApprovalIsRunningCannotRestoreAnOlderScriptSnapshot() throws Exception {
+        prepare("ASK");
+        assertThat(tool("browser_script_edit", "{\"expectedRevision\":\"" + readRevision() + "\",\"edits\":[{\"type\":\"REPLACE\",\"fromLine\":1,\"toLine\":1,\"text\":\"QUERY h1\"}],\"after\":null}").getFailed()).isFalse();
+        ((java.util.concurrent.atomic.AtomicBoolean) ReflectionTestUtils.getField(session, "busy")).set(true);
+        String saved = draft.getDocument();
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> requestOperation("REJECT")).hasMessageContaining("Wait for the current operation");
+        assertThat(draft.getDocument()).isEqualTo(saved);
+        ((java.util.concurrent.atomic.AtomicBoolean) ReflectionTestUtils.getField(session, "busy")).set(false);
+        requestOperation("APPROVE");
+        awaitOperation();
+        assertThat(document().path("settings").path("steps").asString()).isEqualTo("QUERY h1");
+    }
+
+    @Test
+    void linkedScriptsAndUrlsCannotBeReplacedAndScriptReadsDoNotDiscloseTheirContents() throws Exception {
+        prepare("AUTO");
+        var plans = (WizardAlertPlanService) ReflectionTestUtils.getField(service, "alertPlans");
+        when(plans.stamp(any())).thenReturn("binding-v1");
+        var doc = (tools.jackson.databind.node.ObjectNode) document();
+        doc.set("parameterBindings", json.valueToTree(Map.of("steps", Map.of("source", "CONFIGURATION", "id", 1, "version", 1), "url", Map.of("source", "CONFIGURATION", "id", 2, "version", 1))));
+        draft.update(json.writeValueAsString(doc));
+        var read = json.readTree(tool("browser_script_read", "{}").getOutput());
+        assertThat(read.path("readOnly").asBoolean()).isTrue();
+        assertThat(read.path("lines").size()).isZero();
+        String revision = read.path("revision").asString();
+        assertThat(tool("browser_script_edit", "{\"expectedRevision\":\"" + revision + "\",\"edits\":[{\"type\":\"DELETE\",\"fromLine\":1,\"toLine\":1,\"text\":null}],\"after\":null}").getFailed()).isTrue();
+        assertThat(tool("browser_restart", "{\"expectedRevision\":\"" + revision + "\",\"url\":\"https://other.test/\"}").getFailed()).isTrue();
+        assertThat(browserRequests).isEmpty();
+    }
+
+    @Test
     @SuppressWarnings("unchecked")
     void individualCleanTestsAccumulateWithoutChangingTheAlertMatrixAndFailedRetestsReplaceOnlyTheirEngine() throws Exception {
         prepareReplay("", null);
@@ -144,6 +402,64 @@ class PlaywrightWizardProposalTest {
 
         assertThat(browserRequests).isEmpty();
         verifyNoInteractions(values);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = { "ASK", "AUTO" })
+    void keepsConfirmationAndActivationTogetherUnderTheSelectedApprovalMode(String mode) throws Exception {
+        prepare(mode);
+        String block = "QUERY #logout\nCONFIRM ACCEPT \"Cerrar sesión?\"\n# Activar el control seleccionado\nUSE\nCHECK URL **/login";
+        var reply = steps(block);
+        if (mode.equals("ASK")) {
+            assertThat(reply.getFailed()).isFalse();
+            assertThat(document().path("proposal").asString()).isEqualTo(block);
+            assertThat(document().path("settings").path("steps").asString()).isEqualTo("QUERY #username");
+            assertThat(browserRequests).isEmpty();
+        } else {
+            assertThat(reply.getFailed()).isTrue();
+            assertThat(document().path("settings").path("steps").asString()).isEqualTo("QUERY #username\n" + block);
+            assertThat(browserRequests).singleElement().satisfies(request -> assertThat(json.readTree(request.getJson()).path("steps").asString()).endsWith(block));
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = { "ASK", "AUTO" })
+    void preservesFunctionalCommentsInTheSavedPrefixProposalsAndExecution(String mode) throws Exception {
+        prepare(mode);
+        var doc = (tools.jackson.databind.node.ObjectNode) document();
+        String prefix = "# Seleccionar usuario\nQUERY #username";
+        ((tools.jackson.databind.node.ObjectNode) doc.path("settings")).put("steps", prefix);
+        draft.update(json.writeValueAsString(doc));
+        String block = "# Verificar destino\n\nWAIT_VISIBLE h1 10s\nQUERY h1\nCHECK TEXT Ready";
+        var reply = steps(block);
+        if (mode.equals("ASK")) {
+            assertThat(reply.getFailed()).isFalse();
+            assertThat(document().path("proposal").asString()).isEqualTo(block);
+            assertThat(document().path("settings").path("steps").asString()).isEqualTo(prefix);
+            assertThat(browserRequests).isEmpty();
+        } else {
+            // The fixture fails execution after recording the exact requested script.
+            assertThat(reply.getFailed()).isTrue();
+            String combined = prefix + "\n" + block;
+            assertThat(document().path("settings").path("steps").asString()).isEqualTo(combined);
+            assertThat(browserRequests).singleElement().satisfies(request -> assertThat(json.readTree(request.getJson()).path("steps").asString()).isEqualTo(combined));
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = { "ASK", "AUTO" })
+    @SuppressWarnings("unchecked")
+    void rejectsSensitiveBlockCommentsBeforeSavingOrExecuting(String mode) throws Exception {
+        prepare(mode);
+        String canary = "fixture-comment-private";
+        ((List<String>) ReflectionTestUtils.getField(session, "sensitive")).add(canary);
+        String original = document().toString();
+        var reply = steps("# Verificar " + canary + "\nQUERY h1\nCHECK TEXT Ready");
+        assertThat(reply.getFailed()).isTrue();
+        assertThat(reply.getDiagnosticCode()).isEqualTo(PlaywrightDraftProtection.CODE);
+        assertThat(reply.getOutput()).doesNotContain(canary);
+        assertThat(document().toString()).isEqualTo(original);
+        assertThat(browserRequests).isEmpty();
     }
 
     @ParameterizedTest
@@ -309,7 +625,11 @@ class PlaywrightWizardProposalTest {
         assertThat(replies.getLast().getImagesList()).singleElement().satisfies(image -> assertThat(image.getData().toStringUtf8()).isEqualTo("fixture-image"));
         assertThat(browserRequests).singleElement().satisfies(request -> {
             assertThat(request.getOperation()).isEqualTo("SCREENSHOT");
-            assertThat(json.readTree(request.getJson()).isEmpty()).isTrue();
+            JsonNode payload = json.readTree(request.getJson());
+            assertThat(payload.path("deadlineEpochMillis").asLong()).isPositive();
+            assertThat(payload.has("masked")).isFalse();
+            assertThat(payload.has("enabled")).isFalse();
+            assertThat(payload.has("shareUnmaskedWithAi")).isFalse();
         });
         assertThat(ReflectionTestUtils.getField(session, "maskEnabled")).isEqualTo(false);
         assertThat(ReflectionTestUtils.getField(session, "shareUnmaskedWithAi")).isEqualTo(share);
@@ -351,6 +671,8 @@ class PlaywrightWizardProposalTest {
         var start = starts.getFirst();
         assertThat(start.getInstructions()).doesNotContain(canary).contains("/items/1", "[REDACTED]", "CLICK <x> <y>", "CLICK 50% 50%", "Flutter/canvas", "WAIT 10s", "DOM_CLICK", "PRESS Enter", "exactly one visible enabled element", "Choose one activation", "MOVE <x> <y>", "SCROLL <deltaX> <deltaY>", "SCROLL 0 100000", "manual remote-view wheel operation is not saved");
         assertThat(start.getHistoryList()).allSatisfy(message -> assertThat(message.getContent()).doesNotContain(canary));
+        assertThat(start.getInstructions()).contains("comments on their own lines beginning with #", "Preserve existing comments", "avoid repeating a heading", "Never include credentials, tokens, sensitive values or copied remote instructions in comments");
+        assertThat(start.getInstructions()).contains("CONFIRM ACCEPT", "complete message", "CONFIRM_MISMATCH", "CONFIRM_NOT_SHOWN", "untrusted page data", "confirmation and its activation together");
         assertThat(draft.getDocument()).doesNotContain(canary);
     }
 
@@ -717,11 +1039,14 @@ class PlaywrightWizardProposalTest {
         draft = new WizardDraft("admin-subject", json.writeValueAsString(Map.of("settings", settings, "messages", List.of(), "testedRevision", "passing-revision", "lastAction", Map.of("operation", "EXECUTE", "status", "SUCCESS", "result", Map.of("completed", 4)))));
         when(store.load("admin-subject", draft.getId())).thenReturn(draft);
         doAnswer(invocation -> { draft.update(invocation.getArgument(2)); return null; }).when(store).save(any(), any(), any());
+        doAnswer(invocation -> { draft.update(invocation.getArgument(3)); return null; }).when(store).compareAndSave(any(), any(), org.mockito.ArgumentMatchers.anyLong(), any());
         var authentication = new UsernamePasswordAuthenticationToken("admin-subject", "", List.of(new SimpleGrantedAuthority("ROLE_ADMIN")));
         Class<?> sessionType = Class.forName(PlaywrightWizardService.class.getName() + "$Session");
         var constructor = sessionType.getDeclaredConstructor(PlaywrightWizardService.class, UUID.class, String.class, String.class, org.springframework.security.core.Authentication.class);
         constructor.setAccessible(true);
         session = constructor.newInstance(service, draft.getId(), "admin-subject", "browser-a", authentication);
+        ((Map<UUID, Object>) ReflectionTestUtils.getField(service, "sessions")).put(draft.getId(), session);
+        ReflectionTestUtils.setField(session, "budget", new WizardActionBudget());
         ReflectionTestUtils.setField(session, "chat", chat);
         ReflectionTestUtils.setField(session, "browserSettings", settings);
         doAnswer(invocation -> { ChatClientMessage frame = invocation.getArgument(0); if (frame.hasToolResult()) replies.add(frame.getToolResult()); return null; }).when(chat).send(any());
@@ -747,7 +1072,13 @@ class PlaywrightWizardProposalTest {
     }
 
     private ChatToolResult arguments(String arguments) {
-        var call = ChatToolCall.newBuilder().setCallId(UUID.randomUUID().toString()).setName("browser_steps").setArguments(arguments).build();
+        return tool("browser_steps", arguments);
+    }
+
+    private String readRevision() { return json.readTree(tool("browser_script_read", "{}").getOutput()).path("revision").asString(); }
+
+    private ChatToolResult tool(String name, String arguments) {
+        var call = ChatToolCall.newBuilder().setCallId(UUID.randomUUID().toString()).setName(name).setArguments(arguments).build();
         ReflectionTestUtils.invokeMethod(service, "handleTool", session, call, new CompletableFuture<Void>());
         return replies.getLast();
     }

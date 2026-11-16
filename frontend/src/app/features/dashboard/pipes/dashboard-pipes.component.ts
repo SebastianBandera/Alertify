@@ -9,6 +9,8 @@ import { ApiRequestError } from '../../../core/api/configuration-api.service';
 import { RUNTIME_CONFIG } from '../../../core/config/runtime-config';
 import { LocalizationService } from '../../../core/i18n/localization.service';
 import { DashboardViewSettings, DEFAULT_VIEW_SETTINGS } from '../dashboard-view-settings';
+import { DashboardTimeService } from '../dashboard-time.service';
+import { hasVisibleTags } from '../dashboard-tags';
 import { DashboardPipeCard, DashboardPipeStep, pipeState } from './dashboard-pipe';
 import { DashboardPipeLiveService } from './dashboard-pipe-live.service';
 
@@ -36,6 +38,7 @@ export class DashboardPipesComponent {
   protected readonly live = inject(DashboardPipeLiveService);
   protected readonly localization = inject(LocalizationService);
   protected readonly auth = inject(AuthService);
+  protected readonly time = inject(DashboardTimeService);
   private readonly api = inject(PipeApiService);
   private readonly messages = inject(AlertMessageService);
   private readonly router = inject(Router);
@@ -60,7 +63,7 @@ export class DashboardPipesComponent {
   protected readonly visible = computed(() => {
     const settings = this.settings(), terms = this.normalize(this.search()).split(' ').filter(Boolean), muted = this.live.muted();
     return this.live.cards().filter(card => !settings.hiddenStates.includes(pipeState(card))
-      && (!card.tags.length || card.tags.some(tag => !settings.hiddenTagIds.includes(tag.id)))
+      && hasVisibleTags(card.tags, settings)
       && !(settings.hideIgnored && muted[card.id] && muted[card.id].kind !== 'silenced')
       && terms.every(term => this.normalize([card.name, card.description, ...card.tags.map(tag => tag.name), this.status(card), ...card.steps.map(step => [step.result.resourceName, this.stepStatus(card, step), this.message(step)].join(' '))].join(' ')).includes(term)))
       .sort((a,b) => Number(!!muted[a.id]) - Number(!!muted[b.id])
@@ -198,7 +201,9 @@ export class DashboardPipesComponent {
     this.noticeTimer = null;
   }
   protected navigate(card: DashboardPipeCard, definition: boolean): void {
-    this.closeMenu(); void this.router.navigate(['/pipes'], { queryParams: definition ? { pipeId: card.id } : { tab: 'history', pipeId: card.id } });
+    this.closeMenu();
+    if (this.selected()) this.closeDetail();
+    void this.router.navigate(['/pipes'], { queryParams: definition ? { pipeId: card.id } : { tab: 'history', pipeId: card.id } });
   }
   protected openStep(card: DashboardPipeCard, step: DashboardPipeStep, event: Event): void {
     if (step.result.type !== 'ALERT' || !step.alertExecution) {

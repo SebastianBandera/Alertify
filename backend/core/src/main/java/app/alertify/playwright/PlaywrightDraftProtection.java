@@ -14,7 +14,6 @@ import tools.jackson.databind.json.JsonMapper;
 final class PlaywrightDraftProtection {
     static final String CODE = "PLAYWRIGHT_DRAFT_SENSITIVE_CONTENT";
     private static final JsonMapper JSON = JsonMapper.builder().build();
-    private static final Pattern QUOTED = Pattern.compile("\"(?:\\\\.|[^\"\\\\])*\"|'(?:\\\\.|[^'\\\\])*'");
     private final SecretValueSanitizer.Protection values;
     private final SecretValueSanitizer.Protection identifiers;
 
@@ -30,6 +29,15 @@ final class PlaywrightDraftProtection {
         validateUrl(document.path("settings").path("url").asString(""), "URL");
         validateSteps(document.path("settings").path("steps").asString(""), "script");
         validateSteps(document.path("proposal").asString(""), "proposal");
+        JsonNode proposal = document.path("scriptProposal");
+        if (proposal.isObject()) {
+            validateUrl(proposal.path("settings").path("url").asString(""), "proposed URL");
+            validateSteps(proposal.path("settings").path("steps").asString(""), "proposed script");
+            for (JsonNode change : proposal.path("changes")) {
+                validateSteps(change.path("before").asString(""), "removed lines");
+                validateSteps(change.path("after").asString(""), "replacement lines");
+            }
+        }
     }
 
     void validateSteps(String steps, String field) {
@@ -51,14 +59,15 @@ final class PlaywrightDraftProtection {
             PlaywrightPageEngine.Command command;
             try {
                 // Parse each line with a current element so unfinished drafts can still be saved.
-                command = PlaywrightPageEngine.parseCommands("QUERY #draft-validation\n" + line).getLast();
+                String activation = line.matches("(?i)CONFIRM\\s+.*") ? "\nUSE" : "";
+                command = PlaywrightPageEngine.parseCommands("QUERY #draft-validation\n" + line + activation).get(1);
             } catch (IllegalArgumentException failure) {
                 check(line, location);
                 continue;
             }
             switch (command.type()) {
                 case QUERY, WAIT_VISIBLE, WAIT_HIDDEN -> validateSelector(command.first(), location);
-                case CHECK_TEXT, SELECT -> check(command.first(), location);
+                case CHECK_TEXT, SELECT, CONFIRM_ACCEPT -> check(command.first(), location);
                 case CHECK_ATTRIBUTE -> {
                     check(command.second(), location);
                     checkIdentifier(command.first(), location);
@@ -70,17 +79,7 @@ final class PlaywrightDraftProtection {
     }
 
     private void validateSelector(String selector, String location) {
-        Matcher matcher = QUOTED.matcher(selector);
-        while (matcher.find()) {
-            String token = matcher.group();
-            String literal;
-            try { literal = token.startsWith("\"") ? JSON.readTree(token).asString() : decodeCss(token.substring(1, token.length() - 1)); }
-            catch (RuntimeException failure) { literal = decodeCss(token.substring(1, token.length() - 1)); }
-            check(literal, location);
-        }
-        String unquoted = QUOTED.matcher(selector).replaceAll("");
-        if (unquoted.indexOf('"') >= 0 || unquoted.indexOf('\'') >= 0)
-            check(selector, location);
+        validateQuotedLiterals(selector, location);
 
         int textEngine = selector.indexOf("text=");
         if (textEngine >= 0)
@@ -96,6 +95,50 @@ final class PlaywrightDraftProtection {
 
         Matcher attributes = Pattern.compile("\\[[^\\]=]+\\s*=\\s*([^\\]\"'\\s]+)").matcher(selector);
         while (attributes.find()) check(decodeCss(attributes.group(1)), location);
+    }
+
+    private void validateQuotedLiterals(String selector, String location) {
+        int[] closing = { -1, -1 };
+        boolean incomplete = false;
+        int index = 0;
+        while (index < selector.length()) {
+            char quote = selector.charAt(index);
+            if (quote != '"' && quote != '\'') {
+                index++;
+                continue;
+            }
+            int delimiter = quote == '"' ? 0 : 1;
+            int end = closing[delimiter];
+            if (end <= index) {
+                end = closingQuote(selector, quote, index + 1);
+                closing[delimiter] = end;
+            }
+            if (end == selector.length()) {
+                incomplete = true;
+                index++;
+            } else {
+                String token = selector.substring(index, end + 1);
+                check(decodeQuotedLiteral(token), location);
+                index = end + 1;
+            }
+        }
+        if (incomplete) check(selector, location);
+    }
+
+    private static String decodeQuotedLiteral(String token) {
+        try { return token.charAt(0) == '"' ? JSON.readTree(token).asString() : decodeCss(token.substring(1, token.length() - 1)); }
+        catch (RuntimeException _) { return decodeCss(token.substring(1, token.length() - 1)); }
+    }
+
+    /** Each delimiter's closing cursor only advances, including recovery from an unfinished outer quote. */
+    private static int closingQuote(String text, char quote, int from) {
+        int index = from;
+        while (index < text.length()) {
+            char character = text.charAt(index++);
+            if (character == '\\') index++;
+            else if (character == quote) return index - 1;
+        }
+        return text.length();
     }
 
     private void validateUrl(String url, String location) {

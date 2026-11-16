@@ -580,13 +580,16 @@ export class AlertsComponent implements OnInit {
 
   protected addTagFilter(event: Event): void {
     const select = event.target as HTMLSelectElement;
-    const tagId = Number(select.value);
+    this.addTagFilterById(Number(select.value));
+    select.value = '';
+  }
+
+  protected addTagFilterById(tagId: number): void {
     if (tagId && !this.selectedTagIds().includes(tagId)) {
       this.selectedTagIds.set([...this.selectedTagIds(), tagId]);
       this.alertPage.set(0);
       void this.loadAlerts();
     }
-    select.value = '';
   }
 
   protected removeTagFilter(tagId: number): void {
@@ -603,12 +606,15 @@ export class AlertsComponent implements OnInit {
 
   protected addTemplateTagFilter(event: Event): void {
     const select = event.target as HTMLSelectElement;
-    const nameKey = select.value;
+    this.addTemplateTagFilterByKey(select.value);
+    select.value = '';
+  }
+
+  protected addTemplateTagFilterByKey(nameKey: string): void {
     if (nameKey && !this.selectedTemplateTagKeys().includes(nameKey)) {
       this.selectedTemplateTagKeys.set([...this.selectedTemplateTagKeys(), nameKey]);
       this.templatePage.set(0);
     }
-    select.value = '';
   }
 
   protected removeTemplateTagFilter(nameKey: string): void {

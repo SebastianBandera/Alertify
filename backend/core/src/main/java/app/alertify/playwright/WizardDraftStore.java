@@ -26,5 +26,15 @@ public class WizardDraftStore {
     public void save(String owner, UUID id, String document) { load(owner, id).update(document); }
 
     @Transactional
+    public void compareAndSave(String owner, UUID id, long expectedVersion, String document) {
+        WizardDraft current = load(owner, id);
+        if (current.getVersion() != expectedVersion)
+            throw new IllegalArgumentException("The draft revision changed. Read the script again before editing.");
+
+        current.update(document);
+        repository.flush();
+    }
+
+    @Transactional
     public void delete(String owner, UUID id) { repository.delete(load(owner, id)); }
 }

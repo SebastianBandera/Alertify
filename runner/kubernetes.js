@@ -422,7 +422,7 @@ async function deploy(environment, plan, options, projectDirectory, certificateH
     const exportVolumeSecret = (secretName, volumeSuffix, files) => {
       const data = {};
       for (const file of files) {
-        const pem = invoke('docker', ['run', '--rm', '--volume', `${value(environment, 'COMPOSE_PROJECT_NAME')}-${volumeSuffix}:/data:ro`, '--entrypoint', 'cat', value(environment, 'GRPC_OPENSSL_IMAGE'), `/data/${file}`], projectDirectory);
+        const pem = invoke('docker', ['run', '--rm', '--name', `${value(environment, 'COMPOSE_PROJECT_NAME')}-kubernetes-export-${secretName}`, '--volume', `${value(environment, 'COMPOSE_PROJECT_NAME')}-${volumeSuffix}:/data:ro`, '--entrypoint', 'cat', value(environment, 'GRPC_OPENSSL_IMAGE'), `/data/${file}`], projectDirectory);
         const fileName = path.basename(file);
         fs.writeFileSync(path.join(temporaryDirectory, `${secretName}-${fileName}`), pem, { mode: 0o600 });
         data[fileName] = Buffer.from(pem).toString('base64');

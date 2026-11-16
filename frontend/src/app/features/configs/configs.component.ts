@@ -333,7 +333,10 @@ export class ConfigsComponent implements OnInit {
     select.value = '';
     if (!value) return;
 
-    const tagId = Number(value);
+    this.addTagFilterById(Number(value));
+  }
+
+  protected addTagFilterById(tagId: number): void {
     if (
       !Number.isSafeInteger(tagId) ||
       this.selectedTagIds().includes(tagId) ||

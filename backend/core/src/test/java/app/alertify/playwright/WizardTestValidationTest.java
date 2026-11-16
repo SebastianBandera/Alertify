@@ -16,6 +16,15 @@ class WizardTestValidationTest {
     private final JsonMapper json = JsonMapper.builder().build();
 
     @Test
+    void aPassingPartialReplayCannotBeRecordedAsCompleteValidation() {
+        var validation = WizardTestValidation.current(json.createObjectNode(), "revision", "legacy", List.of("chromium"));
+        ObjectNode partial = (ObjectNode) report("chromium", true);
+        partial.put("scope", "PARTIAL").put("untilLine", 24).put("lastExecutedLine", 24);
+        assertThatThrownBy(() -> WizardTestValidation.record(validation, partial)).hasMessageContaining("partial");
+        assertThat(WizardTestValidation.passed(validation, List.of("chromium"))).isFalse();
+    }
+
+    @Test
     void accumulatesOnlyTheLatestEvidenceForEachEngineAndResetsOnRevisionChanges() {
         ObjectNode doc = json.createObjectNode();
         var validation = WizardTestValidation.current(doc, "revision-a", "legacy", WizardTestValidation.ENGINES);

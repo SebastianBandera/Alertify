@@ -43,14 +43,16 @@
       </button>
       @if (openMenu() === 'tags') {
         <div class="ribbon__options" animate.enter="ribbon__options--enter" animate.leave="ribbon__options--leave">
-          @for (tag of tags(); track tag.id) {
+          @for (tag of tags(); track tag.key) {
             <button
               type="button"
               class="chip chip--tag"
-              [class.chip--off]="!isTagVisible(tag)"
+              [class.chip--off]="tagVisibility(tag) === false"
+              [class.chip--mixed]="tagVisibility(tag) === 'mixed'"
+              [attr.data-tag-key]="tag.key"
               [style.--tag-color]="tag.color"
               role="checkbox"
-              [attr.aria-checked]="isTagVisible(tag)"
+              [attr.aria-checked]="tagVisibility(tag)"
               (click)="toggleTag(tag)">
               {{ tag.name }}
             </button>

@@ -4,6 +4,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
+import java.util.ArrayList;
 
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
@@ -13,9 +14,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 import app.alertify.api.error.ResourceNotFoundException;
 import app.alertify.worker.ai.grpc.ChatUsageUpdate;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 @Service
 class AiChatPersistence {
+    private static final JsonMapper JSON = JsonMapper.builder().build();
 
     private static final List<String> ACTIVE_TOOL_STATUSES = List.of("PENDING_APPROVAL", "RUNNING");
 
@@ -50,6 +54,76 @@ class AiChatPersistence {
     @Transactional(readOnly = true)
     List<AiMessage> history(Long conversationId) {
         return messages.findAllByConversation_IdOrderById(conversationId);
+    }
+
+    @Transactional(readOnly = true)
+    JsonNode objective(String subject, Long conversationId) {
+        return AiChatObjectiveState.read(conversations.findByIdAndUserSubject(conversationId, subject)
+                .orElseThrow(() -> new ResourceNotFoundException("AI conversation not found")).getObjectiveDocument());
+    }
+
+    @Transactional
+    AiChatObjectiveState.Change updateObjective(String subject, Long conversationId, Long turnId, JsonNode input) {
+        AiConversation conversation = conversations.findLocked(conversationId, subject)
+                .orElseThrow(() -> new ResourceNotFoundException("AI conversation not found"));
+        AiTurn turn = turns.findById(turnId).orElseThrow();
+        if (!turn.getConversation().getId().equals(conversationId) || !List.of("RUNNING", "WAITING_APPROVAL").contains(turn.getStatus()))
+            throw new IllegalArgumentException("The objective turn is no longer active");
+
+        List<AiMessage> sources = messages.findAllByConversation_IdOrderById(conversationId);
+        long source = sources.stream().filter(message -> "USER".equals(message.getRole()) && turnId.equals(message.getTurnId()))
+                .map(AiMessage::getId).mapToLong(Long::longValue).max().orElse(0);
+        List<AiToolInvocation> evidence = new ArrayList<>();
+        List<String> sensitive = new ArrayList<>();
+        List<JsonNode> stepSources = new ArrayList<>(input.path("steps").valueStream().toList());
+        JsonNode currentObjective = AiChatObjectiveState.read(conversation.getObjectiveDocument());
+        if (currentObjective != null) stepSources.addAll(currentObjective.path("steps").valueStream().toList());
+        for (JsonNode step : stepSources) {
+            for (JsonNode id : step.path("evidenceInvocationIds")) {
+                if (!id.isIntegralNumber() || !id.canConvertToLong()) continue;
+
+                AiToolInvocation invocation = invocations.findByIdAndTurn_Conversation_UserSubject(id.asLong(), subject)
+                        .filter(value -> value.getTurn().getConversation().getId().equals(conversationId) && value.getTurn().getId() <= turnId)
+                        .orElseThrow(() -> new IllegalArgumentException("Objective evidence is outside this conversation"));
+                evidence.add(invocation);
+                collectSensitive(invocation.getArguments(), sensitive);
+                collectSensitive(invocation.getResult(), sensitive);
+            }
+        }
+        AiChatObjectiveState.Change change = AiChatObjectiveState.change(currentObjective, input, source, turnId, evidence, sensitive);
+        if (change.changed()) conversation.objectiveDocument(JSON.writeValueAsString(change.document()));
+
+        return change;
+    }
+
+    private static void collectSensitive(String value, List<String> sensitive) {
+        if (value == null) return;
+
+        try { collectSensitive(JSON.readTree(value), sensitive); }
+        catch (RuntimeException ignored) { /* Plain tool text is never copied into objective metadata. */ }
+    }
+
+    private static void collectSensitive(JsonNode value, List<String> sensitive) {
+        if (value == null) return;
+
+        if (value.isObject()) value.properties().forEach(entry -> {
+            if (entry.getKey().matches("(?i).*(password|token|secret|authorization|credential).*|(?i)value") && entry.getValue().isString()) sensitive.add(entry.getValue().asString());
+            else collectSensitive(entry.getValue(), sensitive);
+        });
+        else if (value.isArray()) value.forEach(child -> collectSensitive(child, sensitive));
+    }
+
+    private void interruptObjective(AiConversation conversation, Long turnId, String reason) {
+        JsonNode previous = AiChatObjectiveState.read(conversation.getObjectiveDocument());
+        if (previous == null) return;
+
+        boolean participating = messages.findAllByConversation_IdOrderById(conversation.getId()).stream()
+                .anyMatch(message -> "USER".equals(message.getRole()) && turnId.equals(message.getTurnId())
+                        && previous.path("sourceMessageIds").valueStream().anyMatch(id -> id.asLong() == message.getId()));
+        if (!participating) return;
+
+        JsonNode next = AiChatObjectiveState.interrupted(previous, reason);
+        if (next != previous) conversation.objectiveDocument(JSON.writeValueAsString(next));
     }
 
     @Transactional(readOnly = true)
@@ -145,6 +219,7 @@ class AiChatPersistence {
                 .forEach(active -> active.cancel("TURN_CANCELLED"));
         turn.rejected();
         turn.cancel();
+        interruptObjective(conversation, turn.getId(), "The user rejected an action. Resume explicitly and reconcile the recorded state before further writes.");
         messages.save(new AiMessage(conversation, turn, "SYSTEM", content));
         conversation.touch();
     }
@@ -163,14 +238,18 @@ class AiChatPersistence {
     void cancelled(Long turnId) {
         invocations.findAllByTurn_IdAndStatusIn(turnId, ACTIVE_TOOL_STATUSES)
                 .forEach(invocation -> invocation.cancel("TURN_CANCELLED"));
-        turns.findById(turnId).orElseThrow().cancel();
+        AiTurn turn = turns.findById(turnId).orElseThrow();
+        turn.cancel();
+        interruptObjective(turn.getConversation(), turnId, "The turn was cancelled. Resume explicitly and reconcile persisted actions before further writes.");
     }
 
     @Transactional
     void failed(Long turnId, String code, String message) {
         invocations.findAllByTurn_IdAndStatusIn(turnId, ACTIVE_TOOL_STATUSES)
                 .forEach(invocation -> invocation.interrupt(code));
-        turns.findById(turnId).orElseThrow().fail(code, message);
+        AiTurn turn = turns.findById(turnId).orElseThrow();
+        turn.fail(code, message);
+        interruptObjective(turn.getConversation(), turnId, "The turn was interrupted. Resume explicitly and reconcile persisted actions before further writes.");
     }
 
     @Transactional
@@ -206,6 +285,7 @@ class AiChatPersistence {
             invocations.findAllByTurn_IdAndStatusIn(turn.getId(), ACTIVE_TOOL_STATUSES)
                     .forEach(invocation -> invocation.interrupt("AI_BACKEND_RESTARTED"));
             turn.fail("AI_BACKEND_RESTARTED", "The backend restarted before the turn completed");
+            interruptObjective(turn.getConversation(), turn.getId(), "The backend restarted. Resume explicitly and reconcile persisted actions before further writes.");
         });
     }
 

@@ -17,6 +17,9 @@ final class WizardScriptProgress {
     private int completed;
     private Integer activeLine;
     private Integer failedLine;
+    private String scope = "FULL";
+    private Integer untilLine;
+    private Integer lastExecutedLine;
 
     synchronized void reset(String script, String browser) {
         source = normalize(script);
@@ -24,6 +27,9 @@ final class WizardScriptProgress {
         completed = 0;
         activeLine = null;
         failedLine = null;
+        scope = "FULL";
+        untilLine = null;
+        lastExecutedLine = null;
         try {
             commandLines = lines(source);
             status = "READY";
@@ -38,6 +44,9 @@ final class WizardScriptProgress {
         status = "UNVERIFIED";
         activeLine = null;
         failedLine = null;
+        scope = "FULL";
+        untilLine = null;
+        lastExecutedLine = null;
     }
 
     synchronized void accept(JsonNode event) {
@@ -47,6 +56,9 @@ final class WizardScriptProgress {
             return;
 
         engine = browser;
+        if (event.path("scope").isString() && List.of("FULL", "PARTIAL").contains(event.path("scope").asString())) scope = event.path("scope").asString();
+        untilLine = event.path("untilLine").isIntegralNumber() && event.path("untilLine").canConvertToInt() ? event.path("untilLine").asInt() : null;
+        lastExecutedLine = event.path("lastExecutedLine").isIntegralNumber() && event.path("lastExecutedLine").canConvertToInt() ? event.path("lastExecutedLine").asInt() : null;
         if (phase.equals("OPENING") || phase.equals("UNAVAILABLE")) {
             status = "UNVERIFIED";
             completed = 0;
@@ -119,19 +131,19 @@ final class WizardScriptProgress {
         if (status.equals("UNVERIFIED"))
             return unknown(current);
 
-        return new Snapshot(revision(current), engine, status, currentLines, completed, activeLine, failedLine);
+        return new Snapshot(revision(current), engine, status, currentLines, completed, activeLine, failedLine, scope, untilLine, lastExecutedLine);
     }
 
     static Snapshot inactive(String script, boolean linked) {
         try {
-            return new Snapshot(revision(normalize(script)), "", "NO_SESSION", linked ? List.of() : lines(script), 0, null, null);
+            return new Snapshot(revision(normalize(script)), "", "NO_SESSION", linked ? List.of() : lines(script), 0, null, null, "FULL", null, null);
         } catch (IllegalArgumentException invalid) {
-            return new Snapshot(revision(normalize(script)), "", "UNVERIFIED", List.of(), 0, null, null);
+            return new Snapshot(revision(normalize(script)), "", "UNVERIFIED", List.of(), 0, null, null, "FULL", null, null);
         }
     }
 
     private Snapshot unknown(String script) {
-        return new Snapshot(revision(script), engine, "UNVERIFIED", List.of(), 0, null, null);
+        return new Snapshot(revision(script), engine, "UNVERIFIED", List.of(), 0, null, null, "FULL", null, null);
     }
 
     private static List<Integer> lines(String script) {
@@ -143,7 +155,7 @@ final class WizardScriptProgress {
     }
 
     private static String normalize(String script) {
-        return script.replace("\r\n", "\n").replace('\r', '\n');
+        return WizardScriptEdits.normalize(script);
     }
 
     private static String revision(String script) {
@@ -151,6 +163,6 @@ final class WizardScriptProgress {
         catch (Exception failure) { throw new IllegalStateException("Cannot identify script revision"); }
     }
 
-    record Snapshot(String revision, String engine, String status, List<Integer> commandLines, int completed, Integer activeLine, Integer failedLine) {
+    record Snapshot(String revision, String engine, String status, List<Integer> commandLines, int completed, Integer activeLine, Integer failedLine, String scope, Integer untilLine, Integer lastExecutedLine) {
     }
 }

@@ -6,7 +6,7 @@ import { AlertApiService } from '../../core/api/alert-api.service';
 import { LocalizationService } from '../../core/i18n/localization.service';
 import { AdminEventChannelService } from '../../core/realtime/admin-event-channel.service';
 import { PlaywrightRemoteViewComponent } from './playwright-remote-view.component';
-import { PlaywrightWizardApiService, WizardSettings, WizardState, normalizeWizardUrl } from './playwright-wizard-api.service';
+import { PlaywrightWizardApiService, WizardScriptProposal, WizardSettings, WizardState, normalizeWizardUrl } from './playwright-wizard-api.service';
 import { PlaywrightWizardComponent } from './playwright-wizard.component';
 
 @Component({ selector: 'app-playwright-remote-view', template: '' })
@@ -27,9 +27,12 @@ interface WizardHarness {
   insertReference(): void;
   update(next: WizardState): void;
   command(operation: string): Promise<void>;
+  create(): Promise<void>;
+  restore(id: string): Promise<void>;
   save(): Promise<void>;
   patch(value: Partial<WizardSettings>): void;
   readonly saving: WritableSignal<boolean>;
+  readonly pending: WritableSignal<boolean>;
   readonly error: WritableSignal<string>;
   goToLine(line: number): void;
 }
@@ -54,8 +57,12 @@ describe('PlaywrightWizardComponent', () => {
       if (operation === 'SET_AI_IMAGE_SHARING') current = { ...current, shareUnmaskedWithAi: payload!['enabled'] as boolean, attachmentReady: false };
       if (operation === 'APPROVE' || operation === 'REJECT') {
         const next = structuredClone(current);
-        if (operation === 'APPROVE') next.document.settings.steps = next.document.proposal!;
+        if (operation === 'APPROVE') {
+          if (next.document.scriptProposal) next.document.settings = structuredClone(next.document.scriptProposal.settings);
+          else next.document.settings.steps = next.document.proposal!;
+        }
         delete next.document.proposal;
+        delete next.document.scriptProposal;
         current = next;
       }
       return structuredClone(current);
@@ -80,6 +87,18 @@ describe('PlaywrightWizardComponent', () => {
 
   function button(label: string): HTMLButtonElement {
     return [...fixture.nativeElement.querySelectorAll('button')].find((element: HTMLButtonElement) => element.textContent?.trim() === label)!;
+  }
+
+  function scriptProposal(action: WizardScriptProposal['action']['type'] = 'REPLAY'): WizardScriptProposal {
+    return {
+      expectedRevision: 'original', resultRevision: 'edited', messageId: 'message-1',
+      settings: { ...current.document.settings, url: 'https://fixture.test/restart', steps: '# Login\nQUERY #login\nUSE\nCHECK TEXT Ready' },
+      changes: [
+        { type: 'REPLACE', fromLine: 1, toLine: 2, before: 'QUERY #old\nUSE', after: '# Login\nQUERY #login\nUSE' },
+        { type: 'REPLACE', fromLine: 4, toLine: 4, before: 'CHECK TEXT <img src=x>', after: 'CHECK TEXT Ready' },
+      ],
+      action: { type: action, untilLine: 3, engines: ['firefox', 'webkit'] },
+    };
   }
 
   async function showProgress(overrides: Partial<NonNullable<WizardState['scriptExecution']>> = {}): Promise<void> {
@@ -606,6 +625,146 @@ describe('PlaywrightWizardComponent', () => {
     fixture.destroy();
   });
 
+  it('shows grouped literal changes, initial URL and replay details before applying a structured proposal', async () => {
+    const saved = structuredClone(current.document.settings);
+    current.document.scriptProposal = scriptProposal();
+    current.messageBudget = { messageId: 'message-1', replaysUsed: 2, maxReplays: 20, expiresAt: '2026-11-10T12:00:00Z' };
+    harness.update(structuredClone(current));
+    fixture.detectChanges();
+    const proposal = fixture.nativeElement.querySelector('.proposal') as HTMLElement;
+    expect(proposal.querySelectorAll('.proposal-change')).toHaveLength(2);
+    expect(proposal.querySelectorAll('.proposal-diff pre')).toHaveLength(4);
+    expect(proposal.querySelector('img')).toBeNull();
+    expect(proposal.textContent).toContain('CHECK TEXT <img src=x>');
+    expect(proposal.textContent).toContain(saved.url);
+    expect(proposal.textContent).toContain('https://fixture.test/restart');
+    expect(proposal.textContent).toContain('Firefox, WebKit');
+    expect(proposal.textContent).toContain('targetLine 3');
+    expect(proposal.textContent).toContain('attempt 3 / 20');
+    expect(proposal.textContent).toContain('restartAndReplay');
+    expect(harness.settings()).toEqual(saved);
+    expect((fixture.nativeElement.querySelector('.chat-panel textarea') as HTMLTextAreaElement).disabled).toBe(true);
+    expect(request.mock.calls.some(([operation]) => ['SAVE', 'EXECUTE', 'REPLAY'].includes(operation))).toBe(false);
+    button('approve').click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(request.mock.calls.filter(([operation]) => operation === 'APPROVE')).toHaveLength(1);
+    expect(harness.settings().url).toBe('https://fixture.test/restart');
+    expect(fixture.nativeElement.querySelector('.proposal')).toBeNull();
+    fixture.destroy();
+  });
+
+  it.each(['NONE', 'RESTART', 'REPLAY'] as const)('allows %s structured approval after failure only when it restarts', action => {
+    delete current.document.proposal;
+    current.restartRequired = true;
+    current.document.scriptProposal = scriptProposal(action);
+    harness.update(structuredClone(current));
+    fixture.detectChanges();
+    expect(button('approve').disabled).toBe(action === 'NONE');
+    fixture.destroy();
+  });
+
+  it('renders an insertion position without a null or inverted line range', () => {
+    delete current.document.proposal;
+    current.document.scriptProposal = scriptProposal('NONE');
+    current.document.scriptProposal.changes = [{ type: 'INSERT', fromLine: 3, toLine: null, before: '', after: '# Verification' }];
+    harness.update(structuredClone(current));
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.proposal-change h4').textContent).toBe('line 3');
+    expect(fixture.nativeElement.querySelector('.proposal-change').textContent).toContain('# Verification');
+    fixture.destroy();
+  });
+
+  it('discards all structured edits and URL changes without a save or browser action', async () => {
+    delete current.document.proposal;
+    const saved = structuredClone(current.document.settings);
+    current.document.scriptProposal = scriptProposal('NONE');
+    harness.update(structuredClone(current));
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.proposal-action').textContent).toContain('proposalSaveOnly');
+    button('reject').click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(harness.settings()).toEqual(saved);
+    expect(request.mock.calls.some(([operation]) => ['SAVE', 'APPROVE', 'EXECUTE', 'REPLAY', 'RESET'].includes(operation))).toBe(false);
+    expect(fixture.nativeElement.querySelector('.proposal')).toBeNull();
+    expect((fixture.nativeElement.querySelector('.chat-panel textarea') as HTMLTextAreaElement).disabled).toBe(false);
+    fixture.destroy();
+  });
+
+  it('shows partial replay evidence and pending suffix without granting complete validation', async () => {
+    delete current.document.proposal;
+    current.document.lastAction = { operation: 'REPLAY', status: 'SUCCESS', at: 'now', result: { scope: 'PARTIAL', untilLine: 4, lastExecutedLine: 4, attempt: 2, completed: 2, requestedBrowsers: ['firefox'] } };
+    await showProgress({ status: 'READY', scope: 'PARTIAL', untilLine: 4, lastExecutedLine: 4, attempt: 2, completed: 2, activeLine: null });
+    const receipt = fixture.nativeElement.querySelector('.execution-receipt.partial') as HTMLElement;
+    expect(receipt.textContent).toContain('executionPartial');
+    expect(receipt.textContent).toContain('partialValidationHelp');
+    expect(receipt.textContent).toContain('lastExecutedLine 4');
+    expect(receipt.textContent).toContain('attempt 2');
+    expect(receipt.textContent).toContain('Firefox');
+    expect([...fixture.nativeElement.querySelectorAll('.step-line-status--pending')].map((node: HTMLElement) => node.dataset['line'])).toEqual(['6', '7']);
+    expect(fixture.nativeElement.querySelector('.validation-report').textContent).toContain('validationPending');
+    fixture.destroy();
+  });
+
+  it('reports edits saved separately from successful or failed replay', () => {
+    delete current.document.proposal;
+    current.restartRequired = true;
+    current.document.lastAction = { operation: 'SCRIPT_EDIT', status: 'SUCCESS', at: 'now', result: { applied: true, revision: 'edited', restartRequired: true } };
+    harness.update(structuredClone(current));
+    fixture.detectChanges();
+    const receipt = fixture.nativeElement.querySelector('.execution-receipt') as HTMLElement;
+    expect(receipt.textContent).toContain('editsApplied');
+    expect(receipt.textContent).not.toContain('executionCompleted');
+    expect(button('execute').disabled).toBe(true);
+    fixture.destroy();
+  });
+
+  it('keeps applied edits and literal differences visible when the following replay fails', async () => {
+    delete current.document.proposal;
+    current.document.settings.steps = '# Verification\nCHECK TEXT <img src=x>\nCHECK TEXT Ready';
+    current.restartRequired = true;
+    current.document.lastAction = { operation: 'REPLAY', status: 'FAILED', at: 'now', error: 'The expected confirmation was not shown', result: {
+      applied: true, revision: 'edited', failedLine: 3, failedCommand: 'CHECK', failureCode: 'BROWSER_ACTION_FAILED',
+      changes: [{ type: 'REPLACE', fromLine: 2, toLine: 2, before: 'CHECK TEXT Old', after: 'CHECK TEXT <img src=x>' }],
+    } };
+    harness.settings.set(structuredClone(current.document.settings));
+    harness.update(structuredClone(current));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const receipt = fixture.nativeElement.querySelector('.execution-receipt.failed') as HTMLElement;
+    expect(receipt.querySelector('.applied-edits')?.textContent).toBe('editsApplied');
+    expect(receipt.textContent).toContain('executionFailed');
+    expect(receipt.textContent).toContain('The expected confirmation was not shown');
+    const differences = receipt.querySelector('.applied-diff') as HTMLDetailsElement;
+    expect(differences.open).toBe(false);
+    expect(differences.querySelectorAll('.proposal-diff pre')).toHaveLength(2);
+    expect(differences.textContent).toContain('CHECK TEXT <img src=x>');
+    expect(differences.querySelector('img')).toBeNull();
+    expect(button('line 3')).toBeDefined();
+    button('line 3').click();
+    const editor = fixture.nativeElement.querySelector('.code-editor textarea') as HTMLTextAreaElement;
+    expect(editor.value.slice(editor.selectionStart, editor.selectionEnd)).toBe('CHECK TEXT Ready');
+    fixture.destroy();
+  });
+
+  it('numbers Java DSL line separators consistently and selects the requested physical line', async () => {
+    const steps = '# comment\u2028QUERY h1\u0085CHECK TEXT Ready\v# end\fWAIT 1ms\r\nQUERY h2';
+    current.document.settings.steps = steps;
+    harness.settings.set(structuredClone(current.document.settings));
+    harness.update(structuredClone(current));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.line-numbers pre').textContent).toBe('1\n2\n3\n4\n5\n6');
+    harness.goToLine(3);
+    const editor = fixture.nativeElement.querySelector('.code-editor textarea') as HTMLTextAreaElement;
+    expect(editor.value.slice(editor.selectionStart, editor.selectionEnd)).toBe('CHECK TEXT Ready');
+    expect(harness.settings().steps).toBe(steps);
+    fixture.destroy();
+  });
+
   it('requires the explicit approval beside the chat and sends no duplicate chat request for Yes', async () => {
     const proposal = fixture.nativeElement.querySelector('.chat-panel .proposal') as HTMLElement;
     expect(proposal.textContent).toContain('QUERY #menu');
@@ -681,6 +840,120 @@ describe('PlaywrightWizardComponent', () => {
     expect(request.mock.calls.some(([operation]) => operation === 'CHAT')).toBe(true);
     expect(fixture.nativeElement.querySelector('.execution-receipt.failed')?.textContent).toContain('more than one element matches');
     expect(button('execute').disabled).toBe(true);
+    fixture.destroy();
+  });
+
+  it('cancels a pending replay and ignores its late result and pending cleanup', async () => {
+    delete current.document.proposal;
+    let finishReplay!: (value: WizardState) => void;
+    let finishCancel!: (value: WizardState) => void;
+    request.mockImplementation(async (operation: string) => {
+      if (operation === 'REPLAY') return new Promise<WizardState>(resolve => { finishReplay = resolve; });
+      if (operation === 'CANCEL') return new Promise<WizardState>(resolve => { finishCancel = resolve; });
+      return structuredClone(current);
+    });
+    harness.update(structuredClone(current));
+    const replay = harness.command('REPLAY');
+    await vi.waitFor(() => expect(request.mock.calls.some(([operation]) => operation === 'REPLAY')).toBe(true));
+    const cancellation = harness.command('CANCEL');
+    await vi.waitFor(() => expect(request.mock.calls.some(([operation]) => operation === 'CANCEL')).toBe(true));
+    finishReplay({ ...structuredClone(current), busy: true });
+    await replay;
+    fixture.detectChanges();
+    // The old finally must not unlock the UI while cancellation is unresolved.
+    expect((fixture.nativeElement.querySelector('.settings input') as HTMLInputElement).disabled).toBe(true);
+    expect(harness.state()!.busy).toBe(false);
+    finishCancel({ ...structuredClone(current), open: false, busy: false });
+    await cancellation;
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(harness.state()!.open).toBe(false);
+    expect(harness.pending()).toBe(false);
+    expect(harness.error()).toBe('');
+    expect((fixture.nativeElement.querySelector('.settings input') as HTMLInputElement).disabled).toBe(false);
+    fixture.destroy();
+  });
+
+  it.each(['result', 'error'])('ignores a cancelled SAVE late %s without invalidating a newer autosave', async outcome => {
+    delete current.document.proposal;
+    const saves: { settings: WizardSettings; finish: (value: WizardState) => void; fail: (error: Error) => void }[] = [];
+    request.mockImplementation(async (operation: string, payload?: Record<string, unknown>) => {
+      if (operation === 'SAVE') return new Promise<WizardState>((finish, fail) => saves.push({ settings: structuredClone(payload!['settings'] as WizardSettings), finish, fail }));
+      return { ...structuredClone(current), open: operation !== 'CANCEL', busy: false };
+    });
+    harness.update(structuredClone(current));
+    harness.settings.set({ ...current.document.settings, steps: 'QUERY #unsaved' });
+    const saving = harness.save();
+    const replay = harness.command('REPLAY');
+    expect(saves).toHaveLength(1);
+    await harness.command('CANCEL');
+    expect(harness.state()!.open).toBe(false);
+    expect(harness.saving()).toBe(false);
+    // A new save is independent of the cancelled one and must retain its own lock.
+    harness.settings.update(value => ({ ...value, steps: 'QUERY #newer' }));
+    const newerSave = harness.save();
+    expect(saves).toHaveLength(2);
+    if (outcome === 'error') saves[0].fail(new Error('Late save failure'));
+    else {
+      const stale = { ...structuredClone(current), busy: true };
+      stale.document.settings = saves[0].settings;
+      saves[0].finish(stale);
+    }
+    await Promise.all([saving, replay]);
+    expect(harness.state()!.open).toBe(false);
+    expect(harness.state()!.busy).toBe(false);
+    expect(harness.settings().steps).toBe('QUERY #newer');
+    expect(harness.saving()).toBe(true);
+    expect(harness.error()).toBe('');
+    expect(request.mock.calls.some(([operation]) => operation === 'REPLAY')).toBe(false);
+    const saved = { ...structuredClone(current), open: false };
+    saved.document.settings = saves[1].settings;
+    saves[1].finish(saved);
+    await newerSave;
+    expect(harness.saving()).toBe(false);
+    expect(harness.state()!.document.settings.steps).toBe('QUERY #newer');
+    fixture.destroy();
+  });
+
+  it.each(['CREATE', 'GET'])('ignores a late %s draft response after cancellation', async operation => {
+    delete current.document.proposal;
+    let finish!: (value: WizardState) => void;
+    request.mockImplementation(async (requestOperation: string) => {
+      if (requestOperation === operation) return new Promise<WizardState>(resolve => { finish = resolve; });
+      return { ...structuredClone(current), open: requestOperation !== 'CANCEL', busy: false };
+    });
+    harness.update(structuredClone(current));
+    const switching = operation === 'CREATE' ? harness.create() : harness.restore('another-draft');
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    // Retain the active draft identity while loading another one, so cancellation
+    // can still address the session being left.
+    expect(harness.state()!.id).toBe(current.id);
+    await harness.command('CANCEL');
+    finish({ ...structuredClone(current), id: 'another-draft', open: true });
+    await switching;
+    expect(harness.state()!.id).toBe(current.id);
+    expect(harness.state()!.open).toBe(false);
+    expect(harness.error()).toBe('');
+    fixture.destroy();
+  });
+
+  it('does not replace a cancelled state or show an error when an old replay later rejects', async () => {
+    delete current.document.proposal;
+    let failReplay!: (error: Error) => void;
+    request.mockImplementation(async (operation: string) => {
+      if (operation === 'REPLAY') return new Promise<WizardState>((_resolve, reject) => { failReplay = reject; });
+      return { ...structuredClone(current), open: operation !== 'CANCEL', busy: false };
+    });
+    harness.update(structuredClone(current));
+    const replay = harness.command('REPLAY');
+    await vi.waitFor(() => expect(request.mock.calls.some(([operation]) => operation === 'REPLAY')).toBe(true));
+    await harness.command('CANCEL');
+    failReplay(new Error('Late browser error'));
+    await replay;
+    fixture.detectChanges();
+    expect(harness.state()!.open).toBe(false);
+    expect(harness.error()).toBe('');
     fixture.destroy();
   });
 

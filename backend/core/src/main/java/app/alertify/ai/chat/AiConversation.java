@@ -32,6 +32,8 @@ public class AiConversation {
     private Instant createdAt;
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
+    @Column(name = "objective_document", columnDefinition = "text")
+    private String objectiveDocument;
 
     protected AiConversation() {
     }
@@ -56,6 +58,8 @@ public class AiConversation {
     public String getStatus() { return status; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
+    public String getObjectiveDocument() { return objectiveDocument; }
+    void objectiveDocument(String value) { objectiveDocument = value; touch(); }
 
     public void configure(String nextMode, String nextApprovalPolicy) {
         mode = nextMode;

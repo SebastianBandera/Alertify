@@ -234,6 +234,7 @@ class AiMemoryChatTest {
                 mock(AiMessageRepository.class), mock(AiToolInvocationRepository.class), localization, mock(AdminEventPublisher.class),
                 logger, JSON, mock(AiConversationHistory.class), memories, mock(AiPatchReadback.class));
         service.submit(authentication, new AiChatService.SubmitRequest(null, "fix a reusable problem", mode, policy, "en"));
+        AiChatTestAssessment.simpleWork(service, 8L);
         return new Fixture(service, worker, persistence, memories, authentication, consumer.getValue(), handle);
     }
 
