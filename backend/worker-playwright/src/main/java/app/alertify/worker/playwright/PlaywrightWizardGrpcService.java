@@ -111,7 +111,7 @@ public class PlaywrightWizardGrpcService extends PlaywrightWizardServiceGrpc.Pla
                         throw new IllegalStateException("The compiler classpath is required");
 
                     process = new ProcessBuilder(Path.of(System.getProperty("java.home"), "bin", "java").toString(),
-                            "-Xmx192m", "-cp", classpath.resolve("*").toString(), "app.alertify.playwright.InteractiveBrowserMain")
+                            "-Xmx192m", "-XX:-UseBASE64Intrinsics", "-cp", classpath.resolve("*").toString(), "app.alertify.playwright.InteractiveBrowserMain")
                             .redirectError(ProcessBuilder.Redirect.DISCARD).start();
                     input = process.getOutputStream();
                     Thread.ofVirtual().name("playwright-wizard-output").start(this::read);

@@ -37,4 +37,4 @@ else
   echo "Java remote debugging is disabled."
 fi
 
-exec java -XX:MaxRAMPercentage=80.0 "$@" -jar /application/alertify-worker-codex.jar
+exec java -XX:MaxRAMPercentage=80.0 "$@" -XX:-UseBASE64Intrinsics -jar /application/alertify-worker-codex.jar

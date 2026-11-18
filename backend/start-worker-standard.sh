@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 set -eu
 
-java -Dloader.main=app.alertify.worker.standard.NfsMountHelperMain \
+java -XX:-UseBASE64Intrinsics -Dloader.main=app.alertify.worker.standard.NfsMountHelperMain \
     -cp /application/alertify-worker-standard.jar \
     org.springframework.boot.loader.launch.PropertiesLauncher &
 helper_pid=$!
@@ -20,4 +20,4 @@ while [ ! -S /run/alertify-nfs-helper/helper.sock ]; do
     sleep 0.1
 done
 
-exec su-exec application java -XX:MaxRAMPercentage=80.0 --enable-native-access=ALL-UNNAMED --sun-misc-unsafe-memory-access=allow "$@" -jar /application/alertify-worker-standard.jar
+exec su-exec application java -XX:MaxRAMPercentage=80.0 --enable-native-access=ALL-UNNAMED --sun-misc-unsafe-memory-access=allow "$@" -XX:-UseBASE64Intrinsics -jar /application/alertify-worker-standard.jar

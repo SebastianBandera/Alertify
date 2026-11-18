@@ -27,4 +27,5 @@ realm_template=$(<"$template_file")
 rendered_template="${realm_template//"$backend_audience_placeholder"/"$OIDC_BACKEND_AUDIENCE"}"
 printf '%s\n' "$rendered_template" > "$import_file"
 
+export JAVA_OPTS_APPEND="${JAVA_OPTS_APPEND:+${JAVA_OPTS_APPEND} }-XX:-UseBASE64Intrinsics"
 exec /opt/keycloak/bin/kc.sh "$@"
