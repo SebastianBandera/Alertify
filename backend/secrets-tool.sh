@@ -6,6 +6,6 @@ set -eu
 # It reuses the backend's own fat jar but loads a separate main class through
 # Spring Boot's PropertiesLauncher, so it boots its own minimal, non-web
 # Spring context instead of the running application.
-exec java -Dloader.main=app.alertify.secretsexport.SecretExportImportCli \
+exec java -XX:-UseBASE64Intrinsics -Dloader.main=app.alertify.secretsexport.SecretExportImportCli \
     -cp /application/alertify-backend.jar \
     org.springframework.boot.loader.launch.PropertiesLauncher "$@"
