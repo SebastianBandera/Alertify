@@ -16,6 +16,8 @@ import java.util.List;
 import java.util.Map;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -33,6 +35,53 @@ class GitLabPipelineAlertTemplateTest {
 
     private static final String TOKEN = "glpat-never-report-this";
     private static final Instant NOW = Instant.parse("2026-09-25T12:00:00Z");
+
+    @ParameterizedTest
+    @ValueSource(strings = { "gitlab.example", "gitlab.example/", "https://gitlab.example", "https://gitlab.example/", "HTTPS://gitlab.example/" })
+    void acceptsAHostnameOrHttpsOriginWithoutDuplicatingTheScheme(String host) throws Exception {
+        GitLabPipelineAlertTemplate template = new GitLabPipelineAlertTemplate(
+            new GitCredentials(GitProvider.GITLAB, host, null, TOKEN, null), "7", "[\"main\"]", false, 60, false, 24, 3
+        );
+        var field = GitLabPipelineAlertTemplate.class.getDeclaredField("apiBaseUri");
+        field.setAccessible(true);
+        URI base = (URI) field.get(template);
+
+        assertEquals("https", base.getScheme().toLowerCase(java.util.Locale.ROOT));
+        assertEquals("gitlab.example", base.getHost());
+        assertEquals("/api/v4/", base.getPath());
+    }
+
+    @Test
+    void queriesTheApiWhenTheCredentialHostIsACompleteUrl() throws Exception {
+        HttpServer server = server(exchange -> {
+            assertEquals("Bearer " + TOKEN, exchange.getRequestHeaders().getFirst("Authorization"));
+            if (path(exchange).startsWith("/api/v4/projects/7/pipelines?")) {
+                respond(exchange, 200, "[]");
+            } else if (path(exchange).equals("/api/v4/projects/7/repository/branches/main")) {
+                respond(exchange, 200, "{\"name\":\"main\"}");
+            } else {
+                respond(exchange, 404, "{}");
+            }
+        });
+        try {
+            GitCredentials credentials = new GitCredentials(GitProvider.GITLAB, "http://127.0.0.1:" + server.getAddress().getPort() + "/", null, TOKEN, null);
+            AlertResult result = new GitLabPipelineAlertTemplate(credentials, "7", "[\"main\"]", false, 60, false, 24, 3).evaluate(new AlertExecutionContext());
+
+            assertEquals(AlertExecutionStatus.SUCCESS, result.status());
+            assertEquals("no_executed_pipeline", firstBranch(result).get("outcome"));
+            assertFalse(result.statusMessage().toString().contains(TOKEN));
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = { "https://user:password@gitlab.example/", "https://gitlab.example/project", "https://gitlab.example/?query=value", "https://gitlab.example/#fragment" })
+    void rejectsHostUrlsContainingMoreThanTheOrigin(String host) {
+        GitCredentials credentials = new GitCredentials(GitProvider.GITLAB, host, null, TOKEN, null);
+
+        assertThrows(IllegalArgumentException.class, () -> new GitLabPipelineAlertTemplate(credentials, "7", "[\"main\"]", false, 60, false, 24, 3));
+    }
 
     @Test
     void exposesTemplateMetadataAndSecretOnlyCredentials() throws Exception {

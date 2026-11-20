@@ -525,7 +525,14 @@ public final class GitLabPipelineAlertTemplate implements AlertEvaluator {
         if (credentials == null) {
             throw new IllegalArgumentException("credentials must not be null");
         }
-        return URI.create("https://" + credentials.host() + "/api/v4/");
+        String host = credentials.host();
+        boolean hasScheme = host.regionMatches(true, 0, "https://", 0, 8) || host.regionMatches(true, 0, "http://", 0, 7);
+        URI origin = URI.create(hasScheme ? host : "https://" + host);
+        if (origin.getHost() == null || origin.getUserInfo() != null || origin.getQuery() != null || origin.getFragment() != null
+                || !(origin.getPath().isEmpty() || "/".equals(origin.getPath()))) {
+            throw new IllegalArgumentException("GitLab host must be a hostname or an HTTP(S) origin without credentials, path, query or fragment");
+        }
+        return URI.create(origin.getScheme() + "://" + origin.getRawAuthority() + "/api/v4/");
     }
 
     private static URI validateApiBaseUri(URI uri) {
